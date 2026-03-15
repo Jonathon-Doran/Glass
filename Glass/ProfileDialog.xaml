@@ -42,7 +42,8 @@
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
                                         <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                      Click="CharacterCheckBox_Click"/>
+                                              IsEnabled="{Binding IsEnabled}"
+                                              Click="CharacterCheckBox_Click"/>
                                     </DataTemplate>
                                 </GridViewColumn.CellTemplate>
                             </GridViewColumn>

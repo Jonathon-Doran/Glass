@@ -1,10 +1,14 @@
 ﻿GlassVideo:
 
-Title bar crop — in progress
-Window move goes black during drag
-EQ sessions may not exit cleanly if capture is active
+Windows not positioned correctly
 
 Glass:
-4. Profile editor allows selecting multiple characters from the same account
+Profile editor allows selecting multiple characters from the same account
+Launch dialog not hooked up
+Profile edit dialog not hooked up
+No way to delete a profile
+
 ISXGlass:
-5. File virtualization behavior is suspect — noted but not investigated
+File virtualization behavior is suspect — noted but not investigated
+
+Subsampling not in

@@ -5,6 +5,7 @@ using Glass.Data.Repositories;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -95,10 +96,29 @@ public partial class ProfileDialog : Window
     // A binding between a character and its selection state.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    public class CharacterSelection
+    public class CharacterSelection : INotifyPropertyChanged
     {
         public Character Character { get; set; } = null!;
-        public bool IsSelected { get; set; }
+
+        private bool _isSelected;
+        public bool IsSelected
+        {
+            get => _isSelected;
+            set { _isSelected = value; OnPropertyChanged(nameof(IsSelected)); }
+        }
+
+        private bool _isEnabled = true;
+        public bool IsEnabled
+        {
+            get => _isEnabled;
+            set { _isEnabled = value; OnPropertyChanged(nameof(IsEnabled)); }
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+        protected void OnPropertyChanged(string propertyName)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -194,6 +214,41 @@ public partial class ProfileDialog : Window
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void CharacterCheckBox_Click(object sender, RoutedEventArgs e)
     {
+        var items = CharactersListView.ItemsSource as IEnumerable<CharacterSelection>;
+        if (items == null)
+        {
+            return;
+        }
+
+        var clicked = (sender as CheckBox)?.DataContext as CharacterSelection;
+        if (clicked == null)
+        {
+            return;
+        }
+
+        if (clicked.IsSelected)
+        {
+            // Disable all other characters on the same account.
+            foreach (CharacterSelection item in items)
+            {
+                if ((item != clicked) && (item.Character.AccountId == clicked.Character.AccountId))
+                {
+                    item.IsEnabled = false;
+                }
+            }
+        }
+        else
+        {
+            // Re-enable all characters on the same account.
+            foreach (CharacterSelection item in items)
+            {
+                if (item.Character.AccountId == clicked.Character.AccountId)
+                {
+                    item.IsEnabled = true;
+                }
+            }
+        }
+
         ValidateSave();
     }
 
