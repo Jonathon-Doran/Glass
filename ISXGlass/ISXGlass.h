@@ -1,6 +1,6 @@
 #pragma once
 
-#define GLASS_LOG_PATH "C:\\Users\\jhd0044\\source\\repos\\ISXGlass\\glass.log"
+#define GLASS_LOG_PATH "C:\\Users\\jhd0044\\source\\repos\\Glass\\ISXGlass\\isxglass.log"
 
 #include <windows.h>
 #include <vector>

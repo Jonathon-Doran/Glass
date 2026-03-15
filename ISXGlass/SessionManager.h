@@ -22,6 +22,7 @@ struct SessionEntry
     std::string    characterName;
     DWORD          pid = 0;
     HWND           hwnd = NULL;
+    HANDLE         jobObject = NULL;
 };
 
 
@@ -46,11 +47,20 @@ public:
 
     void SendSessionConnected(const std::string& sessionName, DWORD pid, HWND hwnd);
 
+    // Returns a pointer to the session entry for the given session name, or nullptr if not found.
+    SessionEntry* FindSession(const std::string& sessionName);
+    SessionEntry* FindSession(SessionID sessionId);
+
     // Returns a copy of the full session cache.
     const std::map<SessionID, SessionEntry>& GetSessions() const;
 
     // Returns true if a session named is<accountId> is currently active.
     bool IsSessionActive(SessionID sessionId);
+
+    // Creates a job object with affinity locked to the performance core mask
+    // and assigns the given process to it. Stores the job handle in the session entry.
+    void SetProcessAffinity(SessionEntry* entry);
+
 
 private:
     // Parses the account ID from a session name e.g. "is9" -> 9.
@@ -63,6 +73,8 @@ private:
     // Enumerates CPU sets and builds an affinity mask covering only
     // performance cores. Falls back to all cores if topology is uniform.
     void BuildPerformanceCoreMask();
+
+
 
     std::map<SessionID, SessionEntry> _sessions;
 };

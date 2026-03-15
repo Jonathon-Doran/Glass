@@ -29,6 +29,8 @@ void SessionManager::Initialize()
 
 
     // Register an event handler to be called when a new session is ready.
+    unsigned int sessionConnectedEventId = pISInterface->RegisterEvent("OnSessionConnected");
+    pISInterface->AttachEventTarget(sessionConnectedEventId, OnSessionConnected);
 
     unsigned int sessionRenamedEventId = pISInterface->RegisterEvent("OnSessionRenamed");
     pISInterface->AttachEventTarget(sessionRenamedEventId, OnSessionRenamed);
@@ -206,7 +208,8 @@ void SessionManager::Launch(SessionID sessionId, const char* characterName, cons
         "open Everquest EQ%u -slot %u"
         " -prestartup \"FileRedirect eqlsPlayerData.ini eqlsPlayerData-%s-%s.ini;"
         "FileRedirect notes.txt notes-%s-%s.txt;"
-        "FileRedirect eqclient.ini eqclient-%s-%s.ini\"",
+        "FileRedirect eqclient.ini eqclient-%s-%s.ini\""
+        " -startup \"processor 0 only 1 on 2 on 3 on 4 on 5 on 6 on 7 on 8 on 9 on 10 on 11 on 12 on 13 on 14 on 15 on;proclock on\"",
         sessionId, sessionId,
         characterName, server,
         characterName, server,
@@ -217,6 +220,15 @@ void SessionManager::Launch(SessionID sessionId, const char* characterName, cons
     std::string sessionName = "is" + std::to_string(sessionId);
 
     AddPendingLaunch(sessionName);
+
+    SessionEntry entry;
+    entry.sessionName = sessionName;
+    entry.sessionId = sessionId;
+    entry.characterName = characterName;
+    entry.jobObject = nullptr;
+    _sessions[sessionId] = entry;
+    Logger::Instance().WriteIf(Logger::Instance().Log_Sessions, "SessionManager::Launch: session entry created for sessionId=%u", sessionId);
+
     pISInterface->ExecuteCommand(command);
 }
 
@@ -228,7 +240,37 @@ void SessionManager::Launch(SessionID sessionId, const char* characterName, cons
 
 static void OnSessionConnected(int argc, char* argv[], PLSOBJECT pThis)
 {
+    SessionEntry *entry;
+
+    if (argc < 1)
+    {
+        Logger::Instance().WriteIf(Logger::Instance().Log_Sessions, "OnSessionConnected: no arguments.");
+        return;
+    }
+
     Logger::Instance().WriteIf(Logger::Instance().Log_Sessions, "OnSessionConnected: '%s'", argv[0]);
+
+    // Parse session name and PID from "is8-15936" format.
+    const char* dash = strchr(argv[0], '-');
+    if (!dash)
+    {
+        Logger::Instance().WriteIf(Logger::Instance().Log_Sessions, "OnSessionConnected: could not find '-' in '%s', ignoring.", argv[0]);
+        return;
+    }
+
+    std::string sessionName(argv[0], dash - argv[0]);
+    DWORD pid = (DWORD)atol(dash + 1);
+    Logger::Instance().WriteIf(Logger::Instance().Log_Sessions, "OnSessionConnected: sessionName='%s' pid=%u", sessionName.c_str(), pid);
+
+    entry = g_SessionManager.FindSession(sessionName);
+    entry->pid = pid;
+
+    if (entry)
+    {
+        Logger::Instance().Write("OnSessionConnected:  found session entry");
+    }
+
+    g_SessionManager.SetProcessAffinity(entry);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -241,6 +283,8 @@ static void OnSessionConnected(int argc, char* argv[], PLSOBJECT pThis)
 
 static void OnSessionRenamed(int argc, char* argv[], PLSOBJECT pThis)
 {
+    SessionEntry* entry;
+
     if (argc < 1)
     {
         Logger::Instance().WriteIf(Logger::Instance().Log_Sessions, "OnSessionRenamed: no arguments.");
@@ -261,6 +305,15 @@ static void OnSessionRenamed(int argc, char* argv[], PLSOBJECT pThis)
     DWORD pid = (DWORD)atol(dash + 1);
     Logger::Instance().WriteIf(Logger::Instance().Log_Sessions, "OnSessionRenamed: sessionName='%s' pid=%u", sessionName.c_str(), pid);
 
+    entry = g_SessionManager.FindSession(sessionName);
+    if (entry == nullptr)
+    {
+        Logger::Instance().Write("OnSessionRenamed:  Cannot find entity for %s", sessionName.c_str());
+        return;
+    }
+
+    g_SessionManager.SetProcessAffinity(entry);
+
     // Check if this is a pending launch.
     {
         std::lock_guard<std::mutex> lock(_pendingMutex);
@@ -270,28 +323,6 @@ static void OnSessionRenamed(int argc, char* argv[], PLSOBJECT pThis)
             return;
         }
         _pendingLaunches.erase(sessionName);
-    }
-
-    // Set performance core affinity.
-    if ((pid != 0) && (_performanceCoreMask != 0))
-    {
-        HANDLE process = OpenProcess(PROCESS_SET_INFORMATION, FALSE, pid);
-        if (process)
-        {
-            if (!SetProcessAffinityMask(process, _performanceCoreMask))
-            {
-                Logger::Instance().WriteIf(Logger::Instance().Log_Sessions, "OnSessionRenamed: SetProcessAffinityMask failed: %u", GetLastError());
-            }
-            else
-            {
-                Logger::Instance().WriteIf(Logger::Instance().Log_Sessions, "OnSessionRenamed: affinity set for pid=%u mask=0x%llX", pid, (unsigned long long) _performanceCoreMask);
-            }
-            CloseHandle(process);
-        }
-        else
-        {
-            Logger::Instance().WriteIf(Logger::Instance().Log_Sessions, "OnSessionRenamed: OpenProcess failed for pid=%u error=%u", pid, GetLastError());
-        }
     }
 
     // Get HWND via DataParse.
@@ -313,9 +344,8 @@ static void OnSessionRenamed(int argc, char* argv[], PLSOBJECT pThis)
         Logger::Instance().WriteIf(Logger::Instance().Log_Sessions, "OnSessionRenamed: could not get HWND for session '%s'.", sessionName.c_str());
     }
 
-    // Notify Glass.exe.
-
-
+    entry->hwnd = hwnd;
+    // Notify Glass.exe of new session
     g_SessionManager.SendSessionConnected(sessionName, pid, hwnd);
 }
 
@@ -389,6 +419,44 @@ std::string SessionManager::GetCharacterName(SessionID sessionId)
 const std::map<SessionID, SessionEntry>& SessionManager::GetSessions() const
 {
     return _sessions;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// SessionManager::FindSession
+//
+// Returns a pointer to the session entry for the given session name,
+// or nullptr if not found.
+//
+// sessionName:  The session name to look up e.g. "is9"
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+SessionEntry* SessionManager::FindSession(const std::string& sessionName)
+{
+    for (auto& pair : _sessions)
+    {
+        if (pair.second.sessionName == sessionName)
+        {
+            return &pair.second;
+        }
+    }
+    return nullptr;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// SessionManager::FindSession
+//
+// Returns a pointer to the session entry for the given session ID,
+// or nullptr if not found.
+//
+// sessionId:  The session ID to look up e.g. 9 for "is9"
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+SessionEntry* SessionManager::FindSession(SessionID sessionId)
+{
+    auto it = _sessions.find(sessionId);
+    if (it == _sessions.end())
+    {
+        return nullptr;
+    }
+    return &it->second;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -497,6 +565,86 @@ void SessionManager::BuildPerformanceCoreMask()
     _performanceCoreMask = performanceMask;
 }
 
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// SessionManager::SetProcessAffinity
+//
+// Creates a job object with affinity locked to the performance core mask
+// and assigns the given process to it. Stores the job handle in the session entry
+// so it remains alive for the lifetime of the session.
+//
+// entry:  The session entry for the process to lock
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void SessionManager::SetProcessAffinity(SessionEntry* entry)
+{
+    Logger::Instance().WriteIf(Logger::Instance().Log_Sessions,
+        "SessionManager::SetProcessAffinity: pid=%u mask=0x%llX", entry -> pid, (unsigned long long)_performanceCoreMask);
+
+    if (entry->jobObject != nullptr)
+    {
+        CloseHandle(entry->jobObject);
+        entry->jobObject = NULL;
+        Logger::Instance().WriteIf(Logger::Instance().Log_Sessions,
+            "SessionManager::SetProcessAffinity: closed previous job handle.");
+    }
+
+    HANDLE process = OpenProcess(PROCESS_ALL_ACCESS, FALSE, entry -> pid);
+    if (!process)
+    {
+        Logger::Instance().WriteIf(Logger::Instance().Log_Sessions,
+            "SessionManager::SetProcessAffinity: OpenProcess failed: %u", GetLastError());
+        return;
+    }
+
+    if (!SetProcessAffinityMask(process, _performanceCoreMask))
+    {
+        Logger::Instance().WriteIf(Logger::Instance().Log_Sessions,
+            "SessionManager::SetProcessAffinity: SetProcessAffinityMask failed: %u", GetLastError());
+        CloseHandle(process);
+        return;
+    }
+
+    Logger::Instance().WriteIf(Logger::Instance().Log_Sessions,
+        "SessionManager::SetProcessAffinity: affinity set. mask=0x%llX", (unsigned long long)_performanceCoreMask);
+
+    HANDLE job = CreateJobObjectA(nullptr, nullptr);
+    if (!job)
+    {
+        Logger::Instance().WriteIf(Logger::Instance().Log_Sessions,
+            "SessionManager::SetProcessAffinity: CreateJobObject failed: %u", GetLastError());
+        CloseHandle(process);
+        return;
+    }
+
+    JOBOBJECT_BASIC_LIMIT_INFORMATION limits = {};
+    limits.LimitFlags = JOB_OBJECT_LIMIT_AFFINITY;
+    limits.Affinity = _performanceCoreMask;
+
+    if (!SetInformationJobObject(job, JobObjectBasicLimitInformation, &limits, sizeof(limits)))
+    {
+        Logger::Instance().WriteIf(Logger::Instance().Log_Sessions,
+            "SessionManager::SetProcessAffinity: SetInformationJobObject failed: %u", GetLastError());
+        CloseHandle(job);
+        CloseHandle(process);
+        return;
+    }
+
+    if (!AssignProcessToJobObject(job, process))
+    {
+        Logger::Instance().WriteIf(Logger::Instance().Log_Sessions,
+            "SessionManager::SetProcessAffinity: AssignProcessToJobObject failed: %u", GetLastError());
+        CloseHandle(job);
+        CloseHandle(process);
+        return;
+    }
+
+    entry -> jobObject = job;
+    CloseHandle(process);
+
+    Logger::Instance().WriteIf(Logger::Instance().Log_Sessions,
+        "SessionManager::SetProcessAffinity: affinity locked. job=%p", job);
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // SendSessionConnected
 //
@@ -517,3 +665,4 @@ void SessionManager::SendSessionConnected(const std::string& sessionName, DWORD 
     Logger::Instance().Write("SendSessionConnected: %s", notify);
     g_PipeManager.Send(notify);
 }
+
