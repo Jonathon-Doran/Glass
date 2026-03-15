@@ -1,0 +1,40 @@
+# Build output
+**/bin/
+**/obj/
+**/x64/
+**/x86/
+**/Debug/
+**/Release/
+
+# Visual Studio cache/options
+**/.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docview
+
+# Compiled outputs
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.idb
+*.ipdb
+*.iobj
+
+# Shader compiler output
+*.cso
+
+# NuGet
+**/packages/
+**/*.nupkg
+**/project.lock.json
+
+# Logs
+*.log
+
+# Windows
+Thumbs.db
+Desktop.ini

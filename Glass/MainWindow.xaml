@@ -1,0 +1,89 @@
+﻿<Window x:Class="Glass.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:Glass"
+        xmlns:ui="http://schemas.modernwpf.com/2019"
+        ui:WindowHelper.UseModernWindowStyle="True"
+        mc:Ignorable="d"
+        Title="Glass" Height="450" Width="800"
+        Closing="Window_Closing">
+
+
+    <DockPanel>
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="_File">
+                <MenuItem Header="_New Database" Click="MenuItem_NewDatabase_Click"/>
+                <MenuItem Header="_Open Database" Click="MenuItem_OpenDatabase_Click"/>
+                <Separator/>
+                <MenuItem Header="E_xit" Click="MenuItem_Exit_Click"/>
+            </MenuItem>
+            <MenuItem x:Name="MenuEdit" Header="_Edit" IsEnabled="False">
+                <MenuItem Header="_Settings" Click="MenuItem_Settings_Click"/>
+                <MenuItem Header="_New Profile" Click="MenuItem_NewProfile_Click"/>
+                <MenuItem Header="_Edit Profile..." Click="MenuItem_EditProfile_Click"/>
+                <Separator/>
+
+            </MenuItem>
+            <!-- Recent profiles populated in code-behind -->
+            <MenuItem x:Name="MenuSessions" Header="_Sessions" IsEnabled="False">
+                <MenuItem Header="_Status" Click="MenuItem_Status_Click"/>
+                <MenuItem Header="_Launch..." Click="MenuItem_Launch_Click"/>
+                <Separator/>
+                <!-- Recent profiles populated in code-behind -->
+            </MenuItem>
+            <MenuItem x:Name="MenuTools" Header="_Tools" IsEnabled="False">
+                <MenuItem Header="_Generate EQ UI Files" Click="MenuItem_GenerateEQUI_Click"/>
+            </MenuItem>
+        </Menu>
+        
+        <Border DockPanel.Dock="Top" 
+         BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" 
+         BorderThickness="0,0,0,1"
+          />
+
+        <StatusBar DockPanel.Dock="Bottom">
+            <StatusBarItem>
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse x:Name="ISXGlassStatusIndicator"
+                     Width="10" Height="10"
+                     Fill="Red"
+                     Margin="0,0,6,0"/>
+                    <TextBlock x:Name="ISXGlassStatusText" Text="ISXGlass: Not Connected"/>
+                    <Ellipse x:Name="GlassVideoStatusIndicator"
+                     Width="10" Height="10"
+                     Fill="Red"
+                     Margin="16,0,6,0"/>
+                    <TextBlock x:Name="GlassVideoStatusText" Text="GlassVideo: Not Connected"/>
+                </StackPanel>
+            </StatusBarItem>
+        </StatusBar>
+
+        <DockPanel>
+            <DockPanel DockPanel.Dock="Bottom" Margin="2,2,2,2">
+                <TextBlock DockPanel.Dock="Left"
+                   Text="&gt;"
+                   FontFamily="Consolas"
+                   FontSize="12"
+                   VerticalAlignment="Center"
+                   Margin="0,0,4,0"/>
+                <TextBox x:Name="ConsoleInput"
+                 FontFamily="Consolas"
+                 FontSize="12"
+                 KeyDown="ConsoleInput_KeyDown"
+                 AcceptsReturn="False"/>
+            </DockPanel>
+
+            <ScrollViewer x:Name="ConsoleScroller" VerticalScrollBarVisibility="Auto">
+                <TextBox x:Name="ConsoleOutput"
+                 IsReadOnly="True"
+                 TextWrapping="NoWrap"
+                 FontFamily="Consolas"
+                 FontSize="12"
+                 BorderThickness="0"/>
+            </ScrollViewer>
+        </DockPanel>
+
+    </DockPanel>
+</Window>

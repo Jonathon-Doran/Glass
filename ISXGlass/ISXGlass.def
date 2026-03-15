@@ -1,0 +1,5 @@
+LIBRARY ISXGlass
+
+EXPORTS
+    CreateISXInterface
+    CreateISXInterfaceEx

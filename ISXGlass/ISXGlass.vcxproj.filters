@@ -1,0 +1,212 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Header Files\ISXDK">
+      <UniqueIdentifier>{ea934592-cc35-4f38-97e2-68da1f74fa60}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\LavishScript">
+      <UniqueIdentifier>{a4502d52-0be8-4d2e-b20c-dcb1ccd54604}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\ISUI">
+      <UniqueIdentifier>{1669017a-afa6-4cdc-9d82-752218bb2986}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="framework.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Logger.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ISXGlass.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ISXDK\ColumnRenderer.h">
+      <Filter>Header Files\ISXDK</Filter>
+    </ClInclude>
+    <ClInclude Include="ISXDK\FileList.h">
+      <Filter>Header Files\ISXDK</Filter>
+    </ClInclude>
+    <ClInclude Include="ISXDK\Index.h">
+      <Filter>Header Files\ISXDK</Filter>
+    </ClInclude>
+    <ClInclude Include="ISXDK\ISInterface.h">
+      <Filter>Header Files\ISXDK</Filter>
+    </ClInclude>
+    <ClInclude Include="ISXDK\ISXDK.h">
+      <Filter>Header Files\ISXDK</Filter>
+    </ClInclude>
+    <ClInclude Include="ISXDK\ISXInterface.h">
+      <Filter>Header Files\ISXDK</Filter>
+    </ClInclude>
+    <ClInclude Include="ISXDK\Queue.h">
+      <Filter>Header Files\ISXDK</Filter>
+    </ClInclude>
+    <ClInclude Include="ISXDK\Services.h">
+      <Filter>Header Files\ISXDK</Filter>
+    </ClInclude>
+    <ClInclude Include="ISXDK\Threading.h">
+      <Filter>Header Files\ISXDK</Filter>
+    </ClInclude>
+    <ClInclude Include="ISXDK\utf8string.h">
+      <Filter>Header Files\ISXDK</Filter>
+    </ClInclude>
+    <ClInclude Include="ISXDK\WinThreading.h">
+      <Filter>Header Files\ISXDK</Filter>
+    </ClInclude>
+    <ClInclude Include="LavishScript\LavishScript.h">
+      <Filter>Header Files\LavishScript</Filter>
+    </ClInclude>
+    <ClInclude Include="LavishScript\LSSTLTypes.h">
+      <Filter>Header Files\LavishScript</Filter>
+    </ClInclude>
+    <ClInclude Include="LavishScript\LSType.h">
+      <Filter>Header Files\LavishScript</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUI.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUIButton.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUICheckBox.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUIComboBox.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUICommandButton.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUICommandCheckBox.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUICommandEntry.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUIConsole.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUIContextMenu.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUIElement.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUIEmbeddedScript.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUIFont.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUIFrame.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUIGauge.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUIHudElement.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUIListBox.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUIManager.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUIMap.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUIMessageBox.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUIScreen.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUIScrollBar.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUISlider.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUITabControl.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUITable.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUIText.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUITextEdit.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUITextEntry.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUITexture.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUITooltip.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUITree.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUIVariableGauge.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUIVariableSlider.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="ISUI\LGUIWindow.h">
+      <Filter>Header Files\ISUI</Filter>
+    </ClInclude>
+    <ClInclude Include="PipeManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="LSVariables.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="SessionManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Logger.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ISXGlass.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="PipeManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="LSVariables.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="CommandHandler.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SessionManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="ISXGlass.def">
+      <Filter>Source Files</Filter>
+    </None>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,10 @@
+﻿GlassVideo:
+
+Title bar crop — in progress
+Window move goes black during drag
+EQ sessions may not exit cleanly if capture is active
+
+Glass:
+4. Profile editor allows selecting multiple characters from the same account
+ISXGlass:
+5. File virtualization behavior is suspect — noted but not investigated
