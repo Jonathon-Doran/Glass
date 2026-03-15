@@ -155,9 +155,20 @@ bool SessionCapture::Initialize(ID3D11Device* device, HWND hwnd)
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Shutdown
+// 
 // Stops the capture session and releases all resources.
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 void SessionCapture::Shutdown()
 {
+    if (_shuttingDown.exchange(true))
+    {
+        Logger::Instance().Write("SessionCapture: Shutdown already in progress, ignoring.");
+        return;
+    }
+
     Logger::Instance().Write("SessionCapture: Shutdown. hwnd=%p", _hwnd);
 
     _frameArrivedRevoker.revoke();
@@ -190,8 +201,13 @@ void SessionCapture::Shutdown()
     Logger::Instance().Write("SessionCapture: shutdown complete.");
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// OnFrameArrived
+// 
 // Called by the WGC frame pool when a new frame is available.
 // Sets the flag for the render loop to pick up on its next iteration.
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 void SessionCapture::OnFrameArrived(
     winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const& sender,
     winrt::Windows::Foundation::IInspectable const& args)
@@ -199,8 +215,12 @@ void SessionCapture::OnFrameArrived(
     _frameAvailable = true;
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Capture
+// 
 // Called from the render loop. Acquires the latest frame and updates the SRV.
 // Returns true if a valid SRV is available.
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 bool SessionCapture::Capture()
 {
     if (!_frameAvailable)
@@ -217,7 +237,6 @@ bool SessionCapture::Capture()
     }
 
     winrt::Windows::Graphics::SizeInt32 size = frame.ContentSize();
-    Logger::Instance().Write("SessionCapture: frame acquired. size=%dx%d", size.Width, size.Height);
 
     winrt::com_ptr<ID3D11Texture2D> texture;
     try
@@ -240,7 +259,6 @@ bool SessionCapture::Capture()
         return false;
     }
 
-    Logger::Instance().Write("SessionCapture: SRV updated. srv=%p", _srv);
     return true;
 }
 

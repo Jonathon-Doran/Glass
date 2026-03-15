@@ -230,12 +230,7 @@ int APIENTRY wWinMain(
                 }
             }
             g_slotManager.CaptureAll();
-            g_window.GetRenderer().Clear(0.0f, 0.0f, 0.0f);
-            g_slotManager.RenderAll(
-                g_window.GetRenderer().GetContext(),
-                g_window.GetRenderer().GetRenderTargetView(),
-                g_window.GetRenderer().GetQuadRenderer());
-            g_window.GetRenderer().Present();
+            g_window.Render();
         }
     }
 

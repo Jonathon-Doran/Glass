@@ -51,4 +51,5 @@ private:
     bool _frameAvailable;
     int _width;
     int _height;
+    std::atomic<bool> _shuttingDown{ false };
 };
