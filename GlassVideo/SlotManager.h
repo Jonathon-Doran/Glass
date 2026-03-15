@@ -53,7 +53,6 @@ public:
 
     // Calls Capture() on all slots. Should be called from the render loop.
     void CaptureAll();
-    void RenderAll(ID3D11DeviceContext* context, ID3D11RenderTargetView* rtv, QuadRenderer& quadRenderer);
 
     const std::multimap<SlotID, std::unique_ptr<SlotInfo>>& GetSlots() const;
     std::mutex& GetMutex();
