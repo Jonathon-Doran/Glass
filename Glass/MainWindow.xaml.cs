@@ -196,21 +196,20 @@ public partial class MainWindow : Window
     //
     // profile:  The profile to launch
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-   
+
     private async Task LaunchProfile(string profileName)
     {
         var repo = new CharacterSetRepository(profileName);
         var slots = repo.GetSlots();
+        var charRepo = new CharacterRepository();
 
         Log($"Launching profile: {profileName} ({slots.Count} characters)");
-
         _activeProfile = repo;
         _definedSlots.Clear();
 
         // Load slot placements from the first layout for this profile.
         var layoutRepo = new WindowLayoutRepository();
         var placements = layoutRepo.GetLayout(profileName);
-
         DebugLog.Write(DebugLog.Log_Database, $"LaunchProfile: {placements.Count} slot placements loaded for profile '{profileName}'.");
 
         // Send any new slot definitions to GlassVideo.
@@ -228,7 +227,9 @@ public partial class MainWindow : Window
         // Send slot_assign for any already-connected sessions.
         foreach (var session in _sessionRegistry.GetSessions())
         {
-            var assignment = slots.FirstOrDefault(s => s.Character.Name == session.CharacterName);
+            var assignment = slots.FirstOrDefault(s =>
+                charRepo.GetById(s.CharacterId)?.Name == session.CharacterName);
+
             if ((assignment != null) && (session.Hwnd != IntPtr.Zero))
             {
                 string cmd = $"slot_assign {assignment.SlotNumber} {session.SessionName} {session.Hwnd:X}";
@@ -237,11 +238,17 @@ public partial class MainWindow : Window
             }
         }
 
-        // Launch characters with small random delays
+        // Launch characters with small random delays.
         var rng = new Random();
         foreach (var slot in slots)
         {
-            var character = slot.Character;
+            Character? character = charRepo.GetById(slot.CharacterId);
+            if (character == null)
+            {
+                DebugLog.Write(DebugLog.Log_Sessions, $"LaunchProfile: no character found for id={slot.CharacterId}, skipping.");
+                continue;
+            }
+
             Log($"  Launching: {character.Name} accountId={character.AccountId} server={character.Server}");
             _isxGlassPipeManager.Send($"launch {character.AccountId} {character.Name} {character.Server}");
             int delay = rng.Next(4000, 7000);
@@ -255,7 +262,7 @@ public partial class MainWindow : Window
     // Sends console input to ISXGlass when Enter is pressed.
     // Lines prefixed with '/' are handled locally by Glass.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  
+
     private void ConsoleInput_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key != System.Windows.Input.Key.Enter)
@@ -340,8 +347,7 @@ public partial class MainWindow : Window
 
     private void HandleISXGlassMessage(string msg)
     {
-        DebugLog.Write( $"ISXGlass: message in {msg}");
-
+        DebugLog.Write($"ISXGlass: message in {msg}");
         var parts = msg.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0)
         {
@@ -357,43 +363,49 @@ public partial class MainWindow : Window
                         DebugLog.Write(DebugLog.Log_Input, $"ISXGlass: malformed session_connected: {msg}");
                         return;
                     }
+
                     string sessionName = parts[1];
                     uint pid = uint.Parse(parts[2]);
                     IntPtr hwnd = (IntPtr)Convert.ToUInt64(parts[3], 16);
-
                     string characterName = string.Empty;
 
                     if (_activeProfile != null)
                     {
+                        var charRepo = new CharacterRepository();
+
                         if (uint.TryParse(sessionName.Substring(2), out uint sessionId))
                         {
                             var assignment = _activeProfile.GetSlots()
-                                .FirstOrDefault(s => s.Character.AccountId == (int)sessionId);
+                                .FirstOrDefault(s => charRepo.GetById(s.CharacterId)?.AccountId == (int)sessionId);
                             if (assignment != null)
                             {
-                                characterName = assignment.Character.Name;
+                                characterName = charRepo.GetById(assignment.CharacterId)?.Name ?? string.Empty;
+                            }
+                        }
+
+                        DebugLog.Write(DebugLog.Log_Sessions, $"session connected: {sessionName}, pid={pid}, character={characterName}");
+                        _sessionRegistry.OnSessionConnected(sessionName, characterName, pid);
+
+                        if (hwnd != IntPtr.Zero)
+                        {
+                            var assignment = _activeProfile.GetSlots()
+                                .FirstOrDefault(s => charRepo.GetById(s.CharacterId)?.Name == characterName);
+                            if (assignment != null)
+                            {
+                                string cmd = $"slot_assign {assignment.SlotNumber} {sessionName} {hwnd:X}";
+                                DebugLog.Write(DebugLog.Log_Sessions, $"HandleISXGlassMessage: sending {cmd}");
+                                _glassVideoPipeManager.Send(cmd);
+                            }
+                            else
+                            {
+                                DebugLog.Write(DebugLog.Log_Sessions, $"HandleISXGlassMessage: no slot assignment found for character '{characterName}'.");
                             }
                         }
                     }
-
-                    DebugLog.Write(DebugLog.Log_Sessions, $"session connected:  {sessionName}, pid={pid}, character={characterName}");
-                    _sessionRegistry.OnSessionConnected(sessionName, characterName, pid);
-
-                    // Send slot_assign to GlassVideo if we have an active profile and a valid HWND.
-                    if ((_activeProfile != null) && (hwnd != IntPtr.Zero))
+                    else
                     {
-                        var assignment = _activeProfile.GetSlots()
-                            .FirstOrDefault(s => s.Character.Name == characterName);
-                        if (assignment != null)
-                        {
-                            string cmd = $"slot_assign {assignment.SlotNumber} {sessionName} {hwnd:X}";
-                            DebugLog.Write(DebugLog.Log_Sessions, $"HandleISXGlassMessage: sending {cmd}");
-                            _glassVideoPipeManager.Send(cmd);
-                        }
-                        else
-                        {
-                            DebugLog.Write(DebugLog.Log_Sessions, $"HandleISXGlassMessage: no slot assignment found for character '{characterName}'.");
-                        }
+                        DebugLog.Write(DebugLog.Log_Sessions, $"session connected: {sessionName}, pid={pid}, no active profile.");
+                        _sessionRegistry.OnSessionConnected(sessionName, characterName, pid);
                     }
 
                     break;
@@ -405,17 +417,16 @@ public partial class MainWindow : Window
                     {
                         DebugLog.Write(DebugLog.Log_Sessions, $"ISXGlass: malformed session_disconnected: {msg}");
                         return;
-
                     }
+
                     string sessionName = parts[1];
-                    DebugLog.Write($"HandleISXGlassMessage: sending unassign {sessionName}. caller={new System.Diagnostics.StackTrace().GetFrame(1)?.GetMethod()?.Name ?? "unknown"}");
-
-
+                    DebugLog.Write($"HandleISXGlassMessage: sending unassign {sessionName}.");
                     DebugLog.Write(DebugLog.Log_Sessions, $"session_disconnected: {sessionName}");
                     _sessionRegistry.OnSessionDisconnected(sessionName);
                     _glassVideoPipeManager.Send($"unassign {sessionName}");
                     break;
                 }
+
             default:
                 Log(msg);
                 break;

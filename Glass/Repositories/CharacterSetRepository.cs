@@ -77,11 +77,10 @@ public class CharacterSetRepository
     //
     // characterName:  The character to query
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public SlotAssignment? GetSlotForCharacter(string characterName)
+    public SlotAssignment? GetSlotForCharacter(int characterId)
     {
-        return _slots.FirstOrDefault(s => s.Character.Name == characterName);
+        return _slots.FirstOrDefault(s => s.CharacterId == characterId);
     }
-
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Save
     //
@@ -146,14 +145,14 @@ public class CharacterSetRepository
 
             foreach (var slot in _slots)
             {
-                DebugLog.Write(DebugLog.Log_Database, $"CharacterSetRepository.Save: slot {slot.SlotNumber} = {slot.Character.Name} (id={slot.Character.Id}).");
+                DebugLog.Write(DebugLog.Log_Database, $"CharacterSetRepository.Save: slot {slot.SlotNumber} = characterId={slot.CharacterId}.");
 
                 using var insertSlot = conn.CreateCommand();
                 insertSlot.Transaction = tx;
                 insertSlot.CommandText = "INSERT INTO CharacterSetSlots (character_set_id, slot_number, character_id) VALUES (@setId, @slotNumber, @charId)";
                 insertSlot.Parameters.AddWithValue("@setId", profileId);
                 insertSlot.Parameters.AddWithValue("@slotNumber", slot.SlotNumber);
-                insertSlot.Parameters.AddWithValue("@charId", slot.Character.Id);
+                insertSlot.Parameters.AddWithValue("@charId", slot.CharacterId);
                 insertSlot.ExecuteNonQuery();
             }
 
@@ -209,11 +208,10 @@ public class CharacterSetRepository
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT css.slot_number, c.id, c.name, c.class, c.account_id, c.progression, c.server
-            FROM CharacterSetSlots css
-            JOIN Characters c ON c.id = css.character_id
-            WHERE css.character_set_id = @id
-            ORDER BY css.slot_number";
+        SELECT slot_number, character_id
+        FROM CharacterSetSlots
+        WHERE character_set_id = @id
+        ORDER BY slot_number";
         cmd.Parameters.AddWithValue("@id", characterSetId);
 
         var slots = new List<SlotAssignment>();
@@ -223,17 +221,10 @@ public class CharacterSetRepository
             slots.Add(new SlotAssignment
             {
                 SlotNumber = reader.GetInt32(0),
-                Character = new Character
-                {
-                    Id = reader.GetInt32(1),
-                    Name = reader.GetString(2),
-                    Class = (EQClass)reader.GetInt32(3),
-                    AccountId = reader.GetInt32(4),
-                    Progression = reader.GetInt32(5) != 0,
-                    Server = reader.GetString(6)
-                }
+                CharacterId = reader.GetInt32(1)
             });
         }
+
         return slots;
     }
 

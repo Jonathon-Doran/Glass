@@ -89,15 +89,14 @@ public class WindowLayoutRepository
                 var slot = slots[i];
                 var rect = allRects[i];
 
-                DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Save: slot={slot.SlotNumber} character={slot.Character.Name} x={rect.X} y={rect.Y} w={rect.Width} h={rect.Height}");
-
+                DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Save: slot={slot.SlotNumber} characterId={slot.CharacterId} x={rect.X} y={rect.Y} w={rect.Width} h={rect.Height}");
                 using var insertPlacement = conn.CreateCommand();
                 insertPlacement.Transaction = tx;
                 insertPlacement.CommandText = @"
                     INSERT INTO CharacterPlacements (window_layout_id, character_id, x, y, width, height)
                     VALUES (@layoutId, @charId, @x, @y, @width, @height)";
                 insertPlacement.Parameters.AddWithValue("@layoutId", layoutId);
-                insertPlacement.Parameters.AddWithValue("@charId", slot.Character.Id);
+                insertPlacement.Parameters.AddWithValue("@charId", slot.CharacterId);
                 insertPlacement.Parameters.AddWithValue("@x", (int)rect.X);
                 insertPlacement.Parameters.AddWithValue("@y", (int)rect.Y);
                 insertPlacement.Parameters.AddWithValue("@width", (int)rect.Width);

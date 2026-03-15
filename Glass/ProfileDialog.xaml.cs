@@ -26,7 +26,6 @@ namespace Glass;
 public partial class ProfileDialog : Window
 {
     private readonly string? _profileName;
-    private readonly CharacterSet? _profile;
     private ObservableCollection<SlotAssignment> _slotAssignments = new();
     private Point _dragStartPoint;
     public ObservableCollection<MonitorConfig> Monitors { get; set; } = new();
@@ -76,8 +75,7 @@ public partial class ProfileDialog : Window
     {
         var charRepo = new CharacterRepository();
         var allCharacters = charRepo.GetAll();
-
-        var selectedIds = existingSlots.Select(s => s.Character.Id).ToHashSet();
+        var selectedIds = existingSlots.Select(s => s.CharacterId).ToHashSet();
 
         CharactersListView.ItemsSource = allCharacters
             .Select(c => new CharacterSelection
@@ -130,14 +128,14 @@ public partial class ProfileDialog : Window
 
     private void RebuildSlotAssignments()
     {
-        var selected = (CharactersListView.ItemsSource as IEnumerable<CharacterSelection>)!
+        var selectedIds = (CharactersListView.ItemsSource as IEnumerable<CharacterSelection>)!
             .Where(c => c.IsSelected)
-            .Select(c => c.Character)
+            .Select(c => c.Character.Id)
             .ToList();
 
         // Remove assignments for characters no longer selected.
         var toRemove = _slotAssignments
-            .Where(s => !selected.Any(c => c.Id == s.Character.Id))
+            .Where(s => !selectedIds.Contains(s.CharacterId))
             .ToList();
         foreach (var item in toRemove)
         {
@@ -145,16 +143,15 @@ public partial class ProfileDialog : Window
         }
 
         // Append newly selected characters not yet assigned.
-        foreach (var character in selected)
+        foreach (int characterId in selectedIds)
         {
-            if (!_slotAssignments.Any(s => s.Character.Id == character.Id))
+            if (!_slotAssignments.Any(s => s.CharacterId == characterId))
             {
-                _slotAssignments.Add(new SlotAssignment { Character = character });
+                _slotAssignments.Add(new SlotAssignment { CharacterId = characterId });
             }
         }
 
         ReassignSlotNumbers();
-
         CharacterSlotsListView.ItemsSource = _slotAssignments;
     }
 
