@@ -54,6 +54,9 @@ public:
     // Calls Capture() on all slots. Should be called from the render loop.
     void CaptureAll();
 
+    // Returns the HWND of the slot containing the given point, or NULL if no slot contains it.
+    HWND HitTest(int x, int y);
+
     const std::multimap<SlotID, std::unique_ptr<SlotInfo>>& GetSlots() const;
     std::mutex& GetMutex();
 private:

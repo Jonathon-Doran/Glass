@@ -204,3 +204,28 @@ std::mutex& SlotManager::GetMutex()
 {
     return _mutex;
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// SlotManager::HitTest
+//
+// Returns the HWND of the slot containing the given screen point,
+// or NULL if no slot contains it.
+//
+// x, y:  The point to test in window coordinates
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+HWND SlotManager::HitTest(int x, int y)
+{
+    std::lock_guard<std::mutex> lock(_mutex);
+
+    for (auto& pair : _slots)
+    {
+        SlotInfo* slot = pair.second.get();
+        if ((x >= slot->x) && (x < slot->x + slot->width) &&
+            (y >= slot->y) && (y < slot->y + slot->height))
+        {
+            return slot->hwnd;
+        }
+    }
+
+    return NULL;
+}

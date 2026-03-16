@@ -219,6 +219,23 @@ LRESULT CALLBACK VideoWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
             }
             return 0;
         }
+
+        case WM_LBUTTONDOWN:
+        {
+            int x = LOWORD(lParam);
+            int y = HIWORD(lParam);
+            HWND target = g_slotManager.HitTest(x, y);
+            if (target)
+            {
+                Logger::Instance().Write("VideoWindow: WM_LBUTTONDOWN hit slot hwnd=%p, bringing to foreground.", target);
+                SetForegroundWindow(target);
+            }
+            else
+            {
+                Logger::Instance().Write("VideoWindow:  WM_LBUTTONDOWN could not map mouse (%d,%d) to slot", x, y);
+            }
+            return 0;
+        }
     }
 
     return DefWindowProcA(hwnd, msg, wParam, lParam);
