@@ -15,6 +15,8 @@ public class KeyBinding
     public int KeyPageId { get; set; }
     public string Key { get; set; } = string.Empty;
     public int? CommandId { get; set; }
-    public string Target { get; set; } = "self";
+    public int Target { get; set; } = -1;
+    public int? RelayGroupId { get; set; }
     public bool RoundRobin { get; set; }
+    public string? Label { get; set; }
 }

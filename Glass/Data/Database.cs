@@ -90,6 +90,10 @@ public class Database
         {
             ApplyMigration(conn, 8, Migration_008);
         }
+        if (version < 9)
+        {
+            ApplyMigration(conn, 9, Migration_009);
+        }
     }
 
     private int GetSchemaVersion()
@@ -201,6 +205,47 @@ public class Database
         value   TEXT NOT NULL
     );
     ";
+
+    private const string Migration_009 = @"
+    CREATE TABLE IF NOT EXISTS KeyBindings_new (
+        id              INTEGER PRIMARY KEY,
+        key_page_id     INTEGER NOT NULL REFERENCES KeyPages(id),
+        key             TEXT NOT NULL,
+        command_id      INTEGER REFERENCES Commands(id),
+        target          INTEGER NOT NULL DEFAULT -1,
+        relay_group_id  INTEGER REFERENCES RelayGroups(id),
+        round_robin     INTEGER NOT NULL DEFAULT 0,
+        label           TEXT,
+        UNIQUE (key_page_id, key)
+    );
+
+    INSERT INTO KeyBindings_new (id, key_page_id, key, command_id, target, relay_group_id, round_robin)
+    SELECT
+        kb.id,
+        kb.key_page_id,
+        kb.key,
+        kb.command_id,
+        CASE kb.target
+            WHEN 'Self'           THEN 0
+            WHEN 'All Characters' THEN 1
+            WHEN 'All Others'     THEN 2
+            ELSE                       3
+        END,
+        CASE kb.target
+            WHEN 'Self'           THEN NULL
+            WHEN 'All Characters' THEN NULL
+            WHEN 'All Others'     THEN NULL
+            ELSE (SELECT id FROM RelayGroups WHERE name = kb.target)
+        END,
+        kb.round_robin
+    FROM KeyBindings kb;
+
+    DROP TABLE KeyBindings;
+
+    ALTER TABLE KeyBindings_new RENAME TO KeyBindings;
+";
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"
         CREATE TABLE IF NOT EXISTS SchemaVersion (

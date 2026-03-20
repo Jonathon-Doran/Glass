@@ -28,7 +28,7 @@ public class KeyBindingRepository
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT id, key, command_id, target, round_robin
+            SELECT id, key, command_id, target, relay_group_id, round_robin, label
             FROM KeyBindings
             WHERE key_page_id = @pageId
             ORDER BY key";
@@ -44,8 +44,10 @@ public class KeyBindingRepository
                 KeyPageId = keyPageId,
                 Key = reader.GetString(1),
                 CommandId = reader.IsDBNull(2) ? null : reader.GetInt32(2),
-                Target = reader.IsDBNull(3) ? "self" : reader.GetString(3),
-                RoundRobin = reader.GetInt32(4) != 0
+                Target = reader.GetInt32(3),
+                RelayGroupId = reader.IsDBNull(4) ? null : reader.GetInt32(4),
+                RoundRobin = reader.GetInt32(5) != 0,
+                Label = reader.IsDBNull(6) ? null : reader.GetString(6)
             });
         }
 
@@ -63,7 +65,7 @@ public class KeyBindingRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Save(KeyBinding binding)
     {
-        DebugLog.Write(DebugLog.Log_Database, $"KeyBindingRepository.Save: keyPageId={binding.KeyPageId} key='{binding.Key}' commandId={binding.CommandId} target='{binding.Target}' roundRobin={binding.RoundRobin}.");
+        DebugLog.Write(DebugLog.Log_Database, $"KeyBindingRepository.Save: keyPageId={binding.KeyPageId} key='{binding.Key}' commandId={binding.CommandId} target={binding.Target} relayGroupId={binding.RelayGroupId} roundRobin={binding.RoundRobin} label='{binding.Label}'.");
 
         using var conn = Database.Instance.Connect();
         conn.Open();
@@ -72,14 +74,16 @@ public class KeyBindingRepository
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-            INSERT INTO KeyBindings (key_page_id, key, command_id, target, round_robin)
-            VALUES (@pageId, @key, @commandId, @target, @roundRobin);
-            SELECT last_insert_rowid();";
+                INSERT INTO KeyBindings (key_page_id, key, command_id, target, relay_group_id, round_robin, label)
+                VALUES (@pageId, @key, @commandId, @target, @relayGroupId, @roundRobin, @label);
+                SELECT last_insert_rowid();";
             cmd.Parameters.AddWithValue("@pageId", binding.KeyPageId);
             cmd.Parameters.AddWithValue("@key", binding.Key);
             cmd.Parameters.AddWithValue("@commandId", binding.CommandId.HasValue ? binding.CommandId.Value : DBNull.Value);
             cmd.Parameters.AddWithValue("@target", binding.Target);
+            cmd.Parameters.AddWithValue("@relayGroupId", binding.RelayGroupId.HasValue ? binding.RelayGroupId.Value : DBNull.Value);
             cmd.Parameters.AddWithValue("@roundRobin", binding.RoundRobin ? 1 : 0);
+            cmd.Parameters.AddWithValue("@label", binding.Label != null ? binding.Label : DBNull.Value);
             binding.Id = Convert.ToInt32(cmd.ExecuteScalar());
             DebugLog.Write(DebugLog.Log_Database, $"KeyBindingRepository.Save: inserted. id={binding.Id}.");
         }
@@ -87,13 +91,16 @@ public class KeyBindingRepository
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-            UPDATE KeyBindings
-            SET key = @key, command_id = @commandId, target = @target, round_robin = @roundRobin
-            WHERE id = @id";
+                UPDATE KeyBindings
+                SET key = @key, command_id = @commandId, target = @target, relay_group_id = @relayGroupId,
+                    round_robin = @roundRobin, label = @label
+                WHERE id = @id";
             cmd.Parameters.AddWithValue("@key", binding.Key);
             cmd.Parameters.AddWithValue("@commandId", binding.CommandId.HasValue ? binding.CommandId.Value : DBNull.Value);
             cmd.Parameters.AddWithValue("@target", binding.Target);
+            cmd.Parameters.AddWithValue("@relayGroupId", binding.RelayGroupId.HasValue ? binding.RelayGroupId.Value : DBNull.Value);
             cmd.Parameters.AddWithValue("@roundRobin", binding.RoundRobin ? 1 : 0);
+            cmd.Parameters.AddWithValue("@label", binding.Label != null ? binding.Label : DBNull.Value);
             cmd.Parameters.AddWithValue("@id", binding.Id);
             cmd.ExecuteNonQuery();
             DebugLog.Write(DebugLog.Log_Database, $"KeyBindingRepository.Save: updated. id={binding.Id}.");

@@ -896,49 +896,65 @@ public partial class ProfileDialog : Window
     {
         DebugLog.Write($"ProfileDialog.LoadBindingList: pageId={pageId}.");
 
-        var repo = new KeyBindingRepository();
-        var bindings = repo.GetBindingsForPage(pageId);
+        var bindings = new KeyBindingRepository().GetBindingsForPage(pageId)
+            .OrderBy(b => System.Text.RegularExpressions.Regex.Replace(b.Key, @"\d+", m => m.Value.PadLeft(4, '0')))
+            .ToList();
+        var commandMap = new CommandRepository().GetAllCommands().ToDictionary(c => c.Id, c => c.Name);
+        var groupMap = new RelayGroupRepository().GetAllGroupNames().ToDictionary(g => g.Id, g => g.Name);
 
-        var commandRepo = new CommandRepository();
-        var commands = commandRepo.GetAllCommands().ToDictionary(c => c.Id, c => c.Name);
+        var items = bindings.Select(b =>
+        {
+            string commandName = (b.CommandId.HasValue && commandMap.TryGetValue(b.CommandId.Value, out var cn))
+                ? cn
+                : "(none)";
 
-        var items = bindings
-            .OrderBy(b =>
+            string targetName = b.Target switch
             {
-                var digits = new string(b.Key.Where(char.IsDigit).ToArray());
-                return int.TryParse(digits, out int n) ? n : 0;
-            })
-            .ThenBy(b => b.Key)
-            .Select(b => new KeyBindingViewModel
+                -1 => "(none)",
+                0 => "Self",
+                1 => "All Characters",
+                2 => "All Others",
+                3 => (b.RelayGroupId.HasValue && groupMap.TryGetValue(b.RelayGroupId.Value, out var gn))
+                        ? gn
+                        : "?",
+                _ => "?"
+            };
+
+            return new KeyBindingViewModel
             {
                 Binding = b,
-                DisplayText = $"{b.Key}: {(b.CommandId.HasValue && commands.ContainsKey(b.CommandId.Value) ? commands[b.CommandId.Value] : "unbound")}: {b.Target}{(b.RoundRobin ? " [RR]" : "")}"
-            }).ToList();
+                DisplayText = $"{b.Key}: {commandName}: {targetName}"
+            };
+        }).ToList();
 
         BindingListView.ItemsSource = items;
 
         DebugLog.Write($"ProfileDialog.LoadBindingList: loaded {items.Count} bindings.");
     }
 
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // LoadTargetGroupComboBox
     //
-    // Populates the TargetGroupComboBox from all relay groups in the database.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Populates the target group combo box with the special target values and all relay groups.
+    // Each item's Tag is an integer: -1=None, 0=Self, 1=All Characters, 2=All Others, 3=RelayGroup.
+    // For relay group items, the Tag is stored as a negative value offset to distinguish them —
+    // actually, relay group items store their relay_group_id in a separate field.
+    // Uses ComboBoxItem.Tag as int for special targets, and for relay groups stores the
+    // relay_group_id in a field accessible at save time.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void LoadTargetGroupComboBox()
     {
         DebugLog.Write("ProfileDialog.LoadTargetGroupComboBox: loading.");
 
-        var repo = new RelayGroupRepository();
-        var groups = repo.GetAllGroupNames();
-
         TargetGroupComboBox.Items.Clear();
 
-        TargetGroupComboBox.Items.Add(new ComboBoxItem
-        {
-            Content = "Self",
-            Tag = "Self"
-        });
+        TargetGroupComboBox.Items.Add(new ComboBoxItem { Content = "(none)", Tag = -1 });
+        TargetGroupComboBox.Items.Add(new ComboBoxItem { Content = "Self", Tag = 0 });
+        TargetGroupComboBox.Items.Add(new ComboBoxItem { Content = "All Characters", Tag = 1 });
+        TargetGroupComboBox.Items.Add(new ComboBoxItem { Content = "All Others", Tag = 2 });
+
+        var repo = new RelayGroupRepository();
+        var groups = repo.GetAllGroupNames();
 
         foreach (var group in groups)
         {
@@ -954,7 +970,7 @@ public partial class ProfileDialog : Window
             TargetGroupComboBox.SelectedIndex = 0;
         }
 
-        DebugLog.Write($"ProfileDialog.LoadTargetGroupComboBox: loaded {groups.Count} groups.");
+        DebugLog.Write($"ProfileDialog.LoadTargetGroupComboBox: loaded {groups.Count} relay groups plus 4 special entries.");
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1142,16 +1158,24 @@ public partial class ProfileDialog : Window
 
         if (binding != null)
         {
+            DebugLog.Write($"ProfileDialog.KeyButton_Click: found binding. commandId={binding.Binding.CommandId} target={binding.Binding.Target} relayGroupId={binding.Binding.RelayGroupId}.");
+
             CommandTypeComboBox.SelectedItem = CommandTypeComboBox.Items
                 .OfType<ComboBoxItem>()
-                .FirstOrDefault(i => (int?)((ComboBoxItem)i).Tag == binding.Binding.CommandId);
+                .FirstOrDefault(i => (int?)i.Tag == binding.Binding.CommandId);
+
             TargetGroupComboBox.SelectedItem = TargetGroupComboBox.Items
                 .OfType<ComboBoxItem>()
-                .FirstOrDefault(i => i.Content.ToString() == binding.Binding.Target);
+                .FirstOrDefault(i => i.Tag is int tag &&
+                                     (binding.Binding.Target <= 2
+                                         ? tag == binding.Binding.Target
+                                         : tag == binding.Binding.RelayGroupId));
+
             RoundRobinCheckBox.IsChecked = binding.Binding.RoundRobin;
         }
         else
         {
+            DebugLog.Write($"ProfileDialog.KeyButton_Click: no binding found for key='{key}'.");
             CommandTypeComboBox.SelectedIndex = 0;
             TargetGroupComboBox.SelectedIndex = 0;
             RoundRobinCheckBox.IsChecked = false;
@@ -1171,28 +1195,34 @@ public partial class ProfileDialog : Window
             return;
         }
 
-        if (PageComboBox.SelectedItem is not ComboBoxItem pageItem || pageItem.Tag == null)
+        if (PageComboBox.SelectedItem is not KeyPageViewModel page)
         {
             DebugLog.Write("ProfileDialog.SaveBinding_Click: no page selected.");
             return;
         }
 
-        string pageName = pageItem.Tag.ToString() ?? string.Empty;
-        var pageRepo = new KeyPageRepository();
-        var page = pageRepo.GetPage(pageName);
-
-        if (page == null)
-        {
-            DebugLog.Write($"ProfileDialog.SaveBinding_Click: page '{pageName}' not found.");
-            return;
-        }
-
         string key = SelectedKeyTextBlock.Text;
-        int? commandId = (CommandTypeComboBox.SelectedItem as ComboBoxItem)?.Tag is int id ? id : null;
-        string target = (TargetGroupComboBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "self";
+        int? commandId = (CommandTypeComboBox.SelectedItem as ComboBoxItem)?.Tag is int cid ? cid : null;
         bool roundRobin = RoundRobinCheckBox.IsChecked == true;
 
-        DebugLog.Write($"ProfileDialog.SaveBinding_Click: page={page.Id} key='{key}' commandId={commandId} target='{target}' roundRobin={roundRobin}.");
+        int target = -1;
+        int? relayGroupId = null;
+
+        if (TargetGroupComboBox.SelectedItem is ComboBoxItem targetItem && targetItem.Tag is int tag)
+        {
+            if (tag <= 2)
+            {
+                target = tag;
+                relayGroupId = null;
+            }
+            else
+            {
+                target = 3;
+                relayGroupId = tag;
+            }
+        }
+
+        DebugLog.Write($"ProfileDialog.SaveBinding_Click: page={page.Id} key='{key}' commandId={commandId} target={target} relayGroupId={relayGroupId} roundRobin={roundRobin}.");
 
         var existing = (BindingListView.ItemsSource as List<KeyBindingViewModel>)
             ?.FirstOrDefault(b => b.Binding.Key == key);
@@ -1200,6 +1230,7 @@ public partial class ProfileDialog : Window
         var binding = existing?.Binding ?? new KeyBinding { KeyPageId = page.Id, Key = key };
         binding.CommandId = commandId;
         binding.Target = target;
+        binding.RelayGroupId = relayGroupId;
         binding.RoundRobin = roundRobin;
 
         var repo = new KeyBindingRepository();
@@ -1313,7 +1344,10 @@ public partial class ProfileDialog : Window
             .FirstOrDefault(i => (int?)((ComboBoxItem)i).Tag == item.Binding.CommandId);
         TargetGroupComboBox.SelectedItem = TargetGroupComboBox.Items
             .OfType<ComboBoxItem>()
-            .FirstOrDefault(i => i.Content.ToString() == item.Binding.Target);
+            .FirstOrDefault(i => i.Tag is int tag &&
+                                 (item.Binding.Target <= 2
+                                     ? tag == item.Binding.Target
+                                     : tag == item.Binding.RelayGroupId));
         RoundRobinCheckBox.IsChecked = item.Binding.RoundRobin;
     }
 
