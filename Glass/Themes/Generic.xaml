@@ -14,6 +14,39 @@
                         CornerRadius="3"
                         Width="70"
                         Height="24">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="InteractionStates">
+                                <VisualState x:Name="Normal"/>
+                                <VisualState x:Name="Selected">
+                                    <Storyboard>
+                                        <ColorAnimation
+                                        Storyboard.TargetName="PART_Border"
+                                        Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)"
+                                        To="#FFD700"
+                                        Duration="0:0:0.1"/>
+                                        <ColorAnimation
+                                        Storyboard.TargetName="PART_Text"
+                                        Storyboard.TargetProperty="(TextBlock.Foreground).(SolidColorBrush.Color)"
+                                        To="#FFD700"
+                                        Duration="0:0:0.1"/>
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <Storyboard>
+                                        <ColorAnimation
+                                        Storyboard.TargetName="PART_Border"
+                                        Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)"
+                                        To="#FF4500"
+                                        Duration="0:0:0.05"/>
+                                        <ColorAnimation
+                                        Storyboard.TargetName="PART_Text"
+                                        Storyboard.TargetProperty="(TextBlock.Foreground).(SolidColorBrush.Color)"
+                                        To="#FF4500"
+                                        Duration="0:0:0.05"/>
+                                    </Storyboard>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
                         <TextBlock x:Name="PART_Text"
                                Text="{TemplateBinding KeyName}"
                                Foreground="#2AFFD7"
@@ -22,6 +55,11 @@
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"/>
                     </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="ShowLabel" Value="True">
+                            <Setter TargetName="PART_Text" Property="Text" Value="{Binding Label, RelativeSource={RelativeSource TemplatedParent}}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

@@ -1,4 +1,6 @@
-﻿using System.Windows;
+﻿using Glass.Controls;
+using Glass.Core;
+using System.Windows;
 
 namespace Glass;
 
@@ -15,5 +17,25 @@ public partial class KeyTestDialog : Window
     public KeyTestDialog()
     {
         InitializeComponent();
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Key_Pressed
+    //
+    // Fires when a key cell is pressed.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void Key_Pressed(object sender, LayoutEventArgs e)
+    {
+        DebugLog.Write($"KeyTestDialog.Key_Pressed: keyName='{e.KeyName}' isPressed={e.IsPressed}.");
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Key_Released
+    //
+    // Fires when a key cell is released.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void Key_Released(object sender, LayoutEventArgs e)
+    {
+        DebugLog.Write($"KeyTestDialog.Key_Released: keyName='{e.KeyName}' isPressed={e.IsPressed}.");
     }
 }

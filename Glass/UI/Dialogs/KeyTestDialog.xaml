@@ -7,10 +7,11 @@
         Height="150"
         WindowStartupLocation="CenterOwner">
     <Grid Margin="20">
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-            <controls:KeyDisplayControl KeyName="MMMMMM" Margin="1"/>
-            <controls:KeyDisplayControl KeyName="123456" Margin="1"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center"
+            controls:KeyboardLayoutControl.KeyPressed="Key_Pressed"
+            controls:KeyboardLayoutControl.KeyReleased="Key_Released">
+            <controls:KeyDisplayControl KeyName="G1" Margin="1"/>
+            <controls:KeyDisplayControl KeyName="G2" KeyType="Toggle" Margin="1"/>
         </StackPanel>
-
     </Grid>
 </Window>
