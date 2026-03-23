@@ -33,38 +33,29 @@ public class HidKeyInput
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public HidKeyInput()
     {
-        RegisterParser(new G15ReportParser());
+        RegisterParser(new G15ReportParser(), "046D-C222", "046D-C225", "046D-C226", "046D-C227", "046D-C22D");
+        RegisterParser(new G13ReportParser(), "046D-C21C");
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // RegisterParser
     //
-    // Registers a report parser for a device type.
-    // The parser's DeviceId is used to match against enumerated devices.
+    // Registers a report parser for one or more device PIDs.
+    // Multiple PIDs can map to the same parser for device families
+    // that share a report format.
     //
     // parser:  The parser to register
+    // pids:    One or more device PID strings e.g. "046D-C222"
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void RegisterParser(IParseHidReport parser)
+    private void RegisterParser(IParseHidReport parser, params string[] pids)
     {
-        DebugLog.Write($"HidKeyInput.RegisterParser: device={parser.Device}.");
-        _parsers[GetPidForDevice(parser.Device)] = parser;
+        foreach (var pid in pids)
+        {
+            DebugLog.Write($"HidKeyInput.RegisterParser: pid='{pid}' device={parser.Device}.");
+            _parsers[pid] = parser;
+        }
     }
 
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // GetPidForDevice
-    //
-    // Returns the PID string for a known device type.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private static string GetPidForDevice(Glass.Data.Models.KeyboardType device)
-    {
-        return device switch
-        {
-            Glass.Data.Models.KeyboardType.G15 => "046D-C222",
-            Glass.Data.Models.KeyboardType.G13 => "046D-C21C",
-            Glass.Data.Models.KeyboardType.DominatorX36 => "046D-????",
-            _ => string.Empty
-        };
-    }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Start
@@ -81,7 +72,7 @@ public class HidKeyInput
         foreach (var (instance, devicePath) in devices)
         {
             DebugLog.Write($"HidKeyInput.Start: creating reader for {instance}.");
-            var parser = _parsers[GetPidForDevice(instance.Type)];
+            var parser = _parsers[instance.Pid];
             var reader = new HidDeviceReader(devicePath, instance, parser, _queue);
             _readers.Add(reader);
             reader.Start();
@@ -221,7 +212,7 @@ public class HidKeyInput
             count++;
             instanceCounts[parser.Device] = count;
 
-            var instance = new HidDeviceInstance(parser.Device, count);
+            var instance = new HidDeviceInstance(parser.Device, count, deviceId);
 
             DebugLog.Write($"HidKeyInput.EnumerateDevices: found deviceId='{deviceId}', {instance}, path='{path}'.");
             results.Add((instance, path));
