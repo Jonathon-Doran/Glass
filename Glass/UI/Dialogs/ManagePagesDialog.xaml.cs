@@ -13,9 +13,6 @@ public partial class ManagePagesDialog : Window
     private bool _suppressNameLostFocus = false;
     private string _nameBeforeEdit = string.Empty;
 
-    // Known device types. Extend this list as new devices are supported.
-    public static readonly string[] KnownDevices = { "G13", "G15", "Dominator X36" };
-
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // ManagePagesDialog
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -96,7 +93,7 @@ public partial class ManagePagesDialog : Window
 
         DeviceComboBox.SelectedItem = DeviceComboBox.Items
             .OfType<ComboBoxItem>()
-            .FirstOrDefault(i => i.Content.ToString() == page.Device);
+            .FirstOrDefault(i => (KeyboardType)i.Tag == page.Device);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -204,7 +201,9 @@ public partial class ManagePagesDialog : Window
         }
 
         string newName = PageNameTextBox.Text.Trim();
-        string newDevice = (DeviceComboBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? KnownDevices[0];
+        KeyboardType newDevice = (DeviceComboBox.SelectedItem as ComboBoxItem)?.Tag is KeyboardType kt
+            ? kt
+            : KeyboardType.G15;
 
         if (string.IsNullOrWhiteSpace(newName))
         {
@@ -253,7 +252,9 @@ public partial class ManagePagesDialog : Window
     private void NewRename_Click(object sender, RoutedEventArgs e)
     {
         string name = PageNameTextBox.Text.Trim();
-        string device = (DeviceComboBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? KnownDevices[0];
+        KeyboardType device = (DeviceComboBox.SelectedItem as ComboBoxItem)?.Tag is KeyboardType kt
+            ? kt
+            : KeyboardType.G15;
 
         if (_selectedPage == null)
         {

@@ -1,0 +1,74 @@
+﻿<Window x:Class="Glass.ProfilePagesDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.modernwpf.com/2019"
+        ui:WindowHelper.UseModernWindowStyle="True"
+        Title="Profile Pages"
+        Height="500" Width="400"
+        MinHeight="300" MinWidth="300"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="8"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="8"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" BorderBrush="Gray" BorderThickness="1">
+            <ListView x:Name="PageListView"
+                      ScrollViewer.VerticalScrollBarVisibility="Auto"
+                      MouseLeftButtonUp="PageListView_MouseLeftButtonUp">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="120"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{Binding PageName}"
+                                       FontWeight="SemiBold"/>
+                            <TextBlock Grid.Column="1" Text="{Binding Device}"
+                                       Foreground="Gray"/>
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
+                        <Setter Property="Padding" Value="8,4,8,4"/>
+                        <Setter Property="MinHeight" Value="0"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding InProfile}" Value="True">
+                                <Setter Property="Background" Value="#2AFFD7"/>
+                                <Setter Property="Foreground" Value="Black"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsStartPage}" Value="True">
+                                <Setter Property="Background" Value="#FFD700"/>
+                                <Setter Property="Foreground" Value="Black"/>
+                            </DataTrigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="{Binding Background, RelativeSource={RelativeSource Self}}"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </ListView.ItemContainerStyle>
+            </ListView>
+        </Border>
+
+        <!-- Set Start Page toggle button -->
+        <ToggleButton x:Name="SetStartPageButton"
+                      Grid.Row="2"
+                      Content="Set Start Page"
+                      Width="130"
+                      HorizontalAlignment="Left"
+                      Click="SetStartPageButton_Click"/>
+
+        <!-- Save / Cancel -->
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Save" Width="70" Margin="0,0,8,0" Click="Save_Click"/>
+            <Button Content="Cancel" Width="70" Click="Cancel_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

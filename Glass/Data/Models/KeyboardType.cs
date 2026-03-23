@@ -11,3 +11,43 @@ public enum KeyboardType
     G15,
     DominatorX36
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// KeyboardTypeExtensions
+//
+// Conversion helpers between KeyboardType and its database string representation.
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+public static class KeyboardTypeExtensions
+{
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // ToDeviceString
+    //
+    // Returns the database string for a KeyboardType value.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public static string ToDeviceString(this KeyboardType device)
+    {
+        return device switch
+        {
+            KeyboardType.G13 => "G13",
+            KeyboardType.G15 => "G15",
+            KeyboardType.DominatorX36 => "Dominator X36",
+            _ => throw new ArgumentOutOfRangeException(nameof(device), device, null)
+        };
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // ToKeyboardType
+    //
+    // Parses a database string into a KeyboardType value.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public static KeyboardType ToKeyboardType(this string device)
+    {
+        return device switch
+        {
+            "G13" => KeyboardType.G13,
+            "G15" => KeyboardType.G15,
+            "Dominator X36" => KeyboardType.DominatorX36,
+            _ => throw new ArgumentOutOfRangeException(nameof(device), device, null)
+        };
+    }
+}

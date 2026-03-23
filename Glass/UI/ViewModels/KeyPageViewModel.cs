@@ -13,7 +13,7 @@ public class KeyPageViewModel
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
-    public string Device { get; set; } = string.Empty;
+    public KeyboardType Device { get; set; }
     public bool InProfile { get; set; }
     public bool IsStartPage { get; set; }
 }

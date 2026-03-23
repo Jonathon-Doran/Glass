@@ -68,7 +68,7 @@ public class KeyPageRepository
         {
             Id = reader.GetInt32(0),
             Name = reader.GetString(1),
-            Device = reader.GetString(2)
+            Device = reader.GetString(2).ToKeyboardType()
         };
     }
 
@@ -101,7 +101,7 @@ public class KeyPageRepository
         {
             Id = reader.GetInt32(0),
             Name = reader.GetString(1),
-            Device = reader.GetString(2)
+            Device = reader.GetString(2).ToKeyboardType()
         };
     }
 
@@ -128,7 +128,7 @@ public class KeyPageRepository
             {
                 Id = reader.GetInt32(0),
                 Name = reader.GetString(1),
-                Device = reader.GetString(2)
+                Device = reader.GetString(2).ToKeyboardType()
             });
         }
 
@@ -156,7 +156,7 @@ public class KeyPageRepository
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "INSERT INTO KeyPages (name, device) VALUES (@name, @device); SELECT last_insert_rowid();";
             cmd.Parameters.AddWithValue("@name", page.Name);
-            cmd.Parameters.AddWithValue("@device", page.Device);
+            cmd.Parameters.AddWithValue("@device", page.Device.ToDeviceString());
             page.Id = Convert.ToInt32(cmd.ExecuteScalar());
             DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.Save: inserted. id={page.Id}.");
         }
@@ -165,7 +165,7 @@ public class KeyPageRepository
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "UPDATE KeyPages SET name = @name, device = @device WHERE id = @id";
             cmd.Parameters.AddWithValue("@name", page.Name);
-            cmd.Parameters.AddWithValue("@device", page.Device);
+            cmd.Parameters.AddWithValue("@device", page.Device.ToDeviceString());
             cmd.Parameters.AddWithValue("@id", page.Id);
             cmd.ExecuteNonQuery();
             DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.Save: updated. id={page.Id}.");

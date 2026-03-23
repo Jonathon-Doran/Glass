@@ -98,6 +98,18 @@ public class Database
         {
             ApplyMigration(conn, 10, Migration_010);
         }
+        if (version < 11)
+        {
+            using var pragmaOff = conn.CreateCommand();
+            pragmaOff.CommandText = "PRAGMA foreign_keys = OFF";
+            pragmaOff.ExecuteNonQuery();
+
+            ApplyMigration(conn, 11, Migration_011);
+
+            using var pragmaOn = conn.CreateCommand();
+            pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
+            pragmaOn.ExecuteNonQuery();
+        }
     }
 
     private int GetSchemaVersion()
@@ -265,6 +277,34 @@ public class Database
     DROP TABLE Monitors;
 
     ALTER TABLE Monitors_new RENAME TO Monitors;
+";
+
+    private const string Migration_011 = @"
+    PRAGMA foreign_keys = OFF;
+
+    CREATE TABLE IF NOT EXISTS ProfilePages (
+        id                  INTEGER PRIMARY KEY,
+        character_set_id    INTEGER NOT NULL REFERENCES CharacterSets(id),
+        key_page_id         INTEGER NOT NULL REFERENCES KeyPages(id),
+        is_start_page       INTEGER NOT NULL DEFAULT 0,
+        UNIQUE (character_set_id, key_page_id)
+    );
+
+    INSERT INTO ProfilePages (character_set_id, key_page_id, is_start_page)
+    SELECT id, start_page_id, 1
+    FROM CharacterSets
+    WHERE start_page_id IS NOT NULL;
+
+    CREATE TABLE CharacterSets_new (
+        id      INTEGER PRIMARY KEY,
+        name    TEXT NOT NULL UNIQUE
+    );
+
+    INSERT INTO CharacterSets_new SELECT id, name FROM CharacterSets;
+    DROP TABLE CharacterSets;
+    ALTER TABLE CharacterSets_new RENAME TO CharacterSets;
+
+    PRAGMA foreign_keys = ON;
 ";
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
