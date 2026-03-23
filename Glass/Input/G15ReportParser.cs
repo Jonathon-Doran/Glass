@@ -93,7 +93,7 @@ public class G15ReportParser : IParseHidReport
             if (wasPressed != isPressed)
             {
                 DebugLog.Write($"G15ReportParser.Parse: key='{keyName}' isPressed={isPressed}.");
-                results.Add(new HidKeyEventArgs(KeyboardType.G15, keyName, isPressed));
+                results.Add(new HidKeyEventArgs(keyName, isPressed));
             }
         }
 

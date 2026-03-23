@@ -1,4 +1,5 @@
 ﻿using Glass.Core;
+using Glass.Data.Models;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 
@@ -77,16 +78,11 @@ public class HidKeyInput
 
         var devices = EnumerateDevices();
 
-        foreach (var (deviceId, devicePath) in devices)
+        foreach (var (instance, devicePath) in devices)
         {
-            if (!_parsers.TryGetValue(deviceId, out var parser))
-            {
-                DebugLog.Write($"HidKeyInput.Start: no parser for deviceId='{deviceId}', skipping.");
-                continue;
-            }
-
-            DebugLog.Write($"HidKeyInput.Start: creating reader for deviceId='{deviceId}'.");
-            var reader = new HidDeviceReader(devicePath, deviceId, parser, _queue);
+            DebugLog.Write($"HidKeyInput.Start: creating reader for {instance}.");
+            var parser = _parsers[GetPidForDevice(instance.Type)];
+            var reader = new HidDeviceReader(devicePath, instance, parser, _queue);
             _readers.Add(reader);
             reader.Start();
         }
@@ -139,7 +135,7 @@ public class HidKeyInput
         {
             while (_queue.TryDequeue(out var args))
             {
-                DebugLog.Write($"HidKeyInput.DispatcherThread: dispatching key='{args.KeyName}' device={args.Device} isPressed={args.IsPressed}.");
+                DebugLog.Write($"HidKeyInput.DispatcherThread: dispatching key='{args.KeyName}' {args.Device} isPressed={args.IsPressed}.");
 
                 try
                 {
@@ -157,16 +153,19 @@ public class HidKeyInput
         DebugLog.Write("HidKeyInput.DispatcherThread: exiting.");
     }
 
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // EnumerateDevices
     //
-    // Uses Raw Input to enumerate HID devices, filtering for Logitech devices
-    // on vendor-defined usage pages.
-    // Returns a list of (deviceId, devicePath) pairs.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private static List<(string DeviceId, string DevicePath)> EnumerateDevices()
+    // Uses Raw Input to enumerate HID devices, filtering by whether a parser
+    // exists for the device ID. Parser registration is the authoritative list
+    // of supported devices — no hardcoded vendor filtering.
+    // Assigns instance numbers per device type in enumeration order.
+    // Returns a list of (HidDeviceInstance, devicePath) pairs.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private List<(HidDeviceInstance Instance, string DevicePath)> EnumerateDevices()
     {
-        var results = new List<(string, string)>();
+        var results = new List<(HidDeviceInstance, string)>();
+        var instanceCounts = new Dictionary<KeyboardType, int>();
 
         uint deviceCount = 0;
         uint structSize = (uint)Marshal.SizeOf<HidNativeMethods.RawInputDeviceList>();
@@ -210,27 +209,22 @@ public class HidKeyInput
                 continue;
             }
 
-            if (!deviceId.StartsWith(LogitechVendorId, StringComparison.OrdinalIgnoreCase))
+            if (!_parsers.TryGetValue(deviceId, out var parser))
             {
                 continue;
             }
 
-            uint infoSize = (uint)Marshal.SizeOf<HidNativeMethods.RidDeviceInfo>();
-            var info = new HidNativeMethods.RidDeviceInfo { cbSize = infoSize };
-            uint infoResult = HidNativeMethods.GetRawInputDeviceInfo(handle, HidNativeMethods.RidiDeviceInfo, ref info, ref infoSize);
-
-            if (infoResult == unchecked((uint)-1))
+            if (!instanceCounts.TryGetValue(parser.Device, out int count))
             {
-                continue;
+                count = 0;
             }
+            count++;
+            instanceCounts[parser.Device] = count;
 
-            if (info.hid.usUsagePage < 0xFF00)
-            {
-                continue;
-            }
+            var instance = new HidDeviceInstance(parser.Device, count);
 
-            DebugLog.Write($"HidKeyInput.EnumerateDevices: found deviceId='{deviceId}' path='{path}'.");
-            results.Add((deviceId, path));
+            DebugLog.Write($"HidKeyInput.EnumerateDevices: found deviceId='{deviceId}', {instance}, path='{path}'.");
+            results.Add((instance, path));
         }
 
         DebugLog.Write($"HidKeyInput.EnumerateDevices: found {results.Count} Logitech HID devices.");

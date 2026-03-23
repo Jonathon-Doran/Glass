@@ -14,28 +14,28 @@ namespace Glass.Input;
 internal class HidDeviceReader
 {
     private readonly string _devicePath;
-    private readonly string _deviceId;
+    private readonly HidDeviceInstance _instance;
     private readonly IParseHidReport _parser;
     private readonly ConcurrentQueue<HidKeyEventArgs> _queue;
     private volatile bool _running;
     private Thread? _thread;
 
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // HidDeviceReader
     //
     // devicePath:  The Win32 device path from Raw Input enumeration
-    // deviceId:    The "VVVV-PPPP" identifier for logging
+    // instance:    The device instance this reader is bound to
     // parser:      The report parser for this device type
     // queue:       The shared queue to push parsed events into
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public HidDeviceReader(
         string devicePath,
-        string deviceId,
+        HidDeviceInstance instance,
         IParseHidReport parser,
         ConcurrentQueue<HidKeyEventArgs> queue)
     {
         _devicePath = devicePath;
-        _deviceId = deviceId;
+        _instance = instance;
         _parser = parser;
         _queue = queue;
     }
@@ -47,12 +47,12 @@ internal class HidDeviceReader
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Start()
     {
-        DebugLog.Write($"HidDeviceReader.Start: deviceId='{_deviceId}'.");
+        DebugLog.Write($"HidDeviceReader.Start: {_instance}.");
 
         _running = true;
         _thread = new Thread(ReaderThread)
         {
-            Name = $"HID_{_deviceId}",
+            Name = $"HID_{_instance}",
             IsBackground = true
         };
         _thread.Start();
@@ -65,13 +65,13 @@ internal class HidDeviceReader
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Stop()
     {
-        DebugLog.Write($"HidDeviceReader.Stop: deviceId='{_deviceId}'.");
+        DebugLog.Write($"HidDeviceReader.Stop: {_instance}.");
 
         _running = false;
         _thread?.Join(TimeSpan.FromSeconds(2));
         _thread = null;
 
-        DebugLog.Write($"HidDeviceReader.Stop: deviceId='{_deviceId}' stopped.");
+        DebugLog.Write($"HidDeviceReader.Stop: {_instance} stopped.");
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -82,7 +82,7 @@ internal class HidDeviceReader
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void ReaderThread()
     {
-        DebugLog.Write($"HidDeviceReader.ReaderThread: deviceId='{_deviceId}' opening device.");
+        DebugLog.Write($"HidDeviceReader.ReaderThread: {_instance} opening device.");
 
         IntPtr fileHandle = HidNativeMethods.CreateFile(
             _devicePath,
@@ -96,17 +96,17 @@ internal class HidDeviceReader
         if (fileHandle == HidNativeMethods.InvalidHandleValue)
         {
             int error = Marshal.GetLastWin32Error();
-            DebugLog.Write($"HidDeviceReader.ReaderThread: deviceId='{_deviceId}' CreateFile failed error={error}.");
+            DebugLog.Write($"HidDeviceReader.ReaderThread: {_instance} CreateFile failed error={error}.");
             return;
         }
 
-        DebugLog.Write($"HidDeviceReader.ReaderThread: deviceId='{_deviceId}' device opened successfully.");
+        DebugLog.Write($"HidDeviceReader.ReaderThread: {_instance} device opened successfully.");
 
         IntPtr eventHandle = HidNativeMethods.CreateEvent(IntPtr.Zero, true, false, null);
 
         if (eventHandle == IntPtr.Zero)
         {
-            DebugLog.Write($"HidDeviceReader.ReaderThread: deviceId='{_deviceId}' CreateEvent failed.");
+            DebugLog.Write($"HidDeviceReader.ReaderThread: {_instance} CreateEvent failed.");
             HidNativeMethods.CloseHandle(fileHandle);
             return;
         }
@@ -139,7 +139,7 @@ internal class HidDeviceReader
 
                     if (error != HidNativeMethods.ErrorIoPending)
                     {
-                        DebugLog.Write($"HidDeviceReader.ReaderThread: deviceId='{_deviceId}' ReadFile failed error={error}.");
+                        DebugLog.Write($"HidDeviceReader.ReaderThread: {_instance} ReadFile failed error={error}.");
                         break;
                     }
 
@@ -149,7 +149,7 @@ internal class HidDeviceReader
                     {
                         if (!HidNativeMethods.GetOverlappedResult(fileHandle, ref overlapped, out bytesRead, false))
                         {
-                            DebugLog.Write($"HidDeviceReader.ReaderThread: deviceId='{_deviceId}' GetOverlappedResult failed error={Marshal.GetLastWin32Error()}.");
+                            DebugLog.Write($"HidDeviceReader.ReaderThread: {_instance} GetOverlappedResult failed error={Marshal.GetLastWin32Error()}.");
                             break;
                         }
                     }
@@ -159,7 +159,7 @@ internal class HidDeviceReader
                     }
                     else
                     {
-                        DebugLog.Write($"HidDeviceReader.ReaderThread: deviceId='{_deviceId}' WaitForSingleObject returned {waitResult}.");
+                        DebugLog.Write($"HidDeviceReader.ReaderThread:{_instance} WaitForSingleObject returned {waitResult}.");
                         break;
                     }
                 }
@@ -173,7 +173,8 @@ internal class HidDeviceReader
 
                     foreach (var evt in events)
                     {
-                        DebugLog.Write($"HidDeviceReader.ReaderThread: deviceId='{_deviceId}' key='{evt.KeyName}' isPressed={evt.IsPressed}.");
+                        evt.Device = _instance;
+                        DebugLog.Write($"HidDeviceReader.ReaderThread: {_instance} key='{evt.KeyName}' isPressed={evt.IsPressed}.");
                         _queue.Enqueue(evt);
                     }
                 }
@@ -185,7 +186,7 @@ internal class HidDeviceReader
             HidNativeMethods.CancelIo(fileHandle);
             HidNativeMethods.CloseHandle(eventHandle);
             HidNativeMethods.CloseHandle(fileHandle);
-            DebugLog.Write($"HidDeviceReader.ReaderThread: deviceId='{_deviceId}' thread exiting.");
+            DebugLog.Write($"HidDeviceReader.ReaderThread: {_instance} thread exiting.");
         }
     }
 }
