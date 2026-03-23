@@ -10,6 +10,6 @@
         WindowStartupLocation="CenterOwner">
 
     <Grid Margin="20">
-        <controls:KeyboardLayoutControl KeyboardType="G13" PageName="Combat"/>
+        <controls:KeyboardLayoutControl KeyboardType="Dominator X36" PageName="Combat"/>
     </Grid>
 </Window>

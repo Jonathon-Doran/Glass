@@ -160,6 +160,65 @@
                                 <controls:KeyDisplayControl Grid.Row="3" Grid.Column="3" KeyName="G21" Margin="1"/>
                                 <controls:KeyDisplayControl Grid.Row="3" Grid.Column="4" KeyName="G22" Margin="1"/>
                             </Grid>
+                            <!-- Dominator X36 -->
+                            <Grid x:Name="PART_X36Grid" Visibility="Collapsed"
+      HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="10"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="10"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="10"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <controls:KeyDisplayControl Grid.Row="0" Grid.Column="0" KeyName="X-1"  Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="0" Grid.Column="1" KeyName="X-2"  Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="0" Grid.Column="2" KeyName="X-3"  Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="1" Grid.Column="0" KeyName="X-4"  Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="1" Grid.Column="1" KeyName="X-5"  Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="1" Grid.Column="2" KeyName="X-6"  Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="3" Grid.Column="0" KeyName="X-7"  Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="3" Grid.Column="1" KeyName="X-8"  Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="3" Grid.Column="2" KeyName="X-9"  Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="4" Grid.Column="0" KeyName="X-10" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="4" Grid.Column="1" KeyName="X-11" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="4" Grid.Column="2" KeyName="X-12" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="6" Grid.Column="0" KeyName="X-13" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="6" Grid.Column="1" KeyName="X-14" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="6" Grid.Column="2" KeyName="X-15" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="7" Grid.Column="0" KeyName="X-16" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="7" Grid.Column="1" KeyName="X-17" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="7" Grid.Column="2" KeyName="X-18" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="0" Grid.Column="4" KeyName="X-19" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="0" Grid.Column="5" KeyName="X-20" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="0" Grid.Column="6" KeyName="X-21" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="1" Grid.Column="4" KeyName="X-22" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="1" Grid.Column="5" KeyName="X-23" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="1" Grid.Column="6" KeyName="X-24" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="3" Grid.Column="4" KeyName="X-25" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="3" Grid.Column="5" KeyName="X-26" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="3" Grid.Column="6" KeyName="X-27" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="4" Grid.Column="4" KeyName="X-28" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="4" Grid.Column="5" KeyName="X-29" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="4" Grid.Column="6" KeyName="X-30" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="6" Grid.Column="4" KeyName="X-31" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="6" Grid.Column="5" KeyName="X-32" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="6" Grid.Column="6" KeyName="X-33" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="7" Grid.Column="4" KeyName="X-34" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="7" Grid.Column="5" KeyName="X-35" Margin="1"/>
+                                <controls:KeyDisplayControl Grid.Row="7" Grid.Column="6" KeyName="X-36" Margin="1"/>
+                            </Grid>
                         </StackPanel>
                     </Border>
                     <ControlTemplate.Triggers>
