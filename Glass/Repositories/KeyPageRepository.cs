@@ -12,21 +12,24 @@ namespace Glass.Data.Repositories;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 public class KeyPageRepository
 {
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // GetPageNames
     //
-    // Returns the names of all key pages in the database, ordered alphabetically.
-    // Use this to populate page list UI.
+    // Returns the names of all key pages for the given device type, ordered alphabetically.
+    //
+    // device:  The keyboard type to filter on
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public List<string> GetPageNames()
+    public List<string> GetPageNames(KeyboardType device)
     {
-        DebugLog.Write(DebugLog.Log_Database, "KeyPageRepository.GetPageNames: loading.");
+        DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.GetPageNames: device={device}.");
 
         using var conn = Database.Instance.Connect();
         conn.Open();
 
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT name FROM KeyPages ORDER BY name";
+        cmd.CommandText = "SELECT name FROM KeyPages WHERE device = @device ORDER BY name";
+        cmd.Parameters.AddWithValue("@device", device.ToString());
 
         var names = new List<string>();
         using var reader = cmd.ExecuteReader();
@@ -35,7 +38,7 @@ public class KeyPageRepository
             names.Add(reader.GetString(0));
         }
 
-        DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.GetPageNames: found {names.Count} pages.");
+        DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.GetPageNames: device={device} found {names.Count} pages.");
         return names;
     }
 
@@ -75,27 +78,31 @@ public class KeyPageRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // GetPage
     //
-    // Returns the key page with the given name, or null if not found.
+    // Returns the key page with the given name and device type, or null if not found.
     //
-    // name:  The page name to look up
+    // name:    The page name to look up
+    // device:  The keyboard type to filter on
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public KeyPage? GetPage(string name)
+    public KeyPage? GetPage(string name, KeyboardType device)
     {
-        DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.GetPage: name='{name}'.");
+        DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.GetPage: name='{name}' device={device}.");
 
         using var conn = Database.Instance.Connect();
         conn.Open();
 
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT id, name, device FROM KeyPages WHERE name = @name";
+        cmd.CommandText = "SELECT id, name, device FROM KeyPages WHERE name = @name AND device = @device";
         cmd.Parameters.AddWithValue("@name", name);
+        cmd.Parameters.AddWithValue("@device", device.ToString());
 
         using var reader = cmd.ExecuteReader();
         if (!reader.Read())
         {
-            DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.GetPage: name='{name}' not found.");
+            DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.GetPage: name='{name}' device={device} not found.");
             return null;
         }
+
+        DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.GetPage: name='{name}' device={device} found. id={reader.GetInt32(0)}.");
 
         return new KeyPage
         {
@@ -146,7 +153,7 @@ public class KeyPageRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Save(KeyPage page)
     {
-        DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.Save: name='{page.Name}' device='{page.Device}'.");
+        DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.Save: name='{page.Name}' device={page.Device}.");
 
         using var conn = Database.Instance.Connect();
         conn.Open();
@@ -156,7 +163,7 @@ public class KeyPageRepository
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "INSERT INTO KeyPages (name, device) VALUES (@name, @device); SELECT last_insert_rowid();";
             cmd.Parameters.AddWithValue("@name", page.Name);
-            cmd.Parameters.AddWithValue("@device", page.Device.ToDeviceString());
+            cmd.Parameters.AddWithValue("@device", page.Device.ToString());
             page.Id = Convert.ToInt32(cmd.ExecuteScalar());
             DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.Save: inserted. id={page.Id}.");
         }
@@ -165,7 +172,7 @@ public class KeyPageRepository
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "UPDATE KeyPages SET name = @name, device = @device WHERE id = @id";
             cmd.Parameters.AddWithValue("@name", page.Name);
-            cmd.Parameters.AddWithValue("@device", page.Device.ToDeviceString());
+            cmd.Parameters.AddWithValue("@device", page.Device.ToString());
             cmd.Parameters.AddWithValue("@id", page.Id);
             cmd.ExecuteNonQuery();
             DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.Save: updated. id={page.Id}.");
@@ -223,101 +230,5 @@ public class KeyPageRepository
         int id = Convert.ToInt32(result);
         DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.GetPageId: name='{name}' -> id={id}.");
         return id;
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // GetPageId
-    //
-    // Returns the id of the page with the given name and device, or null if not found.
-    // Most commands are device independent.  But some commands (like pageload) require a device.
-    //
-    // name:    The page name to look up
-    // device:  The device to filter by
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public int? GetPageId(string name, string device)
-    {
-        DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.GetPageId: name='{name}' device='{device}'.");
-
-        using var conn = Database.Instance.Connect();
-        conn.Open();
-
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT id FROM KeyPages WHERE name = @name AND device = @device";
-        cmd.Parameters.AddWithValue("@name", name);
-        cmd.Parameters.AddWithValue("@device", device);
-
-        var result = cmd.ExecuteScalar();
-
-        if (result == null)
-        {
-            DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.GetPageId: name='{name}' device='{device}' not found.");
-            return null;
-        }
-
-        int id = Convert.ToInt32(result);
-        DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.GetPageId: name='{name}' device='{device}' -> id={id}.");
-        return id;
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // GetPageName
-    //
-    // Returns the name of the page with the given id, or null if not found.
-    //
-    // id:  The page id to look up
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public string? GetPageName(int id)
-    {
-        DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.GetPageName: id={id}.");
-
-        using var conn = Database.Instance.Connect();
-        conn.Open();
-
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT name FROM KeyPages WHERE id = @id";
-        cmd.Parameters.AddWithValue("@id", id);
-
-        var result = cmd.ExecuteScalar();
-
-        if (result == null)
-        {
-            DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.GetPageName: id={id} not found.");
-            return null;
-        }
-
-        string name = result.ToString()!;
-        DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.GetPageName: id={id} -> name='{name}'.");
-        return name;
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // GetPageDevice
-    //
-    // Returns the device string for the page with the given id, or null if not found.
-    //
-    // id:  The page id to look up
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public string? GetPageDevice(int id)
-    {
-        DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.GetPageDevice: id={id}.");
-
-        using var conn = Database.Instance.Connect();
-        conn.Open();
-
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT device FROM KeyPages WHERE id = @id";
-        cmd.Parameters.AddWithValue("@id", id);
-
-        var result = cmd.ExecuteScalar();
-
-        if (result == null)
-        {
-            DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.GetPageDevice: id={id} not found.");
-            return null;
-        }
-
-        string device = result.ToString()!;
-        DebugLog.Write(DebugLog.Log_Database, $"KeyPageRepository.GetPageDevice: id={id} -> device='{device}'.");
-        return device;
     }
 }

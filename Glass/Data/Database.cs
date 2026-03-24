@@ -143,6 +143,18 @@ public class Database
         {
             ApplyMigration(conn, 15, Migration_015);
         }
+        if (version < 16)
+        {
+            using var pragmaOff = conn.CreateCommand();
+            pragmaOff.CommandText = "PRAGMA foreign_keys = OFF";
+            pragmaOff.ExecuteNonQuery();
+
+            ApplyMigration(conn, 16, Migration_016);
+
+            using var pragmaOn = conn.CreateCommand();
+            pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
+            pragmaOn.ExecuteNonQuery();
+        }
     }
 
     private int GetSchemaVersion()
@@ -411,6 +423,22 @@ public class Database
     private const string Migration_015 = @"
     ALTER TABLE Commands ADD COLUMN short_name TEXT NOT NULL DEFAULT '';
 ";
+
+    private const string Migration_016 = @"
+    CREATE TABLE IF NOT EXISTS KeyPages_new (
+        id      INTEGER PRIMARY KEY,
+        name    TEXT NOT NULL,
+        device  TEXT NOT NULL,
+        UNIQUE (name, device)
+    );
+
+    INSERT INTO KeyPages_new (id, name, device)
+    SELECT id, name, device FROM KeyPages;
+
+    DROP TABLE KeyPages;
+
+    ALTER TABLE KeyPages_new RENAME TO KeyPages;
+    ";
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"

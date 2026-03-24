@@ -423,35 +423,44 @@ public partial class ProfileDialog : Window
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // LoadKeyboardLayoutTab
     //
-    // Populates the page list on the Keyboard Layout tab. Loads all key pages from the
-    // database and marks the start page for the current profile.
+    // Populates the page list on the Keyboard Layout tab with pages associated with
+    // this profile.  Uses ProfilePageRepository to load only pages belonging to the
+    // profile, including their in-profile and start-page state.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void LoadKeyboardLayoutTab()
     {
         DebugLog.Write("ProfileDialog.LoadKeyboardLayoutTab: loading.");
 
-        var pageRepo = new KeyPageRepository();
-        var profileRepo = new ProfileRepository(ProfileName.Text);
-
-        var pageNames = pageRepo.GetPageNames();
-        var items = new List<KeyPageViewModel>();
-
-        foreach (var name in pageNames)
+        if (_profileName == null)
         {
-            var page = pageRepo.GetPage(name);
-            if (page == null)
-            {
-                continue;
-            }
-
-            items.Add(new KeyPageViewModel
-            {
-                Id = page.Id,
-                Name = page.Name,
-                Device = page.Device,
-                IsStartPage = false
-            });
+            DebugLog.Write("ProfileDialog.LoadKeyboardLayoutTab: no profile name, nothing to load.");
+            PageListView.ItemsSource = null;
+            return;
         }
+
+        var profileRepo = new ProfileRepository(_profileName);
+        int profileId = profileRepo.GetId();
+
+        if (profileId == 0)
+        {
+            DebugLog.Write($"ProfileDialog.LoadKeyboardLayoutTab: profile '{_profileName}' not found in database, nothing to load.");
+            PageListView.ItemsSource = null;
+            return;
+        }
+
+        DebugLog.Write($"ProfileDialog.LoadKeyboardLayoutTab: profileId={profileId}.");
+
+        var pageRepo = new ProfilePageRepository();
+        var pages = pageRepo.GetPagesForProfile(profileId);
+
+        var items = pages.Select(p => new ProfilePageViewModel
+        {
+            KeyPageId = p.KeyPageId,
+            PageName = p.PageName,
+            Device = p.Device,
+            InProfile = true,
+            IsStartPage = p.IsStartPage
+        }).ToList();
 
         PageListView.ItemsSource = items;
         DebugLog.Write($"ProfileDialog.LoadKeyboardLayoutTab: loaded {items.Count} pages.");
@@ -1052,36 +1061,52 @@ public partial class ProfileDialog : Window
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // LoadPageComboBox
     //
-    // Populates the PageComboBox from all key pages in the database.
+    // Populates the PageComboBox with pages associated with this profile.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void LoadPageComboBox()
     {
         DebugLog.Write("ProfileDialog.LoadPageComboBox: loading.");
 
-        var repo = new KeyPageRepository();
-        var pages = repo.GetAllPages();
-
         PageComboBox.Items.Clear();
 
-        PageComboBox.Items.Add(new ComboBoxItem
-        {
-            Content = "Manage Pages..."
-        });
+        PageComboBox.Items.Add(new ComboBoxItem { Content = "Manage Pages..." });
         PageComboBox.Items.Add(new Separator());
+
+        if (_profileName == null)
+        {
+            DebugLog.Write("ProfileDialog.LoadPageComboBox: no profile name, skipping pages.");
+            return;
+        }
+
+        var profileRepo = new ProfileRepository(_profileName);
+        int profileId = profileRepo.GetId();
+
+        if (profileId == 0)
+        {
+            DebugLog.Write($"ProfileDialog.LoadPageComboBox: profile '{_profileName}' not found in database, skipping pages.");
+            return;
+        }
+
+        var pageRepo = new ProfilePageRepository();
+        var pages = pageRepo.GetPagesForProfile(profileId);
 
         foreach (var page in pages)
         {
             PageComboBox.Items.Add(new ComboBoxItem
             {
-                Content = $"{page.Name} ({page.Device})",
-                Tag = page.Name
+                Content = $"{page.PageName} ({page.Device.ToDeviceString()})",
+                Tag = page.KeyPageId
             });
         }
 
         if (PageComboBox.Items.Count > 2)
         {
             PageComboBox.SelectedIndex = 2;
-            DebugLog.Write("ProfileDialog.LoadPageComboBox: defaulted to first item.");
+            DebugLog.Write($"ProfileDialog.LoadPageComboBox: loaded {pages.Count} pages, defaulted to first.");
+        }
+        else
+        {
+            DebugLog.Write("ProfileDialog.LoadPageComboBox: no pages found for profile.");
         }
     }
 
@@ -1188,23 +1213,23 @@ public partial class ProfileDialog : Window
     // PageListView_SelectionChanged
     //
     // Fires when the user selects a page in the page list.
-    // Shows the key layout grid for the selected page's device and hides the others.
+    // Updates the keyboard layout control for the selected page's device and loads its bindings.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void PageListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (PageListView.SelectedItem is not KeyPageViewModel page)
+        if (PageListView.SelectedItem is not ProfilePageViewModel page)
         {
             DebugLog.Write("ProfileDialog.PageListView_SelectionChanged: no page selected.");
             KeyLayoutControl.Visibility = Visibility.Collapsed;
             return;
         }
 
-        DebugLog.Write($"ProfileDialog.PageListView_SelectionChanged: page='{page.Name}' device='{page.Device}'.");
+        DebugLog.Write($"ProfileDialog.PageListView_SelectionChanged: page='{page.PageName}' device='{page.Device}'.");
 
         KeyLayoutControl.Visibility = Visibility.Visible;
         KeyLayoutControl.Device = page.Device;
 
-        LoadBindingList(page.Id);
+        LoadBindingList(page.KeyPageId);
         RefreshKeyLayout();
     }
 
@@ -1272,20 +1297,16 @@ public partial class ProfileDialog : Window
             MessageBox.Show("Please select a key first.", "No Key Selected", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
-
-        if (PageComboBox.SelectedItem is not KeyPageViewModel page)
+        if (PageComboBox.SelectedItem is not ProfilePageViewModel page)
         {
             DebugLog.Write("ProfileDialog.SaveBinding_Click: no page selected.");
             return;
         }
-
         string key = SelectedKeyTextBlock.Text;
         int? commandId = (CommandTypeComboBox.SelectedItem as ComboBoxItem)?.Tag is int cid ? cid : null;
         bool roundRobin = RoundRobinCheckBox.IsChecked == true;
-
         int target = -1;
         int? relayGroupId = null;
-
         if (TargetGroupComboBox.SelectedItem is ComboBoxItem targetItem && targetItem.Tag is int tag)
         {
             if (tag <= 2)
@@ -1299,13 +1320,11 @@ public partial class ProfileDialog : Window
                 relayGroupId = tag;
             }
         }
-
-        DebugLog.Write($"ProfileDialog.SaveBinding_Click: page={page.Id} key='{key}' commandId={commandId} target={target} relayGroupId={relayGroupId} roundRobin={roundRobin}.");
-
+        DebugLog.Write($"ProfileDialog.SaveBinding_Click: page={page.KeyPageId} key='{key}' commandId={commandId} target={target} relayGroupId={relayGroupId} roundRobin={roundRobin}.");
         var existing = (BindingListView.ItemsSource as List<KeyBindingViewModel>)
             ?.FirstOrDefault(b => b.Binding.Key == key);
 
-        var binding = existing?.Binding ?? new KeyBinding { KeyPageId = page.Id, Key = key };
+        var binding = existing?.Binding ?? new KeyBinding { KeyPageId = page.KeyPageId, Key = key };
         binding.CommandId = commandId;
         binding.Target = target;
         binding.RelayGroupId = relayGroupId;
@@ -1315,8 +1334,7 @@ public partial class ProfileDialog : Window
         repo.Save(binding);
 
         DebugLog.Write($"ProfileDialog.SaveBinding_Click: saved. id={binding.Id}.");
-
-        LoadBindingList(page.Id);
+        LoadBindingList(page.KeyPageId);
         RefreshKeyLayout();
     }
 
@@ -1333,24 +1351,14 @@ public partial class ProfileDialog : Window
             return;
         }
 
-        if (PageComboBox.SelectedItem is not ComboBoxItem pageItem || pageItem.Tag == null)
+        if (PageComboBox.SelectedItem is not ProfilePageViewModel page)
         {
             DebugLog.Write("ProfileDialog.ClearBinding_Click: no page selected.");
             return;
         }
 
-        string pageName = pageItem.Tag.ToString() ?? string.Empty;
-        var pageRepo = new KeyPageRepository();
-        var page = pageRepo.GetPage(pageName);
-
-        if (page == null)
-        {
-            DebugLog.Write($"ProfileDialog.ClearBinding_Click: page '{pageName}' not found.");
-            return;
-        }
-
         string key = SelectedKeyTextBlock.Text;
-        DebugLog.Write($"ProfileDialog.ClearBinding_Click: page={page.Id} key='{key}'.");
+        DebugLog.Write($"ProfileDialog.ClearBinding_Click: page={page.KeyPageId} key='{key}'.");
 
         var existing = (BindingListView.ItemsSource as List<KeyBindingViewModel>)
             ?.FirstOrDefault(b => b.Binding.Key == key);
@@ -1370,7 +1378,7 @@ public partial class ProfileDialog : Window
         TargetGroupComboBox.SelectedIndex = 0;
         RoundRobinCheckBox.IsChecked = false;
 
-        LoadBindingList(page.Id);
+        LoadBindingList(page.KeyPageId);
         RefreshKeyLayout();
     }
 
@@ -1420,6 +1428,7 @@ public partial class ProfileDialog : Window
 
         if (PageComboBox.SelectedItem is not ComboBoxItem item)
         {
+            DebugLog.Write("ProfileDialog.PageComboBox_SelectionChanged: no item selected.");
             KeyLayoutControl.Visibility = Visibility.Collapsed;
             return;
         }
@@ -1432,21 +1441,29 @@ public partial class ProfileDialog : Window
             return;
         }
 
-        string name = item.Tag?.ToString() ?? string.Empty;
+        if (item.Tag is not int keyPageId)
+        {
+            DebugLog.Write("ProfileDialog.PageComboBox_SelectionChanged: item has no valid tag, ignoring.");
+            KeyLayoutControl.Visibility = Visibility.Collapsed;
+            return;
+        }
+
         var repo = new KeyPageRepository();
-        var page = repo.GetPage(name);
+        var page = repo.GetPage(keyPageId);
 
         if (page == null)
         {
-            DebugLog.Write($"ProfileDialog.PageComboBox_SelectionChanged: page '{name}' not found in database.");
+            DebugLog.Write($"ProfileDialog.PageComboBox_SelectionChanged: keyPageId={keyPageId} not found in database.");
+            KeyLayoutControl.Visibility = Visibility.Collapsed;
             return;
         }
 
         DebugLog.Write($"ProfileDialog.PageComboBox_SelectionChanged: page='{page.Name}' device='{page.Device}'.");
+
         KeyLayoutControl.Visibility = Visibility.Visible;
         KeyLayoutControl.Device = page.Device;
 
-        LoadBindingList(page.Id);
+        LoadBindingList(keyPageId);
         RefreshKeyLayout();
     }
 
