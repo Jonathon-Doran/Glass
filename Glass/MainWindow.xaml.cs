@@ -24,6 +24,7 @@ public partial class MainWindow : Window
     private readonly HashSet<int> _definedSlots = new();
     private ProfileRepository? _activeProfile;
     private readonly HidKeyInput _hidKeyInput = new HidKeyInput();
+    private Machine? _currentMachine;
 
     // Constructor — initializes UI, database, pipe manager, and logging.
     public MainWindow()
@@ -32,7 +33,21 @@ public partial class MainWindow : Window
         SetDatabaseMenuState(false);
         AutoLoadDatabase();
 
+
+
         DebugLog.Initialize(msg => Dispatcher.Invoke(() => Log(msg)));
+        if (Database.IsInitialized)
+        {
+            var machineRepo = new MachineRepository();
+
+            _currentMachine = machineRepo.GetOrCreate(Environment.MachineName);
+            DebugLog.Write($"MainWindow: current machine id={_currentMachine.Id} name='{_currentMachine.Name}'.");
+
+            if (_currentMachine.Devices.Count == 0)
+            {
+                DebugLog.Write("MainWindow: no devices configured for this machine.");
+            }
+        }
 
         _isxGlassPipeManager = new PipeManager("ISXGlass", "ISXGlass_Commands", "ISXGlass_Notify");
         _isxGlassPipeManager.Connected += () => Dispatcher.Invoke(() => SetISXGlassStatus(true));

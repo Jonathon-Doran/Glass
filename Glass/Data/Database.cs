@@ -14,6 +14,7 @@ public class Database
 
     private readonly string _connectionString;
     public static Database Instance => _instance ?? throw new InvalidOperationException("Database not initialized.");
+    public static bool IsInitialized => _instance != null;
 
     private Database(string dbPath)
     {
@@ -133,6 +134,10 @@ public class Database
             using var pragmaOn = conn.CreateCommand();
             pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
             pragmaOn.ExecuteNonQuery();
+        }
+        if (version < 14)
+        {
+            ApplyMigration(conn, 14, Migration_014);
         }
     }
 
@@ -386,6 +391,17 @@ public class Database
     DROP TABLE ProfileMembers;
     ALTER TABLE ProfileMembers_new RENAME TO ProfileMembers;
 
+";
+    private const string Migration_014 = @"
+    CREATE TABLE IF NOT EXISTS MachineDevices (
+        id              INTEGER PRIMARY KEY,
+        machine_id      INTEGER NOT NULL REFERENCES Machines(id),
+        keyboard_type   TEXT NOT NULL,
+        instance_count  INTEGER NOT NULL DEFAULT 1,
+        UNIQUE (machine_id, keyboard_type)
+    );
+
+    ALTER TABLE Profiles ADD COLUMN machine_id INTEGER REFERENCES Machines(id);
 ";
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
