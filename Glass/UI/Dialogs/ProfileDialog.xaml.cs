@@ -974,6 +974,7 @@ public partial class ProfileDialog : Window
     // LoadBindingList
     //
     // Loads and displays all key bindings for the given page in the binding list.
+    // Builds command and relay group lookup maps to resolve display names.
     //
     // pageId:  The page whose bindings to load
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -984,14 +985,18 @@ public partial class ProfileDialog : Window
         var bindings = new KeyBindingRepository().GetBindingsForPage(pageId)
             .OrderBy(b => System.Text.RegularExpressions.Regex.Replace(b.Key, @"\d+", m => m.Value.PadLeft(4, '0')))
             .ToList();
-        var commandMap = new CommandRepository().GetAllCommands().ToDictionary(c => c.Id, c => c.Name);
+        var commandMap = new CommandRepository().GetAllCommands().ToDictionary(c => c.Id, c => c);
         var groupMap = new RelayGroupRepository().GetAllGroupNames().ToDictionary(g => g.Id, g => g.Name);
 
         var items = bindings.Select(b =>
         {
-            string commandName = (b.CommandId.HasValue && commandMap.TryGetValue(b.CommandId.Value, out var cn))
-                ? cn
+            string commandName = (b.CommandId.HasValue && commandMap.TryGetValue(b.CommandId.Value, out var cmd))
+                ? cmd.Name
                 : "(none)";
+
+            string shortName = (b.CommandId.HasValue && commandMap.TryGetValue(b.CommandId.Value, out var cmd2))
+                ? cmd2.ShortName
+                : string.Empty;
 
             string targetName = b.Target switch
             {
@@ -1008,7 +1013,8 @@ public partial class ProfileDialog : Window
             return new KeyBindingViewModel
             {
                 Binding = b,
-                DisplayText = $"{b.Key}: {commandName}: {targetName}"
+                CommandTargetText = $"{b.Key}: {commandName}: {targetName}",
+                ShortName = shortName
             };
         }).ToList();
 
@@ -1172,10 +1178,7 @@ public partial class ProfileDialog : Window
             keys[kvp.Key] = new KeyDisplay
             {
                 KeyName = kvp.Key,
-                Label = kvp.Value.Binding.CommandId.HasValue
-                    ? (BindingListView.ItemsSource as List<KeyBindingViewModel>)
-                        ?.FirstOrDefault(b => b.Binding.Key == kvp.Key)?.DisplayText ?? kvp.Key
-                    : kvp.Key,
+                Label = kvp.Value.ShortName,
                 KeyType = KeyType.Momentary,
                 IsSelected = (kvp.Key == selectedKey)
             };

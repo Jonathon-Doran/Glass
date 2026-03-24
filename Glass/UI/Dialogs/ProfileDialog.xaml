@@ -214,9 +214,12 @@
                     <StackPanel Grid.Row="0" Orientation="Horizontal">
                         <TextBlock Text="Page:" VerticalAlignment="Center" Margin="0,0,8,0"/>
                         <ComboBox x:Name="PageComboBox" Width="400"
-                               SelectionChanged="PageComboBox_SelectionChanged"/>
+                                    SelectionChanged="PageComboBox_SelectionChanged"/>
                         <Button Content="Assign Pages..." Margin="8,0,0,0" 
-                               Click="AssignPages_Click"/>
+                                     Click="AssignPages_Click"/>
+                        <CheckBox x:Name="ShowLabelsCheckBox" Content="Show Labels"
+                                     VerticalAlignment="Center" Margin="16,0,0,0"
+                                     IsChecked="{Binding ShowLabel, ElementName=KeyLayoutControl, Mode=TwoWay}"/>
                     </StackPanel>
 
                     <!-- Hidden elements kept for code-behind compatibility -->
@@ -267,7 +270,7 @@
                                 </ListView.ItemContainerStyle>
                                 <ListView.ItemTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding DisplayText}"/>
+                                        <TextBlock Text="{Binding CommandTargetText}"/>
                                     </DataTemplate>
                                 </ListView.ItemTemplate>
                             </ListView>
