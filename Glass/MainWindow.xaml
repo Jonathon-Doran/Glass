@@ -37,6 +37,7 @@
             <MenuItem x:Name="MenuTools" Header="_Tools">
                 <MenuItem Header="_Manage Commands..."  Click="MenuItem_ManageCommands_Click"/>
                 <MenuItem Header="_Manage Key Aliases..." Click="MenuItem_ManageKeyAliases_Click"/>
+                <MenuItem Header="Manage Machines..." Click="ManageMachines_Click"/>
                 <MenuItem Header="Key Test..." Click="KeyTest_Click"/>
                 <Separator/>
                 <MenuItem Header="_Generate EQ UI Files" Click="MenuItem_GenerateEQUI_Click"/>
