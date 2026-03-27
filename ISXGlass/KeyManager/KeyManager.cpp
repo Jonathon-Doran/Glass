@@ -37,12 +37,12 @@ void KeyManager::LoadRelayGroup(GroupID groupId, const std::vector<CharacterID>&
     {
         std::lock_guard<std::mutex> lock(_mutex);
 
-        if (_groups.find(groupId) == _groups.end())
+        if (_presentMembers.find(groupId) == _presentMembers.end())
         {
-            _groups[groupId] = MemberSet();
+            _presentMembers[groupId] = MemberSet();
         }
 
-        _pendingGroupMembers[groupId] = std::set<CharacterID>(characterIds.begin(), characterIds.end());
+        _registeredMembers[groupId] = std::set<CharacterID>(characterIds.begin(), characterIds.end());
 
         for (CharacterID characterId : characterIds)
         {
@@ -73,17 +73,23 @@ void KeyManager::ResolvePending(CharacterID characterId, const std::string& sess
 {
     std::lock_guard<std::mutex> lock(_mutex);
 
-    for (auto& pair : _pendingGroupMembers)
+    for (std::pair<const GroupID, std::set<CharacterID>>& pair : _registeredMembers)
     {
         if (pair.second.find(characterId) != pair.second.end())
         {
             GroupID groupId = pair.first;
-            _groups[groupId].insert(sessionName);
-            _roundRobinIterators[groupId] = _groups[groupId].begin();
+            _presentMembers[groupId].insert(sessionName);
+            _roundRobinIterators[groupId] = _presentMembers[groupId].begin();
             Logger::Instance().Write("KeyManager::ResolvePending: characterId=%u resolved to session=%s in groupId=%u",
                 characterId, sessionName.c_str(), groupId);
         }
     }
+
+    // Add to the All group.
+    GroupID allGroupId = (GroupID)SpecialTarget::All;
+    _presentMembers[allGroupId].insert(sessionName);
+    _roundRobinIterators[allGroupId] = _presentMembers[allGroupId].begin();
+    Logger::Instance().Write("KeyManager::ResolvePending: session=%s added to All group.", sessionName.c_str());
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -97,9 +103,9 @@ void KeyManager::DefineGroup(GroupID groupId)
 {
     std::lock_guard<std::mutex> lock(_mutex);
 
-    if (_groups.find(groupId) == _groups.end())
+    if (_presentMembers.find(groupId) == _presentMembers.end())
     {
-        _groups[groupId] = MemberSet();
+        _presentMembers[groupId] = MemberSet();
         Logger::Instance().Write("KeyManager::DefineGroup: groupId=%u", groupId);
     }
     else
@@ -121,8 +127,8 @@ void KeyManager::AddToGroup(GroupID groupId, const std::string& sessionName)
 {
     std::lock_guard<std::mutex> lock(_mutex);
 
-    _groups[groupId].insert(sessionName);
-    _roundRobinIterators[groupId] = _groups[groupId].begin();
+    _presentMembers[groupId].insert(sessionName);
+    _roundRobinIterators[groupId] = _presentMembers[groupId].begin();
 
     Logger::Instance().Write("KeyManager::AddToGroup: groupId=%u session=%s", groupId, sessionName.c_str());
 }
@@ -139,8 +145,8 @@ void KeyManager::RemoveFromGroup(GroupID groupId, const std::string& sessionName
 {
     std::lock_guard<std::mutex> lock(_mutex);
 
-    auto groupIt = _groups.find(groupId);
-    if (groupIt == _groups.end())
+    auto groupIt = _presentMembers.find(groupId);
+    if (groupIt == _presentMembers.end())
     {
         Logger::Instance().Write("KeyManager::RemoveFromGroup: groupId=%u not found.", groupId);
         return;
@@ -150,6 +156,30 @@ void KeyManager::RemoveFromGroup(GroupID groupId, const std::string& sessionName
     _roundRobinIterators[groupId] = groupIt->second.begin();
 
     Logger::Instance().Write("KeyManager::RemoveFromGroup: groupId=%u session=%s removed.", groupId, sessionName.c_str());
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// KeyManager::RemoveFromAllGroups
+//
+// Removes a session from all present member groups, including the All group.
+// Resets the round-robin iterator for any affected group.
+// Called when a session disconnects.
+//
+// sessionName:  The session name to remove
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void KeyManager::RemoveFromAllGroups(const std::string& sessionName)
+{
+    std::lock_guard<std::mutex> lock(_mutex);
+
+    for (std::pair<const GroupID, MemberSet>& pair : _presentMembers)
+    {
+        if (pair.second.erase(sessionName) > 0)
+        {
+            _roundRobinIterators[pair.first] = pair.second.begin();
+            Logger::Instance().Write("KeyManager::RemoveFromAllGroups: session=%s removed from groupId=%u.",
+                sessionName.c_str(), pair.first);
+        }
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -219,8 +249,8 @@ void KeyManager::AddCommandStep(CommandID commandId, StepID sequence, CommandAct
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 std::string KeyManager::RoundRobinNext(GroupID groupId)
 {
-    auto groupIt = _groups.find(groupId);
-    if ((groupIt == _groups.end()) || groupIt->second.empty())
+    auto groupIt = _presentMembers.find(groupId);
+    if ((groupIt == _presentMembers.end()) || groupIt->second.empty())
     {
         return std::string();
     }
@@ -247,13 +277,15 @@ std::string KeyManager::RoundRobinNext(GroupID groupId)
 // KeyManager::ExecuteCommand
 //
 // Executes a command on the target specified by groupId.
-// Special targets (None, Self, All, Others) are handled directly.
-// Relay group IDs are looked up in the group map and executed on each member session.
+// Self is handled directly via the active session.
+// All other targets (All, Others, relay groups) use _presentMembers for execution,
+// with round-robin or broadcast depending on the roundRobin flag.
 //
-// commandId:  The command to execute
-// groupId:    The target group ID or special target value
+// commandId:   The command to execute
+// groupId:     The target group ID or special target value
+// roundRobin:  If true, execute on one session in round-robin order; otherwise broadcast
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void KeyManager::ExecuteCommand(CommandID commandId, GroupID groupId)
+void KeyManager::ExecuteCommand(CommandID commandId, GroupID groupId, bool roundRobin)
 {
     std::lock_guard<std::mutex> lock(_mutex);
 
@@ -264,18 +296,18 @@ void KeyManager::ExecuteCommand(CommandID commandId, GroupID groupId)
         return;
     }
 
-    Logger::Instance().Write("KeyManager::ExecuteCommand: commandId=%u groupId=%u", commandId, groupId);
+    Logger::Instance().Write("KeyManager::ExecuteCommand: commandId=%u groupId=%u roundRobin=%d", commandId, groupId, (int)roundRobin);
 
-    switch ((SpecialTarget)groupId)
+    if (groupId == (GroupID)SpecialTarget::None)
     {
-    case SpecialTarget::None:
         Logger::Instance().Write("KeyManager::ExecuteCommand: target=None, skipping.");
         return;
+    }
 
-    case SpecialTarget::Self:
+    if (groupId == (GroupID)SpecialTarget::Self)
     {
         SessionEntry* activeSession = g_SessionManager.GetActiveSession();
-        if (! activeSession)
+        if (!activeSession)
         {
             Logger::Instance().Write("KeyManager::ExecuteCommand: target=Self but no active session.");
             return;
@@ -285,63 +317,52 @@ void KeyManager::ExecuteCommand(CommandID commandId, GroupID groupId)
         return;
     }
 
-    case SpecialTarget::All:
+    // For Others, exclude the active session from execution.
+    SessionEntry* excludeSession = nullptr;
+    if (groupId == (GroupID)SpecialTarget::Others)
     {
-        const auto& sessions = g_SessionManager.GetSessions();
-        if (sessions.empty())
-        {
-            Logger::Instance().Write("KeyManager::ExecuteCommand: target=All but no sessions.");
-            return;
-        }
-        Logger::Instance().Write("KeyManager::ExecuteCommand: target=All sessions=%zu.", sessions.size());
-        for (auto pair : sessions)
-        {
-            EnqueueExecution(cmdIt->second, &pair.second);
-        }
-        return;
+        excludeSession = g_SessionManager.GetActiveSession();
     }
 
-    case SpecialTarget::Others:
-    {
-        SessionEntry* activeSession = g_SessionManager.GetActiveSession();
-        const auto& sessions = g_SessionManager.GetSessions();
-        if (sessions.empty())
-        {
-            Logger::Instance().Write("KeyManager::ExecuteCommand: target=Others but no sessions.");
-            return;
-        }
-        Logger::Instance().Write("KeyManager::ExecuteCommand: target=Others excluding='%s' sessions=%zu.", activeSession->sessionName.c_str(), sessions.size());
-        for (const std::pair<const SessionID, SessionEntry>& pair : sessions)
-        {
-            Logger::Instance().Write("KeyManager::ExecuteCommand: comparing &pair.second=%p activeSession=%p session='%s'",
-                &pair.second, activeSession, pair.second.sessionName.c_str());
-
-            if (&pair.second != activeSession)
-            {
-                EnqueueExecution(cmdIt->second, &pair.second);
-            }
-        }
-        return;
-    }
-
-    default:
-        break;
-    }
-
-    auto groupIt = _groups.find(groupId);
-    if ((groupIt == _groups.end()) || groupIt->second.empty())
+    auto groupIt = _presentMembers.find(groupId);
+    if ((groupIt == _presentMembers.end()) || groupIt->second.empty())
     {
         Logger::Instance().Write("KeyManager::ExecuteCommand: groupId=%u not found or empty.", groupId);
         return;
     }
 
-    Logger::Instance().Write("KeyManager::ExecuteCommand: commandId=%u groupId=%u members=%zu",
-        commandId, groupId, groupIt->second.size());
-
-    for (const auto& sessionName : groupIt->second)
+    if (roundRobin)
     {
+        std::string sessionName = RoundRobinNext(groupId);
+        if (sessionName.empty())
+        {
+            Logger::Instance().Write("KeyManager::ExecuteCommand: groupId=%u round-robin returned empty.", groupId);
+            return;
+        }
         SessionEntry* session = g_SessionManager.FindSession(sessionName);
-        EnqueueExecution(cmdIt->second, session);
+        if ((session != nullptr) && (session != excludeSession))
+        {
+            Logger::Instance().Write("KeyManager::ExecuteCommand: commandId=%u groupId=%u round-robin session='%s'.",
+                commandId, groupId, sessionName.c_str());
+            EnqueueExecution(cmdIt->second, session);
+        }
+        else
+        {
+            Logger::Instance().Write("KeyManager::ExecuteCommand: groupId=%u round-robin session excluded or not found.", groupId);
+        }
+    }
+    else
+    {
+        Logger::Instance().Write("KeyManager::ExecuteCommand: commandId=%u groupId=%u members=%zu.",
+            commandId, groupId, groupIt->second.size());
+        for (const std::string& memberName : groupIt->second)
+        {
+            SessionEntry* session = g_SessionManager.FindSession(memberName);
+            if ((session != nullptr) && (session != excludeSession))
+            {
+                EnqueueExecution(cmdIt->second, session);
+            }
+        }
     }
 }
 
@@ -354,8 +375,9 @@ void KeyManager::ExecuteCommand(CommandID commandId, GroupID groupId)
 // commandId:   The command to repeat
 // groupId:     The target group
 // intervalMs:  The repeat interval in milliseconds
+// roundRobin:  If true, execute on one session in round-robin order; otherwise broadcast
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void KeyManager::StartRepeat(CommandID commandId, GroupID groupId, unsigned int intervalMs)
+void KeyManager::StartRepeat(CommandID commandId, GroupID groupId, unsigned int intervalMs, bool roundRobin)
 {
     std::lock_guard<std::mutex> lock(_mutex);
 
@@ -367,7 +389,9 @@ void KeyManager::StartRepeat(CommandID commandId, GroupID groupId, unsigned int 
         return;
     }
 
-    Logger::Instance().Write("KeyManager::StartRepeat: commandId=%u groupId=%u intervalMs=%u", commandId, groupId, intervalMs);
+    Logger::Instance().Write("KeyManager::StartRepeat: commandId=%u groupId=%u intervalMs=%u roundRobin=%d",
+        commandId, groupId, intervalMs, (int)roundRobin);
+
 
     RepeatState& state = _repeats[key];
     state.commandId = commandId;
@@ -375,12 +399,12 @@ void KeyManager::StartRepeat(CommandID commandId, GroupID groupId, unsigned int 
     state.intervalMs = intervalMs;
     state.running = true;
 
-    state.thread = std::thread([this, commandId, groupId, intervalMs, &state]()
+    state.thread = std::thread([this, commandId, groupId, intervalMs, roundRobin, &state]()
         {
             Logger::Instance().Write("KeyManager: repeat thread started. commandId=%u groupId=%u", commandId, groupId);
             while (state.running)
             {
-                ExecuteCommand(commandId, groupId);
+                ExecuteCommand(commandId, groupId, roundRobin);
                 std::this_thread::sleep_for(std::chrono::milliseconds(intervalMs));
             }
             Logger::Instance().Write("KeyManager: repeat thread stopped. commandId=%u groupId=%u", commandId, groupId);
@@ -461,7 +485,7 @@ void KeyManager::Reset()
 
     std::lock_guard<std::mutex> relock(_mutex);
     _repeats.clear();
-    _groups.clear();
+    _presentMembers.clear();
     _commands.clear();
     _roundRobinIterators.clear();
 

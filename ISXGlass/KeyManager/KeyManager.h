@@ -95,8 +95,11 @@ public:
     // Adds a session to a group.
     void AddToGroup(GroupID groupId, const std::string& sessionName);
 
-    // Removes a session from a group.
+    // Removes a session from a group (for example due to ATG window)
     void RemoveFromGroup(GroupID groupId, const std::string& sessionName);
+
+    // Removes a session from all groups (for example, due to session disconnect)
+    void RemoveFromAllGroups(const std::string& sessionName);
 
     // Declares a command ID, clearing any existing steps.
     void DeclareCommand(CommandID commandId);
@@ -105,10 +108,10 @@ public:
     void AddCommandStep(CommandID commandId, StepID sequence, CommandActionType actionType, unsigned int delayMs, const std::string& value);
 
     // Executes a command on the given target group via the execution queue.
-    void ExecuteCommand(CommandID commandId, GroupID groupId);
+    void ExecuteCommand(CommandID commandId, GroupID groupId, bool roundRobin);
 
     // Starts auto-repeat for a command on a group at the given interval.
-    void StartRepeat(CommandID commandId, GroupID groupId, unsigned int intervalMs);
+    void StartRepeat(CommandID commandId, GroupID groupId, unsigned int intervalMs, bool roundRobin);
 
     // Stops auto-repeat for a command on a group.
     void StopRepeat(CommandID commandId, GroupID groupId);
@@ -129,11 +132,12 @@ private:
     unsigned int CharacterDelay();
 
     std::mutex                                           _mutex;
-    std::map<GroupID, MemberSet>                         _groups;
+    std::map<GroupID, MemberSet>                         _presentMembers;
+    std::map<GroupID, std::set<CharacterID>>             _registeredMembers;
     std::map<GroupID, MemberSet::iterator>               _roundRobinIterators;
     std::map<CommandID, CommandDefinition>               _commands;
     std::map<std::pair<CommandID, GroupID>, RepeatState> _repeats;
-    std::map<GroupID, std::set<CharacterID>>             _pendingGroupMembers;
+   
 
     // Execution queue
     std::queue<std::function<void()>>   _execQueue;

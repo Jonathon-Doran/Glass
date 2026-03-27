@@ -415,6 +415,8 @@ static void OnSessionDisconnected(int argc, char* argv[], PLSOBJECT pThis)
         Logger::Instance().Write("OnSessionDisconnected:  No session found for %s", sessionName.c_str());
     }
 
+    g_KeyManager.RemoveFromAllGroups(sessionName);
+
     char notify[128];
     snprintf(notify, sizeof(notify), "session_disconnected %s", sessionName.c_str());
     Logger::Instance().Write("OnSessionDisconnected: notifying Glass: %s", notify);

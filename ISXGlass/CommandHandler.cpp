@@ -487,32 +487,46 @@ static void HandleActivate(const std::string& args)
     g_SessionManager.SetActiveSession(session);
 }
 
-static void HandleStart(const std::string& args)
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// HandleCmdRepeatStart
+//
+// Starts auto-repeat for a command on a group at the given interval.
+// Protocol: cmd_repeat_start <commandId> <groupId> <intervalMs> <roundRobin>
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+static void HandleCmdRepeatStart(const std::string& args)
 {
-    std::string tokens[3];
-    if (ParseTokens(args, tokens, 3) < 3)
+    std::string tokens[4];
+    if (ParseTokens(args, tokens, 4) < 4)
     {
-        Logger::Instance().Write("HandleStart: requires commandId, groupId, and intervalMs.");
+        Logger::Instance().Write("HandleCmdRepeatStart: requires commandId, groupId, intervalMs, and roundRobin.");
         return;
     }
-    CommandID commandId = (CommandID)atoi(tokens[0].c_str());
-    GroupID groupId = (GroupID)atoi(tokens[1].c_str());
+    CommandID    commandId = (CommandID)atoi(tokens[0].c_str());
+    GroupID      groupId = (GroupID)atoi(tokens[1].c_str());
     unsigned int intervalMs = (unsigned int)atoi(tokens[2].c_str());
-    Logger::Instance().Write("HandleStart: commandId=%u groupId=%u intervalMs=%u", commandId, groupId, intervalMs);
-    g_KeyManager.StartRepeat(commandId, groupId, intervalMs);
+    bool         roundRobin = (atoi(tokens[3].c_str()) != 0);
+    Logger::Instance().Write("HandleCmdRepeatStart: commandId=%u groupId=%u intervalMs=%u roundRobin=%d",
+        commandId, groupId, intervalMs, (int)roundRobin);
+    g_KeyManager.StartRepeat(commandId, groupId, intervalMs, roundRobin);
 }
 
-static void HandleStop(const std::string& args)
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// HandleCmdRepeatStop
+//
+// Stops auto-repeat for a command on a group.
+// Protocol: cmd_repeat_stop <commandId> <groupId>
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+static void HandleCmdRepeatStop(const std::string& args)
 {
     std::string tokens[2];
     if (ParseTokens(args, tokens, 2) < 2)
     {
-        Logger::Instance().Write("HandleStop: requires commandId and groupId.");
+        Logger::Instance().Write("HandleCmdRepeatStop: requires commandId and groupId.");
         return;
     }
     CommandID commandId = (CommandID)atoi(tokens[0].c_str());
-    GroupID groupId = (GroupID)atoi(tokens[1].c_str());
-    Logger::Instance().Write("HandleStop: commandId=%u groupId=%u", commandId, groupId);
+    GroupID   groupId = (GroupID)atoi(tokens[1].c_str());
+    Logger::Instance().Write("HandleCmdRepeatStop: commandId=%u groupId=%u", commandId, groupId);
     g_KeyManager.StopRepeat(commandId, groupId);
 }
 
@@ -520,20 +534,21 @@ static void HandleStop(const std::string& args)
 // HandleCmdExecute
 //
 // Executes a command on the given target group.
-// Protocol: cmd_execute <commandId> <groupId>
+// Protocol: cmd_execute <commandId> <groupId> <roundRobin>
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 static void HandleCmdExecute(const std::string& args)
 {
     std::string tokens[2];
-    if (ParseTokens(args, tokens, 2) < 2)
+    if (ParseTokens(args, tokens, 3) < 2)
     {
         Logger::Instance().Write("HandleCmdExecute: requires commandId and groupId.");
         return;
     }
     CommandID commandId = (CommandID)atoi(tokens[0].c_str());
     GroupID groupId = (GroupID)atoi(tokens[1].c_str());
-    Logger::Instance().Write("HandleCmdExecute: commandId=%u groupId=%u", commandId, groupId);
-    g_KeyManager.ExecuteCommand(commandId, groupId);
+    bool roundRobin = (atoi(tokens[2].c_str()) != 0);
+    Logger::Instance().Write("HandleCmdExecute: commandId=%u groupId=%u roundRobin=%d", commandId, groupId, (int)roundRobin);
+    g_KeyManager.ExecuteCommand(commandId, groupId, roundRobin);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -594,11 +609,11 @@ void HandleCommand(const std::string& cmd)
     }
     else if (verb == "start")
     {
-        HandleStart(args);
+        HandleCmdRepeatStart(args);
     }
     else if (verb == "stop")
     {
-        HandleStop(args);
+        HandleCmdRepeatStop(args);
     }
     else if (verb == "activate")
     {

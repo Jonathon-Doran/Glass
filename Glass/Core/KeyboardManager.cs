@@ -305,7 +305,7 @@ public class KeyboardManager
 
         DebugLog.Write($"KeyboardManager.OnKeyStateChanged: key='{e.KeyName}' page='{activePage.Name}' command='{command.Name}' target='{binding.Target}'.");
 
-        ExecuteCommand(command, instance, binding.Target, binding.RelayGroupId);
+        ExecuteCommand(command, instance, binding.Target, binding.RoundRobin);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -318,11 +318,11 @@ public class KeyboardManager
     // command:       The command to execute
     // instance:      The device instance that triggered the command
     // target:        The relay group ID to execute on
-    // relayGroupId:  Unused — target is used directly
+    // roundrobin     Whether to round-robin within the target
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void ExecuteCommand(Command command, HidDeviceInstance instance, int target, int? relayGroupId)
+    private void ExecuteCommand(Command command, HidDeviceInstance instance, int target, bool roundrobin)
     {
-        DebugLog.Write($"KeyboardManager.ExecuteCommand: command='{command.Name}' instance={instance} target={target}.");
+        DebugLog.Write($"KeyboardManager.ExecuteCommand: command='{command.Name}' instance={instance} target={target} roundrobin={roundrobin}.");
 
         if ((command.Steps == null) || (command.Steps.Count == 0))
         {
@@ -332,7 +332,7 @@ public class KeyboardManager
 
         if (target > 0)
         {
-            string message = $"cmd_execute {command.Id} {target}";
+            string message = $"cmd_execute {command.Id} {target} {(roundrobin ? 1 : 0)}";
             DebugLog.Write($"KeyboardManager.ExecuteCommand: sending: {message}");
             GlassContext.ISXGlassPipe.Send(message);
         }
