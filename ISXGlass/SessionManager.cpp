@@ -13,7 +13,6 @@ static DWORD_PTR                _performanceCoreMask = 0;
 static void OnSessionConnected(int argc, char* argv[], PLSOBJECT pThis);
 static void OnSessionRenamed(int argc, char* argv[], PLSOBJECT pThis);
 static void OnSessionDisconnected(int argc, char* argv[], PLSOBJECT pThis);
-static void OnSessionActivated(int argc, char* argv[], PLSOBJECT pThis);
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Initialize
@@ -27,7 +26,6 @@ void SessionManager::Initialize()
     Logger::Instance().Write("SessionManager::Initialize");
     LSVariables::Declare(ISXGLASS_CHARS_VAR, "collection:string");
     BuildPerformanceCoreMask();
-
 
     // Register an event handler to be called when a new session is ready.
     unsigned int sessionConnectedEventId = pISInterface->RegisterEvent("OnSessionConnected");
@@ -274,13 +272,15 @@ static void OnSessionConnected(int argc, char* argv[], PLSOBJECT pThis)
 
     entry = g_SessionManager.FindSession(sessionName);
 
-    if (entry)
+    if (! entry)
     {
-        Logger::Instance().Write("OnSessionConnected:  found session entry");
+        Logger::Instance().Write("OnSessionConnected: session entry for '%s' not found", sessionName.c_str());
+
     }
     entry->pid = pid;
 
     g_SessionManager.SetProcessAffinity(entry);
+    Logger::Instance().Write("OnSessionConnected: completing");
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -391,6 +391,8 @@ static void OnSessionDisconnected(int argc, char* argv[], PLSOBJECT pThis)
     Logger::Instance().Write("OnSessionDisconnected: session='%s'", sessionName.c_str());
 
     SessionEntry* entry = g_SessionManager.FindSession(sessionName);
+    SessionEntry* activeSession = g_SessionManager.GetActiveSession();
+
     if (entry != nullptr)
     {
         if (entry->jobObject != nullptr)
@@ -400,6 +402,12 @@ static void OnSessionDisconnected(int argc, char* argv[], PLSOBJECT pThis)
                 entry->jobObject, sessionName.c_str());
             CloseHandle(entry->jobObject);
             entry->jobObject = nullptr;
+        }
+
+        // if the active session disconnects.
+        if (entry == activeSession)
+        {
+            g_SessionManager.SetActiveSession(NULL);
         }
     }
     else
@@ -711,20 +719,27 @@ void SessionManager::SetProcessAffinity(SessionEntry* entry)
 // Sets the active (focused) session. Called when Glass notifies ISXGlass
 // that a session has gained focus.
 //
-// sessionName:  The session that gained focus e.g. "is7"
+// session:  The session that gained focus e.g. "is7"
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void SessionManager::SetActiveSession(const std::string& sessionName)
+void SessionManager::SetActiveSession(SessionEntry* session)
 {
-    _activeSession = sessionName;
-    Logger::Instance().Write("SessionManager::SetActiveSession: activeSession='%s'.", sessionName.c_str());
+    _activeSession = session;
+    if (session != nullptr)
+    {
+        Logger::Instance().Write("SessionManager::SetActiveSession: activeSession='%s'.", session->sessionName.c_str());
+    }
+    else
+    {
+        Logger::Instance().Write("SessionManager::SetActiveSession: activeSession cleared.");
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // SessionManager::GetActiveSession
 //
-// Returns the active (focused) session name, or empty string if none.
+// Returns the active (focused) session, or NULL if none.
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-const std::string& SessionManager::GetActiveSession() const
+SessionEntry* SessionManager::GetActiveSession() const
 {
     return _activeSession;
 }
@@ -751,6 +766,7 @@ void SessionManager::Reset()
         }
     }
 
+    _activeSession = NULL;
     _sessions.clear();
 
     {

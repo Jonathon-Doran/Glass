@@ -334,7 +334,7 @@ public class KeyboardManager
         {
             string message = $"cmd_execute {command.Id} {target}";
             DebugLog.Write($"KeyboardManager.ExecuteCommand: sending: {message}");
-            // Todo:  Notify someone that a command needs to be executed
+            GlassContext.ISXGlassPipe.Send(message);
         }
         else
         {

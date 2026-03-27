@@ -63,14 +63,14 @@ public:
     bool IsSessionActive(SessionID sessionId);
 
     // Sets the active (focused) session.
-    void SetActiveSession(const std::string& sessionName);
+    void SetActiveSession(SessionEntry* session);
 
-    // Returns the active (focused) session name, or empty string if none.
-    const std::string& GetActiveSession() const;
+    // Returns the active (focused) session, or NULL if none.
+    SessionEntry* GetActiveSession() const;
 
     // Creates a job object with affinity locked to the performance core mask
     // and assigns the given process to it. Stores the job handle in the session entry.
-    void SetProcessAffinity(SessionEntry* entry);
+    void SetProcessAffinity(SessionEntry* session);
 
     // Clears state in preparation for a new profile
     void Reset();
@@ -87,7 +87,7 @@ private:
     void BuildPerformanceCoreMask();
 
 
-    std::string                               _activeSession;
+    SessionEntry*                             _activeSession;
     std::map<SessionID, SessionEntry>         _sessions;
     std::map<CharacterID, SessionEntry>       _characterIdToSession;
 };

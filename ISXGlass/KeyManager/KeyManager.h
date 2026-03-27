@@ -17,6 +17,16 @@ typedef unsigned int StepID;
 typedef unsigned int CharacterID;
 typedef std::set<std::string> MemberSet;
 
+// Special target group IDs reserved by the Glass protocol.
+// Values >= 4 are relay group IDs defined by the database.
+enum class SpecialTarget : GroupID
+{
+    None = 0,
+    Self = 1,
+    All = 2,
+    Others = 3
+};
+
 // Describes the type of action a command performs.
 enum class CommandActionType
 {
@@ -104,11 +114,13 @@ public:
     void StopRepeat(CommandID commandId, GroupID groupId);
 
 private:
+    std::string SubstituteVariables(const std::string& value);
+
     // Returns the next session name in round-robin order for the given group.
     std::string RoundRobinNext(GroupID groupId);
 
     // Enqueues all steps of a command for execution on the given session.
-    void EnqueueExecution(const CommandDefinition& cmd, const std::string& sessionName);
+    void EnqueueExecution(const CommandDefinition& cmd, const SessionEntry* session);
 
     // Worker thread entry point — drains the execution queue.
     void ExecutionWorker();

@@ -46,8 +46,7 @@ public partial class MainWindow : Window
             }
         }
 
-        GlassContext.SessionRegistry = new SessionRegistry();
-        GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
+
 
         GlassContext.ISXGlassPipe = new PipeManager("ISXGlass", "ISXGlass_Commands", "ISXGlass_Notify");
         GlassContext.ISXGlassPipe.Connected += () => Dispatcher.Invoke(() => SetISXGlassStatus(true));
@@ -67,6 +66,8 @@ public partial class MainWindow : Window
         GlassContext.GlassVideoPipe.MessageReceived += msg => Dispatcher.Invoke(() => Log($"GlassVideo: {msg}"));
         GlassContext.GlassVideoPipe.Start();
         GlassContext.FocusTracker = new FocusTracker();
+        GlassContext.SessionRegistry = new SessionRegistry();
+        GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
 
         Log("Glass started");
     }

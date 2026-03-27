@@ -246,11 +246,12 @@ std::string KeyManager::RoundRobinNext(GroupID groupId)
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // KeyManager::ExecuteCommand
 //
-// Executes a command on all sessions in the given group via the execution queue.
-// If the command definition does not exist or the group is empty, logs and returns.
+// Executes a command on the target specified by groupId.
+// Special targets (None, Self, All, Others) are handled directly.
+// Relay group IDs are looked up in the group map and executed on each member session.
 //
 // commandId:  The command to execute
-// groupId:    The target group
+// groupId:    The target group ID or special target value
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void KeyManager::ExecuteCommand(CommandID commandId, GroupID groupId)
 {
@@ -261,6 +262,70 @@ void KeyManager::ExecuteCommand(CommandID commandId, GroupID groupId)
     {
         Logger::Instance().Write("KeyManager::ExecuteCommand: commandId=%u not found.", commandId);
         return;
+    }
+
+    Logger::Instance().Write("KeyManager::ExecuteCommand: commandId=%u groupId=%u", commandId, groupId);
+
+    switch ((SpecialTarget)groupId)
+    {
+    case SpecialTarget::None:
+        Logger::Instance().Write("KeyManager::ExecuteCommand: target=None, skipping.");
+        return;
+
+    case SpecialTarget::Self:
+    {
+        SessionEntry* activeSession = g_SessionManager.GetActiveSession();
+        if (! activeSession)
+        {
+            Logger::Instance().Write("KeyManager::ExecuteCommand: target=Self but no active session.");
+            return;
+        }
+        Logger::Instance().Write("KeyManager::ExecuteCommand: target=Self session='%s'.", activeSession->sessionName.c_str());
+        EnqueueExecution(cmdIt->second, activeSession);
+        return;
+    }
+
+    case SpecialTarget::All:
+    {
+        const auto& sessions = g_SessionManager.GetSessions();
+        if (sessions.empty())
+        {
+            Logger::Instance().Write("KeyManager::ExecuteCommand: target=All but no sessions.");
+            return;
+        }
+        Logger::Instance().Write("KeyManager::ExecuteCommand: target=All sessions=%zu.", sessions.size());
+        for (auto pair : sessions)
+        {
+            EnqueueExecution(cmdIt->second, &pair.second);
+        }
+        return;
+    }
+
+    case SpecialTarget::Others:
+    {
+        SessionEntry* activeSession = g_SessionManager.GetActiveSession();
+        const auto& sessions = g_SessionManager.GetSessions();
+        if (sessions.empty())
+        {
+            Logger::Instance().Write("KeyManager::ExecuteCommand: target=Others but no sessions.");
+            return;
+        }
+        Logger::Instance().Write("KeyManager::ExecuteCommand: target=Others excluding='%s' sessions=%zu.", activeSession->sessionName.c_str(), sessions.size());
+        for (const std::pair<const SessionID, SessionEntry>& pair : sessions)
+        {
+            Logger::Instance().Write("KeyManager::ExecuteCommand: comparing &pair.second=%p activeSession=%p session='%s'",
+                &pair.second, activeSession, pair.second.sessionName.c_str());
+
+            if (&pair.second != activeSession)
+            {
+                EnqueueExecution(cmdIt->second, &pair.second);
+            }
+        }
+        return;
+    }
+
+    default:
+        break;
     }
 
     auto groupIt = _groups.find(groupId);
@@ -275,7 +340,8 @@ void KeyManager::ExecuteCommand(CommandID commandId, GroupID groupId)
 
     for (const auto& sessionName : groupIt->second)
     {
-        EnqueueExecution(cmdIt->second, sessionName);
+        SessionEntry* session = g_SessionManager.FindSession(sessionName);
+        EnqueueExecution(cmdIt->second, session);
     }
 }
 
@@ -442,27 +508,26 @@ void KeyManager::ExecutionWorker()
 // KeyManager::CharacterDelay
 //
 // Returns a randomized inter-character delay in milliseconds simulating
-// natural human typing at approximately 120wpm.
+// natural human typing at approximately 120wpm (100ms average per character).
 // Distribution is non-linear:
-//   60% chance: 60-100ms  (fast keystrokes)
-//   30% chance: 100-180ms (brief pause)
-//   10% chance: 180-400ms (occasional hesitation)
+//   60% chance: 40-80ms   (fast keystrokes)
+//   30% chance: 80-140ms  (brief pause)
+//   10% chance: 140-300ms (occasional hesitation)
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 unsigned int KeyManager::CharacterDelay()
 {
     int roll = rand() % 100;
-
     if (roll < 60)
     {
-        return 60 + (rand() % 41);
+        return 40 + (rand() % 41);   // 40-80ms
     }
     else if (roll < 90)
     {
-        return 100 + (rand() % 81);
+        return 80 + (rand() % 61);   // 80-140ms
     }
     else
     {
-        return 180 + (rand() % 221);
+        return 140 + (rand() % 161); // 140-300ms
     }
 }
 
@@ -477,23 +542,22 @@ unsigned int KeyManager::CharacterDelay()
 // cmd:         The command definition containing the steps to execute
 // sessionName: The session to execute on
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void KeyManager::EnqueueExecution(const CommandDefinition& cmd, const std::string& sessionName)
+void KeyManager::EnqueueExecution(const CommandDefinition& cmd, const SessionEntry* session)
 {
     if (cmd.steps.empty())
     {
         Logger::Instance().Write("KeyManager::EnqueueExecution: commandId=%u has no steps, skipping session=%s.",
-            cmd.id, sessionName.c_str());
+            cmd.id, session->sessionName.c_str());
         return;
     }
 
     Logger::Instance().Write("KeyManager::EnqueueExecution: commandId=%u steps=%zu session=%s.",
-        cmd.id, cmd.steps.size(), sessionName.c_str());
+        cmd.id, cmd.steps.size(), session->sessionName.c_str());
 
 
     for (const auto& pair : cmd.steps)
     {
         const CommandStep step = pair.second;
-        const std::string session = sessionName;
         const CommandID cmdId = cmd.id;
 
         if (step.actionType == CommandActionType::Keystroke)
@@ -503,7 +567,7 @@ void KeyManager::EnqueueExecution(const CommandDefinition& cmd, const std::strin
                 {
                     char command[512] = {};
                     snprintf(command, sizeof(command), "relay %s \"press %s\"",
-                        session.c_str(), step.value.c_str());
+                        session -> sessionName.c_str(), step.value.c_str());
                     Logger::Instance().Write("KeyManager::ExecutionWorker: commandId=%u sequence=%u keystroke: %s",
                         cmdId, step.sequence, command);
                     pISInterface->ExecuteCommand(command);
@@ -517,7 +581,8 @@ void KeyManager::EnqueueExecution(const CommandDefinition& cmd, const std::strin
         else
         {
             // Text — one task per character with randomized delay
-            for (char ch : step.value)
+            std::string substituted = SubstituteVariables(step.value);
+            for (char ch : substituted)
             {
                 std::lock_guard<std::mutex> lock(_execMutex);
                 const char character = ch;
@@ -525,12 +590,29 @@ void KeyManager::EnqueueExecution(const CommandDefinition& cmd, const std::strin
                 _execQueue.push([this, character, session, cmdId, step, delay]()
                     {
                         char command[512] = {};
-                        snprintf(command, sizeof(command), "relay %s \"press %c\"",
-                            session.c_str(), character);
-                        Logger::Instance().Write("KeyManager::ExecutionWorker: commandId=%u sequence=%u text char='%c'",
-                            cmdId, step.sequence, character);
+                        if (character == ' ')
+                        {
+                            snprintf(command, sizeof(command), "relay %s \"press Space\"",
+                                session->sessionName.c_str());
+                        }
+                        else
+                        {
+                            snprintf(command, sizeof(command), "relay %s \"press %c\"",
+                                session->sessionName.c_str(), character);
+                        }
+                        Logger::Instance().Write("KeyManager::ExecutionWorker: '%s'", command);
                         pISInterface->ExecuteCommand(command);
                         std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+                    });
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(_execMutex);
+                _execQueue.push([this, session, cmdId, step]()
+                    {
+                        char command[512] = {};
+                        snprintf(command, sizeof(command), "relay %s \"press Enter\"", session->sessionName.c_str());
+                        pISInterface->ExecuteCommand(command);
                     });
             }
 
@@ -547,6 +629,70 @@ void KeyManager::EnqueueExecution(const CommandDefinition& cmd, const std::strin
     }
 
     _execCV.notify_one();
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// KeyManager::SubstituteVariables
+//
+// Substitutes template variables in a text step value.
+// Variables are enclosed in braces e.g. {shortname}.
+// Currently supported variables:
+//   {shortname} — the first 4 characters of the active session's character name
+//
+// value:  The text string containing variables to substitute
+//
+// Returns:  The text string with all known variables replaced
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+std::string KeyManager::SubstituteVariables(const std::string& value)
+{
+    std::string result = value;
+
+    size_t pos = result.find('{');
+    if (pos == std::string::npos)
+    {
+        return result;
+    }
+
+
+
+    size_t start = 0;
+    while ((start = result.find('{', start)) != std::string::npos)
+    {
+        size_t end = result.find('}', start);
+        if (end == std::string::npos)
+        {
+            break;
+        }
+
+        std::string variable = result.substr(start + 1, end - start - 1);
+        std::string replacement;
+
+        if (variable == "shortname")
+        {
+            SessionEntry* active = g_SessionManager.GetActiveSession();
+            if (active != nullptr)
+            {
+                replacement = active->characterName.substr(0, 4);
+            }
+            else
+            {
+                Logger::Instance().Write("KeyManager::SubstituteVariables: {shortname} requested but no active session.");
+                replacement = "";
+            }
+        }
+        else
+        {
+            Logger::Instance().Write("KeyManager::SubstituteVariables: unknown variable '{%s}', leaving as-is.", variable.c_str());
+            start = end + 1;
+            continue;
+        }
+
+        result.replace(start, end - start + 1, replacement);
+        start += replacement.length();
+    }
+
+    Logger::Instance().Write("KeyManager::SubstituteVariables: '%s' -> '%s'", value.c_str(), result.c_str());
+    return result;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

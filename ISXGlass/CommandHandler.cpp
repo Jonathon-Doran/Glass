@@ -483,7 +483,8 @@ static void HandleActivate(const std::string& args)
         return;
     }
     Logger::Instance().Write("HandleActivate: sessionName='%s'.", args.c_str());
-    g_SessionManager.SetActiveSession(args);
+    SessionEntry* session = g_SessionManager.FindSession(args);
+    g_SessionManager.SetActiveSession(session);
 }
 
 static void HandleStart(const std::string& args)
