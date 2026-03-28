@@ -1,6 +1,7 @@
 #include "ISXGlass.h"
 #include "KeyManager.h"
 #include "Logger.h"
+#include <random>
 
 KeyManager g_KeyManager;
 
@@ -411,7 +412,7 @@ void KeyManager::StartRepeat(CommandID commandId, GroupID groupId, unsigned int 
             while (state.running)
             {
                 ExecuteCommand(commandId, groupId, roundRobin);
-                std::this_thread::sleep_for(std::chrono::milliseconds(intervalMs));
+                std::this_thread::sleep_for(std::chrono::milliseconds(HumanDelay(intervalMs)));
             }
             Logger::Instance().Write("KeyManager: repeat thread stopped. commandId=%u groupId=%u", commandId, groupId);
         });
@@ -535,30 +536,46 @@ void KeyManager::ExecutionWorker()
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// KeyManager::CharacterDelay
+// KeyManager::HumanDelay
 //
-// Returns a randomized inter-character delay in milliseconds simulating
-// natural human typing at approximately 120wpm (100ms average per character).
-// Distribution is non-linear:
-//   60% chance: 40-80ms   (fast keystrokes)
-//   30% chance: 80-140ms  (brief pause)
-//   10% chance: 140-300ms (occasional hesitation)
+// Returns a randomized human-like delay in milliseconds scaled around the given base value.
+// Distribution is non-linear, simulating natural human timing variation:
+//   60% chance: 40-80% of base  (fast)
+//   30% chance: 80-140% of base (brief pause)
+//   10% chance: 140-300% of base (occasional hesitation)
+//
+// baseMs:  The center point of the delay distribution in milliseconds
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-unsigned int KeyManager::CharacterDelay()
+unsigned int KeyManager::HumanDelay(unsigned int baseMs)
 {
-    int roll = rand() % 100;
+    if (baseMs == 0)
+    {
+        return 0;
+    }
+
+    static thread_local std::mt19937 rng(std::random_device{}());
+
+    std::uniform_int_distribution<int> rollDist(0, 99);
+    int roll = rollDist(rng);
+
+    unsigned int pct;
     if (roll < 60)
     {
-        return 40 + (rand() % 41);   // 40-80ms
+        std::uniform_int_distribution<unsigned int> rangeDist(40, 80);
+        pct = rangeDist(rng);
     }
     else if (roll < 90)
     {
-        return 80 + (rand() % 61);   // 80-140ms
+        std::uniform_int_distribution<unsigned int> rangeDist(80, 140);
+        pct = rangeDist(rng);
     }
     else
     {
-        return 140 + (rand() % 161); // 140-300ms
+        std::uniform_int_distribution<unsigned int> rangeDist(140, 300);
+        pct = rangeDist(rng);
     }
+
+    return (baseMs * pct) / 100;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -604,7 +621,7 @@ void KeyManager::EnqueueExecution(const CommandDefinition& cmd, const SessionEnt
 
                     if (step.delayMs > 0)
                     {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(step.delayMs));
+                        std::this_thread::sleep_for(std::chrono::milliseconds(HumanDelay(step.delayMs)));
                     }
                 });
         }
@@ -616,7 +633,8 @@ void KeyManager::EnqueueExecution(const CommandDefinition& cmd, const SessionEnt
             {
                 std::lock_guard<std::mutex> lock(_execMutex);
                 const char character = ch;
-                unsigned int delay = CharacterDelay();
+                unsigned int delay = HumanDelay(100);
+
                 _execQueue.push([this, character, session, cmdId, step, delay]()
                     {
                         char command[512] = {};
@@ -632,6 +650,7 @@ void KeyManager::EnqueueExecution(const CommandDefinition& cmd, const SessionEnt
                         }
                         Logger::Instance().Write("KeyManager::ExecutionWorker: '%s'", command);
                         pISInterface->ExecuteCommand(command);
+
                         std::this_thread::sleep_for(std::chrono::milliseconds(delay));
                     });
             }

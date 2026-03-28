@@ -128,8 +128,8 @@ private:
     // Worker thread entry point — drains the execution queue.
     void ExecutionWorker();
 
-    // Computes a randomized inter-character delay in milliseconds.
-    unsigned int CharacterDelay();
+    // Returns a randomized human-like delay scaled around the given base value in milliseconds.
+    unsigned int HumanDelay(unsigned int baseMs);
 
     std::mutex                                           _mutex;
     std::map<GroupID, MemberSet>                         _presentMembers;
