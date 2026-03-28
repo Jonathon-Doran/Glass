@@ -607,11 +607,11 @@ void HandleCommand(const std::string& cmd)
     {
         HandleCmdExecute(args);
     }
-    else if (verb == "start")
+    else if (verb == "cmd_repeat_start")
     {
         HandleCmdRepeatStart(args);
     }
-    else if (verb == "stop")
+    else if (verb == "cmd_repeat_stop")
     {
         HandleCmdRepeatStop(args);
     }
