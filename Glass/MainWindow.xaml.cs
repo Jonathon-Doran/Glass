@@ -411,6 +411,11 @@ public partial class MainWindow : Window
             {
                 string value = step.Value;
 
+                if (step.Type == "pageload")
+                {
+                    continue;
+                }
+
                 if (step.Type == "key")
                 {
                     string? resolved = aliasRepo.Resolve(value);
@@ -420,7 +425,7 @@ public partial class MainWindow : Window
                     }
                 }
 
-                string message = $"cmd_step {full.Id} {step.Sequence} {step.Type} {step.DelayMs} {value}";
+                string message = $"cmd_step {full.Id} {step.Sequence} {step.Type} {step.PressType} {step.DelayMs} {value}";
                 GlassContext.ISXGlassPipe.Send(message);
             }
         }

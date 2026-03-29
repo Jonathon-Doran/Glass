@@ -178,14 +178,15 @@ public class CommandRepository
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                INSERT INTO CommandSteps (command_id, sequence, type, value, delay_ms)
-                VALUES (@commandId, @sequence, @type, @value, @delayMs);
+                INSERT INTO CommandSteps (command_id, sequence, type, value, delay_ms, press_type)
+                VALUES (@commandId, @sequence, @type, @value, @delayMs, @pressType);
                 SELECT last_insert_rowid();";
             cmd.Parameters.AddWithValue("@commandId", step.CommandId);
             cmd.Parameters.AddWithValue("@sequence", step.Sequence);
             cmd.Parameters.AddWithValue("@type", step.Type);
             cmd.Parameters.AddWithValue("@value", step.Value);
             cmd.Parameters.AddWithValue("@delayMs", step.DelayMs);
+            cmd.Parameters.AddWithValue("@pressType", step.PressType);
             step.Id = Convert.ToInt32(cmd.ExecuteScalar());
             DebugLog.Write(DebugLog.Log_Database, $"CommandRepository.SaveStep: inserted. id={step.Id}.");
         }
@@ -194,12 +195,13 @@ public class CommandRepository
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 UPDATE CommandSteps
-                SET sequence = @sequence, type = @type, value = @value, delay_ms = @delayMs
+                SET sequence = @sequence, type = @type, value = @value, delay_ms = @delayMs, press_type = @pressType
                 WHERE id = @id";
             cmd.Parameters.AddWithValue("@sequence", step.Sequence);
             cmd.Parameters.AddWithValue("@type", step.Type);
             cmd.Parameters.AddWithValue("@value", step.Value);
             cmd.Parameters.AddWithValue("@delayMs", step.DelayMs);
+            cmd.Parameters.AddWithValue("@pressType", step.PressType);
             cmd.Parameters.AddWithValue("@id", step.Id);
             cmd.ExecuteNonQuery();
             DebugLog.Write(DebugLog.Log_Database, $"CommandRepository.SaveStep: updated. id={step.Id}.");
@@ -240,10 +242,10 @@ public class CommandRepository
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT id, command_id, sequence, type, value, delay_ms
-            FROM CommandSteps
-            WHERE command_id = @commandId
-            ORDER BY sequence";
+                SELECT id, command_id, sequence, type, value, delay_ms, press_type
+                FROM CommandSteps
+                WHERE command_id = @commandId
+                ORDER BY sequence";
         cmd.Parameters.AddWithValue("@commandId", commandId);
 
         var steps = new List<CommandStep>();
@@ -257,7 +259,8 @@ public class CommandRepository
                 Sequence = reader.GetInt32(2),
                 Type = reader.GetString(3),
                 Value = reader.GetString(4),
-                DelayMs = reader.GetInt32(5)
+                DelayMs = reader.GetInt32(5),
+                PressType = reader.GetString(6)
             });
         }
 

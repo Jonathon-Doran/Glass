@@ -183,6 +183,10 @@ public class Database
         {
             ApplyMigration(conn, 19, Migration_019);
         }
+        if (version < 20)
+        {
+            ApplyMigration(conn, 20, Migration_020);
+        }
     }
 
     private int GetSchemaVersion()
@@ -565,6 +569,10 @@ public class Database
     private const string Migration_019 = @"
     ALTER TABLE KeyBindings ADD COLUMN label TEXT;
     ALTER TABLE KeyBindings ADD COLUMN trigger_on INTEGER NOT NULL DEFAULT 0;
+";
+
+    private const string Migration_020 = @"
+    ALTER TABLE CommandSteps ADD COLUMN press_type TEXT NOT NULL DEFAULT 'press';
 ";
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

@@ -364,53 +364,6 @@ public partial class ManageCommandsDialog : Window
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // NewStep_Click
-    //
-    // Adds a new step to the selected command.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void NewStepUpdate_Click(object sender, RoutedEventArgs e)
-    {
-        if (_selectedCommand == null)
-        {
-            DebugLog.Write("ManageCommandsDialog.NewStep_Click: no command selected.");
-            return;
-        }
-
-        string type = (StepTypeComboBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "text";
-        int delayMs = int.TryParse(StepDelayTextBox.Text, out int d) ? d : 0;
-        string value = StepValueTextBox.Text.Trim();
-
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            DebugLog.Write("ManageCommandsDialog.NewStep_Click: value is empty, ignoring.");
-            MessageBox.Show("Please enter a value for the step.", "No Value", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        int nextSequence = ((_selectedCommand.Steps?.Count ?? 0) > 0)
-            ? _selectedCommand.Steps!.Max(s => s.Sequence) + 1
-            : 1;
-
-        var step = new CommandStep
-        {
-            CommandId = _selectedCommand.Id,
-            Sequence = nextSequence,
-            Type = type,
-            Value = value,
-            DelayMs = delayMs
-        };
-
-        DebugLog.Write($"ManageCommandsDialog.NewStep_Click: commandId={_selectedCommand.Id} sequence={nextSequence} type='{type}' value='{value}' delayMs={delayMs}.");
-
-        var repo = new CommandRepository();
-        repo.SaveStep(step);
-
-        DebugLog.Write($"ManageCommandsDialog.NewStep_Click: saved. id={step.Id}.");
-
-        LoadStepList();
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // DeleteStep_Click
     //
     // Deletes the selected step.
@@ -508,6 +461,7 @@ public partial class ManageCommandsDialog : Window
         }
 
         string type = (StepTypeComboBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "text";
+        string pressType = (PressTypeComboBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "press";
         string value = StepValueTextBox.Text.Trim();
         int delayMs = int.TryParse(StepDelayTextBox.Text, out int d) ? d : 0;
 
@@ -532,7 +486,8 @@ public partial class ManageCommandsDialog : Window
                 Sequence = nextSequence,
                 Type = type,
                 Value = value,
-                DelayMs = delayMs
+                DelayMs = delayMs,
+                PressType = pressType,
             };
 
             DebugLog.Write($"ManageCommandsDialog.NewUpdateStep_Click: creating step commandId={_selectedCommand.Id} sequence={nextSequence} type='{type}' value='{value}' delayMs={delayMs}.");
@@ -546,12 +501,11 @@ public partial class ManageCommandsDialog : Window
             _selectedStep.Type = type;
             _selectedStep.Value = value;
             _selectedStep.DelayMs = delayMs;
+            _selectedStep.PressType = pressType;
 
             DebugLog.Write($"ManageCommandsDialog.NewUpdateStep_Click: updating step id={_selectedStep.Id} type='{type}' value='{value}' delayMs={delayMs}.");
 
             repo.SaveStep(_selectedStep);
-
-            DebugLog.Write($"ManageCommandsDialog.NewUpdateStep_Click: updated.");
         }
 
         int? selectedStepId = _selectedStep?.Id;
@@ -562,6 +516,22 @@ public partial class ManageCommandsDialog : Window
             StepListView.SelectedItem = (StepListView.ItemsSource as List<StepViewModel>)
                 ?.FirstOrDefault(s => s.Step.Id == selectedStepId);
         }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // StepTypeComboBox_SelectionChanged
+    //
+    // Shows or hides the PressType dropdown based on whether the step type is "key".
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void StepTypeComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (PressTypeComboBox == null)
+        {
+            return;
+        }
+        string type = (StepTypeComboBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? string.Empty;
+        DebugLog.Write($"ManageCommandsDialog.StepTypeComboBox_SelectionChanged: type='{type}'.");
+        PressTypeComboBox.Visibility = (type == "key") ? Visibility.Visible : Visibility.Collapsed;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -698,6 +668,11 @@ public partial class ManageCommandsDialog : Window
         {
             StepValueTextBox.Text = _selectedStep.Value;
         }
+
+        PressTypeComboBox.SelectedItem = PressTypeComboBox.Items
+            .OfType<ComboBoxItem>()
+            .FirstOrDefault(i => i.Content.ToString() == item.Step.PressType);
+        PressTypeComboBox.Visibility = (item.Step.Type == "key") ? Visibility.Visible : Visibility.Collapsed;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////

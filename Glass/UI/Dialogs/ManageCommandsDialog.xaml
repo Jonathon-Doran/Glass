@@ -119,10 +119,15 @@
             <!-- Step editor -->
             <DockPanel Grid.Row="6">
                 <TextBlock DockPanel.Dock="Left" Text="Type:" VerticalAlignment="Center" Width="70" Margin="0,0,8,0"/>
-                <ComboBox x:Name="StepTypeComboBox" SelectedIndex="0">
+                <ComboBox x:Name="StepTypeComboBox" SelectedIndex="0" Margin="8,0,0,0" SelectionChanged="StepTypeComboBox_SelectionChanged">
                     <ComboBoxItem Content="text"/>
                     <ComboBoxItem Content="key"/>
                     <ComboBoxItem Content="pageload"/>
+                </ComboBox>
+                <ComboBox x:Name="PressTypeComboBox" Width="120" Margin="8,0,0,0" SelectedIndex="0" Visibility="Collapsed">
+                    <ComboBoxItem Content="press"/>
+                    <ComboBoxItem Content="hold"/>
+                    <ComboBoxItem Content="release"/>
                 </ComboBox>
             </DockPanel>
 

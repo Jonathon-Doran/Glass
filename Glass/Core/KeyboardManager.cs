@@ -235,7 +235,9 @@ public class KeyboardManager
 
             if (binding.CommandId.HasValue && _commandCache.TryGetValue(binding.CommandId.Value, out var command))
             {
-                label = string.IsNullOrWhiteSpace(command.Label) ? command.Name : command.Label;
+                label = !string.IsNullOrWhiteSpace(binding.Label)
+                    ? binding.Label
+                    : string.IsNullOrWhiteSpace(command.Label) ? command.Name : command.Label;
             }
 
             keys[binding.Key] = new KeyDisplay
