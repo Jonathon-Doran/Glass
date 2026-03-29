@@ -430,41 +430,79 @@ static void HandleCmdDefine(const std::string& args)
 // HandleCmdStep
 //
 // Adds a single step to an existing command definition.
-// Protocol: cmd_step <commandId> <sequence> <type> <delayMs> <value>
+// Protocol for key steps:  cmd_step <commandId> <sequence> key <pressType> <delayMs> <value>
+// Protocol for text steps: cmd_step <commandId> <sequence> text <delayMs> <value>
+//
+// pressType:  press, hold, or release
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 static void HandleCmdStep(const std::string& args)
 {
- 
+    std::string tokens[6];
+    int count = ParseTokens(args, tokens, 5);
 
-    std::string tokens[5];
-    if (ParseTokens(args, tokens, 5) < 5)
+    if (count < 5)
     {
         Logger::Instance().Write("HandleCmdStep: requires commandId, sequence, type, delayMs, and value.");
         return;
     }
 
+    std::string& type = tokens[2];
+
+    if (type == "key")
+    {
+        count = ParseTokens(args, tokens, 6);
+    }
+
     CommandID    commandId = (CommandID)atoi(tokens[0].c_str());
     StepID       sequence = (StepID)atoi(tokens[1].c_str());
-    unsigned int delayMs = (unsigned int)atoi(tokens[3].c_str());
-    std::string& value = tokens[4];
 
     CommandActionType actionType;
-    if (tokens[2] == "key")
+    unsigned int      delayMs;
+    std::string       value;
+
+    if (type == "key")
     {
-        actionType = CommandActionType::Keystroke;
+        if (count < 6)
+        {
+            Logger::Instance().Write("HandleCmdStep: key type requires pressType.");
+            return;
+        }
+        std::string& pressType = tokens[3];
+        delayMs = (unsigned int)atoi(tokens[4].c_str());
+        value = tokens[5];
+
+        if (pressType == "press")
+        {
+            actionType = CommandActionType::Keystroke;
+        }
+        else if (pressType == "hold")
+        {
+            actionType = CommandActionType::KeystrokeHold;
+        }
+        else if (pressType == "release")
+        {
+            actionType = CommandActionType::KeystrokeRelease;
+        }
+        else
+        {
+            Logger::Instance().Write("HandleCmdStep: unknown pressType: %s", pressType.c_str());
+            return;
+        }
     }
-    else if (tokens[2] == "text")
+    else if (type == "text")
     {
+        delayMs = (unsigned int)atoi(tokens[3].c_str());
+        value = tokens[4];
         actionType = CommandActionType::Text;
     }
     else
     {
-        Logger::Instance().Write("HandleCmdStep: unknown type: %s", tokens[2].c_str());
+        Logger::Instance().Write("HandleCmdStep: unknown type: %s", type.c_str());
         return;
     }
 
     Logger::Instance().Write("HandleCmdStep: commandId=%u sequence=%u type=%s delayMs=%u value=%s",
-        commandId, sequence, tokens[2].c_str(), delayMs, value.c_str());
+        commandId, sequence, type.c_str(), delayMs, value.c_str());
 
     g_KeyManager.AddCommandStep(commandId, sequence, actionType, delayMs, value);
 }

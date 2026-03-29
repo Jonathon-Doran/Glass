@@ -30,7 +30,9 @@ enum class SpecialTarget : GroupID
 // Describes the type of action a command performs.
 enum class CommandActionType
 {
-    Keystroke,
+    Keystroke,       // press
+    KeystrokeHold,   // hold
+    KeystrokeRelease, // release
     Text
 };
 

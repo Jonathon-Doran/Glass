@@ -625,10 +625,47 @@ void KeyManager::EnqueueExecution(const CommandDefinition& cmd, const SessionEnt
                     }
                 });
         }
+        else if (step.actionType == CommandActionType::KeystrokeHold)
+        {
+            std::lock_guard<std::mutex> lock(_execMutex);
+            _execQueue.push([this, step, session, cmdId]()
+                {
+                    char command[512] = {};
+                    snprintf(command, sizeof(command), "relay %s \"press -hold %s\"",
+                        session->sessionName.c_str(), step.value.c_str());
+                    Logger::Instance().Write("KeyManager::ExecutionWorker: commandId=%u sequence=%u keystroke hold: %s",
+                        cmdId, step.sequence, command);
+                    pISInterface->ExecuteCommand(command);
+                    if (step.delayMs > 0)
+                    {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(HumanDelay(step.delayMs)));
+                    }
+                });
+        }
+        else if (step.actionType == CommandActionType::KeystrokeRelease)
+        {
+            std::lock_guard<std::mutex> lock(_execMutex);
+            _execQueue.push([this, step, session, cmdId]()
+                {
+                    char command[512] = {};
+                    snprintf(command, sizeof(command), "relay %s \"press -release %s\"",
+                        session->sessionName.c_str(), step.value.c_str());
+                    Logger::Instance().Write("KeyManager::ExecutionWorker: commandId=%u sequence=%u keystroke release: %s",
+                        cmdId, step.sequence, command);
+                    pISInterface->ExecuteCommand(command);
+                    if (step.delayMs > 0)
+                    {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(HumanDelay(step.delayMs)));
+                    }
+                });
+        }
         else
         {
             // Text — one task per character with randomized delay
+            Logger::Instance().Write("KeyManager:  before substitution '%s'", step.value);
             std::string substituted = SubstituteVariables(step.value);
+            Logger::Instance().Write("KeyManager:  after substitution '%s'", substituted);
+
             for (char ch : substituted)
             {
                 std::lock_guard<std::mutex> lock(_execMutex);
@@ -699,10 +736,9 @@ std::string KeyManager::SubstituteVariables(const std::string& value)
     size_t pos = result.find('{');
     if (pos == std::string::npos)
     {
+        Logger::Instance().Write("KeyManager: nothing to substitute '%s'", value);
         return result;
     }
-
-
 
     size_t start = 0;
     while ((start = result.find('{', start)) != std::string::npos)
@@ -710,6 +746,7 @@ std::string KeyManager::SubstituteVariables(const std::string& value)
         size_t end = result.find('}', start);
         if (end == std::string::npos)
         {
+            Logger::Instance().Write("KeyManager:  no matching close brace '%s'", value);
             break;
         }
 

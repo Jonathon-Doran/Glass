@@ -410,6 +410,7 @@ public partial class MainWindow : Window
             foreach (CommandStep step in full.Steps.OrderBy(s => s.Sequence))
             {
                 string value = step.Value;
+                string message;
 
                 if (step.Type == "pageload")
                 {
@@ -423,9 +424,13 @@ public partial class MainWindow : Window
                     {
                         value = resolved;
                     }
+                    message = $"cmd_step {full.Id} {step.Sequence} {step.Type} {step.PressType} {step.DelayMs} {value}";
+                }
+                else
+                {
+                    message = $"cmd_step {full.Id} {step.Sequence} {step.Type} {step.DelayMs} {value}";
                 }
 
-                string message = $"cmd_step {full.Id} {step.Sequence} {step.Type} {step.DelayMs} {value}";
                 GlassContext.ISXGlassPipe.Send(message);
             }
         }
