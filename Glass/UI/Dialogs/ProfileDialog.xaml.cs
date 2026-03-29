@@ -1365,6 +1365,9 @@ public partial class ProfileDialog : Window
             TriggerOnComboBox.SelectedItem = TriggerOnComboBox.Items
                 .OfType<ComboBoxItem>()
                 .FirstOrDefault(i => i.Tag is int tag && tag == (int)binding.Binding.TriggerOn);
+
+            RepeatCheckBox.IsChecked = binding.Binding.KeyType == KeyType.Toggle;
+            RepeatIntervalTextBox.Text = (binding.Binding.RepeatIntervalMs / 1000.0).ToString();
         }
         else
         {
@@ -1374,6 +1377,8 @@ public partial class ProfileDialog : Window
             RoundRobinCheckBox.IsChecked = false;
             LabelTextBox.Text = string.Empty;
             TriggerOnComboBox.SelectedIndex = 0;
+            RepeatCheckBox.IsChecked = false;
+            RepeatIntervalTextBox.Text = "2";
         }
     }
 
@@ -1425,6 +1430,8 @@ public partial class ProfileDialog : Window
         binding.RoundRobin = roundRobin;
         binding.TriggerOn = triggerOn;
         binding.Label = string.IsNullOrWhiteSpace(LabelTextBox.Text) ? null : LabelTextBox.Text.Trim();
+        binding.KeyType = RepeatCheckBox.IsChecked == true ? KeyType.Toggle : KeyType.Momentary;
+        binding.RepeatIntervalMs = (int)(double.TryParse(RepeatIntervalTextBox.Text, out double seconds) && seconds >= 2.0 ? seconds * 1000 : 2000);
 
         KeyBindingRepository repo = new KeyBindingRepository();
         repo.Save(binding);
@@ -1475,6 +1482,8 @@ public partial class ProfileDialog : Window
         TargetGroupComboBox.SelectedIndex = 0;
         RoundRobinCheckBox.IsChecked = false;
         TriggerOnComboBox.SelectedIndex = 0;
+        RepeatCheckBox.IsChecked = false;
+        RepeatIntervalTextBox.Text = "2";
 
         LoadBindingList(page.KeyPageId);
         RefreshKeyLayout();
@@ -1511,6 +1520,9 @@ public partial class ProfileDialog : Window
         TriggerOnComboBox.SelectedItem = TriggerOnComboBox.Items
             .OfType<ComboBoxItem>()
             .FirstOrDefault(i => i.Tag is int tag && tag == (int)item.Binding.TriggerOn);
+
+        RepeatCheckBox.IsChecked = item.Binding.KeyType == KeyType.Toggle;
+        RepeatIntervalTextBox.Text = (item.Binding.RepeatIntervalMs / 1000.0).ToString();
     }
 
 
@@ -1594,6 +1606,30 @@ public partial class ProfileDialog : Window
 
         LoadPageComboBox();
         LoadKeyboardLayoutTab();
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // RepeatCheckBox_Checked
+    //
+    // Shows the repeat interval field when Repeat is checked.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void RepeatCheckBox_Checked(object sender, RoutedEventArgs e)
+    {
+        DebugLog.Write("ProfileDialog.RepeatCheckBox_Checked: showing interval field.");
+        RepeatIntervalLabel.Visibility = Visibility.Visible;
+        RepeatIntervalTextBox.Visibility = Visibility.Visible;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // RepeatCheckBox_Unchecked
+    //
+    // Hides the repeat interval field when Repeat is unchecked.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void RepeatCheckBox_Unchecked(object sender, RoutedEventArgs e)
+    {
+        DebugLog.Write("ProfileDialog.RepeatCheckBox_Unchecked: hiding interval field.");
+        RepeatIntervalLabel.Visibility = Visibility.Collapsed;
+        RepeatIntervalTextBox.Visibility = Visibility.Collapsed;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

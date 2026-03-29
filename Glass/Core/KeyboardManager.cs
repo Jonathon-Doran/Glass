@@ -244,7 +244,7 @@ public class KeyboardManager
             {
                 KeyName = binding.Key,
                 Label = label,
-                KeyType = KeyType.Momentary
+                KeyType = binding.KeyType
             };
         }
 
@@ -286,27 +286,11 @@ public class KeyboardManager
             (e.IsPressed && b.TriggerOn == TriggerOn.Press) ||
             (!e.IsPressed && b.TriggerOn == TriggerOn.Release)));
 
-        if (binding == null)
-        {
-            DebugLog.Write($"KeyboardManager.OnKeyStateChanged: no binding for key='{e.KeyName}' pressed={e.IsPressed} on page='{activePage.Name}'.");
-            return;
-        }
 
-        if (!binding.CommandId.HasValue)
-        {
-            DebugLog.Write($"KeyboardManager.OnKeyStateChanged: binding for key='{e.KeyName}' has no command.");
-            return;
-        }
 
-        if (!_commandCache.TryGetValue(binding.CommandId.Value, out Command? command))
-        {
-            DebugLog.Write($"KeyboardManager.OnKeyStateChanged: commandId={binding.CommandId.Value} not found in cache.");
-            return;
-        }
+        DebugLog.Write($"KeyboardManager.OnKeyStateChanged: key='{e.KeyName}'.");
 
-        DebugLog.Write($"KeyboardManager.OnKeyStateChanged: key='{e.KeyName}' page='{activePage.Name}' command='{command.Name}' target='{binding.Target}'.");
-
-        ExecuteCommand(command, instance, binding.Target, binding.RoundRobin);
+        ExecuteCommand(binding, instance);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -321,14 +305,66 @@ public class KeyboardManager
     // target:        The relay group ID to execute on
     // roundrobin     Whether to round-robin within the target
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void ExecuteCommand(Command command, HidDeviceInstance instance, int target, bool roundrobin)
+    private void ExecuteCommand(KeyBinding? binding, HidDeviceInstance instance)
     {
+        if (binding == null)
+        {
+            DebugLog.Write("KeyboardManager.ExecuteCommand: binding is null.");
+            return;
+        }
+        if (!binding.CommandId.HasValue)
+        {
+            DebugLog.Write($"KeyboardManager.ExecuteCommand: binding key='{binding.Key}' has no command.");
+            return;
+        }
+
+        if (!_commandCache.TryGetValue(binding.CommandId.Value, out Command? command))
+        {
+            DebugLog.Write($"KeyboardManager.ExecuteCommand: commandId={binding.CommandId.Value} not found in cache.");
+            return;
+        }
+
+        int target = binding.Target;
+        bool roundrobin = binding.RoundRobin;
+
         DebugLog.Write($"KeyboardManager.ExecuteCommand: command='{command.Name}' instance={instance} target={target} roundrobin={roundrobin}.");
+
 
         if ((command.Steps == null) || (command.Steps.Count == 0))
         {
             DebugLog.Write($"KeyboardManager.ExecuteCommand: command='{command.Name}' has no steps.");
             return;
+        }
+
+        if (binding.KeyType == KeyType.Toggle)
+        {
+            binding.IsToggled = !binding.IsToggled;
+            DebugLog.Write($"KeyboardManager.ExecuteCommand: toggle key='{binding.Key}' isToggled={binding.IsToggled}.");
+
+            if (binding.RepeatIntervalMs > 0)
+            {
+                if (binding.IsToggled)
+                {
+                    string repeatMessage = $"cmd_repeat_start {command.Id} {target} {binding.RepeatIntervalMs} {(roundrobin ? 1 : 0)}";
+                    DebugLog.Write($"KeyboardManager.ExecuteCommand: sending: {repeatMessage}");
+                    GlassContext.ISXGlassPipe.Send(repeatMessage);
+                }
+                else
+                {
+                    string stopMessage = $"cmd_repeat_stop {command.Id} {target}";
+                    DebugLog.Write($"KeyboardManager.ExecuteCommand: sending: {stopMessage}");
+                    GlassContext.ISXGlassPipe.Send(stopMessage);
+                }
+
+                UpdateKeyToggleState(instance, binding);
+                return;
+            }
+
+            if (!binding.IsToggled)
+            {
+                DebugLog.Write($"KeyboardManager.ExecuteCommand: toggle off, skipping execution.");
+                return;
+            }
         }
 
         if (target > 0)
@@ -355,6 +391,41 @@ public class KeyboardManager
                 DebugLog.Write($"KeyboardManager.ExecuteCommand: step type='{step.Type}' handled by ISXGlass.");
             }
         }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // UpdateKeyToggleState
+    //
+    // Updates the OSD key display to reflect the current toggle state of a binding.
+    //
+    // instance:  The device instance
+    // binding:   The binding whose toggle state has changed
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void UpdateKeyToggleState(HidDeviceInstance instance, KeyBinding binding)
+    {
+        DebugLog.Write($"KeyboardManager.UpdateKeyToggleState: key='{binding.Key}' isToggled={binding.IsToggled}.");
+
+        if (!_osdWindows.TryGetValue(instance, out KeyboardOsdWindow? osd))
+        {
+            DebugLog.Write($"KeyboardManager.UpdateKeyToggleState: no OSD for {instance}.");
+            return;
+        }
+
+        string label = string.Empty;
+        if (binding.CommandId.HasValue && _commandCache.TryGetValue(binding.CommandId.Value, out Command? command))
+        {
+            label = !string.IsNullOrWhiteSpace(binding.Label) ? binding.Label : command.Label;
+        }
+
+        KeyDisplay keyDisplay = new KeyDisplay
+        {
+            KeyName = binding.Key,
+            Label = label,
+            KeyType = binding.KeyType,
+            IsPressed = binding.IsToggled
+        };
+
+        osd.UpdateKey(keyDisplay);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

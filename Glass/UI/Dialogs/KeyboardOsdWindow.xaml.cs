@@ -56,6 +56,22 @@ public partial class KeyboardOsdWindow : Window
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // UpdateKey
+    //
+    // Updates the display state of a single key in the OSD.
+    //
+    // keyDisplay:  The new display state for the key
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void UpdateKey(KeyDisplay keyDisplay)
+    {
+        DebugLog.Write($"KeyboardOsdWindow.UpdateKey: key='{keyDisplay.KeyName}'.");
+        Dispatcher.Invoke(() =>
+        {
+            KeyLayoutControl.UpdateKey(keyDisplay);
+        });
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Window_MouseLeftButtonDown
     //
     // Allows the window to be dragged by clicking anywhere on it.

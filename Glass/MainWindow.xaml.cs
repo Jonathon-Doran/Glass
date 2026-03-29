@@ -425,7 +425,7 @@ public partial class MainWindow : Window
                     }
                 }
 
-                string message = $"cmd_step {full.Id} {step.Sequence} {step.Type} {step.PressType} {step.DelayMs} {value}";
+                string message = $"cmd_step {full.Id} {step.Sequence} {step.Type} {step.DelayMs} {value}";
                 GlassContext.ISXGlassPipe.Send(message);
             }
         }

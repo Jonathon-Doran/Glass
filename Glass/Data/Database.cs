@@ -187,6 +187,10 @@ public class Database
         {
             ApplyMigration(conn, 20, Migration_020);
         }
+        if (version < 21)
+        {
+            ApplyMigration(conn, 21, Migration_021);
+        }
     }
 
     private int GetSchemaVersion()
@@ -223,357 +227,363 @@ public class Database
     }
 
     private const string Migration_002 = @"
-    ALTER TABLE Characters ADD COLUMN server TEXT NOT NULL DEFAULT 'Test';
-    ";
+        ALTER TABLE Characters ADD COLUMN server TEXT NOT NULL DEFAULT 'Test';
+        ";
     private const string Migration_003 = @"
-    CREATE TABLE IF NOT EXISTS CharacterSetSlots (
-        id                  INTEGER PRIMARY KEY,
-        character_set_id    INTEGER NOT NULL REFERENCES CharacterSets(id),
-        slot_number         INTEGER NOT NULL,
-        character_id        INTEGER NOT NULL REFERENCES Characters(id),
-        UNIQUE (character_set_id, slot_number),
-        UNIQUE (character_set_id, character_id)
-    );
-    ";
+        CREATE TABLE IF NOT EXISTS CharacterSetSlots (
+            id                  INTEGER PRIMARY KEY,
+            character_set_id    INTEGER NOT NULL REFERENCES CharacterSets(id),
+            slot_number         INTEGER NOT NULL,
+            character_id        INTEGER NOT NULL REFERENCES Characters(id),
+            UNIQUE (character_set_id, slot_number),
+            UNIQUE (character_set_id, character_id)
+        );
+        ";
 
     private const string Migration_004 = @"
-    CREATE TABLE IF NOT EXISTS WindowLayouts_new (
-        id                  INTEGER PRIMARY KEY,
-        name                TEXT NOT NULL,
-        character_set_id    INTEGER NOT NULL REFERENCES CharacterSets(id),
-        machine_id          INTEGER REFERENCES Machines(id),
-        monitor_fingerprint TEXT NOT NULL DEFAULT '',
-        UNIQUE (character_set_id, machine_id, name)
-    );
-    INSERT INTO WindowLayouts_new SELECT * FROM WindowLayouts;
-    DROP TABLE WindowLayouts;
-    ALTER TABLE WindowLayouts_new RENAME TO WindowLayouts;
-    ";
+        CREATE TABLE IF NOT EXISTS WindowLayouts_new (
+            id                  INTEGER PRIMARY KEY,
+            name                TEXT NOT NULL,
+            character_set_id    INTEGER NOT NULL REFERENCES CharacterSets(id),
+            machine_id          INTEGER REFERENCES Machines(id),
+            monitor_fingerprint TEXT NOT NULL DEFAULT '',
+            UNIQUE (character_set_id, machine_id, name)
+        );
+        INSERT INTO WindowLayouts_new SELECT * FROM WindowLayouts;
+        DROP TABLE WindowLayouts;
+        ALTER TABLE WindowLayouts_new RENAME TO WindowLayouts;
+        ";
 
     private const string Migration_005 = @"
-    ALTER TABLE KeyBindings RENAME COLUMN params TO action;
-    ";
+        ALTER TABLE KeyBindings RENAME COLUMN params TO action;
+        ";
+
     private const string Migration_006 = @"
-    ALTER TABLE CharacterSets ADD COLUMN start_page_id INTEGER REFERENCES KeyPages(id);
-    ";
+        ALTER TABLE CharacterSets ADD COLUMN start_page_id INTEGER REFERENCES KeyPages(id);
+        ";
 
     private const string Migration_007 = @"
-    CREATE TABLE IF NOT EXISTS Commands (
-        id      INTEGER PRIMARY KEY,
-        name    TEXT NOT NULL UNIQUE
-    );
+        CREATE TABLE IF NOT EXISTS Commands (
+            id      INTEGER PRIMARY KEY,
+            name    TEXT NOT NULL UNIQUE
+        );
 
-    CREATE TABLE IF NOT EXISTS CommandSteps (
-        id          INTEGER PRIMARY KEY,
-        command_id  INTEGER NOT NULL REFERENCES Commands(id),
-        sequence    INTEGER NOT NULL,
-        type        TEXT NOT NULL,
-        value       TEXT NOT NULL,
-        delay_ms    INTEGER NOT NULL DEFAULT 0,
-        UNIQUE (command_id, sequence)
-    );
+        CREATE TABLE IF NOT EXISTS CommandSteps (
+            id          INTEGER PRIMARY KEY,
+            command_id  INTEGER NOT NULL REFERENCES Commands(id),
+            sequence    INTEGER NOT NULL,
+            type        TEXT NOT NULL,
+            value       TEXT NOT NULL,
+            delay_ms    INTEGER NOT NULL DEFAULT 0,
+            UNIQUE (command_id, sequence)
+        );
 
-    CREATE TABLE IF NOT EXISTS KeyBindings_new (
-        id          INTEGER PRIMARY KEY,
-        key_page_id INTEGER NOT NULL REFERENCES KeyPages(id),
-        key         TEXT NOT NULL,
-        command_id  INTEGER REFERENCES Commands(id),
-        target      TEXT NOT NULL DEFAULT 'self',
-        round_robin INTEGER NOT NULL DEFAULT 0,
-        UNIQUE (key_page_id, key)
-    );
+        CREATE TABLE IF NOT EXISTS KeyBindings_new (
+            id          INTEGER PRIMARY KEY,
+            key_page_id INTEGER NOT NULL REFERENCES KeyPages(id),
+            key         TEXT NOT NULL,
+            command_id  INTEGER REFERENCES Commands(id),
+            target      TEXT NOT NULL DEFAULT 'self',
+            round_robin INTEGER NOT NULL DEFAULT 0,
+            UNIQUE (key_page_id, key)
+        );
 
-    INSERT INTO KeyBindings_new (id, key_page_id, key, round_robin)
-    SELECT id, key_page_id, key, round_robin FROM KeyBindings;
+        INSERT INTO KeyBindings_new (id, key_page_id, key, round_robin)
+        SELECT id, key_page_id, key, round_robin FROM KeyBindings;
 
-    DROP TABLE KeyBindings;
+        DROP TABLE KeyBindings;
 
-    ALTER TABLE KeyBindings_new RENAME TO KeyBindings;
-    ";
+        ALTER TABLE KeyBindings_new RENAME TO KeyBindings;
+        ";
 
     private const string Migration_008 = @"
-    CREATE TABLE IF NOT EXISTS KeyAliases (
-        id      INTEGER PRIMARY KEY,
-        name    TEXT NOT NULL UNIQUE,
-        value   TEXT NOT NULL
-    );
-    ";
+        CREATE TABLE IF NOT EXISTS KeyAliases (
+            id      INTEGER PRIMARY KEY,
+            name    TEXT NOT NULL UNIQUE,
+            value   TEXT NOT NULL
+        );
+        ";
 
     private const string Migration_009 = @"
-    CREATE TABLE IF NOT EXISTS KeyBindings_new (
-        id              INTEGER PRIMARY KEY,
-        key_page_id     INTEGER NOT NULL REFERENCES KeyPages(id),
-        key             TEXT NOT NULL,
-        command_id      INTEGER REFERENCES Commands(id),
-        target          INTEGER NOT NULL DEFAULT -1,
-        relay_group_id  INTEGER REFERENCES RelayGroups(id),
-        round_robin     INTEGER NOT NULL DEFAULT 0,
-        label           TEXT,
-        UNIQUE (key_page_id, key)
-    );
+        CREATE TABLE IF NOT EXISTS KeyBindings_new (
+            id              INTEGER PRIMARY KEY,
+            key_page_id     INTEGER NOT NULL REFERENCES KeyPages(id),
+            key             TEXT NOT NULL,
+            command_id      INTEGER REFERENCES Commands(id),
+            target          INTEGER NOT NULL DEFAULT -1,
+            relay_group_id  INTEGER REFERENCES RelayGroups(id),
+            round_robin     INTEGER NOT NULL DEFAULT 0,
+            label           TEXT,
+            UNIQUE (key_page_id, key)
+        );
 
-    INSERT INTO KeyBindings_new (id, key_page_id, key, command_id, target, relay_group_id, round_robin)
-    SELECT
-        kb.id,
-        kb.key_page_id,
-        kb.key,
-        kb.command_id,
-        CASE kb.target
-            WHEN 'Self'           THEN 0
-            WHEN 'All Characters' THEN 1
-            WHEN 'All Others'     THEN 2
-            ELSE                       3
-        END,
-        CASE kb.target
-            WHEN 'Self'           THEN NULL
-            WHEN 'All Characters' THEN NULL
-            WHEN 'All Others'     THEN NULL
-            ELSE (SELECT id FROM RelayGroups WHERE name = kb.target)
-        END,
-        kb.round_robin
-    FROM KeyBindings kb;
+        INSERT INTO KeyBindings_new (id, key_page_id, key, command_id, target, relay_group_id, round_robin)
+        SELECT
+            kb.id,
+            kb.key_page_id,
+            kb.key,
+            kb.command_id,
+            CASE kb.target
+                WHEN 'Self'           THEN 0
+                WHEN 'All Characters' THEN 1
+                WHEN 'All Others'     THEN 2
+                ELSE                       3
+            END,
+            CASE kb.target
+                WHEN 'Self'           THEN NULL
+                WHEN 'All Characters' THEN NULL
+                WHEN 'All Others'     THEN NULL
+                ELSE (SELECT id FROM RelayGroups WHERE name = kb.target)
+            END,
+            kb.round_robin
+        FROM KeyBindings kb;
 
-    DROP TABLE KeyBindings;
+        DROP TABLE KeyBindings;
 
-    ALTER TABLE KeyBindings_new RENAME TO KeyBindings;
-";
-
-    private const string Migration_010 = @"
-    CREATE TABLE IF NOT EXISTS Monitors_new (
-        id           INTEGER PRIMARY KEY,
-        machine_id   INTEGER NOT NULL REFERENCES Machines(id),
-        display_name TEXT NOT NULL,
-        width        INTEGER NOT NULL,
-        height       INTEGER NOT NULL,
-        orientation  INTEGER NOT NULL DEFAULT 0,
-        UNIQUE (machine_id, display_name)
-    );
-
-    INSERT OR IGNORE INTO Monitors_new SELECT * FROM Monitors;
-
-    DROP TABLE Monitors;
-
-    ALTER TABLE Monitors_new RENAME TO Monitors;
-";
-
-    private const string Migration_011 = @"
-    PRAGMA foreign_keys = OFF;
-
-    CREATE TABLE IF NOT EXISTS ProfilePages (
-        id                  INTEGER PRIMARY KEY,
-        character_set_id    INTEGER NOT NULL REFERENCES CharacterSets(id),
-        key_page_id         INTEGER NOT NULL REFERENCES KeyPages(id),
-        is_start_page       INTEGER NOT NULL DEFAULT 0,
-        UNIQUE (character_set_id, key_page_id)
-    );
-
-    INSERT INTO ProfilePages (character_set_id, key_page_id, is_start_page)
-    SELECT id, start_page_id, 1
-    FROM CharacterSets
-    WHERE start_page_id IS NOT NULL;
-
-    CREATE TABLE CharacterSets_new (
-        id      INTEGER PRIMARY KEY,
-        name    TEXT NOT NULL UNIQUE
-    );
-
-    INSERT INTO CharacterSets_new SELECT id, name FROM CharacterSets;
-    DROP TABLE CharacterSets;
-    ALTER TABLE CharacterSets_new RENAME TO CharacterSets;
-
-    PRAGMA foreign_keys = ON;
-";
-
-    private const string Migration_012 = @"
-    ALTER TABLE CharacterSets RENAME TO Profiles;
-    ALTER TABLE CharacterSetSlots RENAME TO ProfileSlots;
-    ALTER TABLE CharacterSetMembers RENAME TO ProfileMembers;
-
-    CREATE TABLE ProfileSlots_new (
-        id          INTEGER PRIMARY KEY,
-        profile_id  INTEGER NOT NULL REFERENCES Profiles(id),
-        slot_number INTEGER NOT NULL,
-        character_id INTEGER NOT NULL REFERENCES Characters(id),
-        UNIQUE (profile_id, slot_number),
-        UNIQUE (profile_id, character_id)
-    );
-
-    INSERT INTO ProfileSlots_new SELECT id, character_set_id, slot_number, character_id FROM ProfileSlots;
-    DROP TABLE ProfileSlots;
-    ALTER TABLE ProfileSlots_new RENAME TO ProfileSlots;
-";
-
-    private const string Migration_013 = @"
-    DROP TABLE IF EXISTS CharacterSetMembers;
-    DROP TABLE IF EXISTS CharacterSets;
-
-    CREATE TABLE WindowLayouts_new (
-        id                  INTEGER PRIMARY KEY,
-        name                TEXT NOT NULL,
-        profile_id          INTEGER NOT NULL REFERENCES Profiles(id),
-        machine_id          INTEGER NOT NULL REFERENCES Machines(id),
-        monitor_fingerprint TEXT NOT NULL DEFAULT '',
-        UNIQUE (profile_id, machine_id, name)
-    );
-    INSERT INTO WindowLayouts_new SELECT id, name, character_set_id, machine_id, monitor_fingerprint FROM WindowLayouts;
-    DROP TABLE WindowLayouts;
-    ALTER TABLE WindowLayouts_new RENAME TO WindowLayouts;
-
-    CREATE TABLE ProfilePages_new (
-        id                  INTEGER PRIMARY KEY,
-        profile_id          INTEGER NOT NULL REFERENCES Profiles(id),
-        key_page_id         INTEGER NOT NULL REFERENCES KeyPages(id),
-        is_start_page       INTEGER NOT NULL DEFAULT 0,
-        UNIQUE (profile_id, key_page_id)
-    );
-    INSERT INTO ProfilePages_new SELECT id, character_set_id, key_page_id, is_start_page FROM ProfilePages;
-    DROP TABLE ProfilePages;
-    ALTER TABLE ProfilePages_new RENAME TO ProfilePages;
-
-    CREATE TABLE ProfileMembers_new (
-        profile_id      INTEGER NOT NULL REFERENCES Profiles(id),
-        character_id    INTEGER NOT NULL REFERENCES Characters(id),
-        PRIMARY KEY (profile_id, character_id)
-    );
-    INSERT INTO ProfileMembers_new SELECT character_set_id, character_id FROM ProfileMembers;
-    DROP TABLE ProfileMembers;
-    ALTER TABLE ProfileMembers_new RENAME TO ProfileMembers;
-
-";
-    private const string Migration_014 = @"
-    CREATE TABLE IF NOT EXISTS MachineDevices (
-        id              INTEGER PRIMARY KEY,
-        machine_id      INTEGER NOT NULL REFERENCES Machines(id),
-        keyboard_type   TEXT NOT NULL,
-        instance_count  INTEGER NOT NULL DEFAULT 1,
-        UNIQUE (machine_id, keyboard_type)
-    );
-
-    ALTER TABLE Profiles ADD COLUMN machine_id INTEGER REFERENCES Machines(id);
-";
-
-    private const string Migration_015 = @"
-    ALTER TABLE Commands ADD COLUMN short_name TEXT NOT NULL DEFAULT '';
-";
-
-    private const string Migration_016 = @"
-    CREATE TABLE IF NOT EXISTS KeyPages_new (
-        id      INTEGER PRIMARY KEY,
-        name    TEXT NOT NULL,
-        device  TEXT NOT NULL,
-        UNIQUE (name, device)
-    );
-
-    INSERT INTO KeyPages_new (id, name, device)
-    SELECT id, name, device FROM KeyPages;
-
-    DROP TABLE KeyPages;
-
-    ALTER TABLE KeyPages_new RENAME TO KeyPages;
+        ALTER TABLE KeyBindings_new RENAME TO KeyBindings;
     ";
 
+    private const string Migration_010 = @"
+        CREATE TABLE IF NOT EXISTS Monitors_new (
+            id           INTEGER PRIMARY KEY,
+            machine_id   INTEGER NOT NULL REFERENCES Machines(id),
+            display_name TEXT NOT NULL,
+            width        INTEGER NOT NULL,
+            height       INTEGER NOT NULL,
+            orientation  INTEGER NOT NULL DEFAULT 0,
+            UNIQUE (machine_id, display_name)
+        );
+
+        INSERT OR IGNORE INTO Monitors_new SELECT * FROM Monitors;
+
+        DROP TABLE Monitors;
+
+        ALTER TABLE Monitors_new RENAME TO Monitors;
+    ";
+
+    private const string Migration_011 = @"
+        PRAGMA foreign_keys = OFF;
+
+        CREATE TABLE IF NOT EXISTS ProfilePages (
+            id                  INTEGER PRIMARY KEY,
+            character_set_id    INTEGER NOT NULL REFERENCES CharacterSets(id),
+            key_page_id         INTEGER NOT NULL REFERENCES KeyPages(id),
+            is_start_page       INTEGER NOT NULL DEFAULT 0,
+            UNIQUE (character_set_id, key_page_id)
+        );
+
+        INSERT INTO ProfilePages (character_set_id, key_page_id, is_start_page)
+        SELECT id, start_page_id, 1
+        FROM CharacterSets
+        WHERE start_page_id IS NOT NULL;
+
+        CREATE TABLE CharacterSets_new (
+            id      INTEGER PRIMARY KEY,
+            name    TEXT NOT NULL UNIQUE
+        );
+
+        INSERT INTO CharacterSets_new SELECT id, name FROM CharacterSets;
+        DROP TABLE CharacterSets;
+        ALTER TABLE CharacterSets_new RENAME TO CharacterSets;
+
+        PRAGMA foreign_keys = ON;
+    ";
+
+    private const string Migration_012 = @"
+        ALTER TABLE CharacterSets RENAME TO Profiles;
+        ALTER TABLE CharacterSetSlots RENAME TO ProfileSlots;
+        ALTER TABLE CharacterSetMembers RENAME TO ProfileMembers;
+
+        CREATE TABLE ProfileSlots_new (
+            id          INTEGER PRIMARY KEY,
+            profile_id  INTEGER NOT NULL REFERENCES Profiles(id),
+            slot_number INTEGER NOT NULL,
+            character_id INTEGER NOT NULL REFERENCES Characters(id),
+            UNIQUE (profile_id, slot_number),
+            UNIQUE (profile_id, character_id)
+        );
+
+        INSERT INTO ProfileSlots_new SELECT id, character_set_id, slot_number, character_id FROM ProfileSlots;
+        DROP TABLE ProfileSlots;
+        ALTER TABLE ProfileSlots_new RENAME TO ProfileSlots;
+    ";
+
+    private const string Migration_013 = @"
+        DROP TABLE IF EXISTS CharacterSetMembers;
+        DROP TABLE IF EXISTS CharacterSets;
+
+        CREATE TABLE WindowLayouts_new (
+            id                  INTEGER PRIMARY KEY,
+            name                TEXT NOT NULL,
+            profile_id          INTEGER NOT NULL REFERENCES Profiles(id),
+            machine_id          INTEGER NOT NULL REFERENCES Machines(id),
+            monitor_fingerprint TEXT NOT NULL DEFAULT '',
+            UNIQUE (profile_id, machine_id, name)
+        );
+        INSERT INTO WindowLayouts_new SELECT id, name, character_set_id, machine_id, monitor_fingerprint FROM WindowLayouts;
+        DROP TABLE WindowLayouts;
+        ALTER TABLE WindowLayouts_new RENAME TO WindowLayouts;
+
+        CREATE TABLE ProfilePages_new (
+            id                  INTEGER PRIMARY KEY,
+            profile_id          INTEGER NOT NULL REFERENCES Profiles(id),
+            key_page_id         INTEGER NOT NULL REFERENCES KeyPages(id),
+            is_start_page       INTEGER NOT NULL DEFAULT 0,
+            UNIQUE (profile_id, key_page_id)
+        );
+        INSERT INTO ProfilePages_new SELECT id, character_set_id, key_page_id, is_start_page FROM ProfilePages;
+        DROP TABLE ProfilePages;
+        ALTER TABLE ProfilePages_new RENAME TO ProfilePages;
+
+        CREATE TABLE ProfileMembers_new (
+            profile_id      INTEGER NOT NULL REFERENCES Profiles(id),
+            character_id    INTEGER NOT NULL REFERENCES Characters(id),
+            PRIMARY KEY (profile_id, character_id)
+        );
+        INSERT INTO ProfileMembers_new SELECT character_set_id, character_id FROM ProfileMembers;
+        DROP TABLE ProfileMembers;
+        ALTER TABLE ProfileMembers_new RENAME TO ProfileMembers;
+
+    ";
+    private const string Migration_014 = @"
+        CREATE TABLE IF NOT EXISTS MachineDevices (
+            id              INTEGER PRIMARY KEY,
+            machine_id      INTEGER NOT NULL REFERENCES Machines(id),
+            keyboard_type   TEXT NOT NULL,
+            instance_count  INTEGER NOT NULL DEFAULT 1,
+            UNIQUE (machine_id, keyboard_type)
+        );
+
+        ALTER TABLE Profiles ADD COLUMN machine_id INTEGER REFERENCES Machines(id);
+    ";
+
+    private const string Migration_015 = @"
+        ALTER TABLE Commands ADD COLUMN short_name TEXT NOT NULL DEFAULT '';
+    ";
+
+    private const string Migration_016 = @"
+        CREATE TABLE IF NOT EXISTS KeyPages_new (
+            id      INTEGER PRIMARY KEY,
+            name    TEXT NOT NULL,
+            device  TEXT NOT NULL,
+            UNIQUE (name, device)
+        );
+
+        INSERT INTO KeyPages_new (id, name, device)
+        SELECT id, name, device FROM KeyPages;
+
+        DROP TABLE KeyPages;
+
+        ALTER TABLE KeyPages_new RENAME TO KeyPages;
+        ";
+
     private const string Migration_017 = @"
-    -- Rebuild KeyBindings: collapse relay_group_id into target, drop label
-    CREATE TABLE KeyBindings_new (
-        id          INTEGER PRIMARY KEY,
-        key_page_id INTEGER NOT NULL REFERENCES KeyPages(id),
-        key         TEXT NOT NULL,
-        command_id  INTEGER REFERENCES Commands(id),
-        target      INTEGER NOT NULL DEFAULT 0,
-        round_robin INTEGER NOT NULL DEFAULT 0,
-        UNIQUE (key_page_id, key)
-    );
+        -- Rebuild KeyBindings: collapse relay_group_id into target, drop label
+        CREATE TABLE KeyBindings_new (
+            id          INTEGER PRIMARY KEY,
+            key_page_id INTEGER NOT NULL REFERENCES KeyPages(id),
+            key         TEXT NOT NULL,
+            command_id  INTEGER REFERENCES Commands(id),
+            target      INTEGER NOT NULL DEFAULT 0,
+            round_robin INTEGER NOT NULL DEFAULT 0,
+            UNIQUE (key_page_id, key)
+        );
 
-    INSERT INTO KeyBindings_new (id, key_page_id, key, command_id, target, round_robin)
-    SELECT
-        id,
-        key_page_id,
-        key,
-        command_id,
-        CASE
-            WHEN target = 3 AND relay_group_id IS NOT NULL THEN relay_group_id
-            ELSE target
-        END,
-        round_robin
-    FROM KeyBindings;
+        INSERT INTO KeyBindings_new (id, key_page_id, key, command_id, target, round_robin)
+        SELECT
+            id,
+            key_page_id,
+            key,
+            command_id,
+            CASE
+                WHEN target = 3 AND relay_group_id IS NOT NULL THEN relay_group_id
+                ELSE target
+            END,
+            round_robin
+        FROM KeyBindings;
 
-    DROP TABLE KeyBindings;
-    ALTER TABLE KeyBindings_new RENAME TO KeyBindings;
+        DROP TABLE KeyBindings;
+        ALTER TABLE KeyBindings_new RENAME TO KeyBindings;
 
-    -- Delete spurious special-case relay groups
-    DELETE FROM CharacterRelayGroups WHERE relay_group_id IN (
-        SELECT id FROM RelayGroups WHERE name IN ('All Characters', 'All Others')
-    );
-    DELETE FROM RelayGroups WHERE name IN ('All Characters', 'All Others');
+        -- Delete spurious special-case relay groups
+        DELETE FROM CharacterRelayGroups WHERE relay_group_id IN (
+            SELECT id FROM RelayGroups WHERE name IN ('All Characters', 'All Others')
+        );
+        DELETE FROM RelayGroups WHERE name IN ('All Characters', 'All Others');
 
-    -- Rebuild RelayGroups with clean sorted IDs starting at 4
-    CREATE TABLE RelayGroups_new (
-        id      INTEGER PRIMARY KEY,
-        name    TEXT NOT NULL UNIQUE
-    );
+        -- Rebuild RelayGroups with clean sorted IDs starting at 4
+        CREATE TABLE RelayGroups_new (
+            id      INTEGER PRIMARY KEY,
+            name    TEXT NOT NULL UNIQUE
+        );
 
-    INSERT INTO RelayGroups_new (id, name) VALUES
-        ( 4, 'Dotters'),
-        ( 5, 'Enchanters'),
-        ( 6, 'Evacs'),
-        ( 7, 'Hasters'),
-        ( 8, 'Mages'),
-        ( 9, 'Mezzers'),
-        (10, 'Nukers'),
-        (11, 'Patch Healers'),
-        (12, 'Pet Users'),
-        (13, 'Prime Healers'),
-        (14, 'Rooters'),
-        (15, 'Shadowknights'),
-        (16, 'Shamen'),
-        (17, 'Snares'),
-        (18, 'Stunners'),
-        (19, 'Tanks'),
-        (20, 'Wizards');
+        INSERT INTO RelayGroups_new (id, name) VALUES
+            ( 4, 'Dotters'),
+            ( 5, 'Enchanters'),
+            ( 6, 'Evacs'),
+            ( 7, 'Hasters'),
+            ( 8, 'Mages'),
+            ( 9, 'Mezzers'),
+            (10, 'Nukers'),
+            (11, 'Patch Healers'),
+            (12, 'Pet Users'),
+            (13, 'Prime Healers'),
+            (14, 'Rooters'),
+            (15, 'Shadowknights'),
+            (16, 'Shamen'),
+            (17, 'Snares'),
+            (18, 'Stunners'),
+            (19, 'Tanks'),
+            (20, 'Wizards');
 
-    DROP TABLE RelayGroups;
-    ALTER TABLE RelayGroups_new RENAME TO RelayGroups;
-";
+        DROP TABLE RelayGroups;
+        ALTER TABLE RelayGroups_new RENAME TO RelayGroups;
+    ";
 
     private const string Migration_018 = @"
-    CREATE TABLE RelayGroups_new (
-        id      INTEGER PRIMARY KEY,
-        name    TEXT NOT NULL UNIQUE
-    );
+        CREATE TABLE RelayGroups_new (
+            id      INTEGER PRIMARY KEY,
+            name    TEXT NOT NULL UNIQUE
+        );
 
-    INSERT INTO RelayGroups_new (id, name) VALUES
-        ( 4, 'Debuffers'),
-        ( 5, 'Dotters'),
-        ( 6, 'Enchanters'),
-        ( 7, 'Evacs'),
-        ( 8, 'Hasters'),
-        ( 9, 'Mages'),
-        (10, 'Mezzers'),
-        (11, 'Nukers'),
-        (12, 'Patch Healers'),
-        (13, 'Pet Users'),
-        (14, 'Prime Healers'),
-        (15, 'Rooters'),
-        (16, 'Shadowknights'),
-        (17, 'Shamen'),
-        (18, 'Slowers'),
-        (19, 'Snares'),
-        (20, 'Stunners'),
-        (21, 'Tanks'),
-        (22, 'Wizards');
+        INSERT INTO RelayGroups_new (id, name) VALUES
+            ( 4, 'Debuffers'),
+            ( 5, 'Dotters'),
+            ( 6, 'Enchanters'),
+            ( 7, 'Evacs'),
+            ( 8, 'Hasters'),
+            ( 9, 'Mages'),
+            (10, 'Mezzers'),
+            (11, 'Nukers'),
+            (12, 'Patch Healers'),
+            (13, 'Pet Users'),
+            (14, 'Prime Healers'),
+            (15, 'Rooters'),
+            (16, 'Shadowknights'),
+            (17, 'Shamen'),
+            (18, 'Slowers'),
+            (19, 'Snares'),
+            (20, 'Stunners'),
+            (21, 'Tanks'),
+            (22, 'Wizards');
 
-    DROP TABLE RelayGroups;
-    ALTER TABLE RelayGroups_new RENAME TO RelayGroups;
-";
+        DROP TABLE RelayGroups;
+        ALTER TABLE RelayGroups_new RENAME TO RelayGroups;
+    ";
 
     private const string Migration_019 = @"
-    ALTER TABLE KeyBindings ADD COLUMN label TEXT;
-    ALTER TABLE KeyBindings ADD COLUMN trigger_on INTEGER NOT NULL DEFAULT 0;
-";
+        ALTER TABLE KeyBindings ADD COLUMN label TEXT;
+        ALTER TABLE KeyBindings ADD COLUMN trigger_on INTEGER NOT NULL DEFAULT 0;
+    ";
 
     private const string Migration_020 = @"
-    ALTER TABLE CommandSteps ADD COLUMN press_type TEXT NOT NULL DEFAULT 'press';
-";
+        ALTER TABLE CommandSteps ADD COLUMN press_type TEXT NOT NULL DEFAULT 'press';
+    ";
+
+    private const string Migration_021 = @"
+        ALTER TABLE KeyBindings ADD COLUMN key_type INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE KeyBindings ADD COLUMN repeat_interval_ms INTEGER NOT NULL DEFAULT 1000;
+    ";
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"

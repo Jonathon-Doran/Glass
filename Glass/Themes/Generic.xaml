@@ -37,12 +37,12 @@
                                         <ColorAnimation
                                         Storyboard.TargetName="PART_Border"
                                         Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)"
-                                        To="#FF4500"
+                                        To="#FFD700"
                                         Duration="0:0:0.05"/>
                                         <ColorAnimation
                                         Storyboard.TargetName="PART_Text"
                                         Storyboard.TargetProperty="(TextBlock.Foreground).(SolidColorBrush.Color)"
-                                        To="#FF4500"
+                                        To="#FFD700"
                                         Duration="0:0:0.05"/>
                                     </Storyboard>
                                 </VisualState>

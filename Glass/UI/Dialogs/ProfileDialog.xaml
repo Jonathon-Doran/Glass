@@ -309,7 +309,10 @@
                         </DockPanel>
                         <DockPanel Grid.Row="4" Grid.ColumnSpan="3">
                             <TextBlock DockPanel.Dock="Left" Text="Label:" VerticalAlignment="Center" Width="70"/>
-                            <TextBox x:Name="LabelTextBox" Width="500" HorizontalAlignment="Left"/>
+                            <TextBox x:Name="LabelTextBox" Width="150" HorizontalAlignment="Left"/>
+                            <TextBlock x:Name="RepeatIntervalLabel" Text="Interval (s):" VerticalAlignment="Center" Margin="16,0,4,0" Visibility="Collapsed"/>
+                            <TextBox x:Name="RepeatIntervalTextBox" Width="80" HorizontalAlignment="Left" Margin="8,0,0,0" Visibility="Collapsed"/>
+                            <CheckBox x:Name="RepeatCheckBox" Content="Repeat" VerticalAlignment="Center" Margin="16,0,0,0" Checked="RepeatCheckBox_Checked" Unchecked="RepeatCheckBox_Unchecked"/>
                         </DockPanel>
                         <StackPanel Grid.Row="5" Grid.ColumnSpan="3" Orientation="Horizontal">
                             <Button x:Name="SaveBindingButton"  Content="Assign" Width="70" Margin="0,0,8,0"
