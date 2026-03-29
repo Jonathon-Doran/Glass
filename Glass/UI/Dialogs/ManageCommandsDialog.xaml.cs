@@ -91,7 +91,7 @@ public partial class ManageCommandsDialog : Window
             DebugLog.Write("ManageCommandsDialog.CommandListView_SelectionChanged: no command selected.");
             _selectedCommand = null;
             CommandNameTextBox.Text = string.Empty;
-            ShortNameTextBox.Text = string.Empty;
+            LabelTextBox.Text = string.Empty;
             StepListView.ItemsSource = null;
             return;
         }
@@ -104,7 +104,7 @@ public partial class ManageCommandsDialog : Window
         NewRenameButton.Content = "Rename";
         NewRenameButton.IsEnabled = true;
         CommandNameTextBox.Text = command.Name;
-        ShortNameTextBox.Text = command.Label;
+        LabelTextBox.Text = command.Label;
         ClearStepSelection();
         LoadStepList();
     }
@@ -180,7 +180,7 @@ public partial class ManageCommandsDialog : Window
         }
 
         string newName = CommandNameTextBox.Text.Trim();
-        string newShortName = ShortNameTextBox.Text.Trim();
+        string newLabel = LabelTextBox.Text.Trim();
 
         if (string.IsNullOrWhiteSpace(newName))
         {
@@ -189,7 +189,7 @@ public partial class ManageCommandsDialog : Window
             return;
         }
 
-        if ((newName == _selectedCommand.Name) && (newShortName == _selectedCommand.Label))
+        if ((newName == _selectedCommand.Name) && (newLabel == _selectedCommand.Label))
         {
             DebugLog.Write("ManageCommandsDialog.CommitRename: no changes, skipping save.");
             return;
@@ -207,10 +207,10 @@ public partial class ManageCommandsDialog : Window
         }
 
         _selectedCommand.Name = newName;
-        _selectedCommand.Label = newShortName;
+        _selectedCommand.Label = newLabel;
         repo.SaveCommand(_selectedCommand);
 
-        DebugLog.Write($"ManageCommandsDialog.CommitRename: saved name='{newName}' shortName='{newShortName}'.");
+        DebugLog.Write($"ManageCommandsDialog.CommitRename: saved name='{newName}' label='{newLabel}'.");
 
         int savedId = _selectedCommand.Id;
         _suppressNameLostFocus = true;
@@ -293,11 +293,11 @@ public partial class ManageCommandsDialog : Window
     private void NewRename_Click(object sender, RoutedEventArgs e)
     {
         string name = CommandNameTextBox.Text.Trim();
-        string shortName = ShortNameTextBox.Text.Trim();
+        string label = LabelTextBox.Text.Trim();
 
         if (_selectedCommand == null)
         {
-            DebugLog.Write($"ManageCommandsDialog.NewRename_Click: creating command name='{name}' shortName='{shortName}'.");
+            DebugLog.Write($"ManageCommandsDialog.NewRename_Click: creating command name='{name}' label='{label}'.");
 
             var repo = new CommandRepository();
             var existing = repo.GetAllCommands();
@@ -309,7 +309,7 @@ public partial class ManageCommandsDialog : Window
                 return;
             }
 
-            var command = new Command { Name = name, Label = shortName };
+            var command = new Command { Name = name, Label = label };
             repo.SaveCommand(command);
 
             DebugLog.Write($"ManageCommandsDialog.NewRename_Click: created. id={command.Id}.");

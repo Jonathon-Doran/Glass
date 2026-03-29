@@ -101,18 +101,18 @@ public class CommandRepository
         if (command.Id == 0)
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "INSERT INTO Commands (name, short_name) VALUES (@name, @shortName); SELECT last_insert_rowid();";
+            cmd.CommandText = "INSERT INTO Commands (name, label) VALUES (@name, @label); SELECT last_insert_rowid();";
             cmd.Parameters.AddWithValue("@name", command.Name);
-            cmd.Parameters.AddWithValue("@shortName", command.Label);
+            cmd.Parameters.AddWithValue("@label", command.Label);
             command.Id = Convert.ToInt32(cmd.ExecuteScalar());
             DebugLog.Write(DebugLog.Log_Database, $"CommandRepository.SaveCommand: inserted. id={command.Id}.");
         }
         else
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "UPDATE Commands SET name = @name, short_name = @shortName WHERE id = @id";
+            cmd.CommandText = "UPDATE Commands SET name = @name, label = @label WHERE id = @id";
             cmd.Parameters.AddWithValue("@name", command.Name);
-            cmd.Parameters.AddWithValue("@shortName", command.Label);
+            cmd.Parameters.AddWithValue("@label", command.Label);
             cmd.Parameters.AddWithValue("@id", command.Id);
             cmd.ExecuteNonQuery();
             DebugLog.Write(DebugLog.Log_Database, $"CommandRepository.SaveCommand: updated. id={command.Id}.");
