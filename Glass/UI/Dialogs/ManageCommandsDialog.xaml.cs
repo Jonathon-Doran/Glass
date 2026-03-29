@@ -68,12 +68,14 @@ public partial class ManageCommandsDialog : Window
 
         _selectedCommand = command;
 
+
+
         StepListView.ItemsSource = command.Steps
             .OrderBy(s => s.Sequence)
             .Select((s, i) => new StepViewModel
             {
                 Step = s,
-                DisplayText = $"{i + 1}. {s.Type}: {s.Value}" + (s.DelayMs > 0 ? $" (followed by {s.DelayMs}ms delay)" : "")
+                DisplayText = $"{i + 1}. {s.Type}{(s.Type == "key" && s.PressType != "press" ? $" [{s.PressType}]" : string.Empty)}: {s.Value}" + (s.DelayMs > 0 ? $" (followed by {s.DelayMs / 1000.0}s delay)" : "")
             }).ToList();
 
         DebugLog.Write($"ManageCommandsDialog.LoadStepList: loaded {command.Steps.Count} steps.");
@@ -463,7 +465,7 @@ public partial class ManageCommandsDialog : Window
         string type = (StepTypeComboBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "text";
         string pressType = (PressTypeComboBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "press";
         string value = StepValueTextBox.Text.Trim();
-        int delayMs = int.TryParse(StepDelayTextBox.Text, out int d) ? d : 0;
+        int delayMs = (int)(double.TryParse(StepDelayTextBox.Text, out double seconds) ? seconds * 1000 : 0);
 
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -657,7 +659,7 @@ public partial class ManageCommandsDialog : Window
             .OfType<ComboBoxItem>()
             .FirstOrDefault(i => i.Content.ToString() == item.Step.Type);
         StepValueTextBox.Text = item.Step.Value;
-        StepDelayTextBox.Text = item.Step.DelayMs.ToString();
+        StepDelayTextBox.Text = (item.Step.DelayMs / 1000.0).ToString();
 
         if (_selectedStep.Type == "pageload" && int.TryParse(_selectedStep.Value, out int pageId))
         {

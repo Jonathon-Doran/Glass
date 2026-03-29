@@ -137,7 +137,7 @@
             </DockPanel>
 
             <DockPanel Grid.Row="10">
-                <TextBlock DockPanel.Dock="Left" Text="Delay ms:" VerticalAlignment="Center" Width="70" Margin="0,0,8,0"/>
+                <TextBlock DockPanel.Dock="Left" Text="Delay (s):" VerticalAlignment="Center" Width="70" Margin="0,0,8,0"/>
                 <TextBox x:Name="StepDelayTextBox"/>
             </DockPanel>
 
