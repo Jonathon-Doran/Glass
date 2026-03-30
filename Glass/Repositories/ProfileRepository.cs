@@ -164,8 +164,9 @@ public class ProfileRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Save
     //
-    // Persists the profile name, slot assignments, and machine ID to the database.
-    // Returns the profile ID on success, or -1 if the profile already exists and overwrite is false.
+    // Persists the profile name, machine_id, layout_id, and slot assignments currently held by this
+    // repository to the database. Returns the profile ID on success, or -1 if the profile already
+    // exists and overwrite is false.
     //
     // overwrite:  If true, replaces an existing profile with the same name.
     //             If false and the profile exists, returns -1 and makes no changes.
@@ -181,19 +182,20 @@ public class ProfileRepository
             throw new InvalidOperationException("Profile name must be set before calling Save.");
         }
 
-        using SqliteConnection conn = Database.Instance.Connect();
+        using var conn = Database.Instance.Connect();
         conn.Open();
+        using var tx = conn.BeginTransaction();
 
-        using SqliteTransaction tx = conn.BeginTransaction();
         try
         {
-            using SqliteCommand checkCmd = conn.CreateCommand();
+            using var checkCmd = conn.CreateCommand();
             checkCmd.Transaction = tx;
             checkCmd.CommandText = "SELECT id FROM Profiles WHERE name = @name";
             checkCmd.Parameters.AddWithValue("@name", profileName);
-            object? existingId = checkCmd.ExecuteScalar();
+            var existingId = checkCmd.ExecuteScalar();
 
             int profileId;
+
             if (existingId != null)
             {
                 if (!overwrite)
@@ -206,35 +208,40 @@ public class ProfileRepository
                 profileId = Convert.ToInt32(existingId);
                 DebugLog.Write(DebugLog.Log_Database, $"ProfileRepository.Save: overwriting profileId={profileId}, deleting existing slots.");
 
-                using SqliteCommand deleteCmd = conn.CreateCommand();
+                using var deleteCmd = conn.CreateCommand();
                 deleteCmd.Transaction = tx;
                 deleteCmd.CommandText = "DELETE FROM ProfileSlots WHERE profile_id = @id";
                 deleteCmd.Parameters.AddWithValue("@id", profileId);
                 deleteCmd.ExecuteNonQuery();
 
-                using SqliteCommand updateCmd = conn.CreateCommand();
+                using var updateCmd = conn.CreateCommand();
                 updateCmd.Transaction = tx;
-                updateCmd.CommandText = "UPDATE Profiles SET machine_id = @machineId WHERE id = @id";
+                updateCmd.CommandText = "UPDATE Profiles SET machine_id = @machineId, layout_id = @layoutId WHERE id = @id";
                 updateCmd.Parameters.AddWithValue("@machineId", _profile.MachineId.HasValue ? _profile.MachineId.Value : DBNull.Value);
+                updateCmd.Parameters.AddWithValue("@layoutId", _profile.LayoutId.HasValue ? _profile.LayoutId.Value : DBNull.Value);
                 updateCmd.Parameters.AddWithValue("@id", profileId);
                 updateCmd.ExecuteNonQuery();
+
+                DebugLog.Write(DebugLog.Log_Database, $"ProfileRepository.Save: updated profile. machineId={_profile.MachineId} layoutId={_profile.LayoutId}.");
             }
             else
             {
-                using SqliteCommand insertCmd = conn.CreateCommand();
+                using var insertCmd = conn.CreateCommand();
                 insertCmd.Transaction = tx;
-                insertCmd.CommandText = "INSERT INTO Profiles (name, machine_id) VALUES (@name, @machineId); SELECT last_insert_rowid();";
+                insertCmd.CommandText = "INSERT INTO Profiles (name, machine_id, layout_id) VALUES (@name, @machineId, @layoutId); SELECT last_insert_rowid();";
                 insertCmd.Parameters.AddWithValue("@name", profileName);
                 insertCmd.Parameters.AddWithValue("@machineId", _profile.MachineId.HasValue ? _profile.MachineId.Value : DBNull.Value);
+                insertCmd.Parameters.AddWithValue("@layoutId", _profile.LayoutId.HasValue ? _profile.LayoutId.Value : DBNull.Value);
                 profileId = Convert.ToInt32(insertCmd.ExecuteScalar());
-                DebugLog.Write(DebugLog.Log_Database, $"ProfileRepository.Save: inserted new profile, profileId={profileId}.");
+
+                DebugLog.Write(DebugLog.Log_Database, $"ProfileRepository.Save: inserted new profile, profileId={profileId}. machineId={_profile.MachineId} layoutId={_profile.LayoutId}.");
             }
 
-            foreach (SlotAssignment slot in _profile.Slots)
+            foreach (var slot in _profile.Slots)
             {
                 DebugLog.Write(DebugLog.Log_Database, $"ProfileRepository.Save: slot {slot.SlotNumber} = characterId={slot.CharacterId}.");
 
-                using SqliteCommand insertSlot = conn.CreateCommand();
+                using var insertSlot = conn.CreateCommand();
                 insertSlot.Transaction = tx;
                 insertSlot.CommandText = "INSERT INTO ProfileSlots (profile_id, slot_number, character_id) VALUES (@setId, @slotNumber, @charId)";
                 insertSlot.Parameters.AddWithValue("@setId", profileId);

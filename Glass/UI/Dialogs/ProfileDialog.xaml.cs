@@ -62,8 +62,12 @@ public partial class ProfileDialog : Window
         if (profileName != null)
         {
             ProfileName.Text = profileName;
+            ProfileRepository repo = new ProfileRepository(profileName);
 
-            var repo = new ProfileRepository(profileName);
+            // Initialize selected layout ID from existing assignment.
+            _selectedLayoutId = repo.GetLayoutId();
+            DebugLog.Write($"ProfileDialog: initialized _selectedLayoutId={_selectedLayoutId?.ToString() ?? "null"}.");
+
             foreach (var slot in repo.GetSlots())
             {
                 _slotAssignments.Add(slot);
@@ -349,6 +353,7 @@ public partial class ProfileDialog : Window
         if (SlotAssignmentTab.IsSelected)
         {
             RebuildSlotAssignments();
+            LoadSlotAssignmentLayoutComboBox();
         }
 
         if (KeyboardLayoutTab.IsSelected)
@@ -622,6 +627,11 @@ public partial class ProfileDialog : Window
         }
     }
 
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // ReassignSlotNumbers
+    //
+    // Recalculate slot IDs after moving slots.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void ReassignSlotNumbers()
     {
         for (int i = 0; i < _slotAssignments.Count; i++)
@@ -630,6 +640,86 @@ public partial class ProfileDialog : Window
         }
     }
 
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // LoadSlotAssignmentLayoutComboBox
+    //
+    // Populates the layout dropdown on the Slot Assignment tab with all available layouts.
+    // Pre-selects the layout currently assigned to this profile, if any.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void LoadSlotAssignmentLayoutComboBox()
+    {
+        DebugLog.Write("ProfileDialog.LoadSlotAssignmentLayoutComboBox: loading.");
+
+        SlotAssignmentLayoutComboBox.Items.Clear();
+
+        WindowLayoutRepository layoutRepo = new WindowLayoutRepository();
+        List<WindowLayout> layouts = layoutRepo.GetAllLayouts().ToList();
+
+        foreach (WindowLayout layout in layouts)
+        {
+            ComboBoxItem item = new ComboBoxItem
+            {
+                Content = layout.DisplayName,
+                Tag = layout.Id
+            };
+
+            SlotAssignmentLayoutComboBox.Items.Add(item);
+            DebugLog.Write($"ProfileDialog.LoadSlotAssignmentLayoutComboBox: added layoutId={layout.Id} display='{layout.DisplayName}'.");
+        }
+
+        if (_profileName == null)
+        {
+            DebugLog.Write("ProfileDialog.LoadSlotAssignmentLayoutComboBox: no profile name, skipping pre-selection.");
+            return;
+        }
+
+        ProfileRepository profileRepo = new ProfileRepository(_profileName);
+        int? assignedLayoutId = profileRepo.GetLayoutId();
+
+        if (!assignedLayoutId.HasValue)
+        {
+            DebugLog.Write("ProfileDialog.LoadSlotAssignmentLayoutComboBox: no layout assigned to profile.");
+            return;
+        }
+
+        ComboBoxItem? match = SlotAssignmentLayoutComboBox.Items
+            .OfType<ComboBoxItem>()
+            .FirstOrDefault(i => i.Tag is int id && id == assignedLayoutId.Value);
+
+        if (match != null)
+        {
+            SlotAssignmentLayoutComboBox.SelectedItem = match;
+            DebugLog.Write($"ProfileDialog.LoadSlotAssignmentLayoutComboBox: pre-selected layoutId={assignedLayoutId.Value}.");
+        }
+        else
+        {
+            DebugLog.Write($"ProfileDialog.LoadSlotAssignmentLayoutComboBox: assigned layoutId={assignedLayoutId.Value} not found in list.");
+        }
+
+        DebugLog.Write($"ProfileDialog.LoadSlotAssignmentLayoutComboBox: loaded {layouts.Count} layouts.");
+    }
+
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // SlotAssignmentLayoutComboBox_SelectionChanged
+    //
+    // Fires when the user selects a layout from the Slot Assignment tab dropdown.
+    // Records the selected layout ID as dirty state for Save_Click to persist.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void SlotAssignmentLayoutComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (SlotAssignmentLayoutComboBox.SelectedItem is not ComboBoxItem item || item.Tag is not int layoutId)
+        {
+            DebugLog.Write("ProfileDialog.SlotAssignmentLayoutComboBox_SelectionChanged: no layout selected.");
+            _selectedLayoutId = null;
+            return;
+        }
+
+        DebugLog.Write($"ProfileDialog.SlotAssignmentLayoutComboBox_SelectionChanged: layoutId={layoutId}.");
+
+        _selectedLayoutId = layoutId;
+    }
+    
     private T? FindAncestor<T>(DependencyObject current) where T : DependencyObject
     {
         while (current != null)

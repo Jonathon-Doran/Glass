@@ -63,33 +63,44 @@
                 </ListView>
             </TabItem>
             <TabItem Header="Slot Assignment" x:Name="SlotAssignmentTab">
-                <ListView x:Name="CharacterSlotsListView" Margin="4"
-                          PreviewMouseLeftButtonDown="CharacterSlotsListView_PreviewMouseLeftButtonDown"
-                          PreviewMouseMove="CharacterSlotsListView_PreviewMouseMove"
-                          AllowDrop="True"
-                          DragOver="CharacterSlotsListView_DragOver"
-                          Drop="CharacterSlotsListView_Drop">
-                    <ListView.View>
-                        <GridView>
-                            <GridViewColumn Header=" " Width="24">
-                                <GridViewColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <Image Source="pack://application:,,,/Resources/drag_handle.png" 
-                                   Width="16" Height="16"/>
-                                    </DataTemplate>
-                                </GridViewColumn.CellTemplate>
-                            </GridViewColumn>
-                            <GridViewColumn Header="Slot" Width="50" 
-                                DisplayMemberBinding="{Binding SlotNumber}"/>
-                            <GridViewColumn Header="Name" Width="150" 
-                                DisplayMemberBinding="{Binding CharacterName}"/>
-                            <GridViewColumn Header="Class" Width="100" 
-                                DisplayMemberBinding="{Binding ClassName}"/>
-                            <GridViewColumn Header="Account" Width="100" 
-                                DisplayMemberBinding="{Binding AccountId}"/>
-                        </GridView>
-                    </ListView.View>
-                </ListView>
+                <DockPanel Margin="4">
+
+                    <!-- Layout selector -->
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Text="Layout:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <ComboBox x:Name="SlotAssignmentLayoutComboBox" Width="300"
+                      SelectionChanged="SlotAssignmentLayoutComboBox_SelectionChanged"/>
+                    </StackPanel>
+
+                    <!-- Slot list -->
+                    <ListView x:Name="CharacterSlotsListView"
+                  PreviewMouseLeftButtonDown="CharacterSlotsListView_PreviewMouseLeftButtonDown"
+                  PreviewMouseMove="CharacterSlotsListView_PreviewMouseMove"
+                  AllowDrop="True"
+                  DragOver="CharacterSlotsListView_DragOver"
+                  Drop="CharacterSlotsListView_Drop">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header=" " Width="24">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Image Source="pack://application:,,,/Resources/drag_handle.png"
+                                       Width="16" Height="16"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="Slot" Width="50"
+                                    DisplayMemberBinding="{Binding SlotNumber}"/>
+                                <GridViewColumn Header="Name" Width="150"
+                                    DisplayMemberBinding="{Binding CharacterName}"/>
+                                <GridViewColumn Header="Class" Width="100"
+                                    DisplayMemberBinding="{Binding ClassName}"/>
+                                <GridViewColumn Header="Account" Width="100"
+                                    DisplayMemberBinding="{Binding AccountId}"/>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                </DockPanel>
             </TabItem>
             <TabItem x:Name="WindowLayoutTab" Header="Window Layout">
                 <Grid Margin="10">
