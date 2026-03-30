@@ -232,7 +232,7 @@ public partial class ProfileDialog : Window
         if ((Monitors.Count > 0) && !string.IsNullOrWhiteSpace(layoutName))
         {
             var layoutRepo = new WindowLayoutRepository();
-            layoutRepo.Save(profileId, layoutName, _slotAssignments.ToList(), Monitors.ToList());
+            layoutRepo.Save(repo, layoutName, _slotAssignments.ToList(), Monitors.ToList());
         }
 
         RecentProfiles.Add(profileName);
@@ -867,9 +867,9 @@ public partial class ProfileDialog : Window
             Rectangle? rectangle = FindVisualChildByName<Rectangle>(container, "MonitorRectangle");
             Canvas? canvas = FindVisualChildByName<Canvas>(container, "OverlayCanvas");
 
+            // MonitorCountChanged fires during load, so it is possible that the ItemsControl has not rendered all items yet
             if (rectangle == null)
             {
-                DebugLog.Write($"ProfileDialog.UpdateMonitorRectangles: rectangle null for layoutPosition={layoutMonitor.LayoutPosition}, skipping.");
                 continue;
             }
 

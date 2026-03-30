@@ -26,17 +26,20 @@ public class WindowLayoutRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Save
     //
-    // Saves a window layout and its character placements. If a layout with the same
-    // name already exists it is overwritten. Updates the profile's layout_id to point
+    // Saves a window layout and its LayoutMonitors. If a layout with the same name
+    // already exists it is overwritten. Updates the profile's layout_id to point
     // to this layout. Returns the layout ID.
     //
-    // profileId:   The profile to associate with this layout.
-    // layoutName:  The name of the layout to create or overwrite.
-    // slots:       The slot assignments for this profile.
-    // monitors:    The monitor configurations used in this layout.
+    // profileRepo:  The profile repository providing profileId and machineId.
+    // layoutName:   The name of the layout to create or overwrite.
+    // slots:        The slot assignments for this profile.
+    // monitors:     The monitor configurations used in this layout.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public int Save(int profileId, string layoutName, List<SlotAssignment> slots, List<LayoutMonitorViewModel> monitors)
+    public int Save(ProfileRepository profileRepo, string layoutName, List<SlotAssignment> slots, List<LayoutMonitorViewModel> monitors)
     {
+        int profileId = profileRepo.GetId();
+        int? machineId = profileRepo.GetMachineId();
+
         DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Save: profileId={profileId} name='{layoutName}' slots={slots.Count} monitors={monitors.Count}.");
 
         using SqliteConnection conn = Database.Instance.Connect();
@@ -57,6 +60,17 @@ public class WindowLayoutRepository
                 layoutId = Convert.ToInt32(existingId);
                 DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Save: overwriting existing layoutId={layoutId}.");
 
+                using SqliteCommand updateLayoutCmd = conn.CreateCommand();
+                updateLayoutCmd.Transaction = tx;
+                updateLayoutCmd.CommandText = "UPDATE WindowLayouts SET machine_id = @machineId WHERE id = @layoutId";
+                updateLayoutCmd.Parameters.AddWithValue("@machineId", machineId.HasValue ? machineId.Value : DBNull.Value);
+                updateLayoutCmd.Parameters.AddWithValue("@layoutId", layoutId);
+                updateLayoutCmd.ExecuteNonQuery();
+                DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Save: updated machine_id={machineId} for layoutId={layoutId}.");
+
+                // Delete and reinsert LayoutMonitors rows for this layout.
+                // This handles the case where the user reduces the monitor count —
+                // rows for removed monitors are cleaned up naturally by the delete.
                 using SqliteCommand deleteLayoutMonitors = conn.CreateCommand();
                 deleteLayoutMonitors.Transaction = tx;
                 deleteLayoutMonitors.CommandText = "DELETE FROM LayoutMonitors WHERE layout_id = @layoutId";
@@ -68,15 +82,16 @@ public class WindowLayoutRepository
             {
                 DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Save: inserting new layout name='{layoutName}'.");
 
-                SqliteCommand insertCmd = conn.CreateCommand();
+                using SqliteCommand insertCmd = conn.CreateCommand();
                 insertCmd.Transaction = tx;
                 insertCmd.CommandText = @"
-                INSERT INTO WindowLayouts (name)
-                VALUES (@name);
+                INSERT INTO WindowLayouts (name, machine_id)
+                VALUES (@name, @machineId);
                 SELECT last_insert_rowid();";
                 insertCmd.Parameters.AddWithValue("@name", layoutName);
+                insertCmd.Parameters.AddWithValue("@machineId", machineId.HasValue ? machineId.Value : DBNull.Value);
                 layoutId = Convert.ToInt32(insertCmd.ExecuteScalar());
-                DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Save: inserted layoutId={layoutId}.");
+                DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Save: inserted layoutId={layoutId} machineId={machineId}.");
             }
 
             SqliteCommand profileCmd = conn.CreateCommand();
@@ -87,13 +102,7 @@ public class WindowLayoutRepository
             profileCmd.ExecuteNonQuery();
             DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Save: updated profile layoutId={layoutId}.");
 
-            // Delete and reinsert LayoutMonitors rows for this layout.
-            // This handles the case where the user reduces the monitor count —
-            // rows for removed monitors are cleaned up naturally by the delete.
             // TODO: populate pnp_id and serial once MonitorRepository.SyncFromHardware is implemented.
-
-
-
             int layoutPosition = 0;
             foreach (LayoutMonitorViewModel layoutMonitor in monitors)
             {
@@ -103,12 +112,12 @@ public class WindowLayoutRepository
                 using SqliteCommand monitorCmd = conn.CreateCommand();
                 monitorCmd.Transaction = tx;
                 monitorCmd.CommandText = @"
-                    INSERT INTO Monitors (machine_id, adapter_name, pnp_id, serial, width, height)
-                    VALUES (1, @adapterName, '', '', @width, @height)
-                    ON CONFLICT(machine_id, adapter_name) DO UPDATE SET
-                        width  = excluded.width,
-                        height = excluded.height;
-                    SELECT id FROM Monitors WHERE machine_id = 1 AND adapter_name = @adapterName";
+                INSERT INTO Monitors (machine_id, adapter_name, pnp_id, serial, width, height)
+                VALUES (1, @adapterName, '', '', @width, @height)
+                ON CONFLICT(machine_id, adapter_name) DO UPDATE SET
+                    width  = excluded.width,
+                    height = excluded.height;
+                SELECT id FROM Monitors WHERE machine_id = 1 AND adapter_name = @adapterName";
                 monitorCmd.Parameters.AddWithValue("@adapterName", layoutMonitor.Monitor.AdapterName);
                 monitorCmd.Parameters.AddWithValue("@width", layoutMonitor.Monitor.Width);
                 monitorCmd.Parameters.AddWithValue("@height", layoutMonitor.Monitor.Height);
@@ -118,8 +127,8 @@ public class WindowLayoutRepository
                 using SqliteCommand insertLayoutMonitor = conn.CreateCommand();
                 insertLayoutMonitor.Transaction = tx;
                 insertLayoutMonitor.CommandText = @"
-                    INSERT INTO LayoutMonitors (layout_id, monitor_id, layout_position, slot_width)
-                    VALUES (@layoutId, @monitorId, @layoutPosition, @slotWidth)";
+                INSERT INTO LayoutMonitors (layout_id, monitor_id, layout_position, slot_width)
+                VALUES (@layoutId, @monitorId, @layoutPosition, @slotWidth)";
                 insertLayoutMonitor.Parameters.AddWithValue("@layoutId", layoutId);
                 insertLayoutMonitor.Parameters.AddWithValue("@monitorId", monitorId);
                 insertLayoutMonitor.Parameters.AddWithValue("@layoutPosition", layoutPosition);
@@ -127,8 +136,6 @@ public class WindowLayoutRepository
                 insertLayoutMonitor.ExecuteNonQuery();
                 DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Save: inserted LayoutMonitors layoutPosition={layoutPosition} slotWidth={layoutMonitor.SlotWidth}.");
             }
-
-            // TODO: populate LayoutMonitors once MonitorRepository.SyncFromHardware is implemented.
 
             tx.Commit();
             DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Save: committed layoutId={layoutId}.");

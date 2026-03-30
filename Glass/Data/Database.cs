@@ -235,6 +235,18 @@ public class Database
             pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
             pragmaOn.ExecuteNonQuery();
         }
+        if (version < 27)
+        {
+            using SqliteCommand pragmaOff = conn.CreateCommand();
+            pragmaOff.CommandText = "PRAGMA foreign_keys = OFF";
+            pragmaOff.ExecuteNonQuery();
+
+            ApplyMigration(conn, 27, Migration_027);
+
+            using SqliteCommand pragmaOn = conn.CreateCommand();
+            pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
+            pragmaOn.ExecuteNonQuery();
+        }
     }
 
     private int GetSchemaVersion()
@@ -728,6 +740,22 @@ public class Database
             UNIQUE (layout_id, layout_position)
         );
     ";
+
+    private const string Migration_027 = @"
+        CREATE TABLE WindowLayouts_new (
+            id         INTEGER PRIMARY KEY,
+            name       TEXT NOT NULL UNIQUE,
+            machine_id INTEGER REFERENCES Machines(id)
+        );
+
+        INSERT INTO WindowLayouts_new (id, name, machine_id)
+        SELECT id, name, machine_id
+        FROM WindowLayouts;
+
+        DROP TABLE WindowLayouts;
+        ALTER TABLE WindowLayouts_new RENAME TO WindowLayouts;
+    ";
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"
