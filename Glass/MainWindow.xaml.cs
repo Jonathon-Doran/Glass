@@ -254,25 +254,17 @@ public partial class MainWindow : Window
 
         WindowLayoutRepository layoutRepo = new WindowLayoutRepository();
         int? layoutId = repo.GetLayoutId();
+
         if (!layoutId.HasValue)
         {
-            DebugLog.Write("LaunchProfile: no layout assigned to profile, aborting.");
+            DebugLog.Write("MainWindow.LaunchProfile: no layout assigned to profile, aborting.");
             MessageBox.Show("This profile has no window layout assigned. Please edit the profile and configure a layout before launching.", "No Layout", MessageBoxButton.OK, MessageBoxImage.Warning);
             _activeProfile = null;
             return;
         }
 
-        List<SlotPlacement> placements = layoutRepo.GetSlotPlacements(layoutId.Value);
-        DebugLog.Write(DebugLog.Log_Database, $"LaunchProfile: {placements.Count} slot placements computed for layoutId={layoutId.Value}.");
-        if (layoutId.HasValue)
-        {
-            placements = layoutRepo.GetSlotPlacements(layoutId.Value);
-            DebugLog.Write(DebugLog.Log_Database, $"LaunchProfile: {placements.Count} slot placements computed for layoutId={layoutId.Value}.");
-        }
-        else
-        {
-            DebugLog.Write(DebugLog.Log_Database, "LaunchProfile: no layout assigned to profile, skipping slot definitions.");
-        }
+        IReadOnlyList<SlotPlacement> placements = layoutRepo.GetSlotPlacements(layoutId.Value);
+        DebugLog.Write(DebugLog.Log_Database, $"MainWindow.LaunchProfile: {placements.Count} slot placements loaded for layoutId={layoutId.Value}.");
 
         // Send any new slot definitions to GlassVideo.
         foreach (var placement in placements)

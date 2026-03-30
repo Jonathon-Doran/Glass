@@ -1,14 +1,158 @@
 ﻿using Glass.Core;
 using Glass.Data.Models;
-using Glass.UI.ViewModels;
 using Microsoft.Data.Sqlite;
-using System.Windows;
+using Glass.UI.ViewModels;
 
 namespace Glass.Data.Repositories;
 
-// Handles persistence of window layouts and character placements.
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// WindowLayoutRepository
+//
+// Loads and caches all window layouts, their monitor assignments, and slot placements
+// on construction. All read methods operate against the in-memory cache.
+// Write methods (Create, Rename, Delete) update both the database and the cache.
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 public class WindowLayoutRepository
 {
+    private readonly List<WindowLayout> _layouts;
+    private readonly Dictionary<int, List<LayoutMonitorSettings>> _monitorCache;
+    private readonly Dictionary<int, List<SlotPlacement>> _placementCache;
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // WindowLayoutRepository
+    //
+    // Loads all window layouts from the database, including their monitor assignments
+    // and slot placements. After construction, all read operations are cache-only.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public WindowLayoutRepository()
+    {
+        _layouts = new List<WindowLayout>();
+        _monitorCache = new Dictionary<int, List<LayoutMonitorSettings>>();
+        _placementCache = new Dictionary<int, List<SlotPlacement>>();
+
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        LoadLayouts(conn);
+
+        foreach (WindowLayout layout in _layouts)
+        {
+            _monitorCache[layout.Id] = LoadMonitors(conn, layout.Id);
+            _placementCache[layout.Id] = LoadPlacements(conn, layout.Id);
+            layout.Monitors = _monitorCache[layout.Id];
+            layout.Slots = _placementCache[layout.Id];
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // LoadLayouts
+    //
+    // Loads all window layout rows from the database into _layouts.
+    // Called once during construction.
+    //
+    // conn:  An open database connection
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void LoadLayouts(SqliteConnection conn)
+    {
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT id, name, machine_id FROM WindowLayouts ORDER BY name";
+
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            WindowLayout layout = new WindowLayout
+            {
+                Id = reader.GetInt32(0),
+                Name = reader.GetString(1),
+                MachineId = reader.IsDBNull(2) ? null : reader.GetInt32(2)
+            };
+
+            _layouts.Add(layout);
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // LoadMonitors
+    //
+    // Loads all LayoutMonitors rows for the given layout from the database.
+    // Called once per layout during construction.
+    //
+    // conn:      An open database connection
+    // layoutId:  The layout to load monitors for
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private List<LayoutMonitorSettings> LoadMonitors(SqliteConnection conn, int layoutId)
+    {
+        List<LayoutMonitorSettings> monitors = new List<LayoutMonitorSettings>();
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT id, layout_id, monitor_id, layout_position, slot_width
+            FROM LayoutMonitors
+            WHERE layout_id = @layoutId
+            ORDER BY layout_position";
+        cmd.Parameters.AddWithValue("@layoutId", layoutId);
+
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            LayoutMonitorSettings settings = new LayoutMonitorSettings
+            {
+                Id = reader.GetInt32(0),
+                LayoutId = reader.GetInt32(1),
+                MonitorId = reader.GetInt32(2),
+                LayoutPosition = reader.GetInt32(3),
+                SlotWidth = reader.GetInt32(4)
+            };
+
+            monitors.Add(settings);
+        }
+
+        return monitors;
+    }
+
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // LoadPlacements
+    //
+    // Loads all SlotPlacements rows for the given layout from the database.
+    // Called once per layout during construction.
+    //
+    // conn:      An open database connection
+    // layoutId:  The layout to load slot placements for
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private List<SlotPlacement> LoadPlacements(SqliteConnection conn, int layoutId)
+    {
+        List<SlotPlacement> placements = new List<SlotPlacement>();
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT id, layout_id, monitor_id, slot_number, x, y, width, height
+            FROM SlotPlacements
+            WHERE layout_id = @layoutId
+            ORDER BY slot_number";
+        cmd.Parameters.AddWithValue("@layoutId", layoutId);
+
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            SlotPlacement placement = new SlotPlacement
+            {
+                Id = reader.GetInt32(0),
+                LayoutId = reader.GetInt32(1),
+                MonitorId = reader.GetInt32(2),
+                SlotNumber = reader.GetInt32(3),
+                X = reader.GetInt32(4),
+                Y = reader.GetInt32(5),
+                Width = reader.GetInt32(6),
+                Height = reader.GetInt32(7)
+            };
+
+            placements.Add(placement);
+        }
+
+         return placements;
+    }
+
     // Returns the next available layout name for a profile, e.g. "Layout3".
     public string GetNextLayoutName(int profileId)
     {
@@ -40,8 +184,6 @@ public class WindowLayoutRepository
         int profileId = profileRepo.GetId();
         int? machineId = profileRepo.GetMachineId();
 
-        DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Save: profileId={profileId} name='{layoutName}' slots={slots.Count} monitors={monitors.Count}.");
-
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
 
@@ -58,16 +200,14 @@ public class WindowLayoutRepository
             if (existingId != null)
             {
                 layoutId = Convert.ToInt32(existingId);
-                DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Save: overwriting existing layoutId={layoutId}.");
-
+ 
                 using SqliteCommand updateLayoutCmd = conn.CreateCommand();
                 updateLayoutCmd.Transaction = tx;
                 updateLayoutCmd.CommandText = "UPDATE WindowLayouts SET machine_id = @machineId WHERE id = @layoutId";
                 updateLayoutCmd.Parameters.AddWithValue("@machineId", machineId.HasValue ? machineId.Value : DBNull.Value);
                 updateLayoutCmd.Parameters.AddWithValue("@layoutId", layoutId);
                 updateLayoutCmd.ExecuteNonQuery();
-                DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Save: updated machine_id={machineId} for layoutId={layoutId}.");
-
+  
                 // Delete and reinsert LayoutMonitors rows for this layout.
                 // This handles the case where the user reduces the monitor count —
                 // rows for removed monitors are cleaned up naturally by the delete.
@@ -76,12 +216,9 @@ public class WindowLayoutRepository
                 deleteLayoutMonitors.CommandText = "DELETE FROM LayoutMonitors WHERE layout_id = @layoutId";
                 deleteLayoutMonitors.Parameters.AddWithValue("@layoutId", layoutId);
                 deleteLayoutMonitors.ExecuteNonQuery();
-                DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Save: cleared LayoutMonitors for layoutId={layoutId}.");
-            }
+             }
             else
             {
-                DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Save: inserting new layout name='{layoutName}'.");
-
                 using SqliteCommand insertCmd = conn.CreateCommand();
                 insertCmd.Transaction = tx;
                 insertCmd.CommandText = @"
@@ -91,7 +228,6 @@ public class WindowLayoutRepository
                 insertCmd.Parameters.AddWithValue("@name", layoutName);
                 insertCmd.Parameters.AddWithValue("@machineId", machineId.HasValue ? machineId.Value : DBNull.Value);
                 layoutId = Convert.ToInt32(insertCmd.ExecuteScalar());
-                DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Save: inserted layoutId={layoutId} machineId={machineId}.");
             }
 
             SqliteCommand profileCmd = conn.CreateCommand();
@@ -100,45 +236,40 @@ public class WindowLayoutRepository
             profileCmd.Parameters.AddWithValue("@layoutId", layoutId);
             profileCmd.Parameters.AddWithValue("@profileId", profileId);
             profileCmd.ExecuteNonQuery();
-            DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Save: updated profile layoutId={layoutId}.");
-
+ 
             // TODO: populate pnp_id and serial once MonitorRepository.SyncFromHardware is implemented.
             int layoutPosition = 0;
             foreach (LayoutMonitorViewModel layoutMonitor in monitors)
             {
                 layoutPosition++;
-                DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Save: upserting monitor '{layoutMonitor.Monitor.AdapterName}' {layoutMonitor.Monitor.Width}x{layoutMonitor.Monitor.Height}.");
-
+ 
                 using SqliteCommand monitorCmd = conn.CreateCommand();
                 monitorCmd.Transaction = tx;
                 monitorCmd.CommandText = @"
-                INSERT INTO Monitors (machine_id, adapter_name, pnp_id, serial, width, height)
-                VALUES (1, @adapterName, '', '', @width, @height)
-                ON CONFLICT(machine_id, adapter_name) DO UPDATE SET
-                    width  = excluded.width,
-                    height = excluded.height;
-                SELECT id FROM Monitors WHERE machine_id = 1 AND adapter_name = @adapterName";
+                    INSERT INTO Monitors (machine_id, adapter_name, pnp_id, serial, width, height)
+                    VALUES (1, @adapterName, '', '', @width, @height)
+                    ON CONFLICT(machine_id, adapter_name) DO UPDATE SET
+                        width  = excluded.width,
+                        height = excluded.height;
+                    SELECT id FROM Monitors WHERE machine_id = 1 AND adapter_name = @adapterName";
                 monitorCmd.Parameters.AddWithValue("@adapterName", layoutMonitor.Monitor.AdapterName);
                 monitorCmd.Parameters.AddWithValue("@width", layoutMonitor.Monitor.Width);
                 monitorCmd.Parameters.AddWithValue("@height", layoutMonitor.Monitor.Height);
                 int monitorId = Convert.ToInt32(monitorCmd.ExecuteScalar());
-                DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Save: monitorId={monitorId} layoutPosition={layoutPosition}.");
 
                 using SqliteCommand insertLayoutMonitor = conn.CreateCommand();
                 insertLayoutMonitor.Transaction = tx;
                 insertLayoutMonitor.CommandText = @"
-                INSERT INTO LayoutMonitors (layout_id, monitor_id, layout_position, slot_width)
-                VALUES (@layoutId, @monitorId, @layoutPosition, @slotWidth)";
+                    INSERT INTO LayoutMonitors (layout_id, monitor_id, layout_position, slot_width)
+                    VALUES (@layoutId, @monitorId, @layoutPosition, @slotWidth)";
                 insertLayoutMonitor.Parameters.AddWithValue("@layoutId", layoutId);
                 insertLayoutMonitor.Parameters.AddWithValue("@monitorId", monitorId);
                 insertLayoutMonitor.Parameters.AddWithValue("@layoutPosition", layoutPosition);
                 insertLayoutMonitor.Parameters.AddWithValue("@slotWidth", layoutMonitor.SlotWidth);
                 insertLayoutMonitor.ExecuteNonQuery();
-                DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Save: inserted LayoutMonitors layoutPosition={layoutPosition} slotWidth={layoutMonitor.SlotWidth}.");
             }
 
             tx.Commit();
-            DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Save: committed layoutId={layoutId}.");
             return layoutId;
         }
         catch (Exception ex)
@@ -150,167 +281,332 @@ public class WindowLayoutRepository
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // GetLayoutById
+    // GetAllLayouts
     //
-    // Returns the WindowLayout with the given ID, or null if not found.
-    //
-    // layoutId:  The layout to query.
+    // Returns a read-only view of all cached window layouts.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public WindowLayout? GetLayoutById(int layoutId)
+    public IReadOnlyList<WindowLayout> GetAllLayouts()
     {
-        DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.GetLayoutById: layoutId={layoutId}.");
-
-        using SqliteConnection conn = Database.Instance.Connect();
-        conn.Open();
-
-        using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT id, name, machine_id FROM WindowLayouts WHERE id = @layoutId";
-        cmd.Parameters.AddWithValue("@layoutId", layoutId);
-
-        using SqliteDataReader reader = cmd.ExecuteReader();
-        if (!reader.Read())
-        {
-            DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.GetLayoutById: layoutId={layoutId} not found.");
-            return null;
-        }
-
-        WindowLayout layout = new WindowLayout
-        {
-            Id = reader.GetInt32(0),
-            Name = reader.GetString(1),
-            MachineId = reader.IsDBNull(2) ? null : reader.GetInt32(2)
-        };
-
-        DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.GetLayoutById: found name='{layout.Name}' machineId={layout.MachineId}.");
-        return layout;
+        return _layouts.AsReadOnly();
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // GetLayoutMonitors
+    // GetLayoutById
     //
-    // Returns all LayoutMonitorSettings with associated Monitor data for the given layout ID,
-    // ordered by layout position.
+    // Returns the cached window layout with the given ID, or null if not found.
     //
-    // layoutId:  The layout to query.
+    // layoutId:  The ID of the layout to retrieve
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public List<(LayoutMonitorSettings Settings, Glass.Data.Models.Monitor Monitor)> GetLayoutMonitors(int layoutId)
+    public WindowLayout? GetLayoutById(int layoutId)
     {
-        List<(LayoutMonitorSettings Settings, Glass.Data.Models.Monitor Monitor)> results
-            = new List<(LayoutMonitorSettings Settings, Glass.Data.Models.Monitor Monitor)>();
+        WindowLayout? layout = _layouts.FirstOrDefault(l => l.Id == layoutId);
 
-        using SqliteConnection conn = Database.Instance.Connect();
-        conn.Open();
-
-        using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = @"
-            SELECT
-                lm.id, lm.layout_id, lm.monitor_id, lm.layout_position, lm.slot_width,
-                m.id, m.machine_id, m.adapter_name, m.pnp_id, m.serial, m.width, m.height
-            FROM LayoutMonitors lm
-            JOIN Monitors m ON m.id = lm.monitor_id
-            WHERE lm.layout_id = @layoutId
-            ORDER BY lm.layout_position";
-        cmd.Parameters.AddWithValue("@layoutId", layoutId);
-
-        using SqliteDataReader reader = cmd.ExecuteReader();
-        while (reader.Read())
+        if (layout == null)
         {
-            LayoutMonitorSettings settings = new LayoutMonitorSettings
-            {
-                Id = reader.GetInt32(0),
-                LayoutId = reader.GetInt32(1),
-                MonitorId = reader.GetInt32(2),
-                LayoutPosition = reader.GetInt32(3),
-                SlotWidth = reader.GetInt32(4)
-            };
-
-            Glass.Data.Models.Monitor monitor = new Glass.Data.Models.Monitor
-            {
-                Id = reader.GetInt32(5),
-                MachineId = reader.GetInt32(6),
-                AdapterName = reader.GetString(7),
-                PnpId = reader.GetString(8),
-                Serial = reader.GetString(9),
-                Width = reader.GetInt32(10),
-                Height = reader.GetInt32(11)
-            };
-
-            results.Add((settings, monitor));
+            DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.GetLayoutById: layoutId={layoutId} not found.");
         }
 
-       return results;
+        return layout;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // GetSlotPlacements
     //
-    // Returns slot placements for the given layout ID, computed from LayoutMonitors.
-    // Slot positions are derived from each monitor's dimensions and slot width.
-    // Primary monitors (layout_position = 1) are skipped — they host full-size windows.
-    // Returns an empty list if no layout monitors are defined.
+    // Returns the cached slot placements for the given layout ID.
+    // Returns an empty list if the layout has no placements or is not found.
     //
-    // layoutId:  The layout to compute slot placements for.
+    // layoutId:  The ID of the layout to retrieve slot placements for
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public List<SlotPlacement> GetSlotPlacements(int layoutId)
+    public IReadOnlyList<SlotPlacement> GetSlotPlacements(int layoutId)
     {
-        DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.GetSlotPlacements: layoutId={layoutId}.");
+        if (!_placementCache.TryGetValue(layoutId, out List<SlotPlacement>? placements))
+        {
+            DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.GetSlotPlacements: layoutId={layoutId} not found in cache.");
+            return new List<SlotPlacement>();
+        }
+
+        return placements.AsReadOnly();
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // SaveSlotPlacements
+    //
+    // Replaces all SlotPlacements rows for the given layout with the provided list.
+    // Deletes existing rows first, then inserts the new ones.
+    // Updates the in-memory cache to match.
+    //
+    // layoutId:   The layout to save placements for
+    // placements: The slot placements to persist
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void SaveSlotPlacements(int layoutId, List<SlotPlacement> placements)
+    {
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        using SqliteTransaction tx = conn.BeginTransaction();
+
+        try
+        {
+            using SqliteCommand deleteCmd = conn.CreateCommand();
+            deleteCmd.Transaction = tx;
+            deleteCmd.CommandText = "DELETE FROM SlotPlacements WHERE layout_id = @layoutId";
+            deleteCmd.Parameters.AddWithValue("@layoutId", layoutId);
+            deleteCmd.ExecuteNonQuery();
+
+            int slotNumber = 1;
+            foreach (SlotPlacement placement in placements)
+            {
+                using SqliteCommand insertCmd = conn.CreateCommand();
+                insertCmd.Transaction = tx;
+                insertCmd.CommandText = @"
+                    INSERT INTO SlotPlacements (layout_id, monitor_id, slot_number, x, y, width, height)
+                    VALUES (@layoutId, @monitorId, @slotNumber, @x, @y, @width, @height)";
+                insertCmd.Parameters.AddWithValue("@layoutId", layoutId);
+                insertCmd.Parameters.AddWithValue("@monitorId", placement.MonitorId);
+                insertCmd.Parameters.AddWithValue("@slotNumber", slotNumber);
+                insertCmd.Parameters.AddWithValue("@x", placement.X);
+                insertCmd.Parameters.AddWithValue("@y", placement.Y);
+                insertCmd.Parameters.AddWithValue("@width", placement.Width);
+                insertCmd.Parameters.AddWithValue("@height", placement.Height);
+                insertCmd.ExecuteNonQuery();
+
+                slotNumber++;
+            }
+
+            tx.Commit();
+
+            // Update cache.
+            _placementCache[layoutId] = placements;
+
+            WindowLayout? layout = _layouts.FirstOrDefault(l => l.Id == layoutId);
+            if (layout != null)
+            {
+                layout.Slots = placements;
+            }
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.SaveSlotPlacements: exception: {ex.Message}, rolling back.");
+            tx.Rollback();
+            throw;
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Create
+    //
+    // Inserts a new window layout into the database and adds it to the cache.
+    // Returns the new layout ID.
+    //
+    // name:       The name for the new layout
+    // machineId:  The machine this layout is intended for
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public int Create(string name, int machineId)
+    {
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO WindowLayouts (name, machine_id)
+            VALUES (@name, @machineId)";
+        cmd.Parameters.AddWithValue("@name", name);
+        cmd.Parameters.AddWithValue("@machineId", machineId);
+        cmd.ExecuteNonQuery();
+
+        cmd.CommandText = "SELECT last_insert_rowid()";
+        cmd.Parameters.Clear();
+        int newId = Convert.ToInt32(cmd.ExecuteScalar());
+
+        WindowLayout layout = new WindowLayout
+        {
+            Id = newId,
+            Name = name,
+            MachineId = machineId
+        };
+
+        _layouts.Add(layout);
+        _monitorCache[newId] = new List<LayoutMonitorSettings>();
+        _placementCache[newId] = new List<SlotPlacement>();
+
+        return newId;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Rename
+    //
+    // Renames an existing window layout in the database and updates the cache.
+    //
+    // layoutId:  The ID of the layout to rename
+    // newName:   The new name for the layout
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void Rename(int layoutId, string newName)
+    {
+        WindowLayout? layout = _layouts.FirstOrDefault(l => l.Id == layoutId);
+
+        if (layout == null)
+        {
+            DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Rename: layoutId={layoutId} not found in cache, aborting.");
+            return;
+        }
+
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE WindowLayouts SET name = @name WHERE id = @id";
+        cmd.Parameters.AddWithValue("@name", newName);
+        cmd.Parameters.AddWithValue("@id", layoutId);
+        cmd.ExecuteNonQuery();
+
+        string oldName = layout.Name;
+        layout.Name = newName;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Delete
+    //
+    // Deletes a window layout from the database and removes it from the cache.
+    // LayoutMonitors and SlotPlacements are removed automatically via ON DELETE CASCADE.
+    //
+    // layoutId:  The ID of the layout to delete
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void Delete(int layoutId)
+    {
+        WindowLayout? layout = _layouts.FirstOrDefault(l => l.Id == layoutId);
+
+        if (layout == null)
+        {
+            DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.Delete: layoutId={layoutId} not found in cache, aborting.");
+            return;
+        }
+
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM WindowLayouts WHERE id = @id";
+        cmd.Parameters.AddWithValue("@id", layoutId);
+        cmd.ExecuteNonQuery();
+
+        _layouts.Remove(layout);
+        _monitorCache.Remove(layoutId);
+        _placementCache.Remove(layoutId);
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // GetProfilesUsingLayout
+    //
+    // Returns all profiles that reference the given layout ID.
+    // This is a live database query — not cached — as it is called infrequently
+    // and only when the user is about to delete a layout.
+    //
+    // layoutId:  The ID of the layout to check
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public List<Profile> GetProfilesUsingLayout(int layoutId)
+    {
+        List<Profile> profiles = new List<Profile>();
 
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
 
         using SqliteCommand cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT lm.layout_position, lm.slot_width, m.width, m.height
-            FROM LayoutMonitors lm
-            JOIN Monitors m ON m.id = lm.monitor_id
-            WHERE lm.layout_id = @layoutId
-            AND lm.layout_position > 1
-            ORDER BY lm.layout_position";
+            SELECT id, name
+            FROM Profiles
+            WHERE layout_id = @layoutId
+            ORDER BY name";
         cmd.Parameters.AddWithValue("@layoutId", layoutId);
-
-        List<SlotPlacement> placements = new List<SlotPlacement>();
-        int slotNumber = 0;
 
         using SqliteDataReader reader = cmd.ExecuteReader();
         while (reader.Read())
         {
-            int layoutPosition = reader.GetInt32(0);
-            int slotWidth = reader.GetInt32(1);
-            int monitorWidth = reader.GetInt32(2);
-            int monitorHeight = reader.GetInt32(3);
-            int slotHeight = (int)(slotWidth / LayoutConstants.AspectRatio);
-
-            int columns = monitorWidth / (slotWidth + LayoutConstants.HorizontalMargin);
-            int rows = monitorHeight / (slotHeight + LayoutConstants.VerticalMargin);
-
-            double horizontalMargin = (monitorWidth - (columns * slotWidth)) / (double)columns;
-            double verticalMargin = (monitorHeight - (rows * slotHeight)) / (double)rows;
-
-            DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.GetSlotPlacements: layoutPosition={layoutPosition} {monitorWidth}x{monitorHeight} slotWidth={slotWidth} columns={columns} rows={rows}.");
-
-            for (int row = 0; row < rows; row++)
+            Profile profile = new Profile
             {
-                for (int col = 0; col < columns; col++)
-                {
-                    slotNumber++;
-                    int x = (int)Math.Round(col * (slotWidth + horizontalMargin));
-                    int y = (int)Math.Round(row * (slotHeight + verticalMargin));
+                Id = reader.GetInt32(0),
+                Name = reader.GetString(1)
+            };
 
-                    placements.Add(new SlotPlacement
-                    {
-                        SlotNumber = slotNumber,
-                        X = x,
-                        Y = y,
-                        Width = slotWidth,
-                        Height = slotHeight
-                    });
-
-                    DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.GetSlotPlacements: slot={slotNumber} x={x} y={y} w={slotWidth} h={slotHeight}.");
-                }
-            }
+            profiles.Add(profile);
         }
 
-        DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.GetSlotPlacements: {placements.Count} placements computed.");
-        return placements;
+        return profiles;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // GetLayoutMonitors
+    //
+    // Returns the cached monitor assignments for the given layout ID.
+    // Returns an empty list if the layout has no monitors or is not found.
+    //
+    // layoutId:  The ID of the layout to retrieve monitors for
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public IReadOnlyList<LayoutMonitorSettings> GetLayoutMonitors(int layoutId)
+    {
+        if (!_monitorCache.TryGetValue(layoutId, out List<LayoutMonitorSettings>? monitors))
+        {
+            DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.GetLayoutMonitors: layoutId={layoutId} not found in cache.");
+            return new List<LayoutMonitorSettings>();
+        }
+
+        return monitors.AsReadOnly();
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // SaveLayoutMonitors
+    //
+    // Replaces all LayoutMonitors rows for the given layout with the provided list.
+    // Deletes existing rows first, then inserts the new ones.
+    // Updates the in-memory cache to match.
+    //
+    // layoutId:  The layout to save monitors for
+    // monitors:  The monitor settings to persist
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void SaveLayoutMonitors(int layoutId, List<LayoutMonitorSettings> monitors)
+    {
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        using SqliteTransaction tx = conn.BeginTransaction();
+
+        try
+        {
+            using SqliteCommand deleteCmd = conn.CreateCommand();
+            deleteCmd.Transaction = tx;
+            deleteCmd.CommandText = "DELETE FROM LayoutMonitors WHERE layout_id = @layoutId";
+            deleteCmd.Parameters.AddWithValue("@layoutId", layoutId);
+            deleteCmd.ExecuteNonQuery();
+
+            foreach (LayoutMonitorSettings settings in monitors)
+            {
+                using SqliteCommand insertCmd = conn.CreateCommand();
+                insertCmd.Transaction = tx;
+                insertCmd.CommandText = @"
+                    INSERT INTO LayoutMonitors (layout_id, monitor_id, layout_position, slot_width)
+                    VALUES (@layoutId, @monitorId, @layoutPosition, @slotWidth)";
+                insertCmd.Parameters.AddWithValue("@layoutId", layoutId);
+                insertCmd.Parameters.AddWithValue("@monitorId", settings.MonitorId);
+                insertCmd.Parameters.AddWithValue("@layoutPosition", settings.LayoutPosition);
+                insertCmd.Parameters.AddWithValue("@slotWidth", settings.SlotWidth);
+                insertCmd.ExecuteNonQuery();
+             }
+
+            tx.Commit();
+
+            // Update cache.
+            _monitorCache[layoutId] = monitors;
+
+            WindowLayout? layout = _layouts.FirstOrDefault(l => l.Id == layoutId);
+            if (layout != null)
+            {
+                layout.Monitors = monitors;
+            }
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.SaveLayoutMonitors: exception: {ex.Message}, rolling back.");
+            tx.Rollback();
+            throw;
+        }
     }
 }

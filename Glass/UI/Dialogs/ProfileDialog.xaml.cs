@@ -38,6 +38,7 @@ public partial class ProfileDialog : Window
     public ObservableCollection<LayoutMonitorViewModel> Monitors { get; set; } = new();
     public LayoutManager LayoutSettings { get; set; } = new();
     private readonly CharacterRepository _characterRepo = new CharacterRepository();
+    private int? _selectedLayoutId;
     private bool _initialized = false;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -199,42 +200,46 @@ public partial class ProfileDialog : Window
     // Save_Click
     //
     // Click handler for the save button on the profile editor dialog.
+    // Persists the profile name, slot assignments, machine, and layout assignment.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
     private void Save_Click(object sender, RoutedEventArgs e)
     {
+        DebugLog.Write("ProfileDialog.Save_Click: saving.");
+
         RebuildSlotAssignments();
 
-        var profileName = ProfileName.Text.Trim();
-        var repo = new ProfileRepository(profileName);
+        string profileName = ProfileName.Text.Trim();
+        ProfileRepository repo = new ProfileRepository(profileName);
         repo.SetSlots(_slotAssignments.ToList());
+
+        if (_selectedLayoutId.HasValue)
+        {
+            DebugLog.Write($"ProfileDialog.Save_Click: assigning layoutId={_selectedLayoutId.Value}.");
+            repo.SetLayoutId(_selectedLayoutId.Value);
+        }
 
         if (MachineComboBox.SelectedItem is ComboBoxItem machineItem && machineItem.Tag is int machineId)
         {
             repo.SetMachineId(machineId);
         }
 
-
         int profileId = repo.Save();
+
         if (profileId == -1)
         {
-            var result = MessageBox.Show($"A profile named '{profileName}' already exists. Overwrite it?",
-                                         "Profile Exists", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            MessageBoxResult result = MessageBox.Show($"A profile named '{profileName}' already exists. Overwrite it?",
+                "Profile Exists", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+
             if (result == MessageBoxResult.No)
             {
+                DebugLog.Write("ProfileDialog.Save_Click: user declined overwrite, aborting.");
                 return;
             }
+
             profileId = repo.Save(overwrite: true);
         }
 
-        // Save window layout if monitors are configured and a name is provided.
-        string layoutName = LayoutNameTextBox.Text.Trim();
-        if ((Monitors.Count > 0) && !string.IsNullOrWhiteSpace(layoutName))
-        {
-            var layoutRepo = new WindowLayoutRepository();
-            layoutRepo.Save(repo, layoutName, _slotAssignments.ToList(), Monitors.ToList());
-        }
-
+        DebugLog.Write($"ProfileDialog.Save_Click: saved profileId={profileId}.");
         RecentProfiles.Add(profileName);
         DialogResult = true;
     }
@@ -653,67 +658,6 @@ public partial class ProfileDialog : Window
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // MonitorCountChanged
-    //
-    // Adjusts the Monitors collection to match the selected monitor count.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void MonitorCountChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (MonitorCountComboBox.SelectedItem == null)
-        {
-            return;
-        }
-
-        int selectedCount = int.Parse(((ComboBoxItem)MonitorCountComboBox.SelectedItem).Content.ToString()!);
-        DebugLog.Write($"ProfileDialog.MonitorCountChanged: selectedCount={selectedCount}.");
-
-        while (Monitors.Count < selectedCount)
-        {
-            Monitors.Add(CreateNewMonitorConfig(Monitors.Count + 1));
-        }
-
-        while (Monitors.Count > selectedCount)
-        {
-            Monitors.RemoveAt(Monitors.Count - 1);
-        }
-
-        MonitorConfigItemsControl.Items.Refresh();
-        foreach (object item in MonitorConfigItemsControl.Items)
-        {
-            ContentPresenter? container = MonitorConfigItemsControl.ItemContainerGenerator.ContainerFromItem(item) as ContentPresenter;
-            if (container == null)
-            {
-                continue;
-            }
-
-            container.ApplyTemplate();
-
-            ComboBox? resolutionCombo = container.ContentTemplate.FindName("comboBoxResolution", container) as ComboBox;
-            if (resolutionCombo != null)
-            {
-                LayoutMonitorViewModel? layoutMonitor = item as LayoutMonitorViewModel;
-                if (layoutMonitor != null)
-                {
-                    resolutionCombo.SelectedItem = resolutionCombo.Items
-                        .Cast<ComboBoxItem>()
-                        .FirstOrDefault(i => i.Content.ToString() == layoutMonitor.SelectedResolution);
-                }
-            }
-
-            ComboBox? orientationCombo = container.ContentTemplate.FindName("comboBoxOrientation", container) as ComboBox;
-            if (orientationCombo != null)
-            {
-                LayoutMonitorViewModel? layoutMonitor = item as LayoutMonitorViewModel;
-                orientationCombo.SelectedItem = orientationCombo.Items
-                    .Cast<ComboBoxItem>()
-                    .FirstOrDefault(i => i.Content.ToString() == layoutMonitor?.Monitor.Orientation.ToString());
-            }
-        }
-
-        DebugLog.Write($"ProfileDialog.MonitorCountChanged: Monitors.Count={Monitors.Count}.");
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // CreateNewMonitorConfig
     //
     // Creates a new LayoutMonitorViewModel for the given layout position,
@@ -776,286 +720,6 @@ public partial class ProfileDialog : Window
         return 0;
     }
 
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // MonitorSettingsChanged
-    //
-    // Handles resolution or orientation changes for a monitor.
-    // Note: Monitor.Width and Monitor.Height are sourced from the database and
-    // are not modified here. SelectedResolution drives the combo box display only.
-    //
-    // sender:  The combo box that changed.
-    // e:       The event arguments.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void MonitorSettingsChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (!_initialized)
-        {
-            return;
-        }
-
-        if (sender is ComboBox comboBox && comboBox.DataContext is LayoutMonitorViewModel layoutMonitor)
-        {
-            string value = comboBox.SelectedValue?.ToString() ?? string.Empty;
-
-            if (comboBox.Name.Contains("Resolution"))
-            {
-                layoutMonitor.SelectedResolution = value;
-                DebugLog.Write($"ProfileDialog.MonitorSettingsChanged: layoutPosition={layoutMonitor.LayoutPosition} resolution={value}.");
-            }
-            else if (comboBox.Name.Contains("Orientation"))
-            {
-                if (Enum.TryParse(value, out MonitorOrientation orientation))
-                {
-                    layoutMonitor.Monitor.Orientation = orientation;
-                    DebugLog.Write($"ProfileDialog.MonitorSettingsChanged: layoutPosition={layoutMonitor.LayoutPosition} orientation={orientation}.");
-                }
-            }
-
-            UpdateMonitorRectangles();
-            UpdateMonitorConfigurationUI(layoutMonitor);
-        }
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // MonitorRectangle_MouseLeftButtonDown
-    //
-    // Selects a monitor for configuration when its rectangle is clicked.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void MonitorRectangle_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        DebugLog.Write($"ProfileDialog.MonitorRectangle_MouseLeftButtonDown: fired, sender={sender?.GetType().Name}.");
-
-        if (sender is Rectangle rectangle && rectangle.DataContext is LayoutMonitorViewModel layoutMonitor)
-        {
-            foreach (LayoutMonitorViewModel lm in Monitors)
-            {
-                lm.IsSelected = (lm.LayoutPosition == layoutMonitor.LayoutPosition);
-            }
-
-            DebugLog.Write($"ProfileDialog.MonitorRectangle_MouseLeftButtonDown: selected layoutPosition={layoutMonitor.LayoutPosition}.");
-            UpdateMonitorConfigurationUI(layoutMonitor);
-
-            int deviceIndex = Monitors
-                .Where(m => m.Monitor != null)
-                .ToList()
-                .IndexOf(layoutMonitor);
-
-            if (deviceIndex >= 0)
-            {
-                MonitorNameComboBox.SelectedIndex = deviceIndex;
-            }
-        }
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // UpdateMonitorRectangles
-    //
-    // Redraws the monitor rectangles and overlay canvases to reflect current
-    // resolution and orientation settings.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void UpdateMonitorRectangles()
-    {
-        foreach (LayoutMonitorViewModel layoutMonitor in Monitors)
-        {
-            ContentPresenter? container = MonitorConfigItemsControl.ItemContainerGenerator.ContainerFromItem(layoutMonitor) as ContentPresenter;
-            if (container == null)
-            {
-                DebugLog.Write($"ProfileDialog.UpdateMonitorRectangles: container null for layoutPosition={layoutMonitor.LayoutPosition}, skipping.");
-                continue;
-            }
-
-            Rectangle? rectangle = FindVisualChildByName<Rectangle>(container, "MonitorRectangle");
-            Canvas? canvas = FindVisualChildByName<Canvas>(container, "OverlayCanvas");
-
-            // MonitorCountChanged fires during load, so it is possible that the ItemsControl has not rendered all items yet
-            if (rectangle == null)
-            {
-                continue;
-            }
-
-            if (canvas == null)
-            {
-                DebugLog.Write($"ProfileDialog.UpdateMonitorRectangles: canvas null for layoutPosition={layoutMonitor.LayoutPosition}, skipping.");
-                continue;
-            }
-
-            rectangle.Width = layoutMonitor.Monitor.Width / LayoutConstants.ScalingFactor;
-            rectangle.Height = layoutMonitor.Monitor.Height / LayoutConstants.ScalingFactor;
-
-            canvas.Width = layoutMonitor.OverlayCanvasWidth;
-            canvas.Height = layoutMonitor.OverlayCanvasHeight;
-       }
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // UpdateMonitorConfigurationUI
-    //
-    // Updates the UI controls for a monitor based on the current layout strategy.
-    //
-    // layoutMonitor:  The monitor to update.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void UpdateMonitorConfigurationUI(LayoutMonitorViewModel layoutMonitor)
-    {
-        DebugLog.Write($"ProfileDialog.UpdateMonitorConfigurationUI: layoutPosition={layoutMonitor.LayoutPosition} strategy={LayoutSettings.SelectedLayoutStrategy}.");
-
-        switch (LayoutSettings.SelectedLayoutStrategy)
-        {
-            case LayoutStrategies.FixedWindowSize:
-                {
-                    WindowSizeInputs.Visibility = Visibility.Visible;
-                    GridSizeInputs.Visibility = Visibility.Visible;
-
-                    int maxWindowWidth = layoutMonitor.Monitor.Width - LayoutConstants.HorizontalMargin;
-                    int maxWindowHeight = layoutMonitor.Monitor.Height - LayoutConstants.VerticalMargin;
-                    int calculatedMaxWidth = (int)(maxWindowHeight * LayoutConstants.AspectRatio);
-
-                    PreferredWidthSlider.Maximum = Math.Min(maxWindowWidth, calculatedMaxWidth);
-                    PreferredWidthSlider.Value = layoutMonitor.SlotWidth > 0
-                        ? layoutMonitor.SlotWidth
-                        : layoutMonitor.Monitor.Width / 4;
-
-                    UpdateGridSizeText(layoutMonitor.Monitor.Width, layoutMonitor.Monitor.Height, (int)PreferredWidthSlider.Value);
-                    RedrawWindowsForMonitor(layoutMonitor);
-                    break;
-                }
-
-            case LayoutStrategies.SubsetAndSwap:
-            case LayoutStrategies.SummaryWindows:
-                {
-                    WindowSizeInputs.Visibility = Visibility.Collapsed;
-                    GridSizeInputs.Visibility = Visibility.Collapsed;
-                    break;
-                }
-        }
-    }
-
-    // Updates the grid size text block to show how many windows fit on the monitor.
-    private void UpdateGridSizeText(int monitorWidth, int monitorHeight, int windowWidth)
-    {
-        int windowHeight = (int)(windowWidth / LayoutConstants.AspectRatio);
-        int windowWidthWithMargin = windowWidth + LayoutConstants.HorizontalMargin;
-        int windowHeightWithMargin = windowHeight + LayoutConstants.VerticalMargin;
-
-        int gridWidth = monitorWidth / windowWidthWithMargin;
-        int gridHeight = monitorHeight / windowHeightWithMargin;
-
-        GridSizeTextBlock.Text = $"{gridWidth} x {gridHeight}";
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // RedrawWindowsForMonitor
-    //
-    // Redraws the slot rectangles on the overlay canvas for a given monitor.
-    //
-    // layoutMonitor:  The monitor to redraw.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void RedrawWindowsForMonitor(LayoutMonitorViewModel layoutMonitor)
-    {
-        ContentPresenter? container = MonitorConfigItemsControl.ItemContainerGenerator.ContainerFromItem(layoutMonitor) as ContentPresenter;
-        if (container == null)
-        {
-            return;
-        }
-
-        Canvas? canvas = FindVisualChildByName<Canvas>(container, "OverlayCanvas");
-        Rectangle? rectangle = FindVisualChildByName<Rectangle>(container, "MonitorRectangle");
-
-        if ((canvas == null) || (rectangle == null))
-        {
-            return;
-        }
-
-        if (LayoutSettings.Stacked && (layoutMonitor.LayoutPosition == 1))
-        {
-            canvas.Children.Clear();
-            layoutMonitor.SlotRectangles.Clear();
-            layoutMonitor.NumSlots = 0;
-        }
-        else
-        {
-            DrawWindowsInMonitor(canvas, rectangle.Width, rectangle.Height, layoutMonitor);
-        }
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // DrawWindowsInMonitor
-    //
-    // Draws scaled blue rectangles on the canvas representing slot positions,
-    // and stores the full-size slot rectangles on the LayoutMonitorViewModel.
-    //
-    // canvas:         The canvas to draw on.
-    // monitorWidth:   The scaled width of the monitor rectangle.
-    // monitorHeight:  The scaled height of the monitor rectangle.
-    // layoutMonitor:  The monitor to draw slots for.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void DrawWindowsInMonitor(Canvas canvas, double monitorWidth, double monitorHeight, LayoutMonitorViewModel layoutMonitor)
-    {
-        int windowWidth = layoutMonitor.SlotWidth;
-        int windowHeight = (int)(windowWidth / LayoutConstants.AspectRatio);
-
-        canvas.Children.Clear();
-        layoutMonitor.SlotRectangles.Clear();
-
-        double scaledWindowWidth = windowWidth / LayoutConstants.ScalingFactor;
-        double scaledWindowHeight = windowHeight / LayoutConstants.ScalingFactor;
-
-        double scaledHorizontalMargin = LayoutConstants.HorizontalMargin / LayoutConstants.ScalingFactor;
-        double scaledVerticalMargin = LayoutConstants.VerticalMargin / LayoutConstants.ScalingFactor;
-
-        int columns = (int)(monitorWidth / (scaledWindowWidth + scaledHorizontalMargin));
-        int rows = (int)(monitorHeight / (scaledWindowHeight + scaledVerticalMargin));
-
-        double fullSizeHorizontalMargin = (layoutMonitor.Monitor.Width - (columns * windowWidth)) / (double)columns;
-        double fullSizeVerticalMargin = (layoutMonitor.Monitor.Height - (rows * windowHeight)) / (double)rows;
-
-        double actualScaledHorizontalMargin = fullSizeHorizontalMargin / LayoutConstants.ScalingFactor;
-        double actualScaledVerticalMargin = fullSizeVerticalMargin / LayoutConstants.ScalingFactor;
-
-        layoutMonitor.NumSlots = rows * columns;
-
-        for (int row = 0; row < rows; row++)
-        {
-            for (int col = 0; col < columns; col++)
-            {
-                Rectangle windowRect = new Rectangle
-                {
-                    Width = scaledWindowWidth,
-                    Height = scaledWindowHeight,
-                    Fill = Brushes.Blue,
-                    Stroke = Brushes.Black,
-                    StrokeThickness = 1
-                };
-
-                int left = (int)Math.Round(col * (windowWidth + fullSizeHorizontalMargin));
-                int top = (int)Math.Round(row * (windowHeight + fullSizeVerticalMargin));
-
-                layoutMonitor.SlotRectangles.Add(new Rect(left, top, windowWidth, windowHeight));
-
-                Canvas.SetLeft(windowRect, col * (scaledWindowWidth + actualScaledHorizontalMargin));
-                Canvas.SetTop(windowRect, row * (scaledWindowHeight + actualScaledVerticalMargin));
-
-                canvas.Children.Add(windowRect);
-            }
-        }
-
-        UpdateTotalSlotCount();
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // UpdateTotalSlotCount
-    //
-    // Updates the total slot count display across all non-primary monitors.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void UpdateTotalSlotCount()
-    {
-        int totalSlots = Monitors
-            .Where(m => !(LayoutSettings.Stacked && (m.LayoutPosition == 1)))
-            .Sum(m => m.NumSlots);
-
-        TotalSlotsTextBlock.Text = $"{totalSlots} total slots";
-        DebugLog.Write($"ProfileDialog.UpdateTotalSlotCount: totalSlots={totalSlots}.");
-    }
-
     // Recursively searches the visual tree for a child element with the given name.
     private T? FindVisualChildByName<T>(DependencyObject parent, string name) where T : DependencyObject
     {
@@ -1077,65 +741,6 @@ public partial class ProfileDialog : Window
         return null;
     }
 
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // PreferredWidthSlider_ValueChanged
-    //
-    // Updates the slot width for the selected monitor and redraws its slot preview.
-    //
-    // sender:  The slider that changed.
-    // e:       The event arguments containing the new value.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void PreferredWidthSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if ((PreferredSizeTextBlock == null) || (GridSizeTextBlock == null))
-        {
-            return;
-        }
-
-        int width = (int)e.NewValue;
-        int height = (int)(width / LayoutConstants.AspectRatio);
-        PreferredSizeTextBlock.Text = $"{width} x {height}";
-
-        LayoutMonitorViewModel? selectedMonitor = Monitors.FirstOrDefault(m => m.IsSelected);
-        if (selectedMonitor != null)
-        {
-            selectedMonitor.SlotWidth = width;
-            UpdateGridSizeText(selectedMonitor.Monitor.Width, selectedMonitor.Monitor.Height, width);
-            RedrawWindowsForMonitor(selectedMonitor);
-        }
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // LayoutStrategyChanged
-    //
-    // Updates the layout strategy when the user changes the combo box selection.
-    //
-    // sender:  The combo box that changed.
-    // e:       The event arguments.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void LayoutStrategyChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (LayoutStrategyComboBox.SelectedItem == null)
-        {
-            return;
-        }
-
-        LayoutSettings.SelectedLayoutStrategy = LayoutStrategyComboBox.SelectedIndex switch
-        {
-            0 => LayoutStrategies.FixedWindowSize,
-            1 => LayoutStrategies.SubsetAndSwap,
-            2 => LayoutStrategies.SummaryWindows,
-            _ => LayoutStrategies.FixedWindowSize
-        };
-
-        DebugLog.Write($"ProfileDialog.LayoutStrategyChanged: strategy={LayoutSettings.SelectedLayoutStrategy}.");
-
-        LayoutMonitorViewModel? selectedMonitor = Monitors.FirstOrDefault(m => m.IsSelected);
-        if (selectedMonitor != null)
-        {
-            UpdateMonitorConfigurationUI(selectedMonitor);
-        }
-    }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // LoadBindingList
@@ -1283,77 +888,47 @@ public partial class ProfileDialog : Window
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // LoadWindowLayoutTab
     //
-    // Loads the window layout for the current profile into the Window Layout tab.
-    // If no layout is assigned to the profile, the tab is left in its default state.
+    // Populates the layout list on the Window Layout tab.
+    // Pre-selects the layout currently assigned to this profile, if any.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void LoadWindowLayoutTab()
     {
+        DebugLog.Write("ProfileDialog.LoadWindowLayoutTab: loading.");
+
+        WindowLayoutRepository layoutRepo = new WindowLayoutRepository();
+        List<WindowLayout> layouts = layoutRepo.GetAllLayouts().ToList();
+
+        LayoutListView.ItemsSource = layouts;
+        DebugLog.Write($"ProfileDialog.LoadWindowLayoutTab: loaded {layouts.Count} layouts.");
+
         if (_profileName == null)
         {
-            DebugLog.Write("ProfileDialog.LoadWindowLayoutTab: no profile name, nothing to load.");
+            DebugLog.Write("ProfileDialog.LoadWindowLayoutTab: no profile name, skipping pre-selection.");
             return;
         }
 
         ProfileRepository profileRepo = new ProfileRepository(_profileName);
-        int profileId = profileRepo.GetId();
+        int? assignedLayoutId = profileRepo.GetLayoutId();
 
-        if (profileId == 0)
+        if (!assignedLayoutId.HasValue)
         {
-            DebugLog.Write($"ProfileDialog.LoadWindowLayoutTab: profile '{_profileName}' not found in database.");
+            DebugLog.Write("ProfileDialog.LoadWindowLayoutTab: no layout assigned to profile.");
+            ClearLayoutSummary();
             return;
         }
 
-        WindowLayoutRepository layoutRepo = new WindowLayoutRepository();
-        int? layoutId = profileRepo.GetLayoutId();
+        WindowLayout? assigned = layouts.FirstOrDefault(l => l.Id == assignedLayoutId.Value);
 
-        if (layoutId == null)
+        if (assigned == null)
         {
-            DebugLog.Write($"ProfileDialog.LoadWindowLayoutTab: no layout assigned to profileId={profileId}.");
+            DebugLog.Write($"ProfileDialog.LoadWindowLayoutTab: assigned layoutId={assignedLayoutId.Value} not found in list.");
+            ClearLayoutSummary();
             return;
         }
 
-        WindowLayout? layout = layoutRepo.GetLayoutById(layoutId.Value);
-        if (layout != null)
-        {
-            LayoutNameTextBox.Text = layout.Name;
-            DebugLog.Write($"ProfileDialog.LoadWindowLayoutTab: layout name='{layout.Name}'.");
-        }
-
-        List<(LayoutMonitorSettings Settings, Glass.Data.Models.Monitor Monitor)> layoutMonitors
-            = layoutRepo.GetLayoutMonitors(layoutId.Value);
-
-        if (layoutMonitors.Count == 0)
-        {
-            DebugLog.Write("ProfileDialog.LoadWindowLayoutTab: no monitors found for layout.");
-            return;
-        }
-
-        Monitors.Clear();
-
-        foreach ((LayoutMonitorSettings settings, Glass.Data.Models.Monitor monitor) in layoutMonitors)
-        {
-            LayoutMonitorViewModel layoutMonitor = new LayoutMonitorViewModel
-            {
-                LayoutPosition = settings.LayoutPosition,
-                SlotWidth = settings.SlotWidth,
-                Monitor = monitor,
-                SelectedResolution = $"{monitor.Width}x{monitor.Height}"
-            };
-
-            Monitors.Add(layoutMonitor);
-            DebugLog.Write($"ProfileDialog.LoadWindowLayoutTab: added layoutPosition={settings.LayoutPosition} adapter='{monitor.AdapterName}' slotWidth={settings.SlotWidth}.");
-        }
-
-        // Suppress MonitorCountChanged during loading to prevent combo box
-        // refreshes from overwriting the loaded monitor configuration.
-        _initialized = false;
-
-        int monitorCount = Monitors.Count;
-        MonitorCountComboBox.SelectedItem = MonitorCountComboBox.Items
-            .OfType<ComboBoxItem>()
-            .FirstOrDefault(i => i.Content.ToString() == monitorCount.ToString());
-
-        _initialized = true;
+        LayoutListView.SelectedItem = assigned;
+        UpdateLayoutSummary(assigned);
+        DebugLog.Write($"ProfileDialog.LoadWindowLayoutTab: pre-selected layoutId={assigned.Id} name='{assigned.Name}'.");
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1470,6 +1045,181 @@ public partial class ProfileDialog : Window
         DebugLog.Write($"ProfileDialog.RefreshKeyLayout: complete.");
     }
 
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // ClearLayoutSummary
+    //
+    // Clears the read-only layout summary panel on the Window Layout tab.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void ClearLayoutSummary()
+    {
+        DebugLog.Write("ProfileDialog.ClearLayoutSummary: clearing.");
+
+        LayoutSummaryName.Text = string.Empty;
+        LayoutSummaryMonitors.Text = string.Empty;
+        LayoutSummarySlots.Text = string.Empty;
+
+        NewUpdateLayoutButton.Content = "New";
+        NewUpdateLayoutButton.IsEnabled = true;
+        DeleteLayoutButton.IsEnabled = false;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // UpdateLayoutSummary
+    //
+    // Populates the read-only layout summary panel on the Window Layout tab
+    // with the details of the given layout, including profiles using it.
+    //
+    // layout:  The layout to summarize
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void UpdateLayoutSummary(WindowLayout layout)
+    {
+        DebugLog.Write($"ProfileDialog.UpdateLayoutSummary: layoutId={layout.Id} name='{layout.Name}'.");
+
+        LayoutSummaryName.Text = layout.Name;
+        LayoutSummaryMonitors.Text = layout.Monitors.Count.ToString();
+        LayoutSummarySlots.Text = layout.Slots.Count.ToString();
+
+        WindowLayoutRepository layoutRepo = new WindowLayoutRepository();
+        List<Profile> profiles = layoutRepo.GetProfilesUsingLayout(layout.Id);
+
+        if (profiles.Count == 0)
+        {
+            LayoutSummaryProfiles.Text = "(none)";
+        }
+        else
+        {
+            LayoutSummaryProfiles.Text = string.Join(", ", profiles.Select(p => p.Name));
+        }
+
+        NewUpdateLayoutButton.Content = "Update";
+        NewUpdateLayoutButton.IsEnabled = true;
+        DeleteLayoutButton.IsEnabled = true;
+
+        DebugLog.Write($"ProfileDialog.UpdateLayoutSummary: monitors={layout.Monitors.Count} slots={layout.Slots.Count} profiles={profiles.Count}.");
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // LayoutListView_SelectionChanged
+    //
+    // Fires when the user selects a layout in the Window Layout tab list.
+    // Records the selected layout ID as dirty state for Save_Click to persist.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void LayoutListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (LayoutListView.SelectedItem is not WindowLayout layout)
+        {
+            DebugLog.Write("ProfileDialog.LayoutListView_SelectionChanged: no layout selected.");
+            ClearLayoutSummary();
+            _selectedLayoutId = null;
+            return;
+        }
+
+        DebugLog.Write($"ProfileDialog.LayoutListView_SelectionChanged: layoutId={layout.Id} name='{layout.Name}'.");
+
+        _selectedLayoutId = layout.Id;
+        UpdateLayoutSummary(layout);
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // LayoutListView_KeyDown
+    //
+    // Escape clears the layout selection.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void LayoutListView_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            DebugLog.Write("ProfileDialog.LayoutListView_KeyDown: Escape pressed, clearing selection.");
+            LayoutListView.SelectedItem = null;
+            ClearLayoutSummary();
+            e.Handled = true;
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // NewUpdateLayout_Click
+    //
+    // Opens EditLayoutDialog to create a new layout or edit the selected one.
+    // After the dialog closes successfully, refreshes the layout list and
+    // re-selects the affected layout.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void NewUpdateLayout_Click(object sender, RoutedEventArgs e)
+    {
+        WindowLayout? selected = LayoutListView.SelectedItem as WindowLayout;
+
+        if (selected == null)
+        {
+            DebugLog.Write("ProfileDialog.NewUpdateLayout_Click: no layout selected, creating new.");
+        }
+        else
+        {
+            DebugLog.Write($"ProfileDialog.NewUpdateLayout_Click: editing layoutId={selected.Id} name='{selected.Name}'.");
+        }
+
+        EditLayoutDialog dialog = new EditLayoutDialog(selected) { Owner = this };
+
+        if (dialog.ShowDialog() != true)
+        {
+            DebugLog.Write("ProfileDialog.NewUpdateLayout_Click: dialog cancelled.");
+            return;
+        }
+
+        DebugLog.Write("ProfileDialog.NewUpdateLayout_Click: dialog saved, refreshing layout list.");
+
+        int? editedId = selected?.Id;
+        LoadWindowLayoutTab();
+
+        if (editedId.HasValue)
+        {
+            LayoutListView.SelectedItem = (LayoutListView.ItemsSource as List<WindowLayout>)
+                ?.FirstOrDefault(l => l.Id == editedId.Value);
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // DeleteLayout_Click
+    //
+    // Deletes the selected layout after confirmation.
+    // Refuses deletion if any profiles are still using the layout.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void DeleteLayout_Click(object sender, RoutedEventArgs e)
+    {
+        if (LayoutListView.SelectedItem is not WindowLayout layout)
+        {
+            DebugLog.Write("ProfileDialog.DeleteLayout_Click: no layout selected.");
+            return;
+        }
+
+        DebugLog.Write($"ProfileDialog.DeleteLayout_Click: layoutId={layout.Id} name='{layout.Name}'.");
+
+        WindowLayoutRepository layoutRepo = new WindowLayoutRepository();
+        List<Profile> affectedProfiles = layoutRepo.GetProfilesUsingLayout(layout.Id);
+
+        if (affectedProfiles.Count > 0)
+        {
+            string profileList = string.Join(", ", affectedProfiles.Select(p => p.Name));
+            DebugLog.Write($"ProfileDialog.DeleteLayout_Click: layout in use by profiles: {profileList}.");
+            MessageBox.Show(
+                $"Layout '{layout.Name}' is used by the following profile(s) and cannot be deleted:\n\n{profileList}\n\nRemove the layout from these profiles first.",
+                "Layout In Use", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        MessageBoxResult result = MessageBox.Show($"Delete layout '{layout.Name}'?",
+            "Confirm Delete", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes)
+        {
+            DebugLog.Write("ProfileDialog.DeleteLayout_Click: cancelled.");
+            return;
+        }
+
+        layoutRepo.Delete(layout.Id);
+        DebugLog.Write($"ProfileDialog.DeleteLayout_Click: deleted layoutId={layout.Id}.");
+
+        ClearLayoutSummary();
+        LoadWindowLayoutTab();
+    }
     private void NewPage_Click(object sender, RoutedEventArgs e)
     {
     }

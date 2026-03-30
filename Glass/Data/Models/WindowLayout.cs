@@ -1,4 +1,7 @@
-﻿namespace Glass.Data.Models;
+﻿using Glass.Core;
+using Glass.Data.Repositories;
+
+namespace Glass.Data.Models;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // WindowLayout
@@ -15,4 +18,34 @@ public class WindowLayout
     public int? MachineId { get; set; }
     public List<LayoutMonitorSettings> Monitors { get; set; } = new();
     public List<SlotPlacement> Slots { get; set; } = new();
+    public string DisplayName => GetDisplayName();
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // GetDisplayName
+    //
+    // Returns a formatted display name for this layout, including slot count.
+    // If the layout belongs to a different machine than the current machine,
+    // the layout's machine name is prepended in brackets.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public string GetDisplayName()
+    {
+        int slotCount = Slots.Count;
+        string slotLabel = $"({slotCount} slot{(slotCount == 1 ? "" : "s")})";
+
+        if (MachineId == null)
+        {
+            return $"{Name} {slotLabel}";
+        }
+
+        if (GlassContext.CurrentMachine != null && MachineId == GlassContext.CurrentMachine.Id)
+        {
+            return $"{Name} {slotLabel}";
+        }
+
+        MachineRepository machineRepo = new MachineRepository();
+        Machine? machine = machineRepo.GetById(MachineId.Value);
+        string machineTag = machine != null ? $"[{machine.Name}] " : $"[machine {MachineId}] ";
+
+        return $"{machineTag}{Name} {slotLabel}";
+    }
 }

@@ -247,6 +247,10 @@ public class Database
             pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
             pragmaOn.ExecuteNonQuery();
         }
+        if (version < 28)
+        {
+            ApplyMigration(conn, 28, Migration_028);
+        }
     }
 
     private int GetSchemaVersion()
@@ -756,6 +760,21 @@ public class Database
         ALTER TABLE WindowLayouts_new RENAME TO WindowLayouts;
     ";
 
+    private const string Migration_028 = @"
+        CREATE TABLE SlotPlacements (
+            id          INTEGER PRIMARY KEY,
+            layout_id   INTEGER NOT NULL REFERENCES WindowLayouts(id) ON DELETE CASCADE,
+            monitor_id  INTEGER NOT NULL REFERENCES Monitors(id),
+            slot_number INTEGER NOT NULL,
+            x           INTEGER NOT NULL,
+            y           INTEGER NOT NULL,
+            width       INTEGER NOT NULL,
+            height      INTEGER NOT NULL,
+            UNIQUE (layout_id, slot_number)
+        );
+
+        DROP TABLE CharacterPlacements;
+    ";
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"

@@ -92,111 +92,83 @@
                 </ListView>
             </TabItem>
             <TabItem x:Name="WindowLayoutTab" Header="Window Layout">
-                <StackPanel Margin="10">
-                    <StackPanel Orientation="Horizontal" Margin="0,8,0,8">
-                        <TextBlock Text="Layout Name:" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <TextBox x:Name="LayoutNameTextBox" Width="150"/>
-                    </StackPanel>
-                    
-                    <!-- Monitor Count -->
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                        <TextBlock Text="Number of Monitors:" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <ComboBox x:Name="MonitorCountComboBox"
-                      Width="80"
-                      SelectionChanged="MonitorCountChanged">
-                            <ComboBoxItem Content="1"/>
-                            <ComboBoxItem Content="2"/>
-                            <ComboBoxItem Content="3"/>
-                            <ComboBoxItem Content="4"/>
-                        </ComboBox>
-                    </StackPanel>
+                <Grid Margin="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="220"/>
+                        <ColumnDefinition Width="12"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
 
-                    <!-- Monitor Configuration -->
-                    <ItemsControl x:Name="MonitorConfigItemsControl" ItemsSource="{Binding Monitors}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <WrapPanel/>
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Border BorderBrush="{Binding IsSelectedForConfiguration, Converter={StaticResource BoolToBrushConverter}}"
-                            BorderThickness="2" Margin="4">
-                                    <StackPanel Margin="8">
-                                        <Grid>
-                                            <Rectangle x:Name="MonitorRectangle"
-                                           Width="96" Height="54"
-                                           Stroke="Black" Fill="LightGray"
-                                           HorizontalAlignment="Left" VerticalAlignment="Top"
-                                           MouseLeftButtonDown="MonitorRectangle_MouseLeftButtonDown"
-                                           Panel.ZIndex="0"/>
-                                            <Canvas x:Name="OverlayCanvas"
-                                                Width="{Binding OverlayCanvasWidth}"
-                                                Height="{Binding OverlayCanvasHeight}"
-                                                HorizontalAlignment="Left" VerticalAlignment="Top"
-                                                Background="Transparent"
-                                                IsHitTestVisible="False"
-                                                Panel.ZIndex="1"/>
-                                        </Grid>
-                                        <TextBlock Text="{Binding MonitorNumber}" HorizontalAlignment="Center" Margin="0,4,0,0"/>
-                                        <ComboBox x:Name="comboBoxResolution" Width="120" Margin="0,4,0,0"
-                                              SelectedValuePath="Content"
-                                              SelectedValue="{Binding SelectedResolution}"
-                                              SelectionChanged="MonitorSettingsChanged">
-                                            <ComboBoxItem Content="1920x1080"/>
-                                            <ComboBoxItem Content="2560x1440"/>
-                                            <ComboBoxItem Content="3840x2160"/>
-                                        </ComboBox>
-                                        <ComboBox x:Name="comboBoxOrientation" Width="120" Margin="0,4,0,0"
-                                      SelectedValuePath="Content"
-                                      SelectedValue="{Binding Orientation}"
-                                      SelectionChanged="MonitorSettingsChanged">
-                                            <ComboBoxItem Content="Landscape"/>
-                                            <ComboBoxItem Content="Portrait"/>
-                                        </ComboBox>
-                                    </StackPanel>
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                    <!-- Left: layout list -->
+                    <Grid Grid.Column="0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="8"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
 
-                    <!-- Monitor Device Name -->
-                    <ComboBox x:Name="MonitorNameComboBox"
-                  ItemsSource="{Binding MonitorComboBoxItems}"
-                  Width="200" HorizontalAlignment="Left" Margin="0,8,0,0"/>
+                        <Border Grid.Row="0" BorderBrush="Gray" BorderThickness="1">
+                            <ListView x:Name="LayoutListView"
+                          SelectionChanged="LayoutListView_SelectionChanged"
+                          KeyDown="LayoutListView_KeyDown"
+                          ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                <ListView.ItemContainerStyle>
+                                    <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
+                                        <Setter Property="Padding" Value="4,2,4,2"/>
+                                        <Setter Property="MinHeight" Value="0"/>
+                                    </Style>
+                                </ListView.ItemContainerStyle>
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DisplayName}"/>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </Border>
 
-                    <!-- Layout Strategy -->
-                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                        <TextBlock Text="Layout Strategy:" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <ComboBox x:Name="LayoutStrategyComboBox" Width="200"
-                      IsEnabled="False" SelectedIndex="0"
-                      SelectionChanged="LayoutStrategyChanged">
-                            <ComboBoxItem Content="Fixed Window Size" ToolTip="Each character window has a fixed size."/>
-                            <ComboBoxItem Content="Subset and Swap"   ToolTip="Display a subset of windows and swap between them."/>
-                            <ComboBoxItem Content="Summary Windows"   ToolTip="Display summary windows and focus full windows as needed."/>
-                        </ComboBox>
-                    </StackPanel>
+                        <StackPanel Grid.Row="2" Orientation="Horizontal">
+                            <Button x:Name="NewUpdateLayoutButton" Content="New" Width="80"
+                        Margin="0,0,8,0" IsEnabled="False"
+                        Click="NewUpdateLayout_Click"/>
+                            <Button x:Name="DeleteLayoutButton" Content="Delete" Width="80"
+                        IsEnabled="False"
+                        Click="DeleteLayout_Click"/>
+                        </StackPanel>
+                    </Grid>
 
-                    <!-- Preferred Window Size -->
-                    <StackPanel x:Name="WindowSizeInputs" Orientation="Horizontal" Margin="0,8,0,0" Visibility="Collapsed">
-                        <TextBlock Text="Preferred Size:" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <TextBlock x:Name="PreferredSizeTextBlock" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <Slider x:Name="PreferredWidthSlider"
-                    Minimum="100" Maximum="3840" Width="200"
-                    SmallChange="10" LargeChange="100"
-                    IsSnapToTickEnabled="True"
-                    ValueChanged="PreferredWidthSlider_ValueChanged"/>
-                    </StackPanel>
+                    <!-- Right: read-only layout summary -->
+                    <Grid Grid.Column="2">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="8"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="8"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="8"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
 
-                    <!-- Grid Size -->
-                    <StackPanel x:Name="GridSizeInputs" Orientation="Horizontal" Margin="0,8,0,0" Visibility="Collapsed">
-                        <TextBlock Text="Grid Size:" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <TextBlock x:Name="GridSizeTextBlock" VerticalAlignment="Center" Margin="0,0,16,0"/>
-                        <TextBlock Text="Total Slots:" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <TextBlock x:Name="TotalSlotsTextBlock" VerticalAlignment="Center"/>
-                    </StackPanel>
+                        <DockPanel Grid.Row="0">
+                            <TextBlock DockPanel.Dock="Left" Text="Name:" VerticalAlignment="Center" Width="90" Margin="0,0,8,0"/>
+                            <TextBlock x:Name="LayoutSummaryName" VerticalAlignment="Center"/>
+                        </DockPanel>
 
-                </StackPanel>
+                        <DockPanel Grid.Row="2">
+                            <TextBlock DockPanel.Dock="Left" Text="Monitors:" VerticalAlignment="Center" Width="90" Margin="0,0,8,0"/>
+                            <TextBlock x:Name="LayoutSummaryMonitors" VerticalAlignment="Center"/>
+                        </DockPanel>
+
+                        <DockPanel Grid.Row="4">
+                            <TextBlock DockPanel.Dock="Left" Text="Slots:" VerticalAlignment="Center" Width="90" Margin="0,0,8,0"/>
+                            <TextBlock x:Name="LayoutSummarySlots" VerticalAlignment="Center"/>
+                        </DockPanel>
+
+                        <DockPanel Grid.Row="6">
+                            <TextBlock DockPanel.Dock="Left" Text="Used by:" VerticalAlignment="Center" Width="90" Margin="0,0,8,0"/>
+                            <TextBlock x:Name="LayoutSummaryProfiles" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                        </DockPanel>
+                    </Grid>
+                </Grid>
             </TabItem>
             <TabItem x:Name="KeyboardLayoutTab" Header="Keyboard Layout">
                 <Grid Margin="8">

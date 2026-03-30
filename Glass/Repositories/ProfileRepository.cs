@@ -94,6 +94,20 @@ public class ProfileRepository
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // SetLayoutId
+    //
+    // Sets the layout ID assigned to this profile.
+    // Call Save() to persist the change to the database.
+    //
+    // layoutId:  The ID of the layout to assign, or null to clear the assignment.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void SetLayoutId(int? layoutId)
+    {
+        DebugLog.Write(DebugLog.Log_Database, $"ProfileRepository.SetLayoutId: layoutId={layoutId?.ToString() ?? "null"}.");
+        _profile.LayoutId = layoutId;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // GetMachineId
     //
     // Returns the machine ID assigned to this profile, or null if not assigned.
