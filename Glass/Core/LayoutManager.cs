@@ -2,6 +2,12 @@
 using Glass.Core;
 
 namespace Glass.Core;
+public enum LayoutStrategies
+{
+    FixedWindowSize,
+    SubsetAndSwap,
+    SummaryWindows
+}
 
 // Tracks the current layout settings for a character set's window configuration.
 public class LayoutManager : INotifyPropertyChanged

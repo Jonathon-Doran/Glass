@@ -75,7 +75,6 @@ public partial class MainWindow : Window
     // Window_Loaded
     //
     // Called when the main window has finished loading.
-    // Starts G-key input handling.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
@@ -253,10 +252,27 @@ public partial class MainWindow : Window
         PushRelayGroupState(repo.GetId());
         PushCommandState();
 
-        // Load slot placements from the first layout for this profile.
-        var layoutRepo = new WindowLayoutRepository();
-        var placements = layoutRepo.GetLayout(profileName);
-        DebugLog.Write(DebugLog.Log_Database, $"LaunchProfile: {placements.Count} slot placements loaded for profile '{profileName}'.");
+        WindowLayoutRepository layoutRepo = new WindowLayoutRepository();
+        int? layoutId = repo.GetLayoutId();
+        if (!layoutId.HasValue)
+        {
+            DebugLog.Write("LaunchProfile: no layout assigned to profile, aborting.");
+            MessageBox.Show("This profile has no window layout assigned. Please edit the profile and configure a layout before launching.", "No Layout", MessageBoxButton.OK, MessageBoxImage.Warning);
+            _activeProfile = null;
+            return;
+        }
+
+        List<SlotPlacement> placements = layoutRepo.GetSlotPlacements(layoutId.Value);
+        DebugLog.Write(DebugLog.Log_Database, $"LaunchProfile: {placements.Count} slot placements computed for layoutId={layoutId.Value}.");
+        if (layoutId.HasValue)
+        {
+            placements = layoutRepo.GetSlotPlacements(layoutId.Value);
+            DebugLog.Write(DebugLog.Log_Database, $"LaunchProfile: {placements.Count} slot placements computed for layoutId={layoutId.Value}.");
+        }
+        else
+        {
+            DebugLog.Write(DebugLog.Log_Database, "LaunchProfile: no layout assigned to profile, skipping slot definitions.");
+        }
 
         // Send any new slot definitions to GlassVideo.
         foreach (var placement in placements)

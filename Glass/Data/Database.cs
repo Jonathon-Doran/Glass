@@ -195,6 +195,46 @@ public class Database
         {
             ApplyMigration(conn, 22, Migration_022);
         }
+        if (version < 23)
+        {
+            using SqliteCommand pragmaOff = conn.CreateCommand();
+            pragmaOff.CommandText = "PRAGMA foreign_keys = OFF";
+            pragmaOff.ExecuteNonQuery();
+
+            ApplyMigration(conn, 23, Migration_023);
+
+            using SqliteCommand pragmaOn = conn.CreateCommand();
+            pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
+            pragmaOn.ExecuteNonQuery();
+        }
+        if (version < 24)
+        {
+            using SqliteCommand pragmaOff = conn.CreateCommand();
+            pragmaOff.CommandText = "PRAGMA foreign_keys = OFF";
+            pragmaOff.ExecuteNonQuery();
+
+            ApplyMigration(conn, 24, Migration_024);
+
+            using SqliteCommand pragmaOn = conn.CreateCommand();
+            pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
+            pragmaOn.ExecuteNonQuery();
+        }
+        if (version < 25)
+        {
+            ApplyMigration(conn, 25, Migration_025);
+        }
+        if (version < 26)
+        {
+            using SqliteCommand pragmaOff = conn.CreateCommand();
+            pragmaOff.CommandText = "PRAGMA foreign_keys = OFF";
+            pragmaOff.ExecuteNonQuery();
+
+            ApplyMigration(conn, 26, Migration_026);
+
+            using SqliteCommand pragmaOn = conn.CreateCommand();
+            pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
+            pragmaOn.ExecuteNonQuery();
+        }
     }
 
     private int GetSchemaVersion()
@@ -611,7 +651,83 @@ public class Database
         );
     ";
 
+    private const string Migration_023 = @"
+        ALTER TABLE Monitors RENAME TO Monitors_old;
 
+        CREATE TABLE Monitors (
+            id           INTEGER PRIMARY KEY,
+            machine_id   INTEGER NOT NULL REFERENCES Machines(id),
+            adapter_name TEXT NOT NULL,
+            pnp_id       TEXT NOT NULL DEFAULT '',
+            serial       TEXT NOT NULL DEFAULT '',
+            width        INTEGER NOT NULL,
+            height       INTEGER NOT NULL,
+            UNIQUE (machine_id, adapter_name)
+        );
+
+        INSERT INTO Monitors (id, machine_id, adapter_name, pnp_id, serial, width, height)
+        SELECT id, machine_id, display_name, '', '', width, height
+        FROM Monitors_old;
+
+        DROP TABLE Monitors_old;
+
+        CREATE TABLE LayoutMonitors (
+            id              INTEGER PRIMARY KEY,
+            layout_id       INTEGER NOT NULL REFERENCES WindowLayouts(id) ON DELETE CASCADE,
+            monitor_id      INTEGER NOT NULL REFERENCES Monitors(id),
+            layout_position INTEGER NOT NULL,
+            slot_width      INTEGER NOT NULL,
+            UNIQUE (layout_id, monitor_id),
+            UNIQUE (layout_id, layout_position)
+        );
+    ";
+
+    private const string Migration_024 = @"
+        ALTER TABLE WindowLayouts RENAME TO WindowLayouts_old;
+
+        CREATE TABLE WindowLayouts (
+            id                  INTEGER PRIMARY KEY,
+            name                TEXT NOT NULL UNIQUE,
+            machine_id          INTEGER REFERENCES Machines(id),
+            monitor_fingerprint TEXT NOT NULL DEFAULT ''
+        );
+
+        INSERT INTO WindowLayouts (id, name, machine_id, monitor_fingerprint)
+        SELECT
+            id,
+            name || '-' || id,
+            machine_id,
+            monitor_fingerprint
+        FROM WindowLayouts_old;
+
+        ALTER TABLE Profiles ADD COLUMN layout_id INTEGER REFERENCES WindowLayouts(id);
+
+        UPDATE Profiles
+        SET layout_id = (
+            SELECT id FROM WindowLayouts_old WHERE profile_id = Profiles.id LIMIT 1
+        );
+
+        DROP TABLE WindowLayouts_old;
+    ";
+
+    private const string Migration_025 = @"
+        DROP TABLE IF EXISTS CharacterPlacements;
+    ";
+
+    private const string Migration_026 = @"
+        DROP TABLE IF EXISTS LayoutMonitors;
+        DROP TABLE IF EXISTS CharacterPlacements;
+
+        CREATE TABLE LayoutMonitors (
+            id              INTEGER PRIMARY KEY,
+            layout_id       INTEGER NOT NULL REFERENCES WindowLayouts(id) ON DELETE CASCADE,
+            monitor_id      INTEGER NOT NULL REFERENCES Monitors(id),
+            layout_position INTEGER NOT NULL,
+            slot_width      INTEGER NOT NULL,
+            UNIQUE (layout_id, monitor_id),
+            UNIQUE (layout_id, layout_position)
+        );
+    ";
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"

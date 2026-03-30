@@ -1,12 +1,9 @@
 ﻿GlassVideo:
 
-Windows not positioned correctly
-
 Glass:
 No way to delete a profile
 
 ISXGlass:
-File virtualization behavior is suspect — noted but not investigated
 
 Subsampling not in
 
@@ -30,3 +27,10 @@ When Glass connects to a remote ISXGlass instance, it knows that machine's hostn
 Look up or insert that hostname in Machines, get its id
 Layouts and monitors for that machine are stored under its id
 Client file generation uses the monitor dimensions for the target machine, not necessarily the current machine
+
+
+Monitor identification / EDID research
+MonitorInfoHelper refactoring
+MonitorRepository design
+LayoutMonitors schema design
+Cross-machine layout loading behaviour
