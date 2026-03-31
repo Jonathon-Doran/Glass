@@ -224,14 +224,14 @@
                     <TextBlock x:Name="DeviceLabel" Grid.Row="2"
                            FontWeight="Bold" HorizontalAlignment="Left"
                            Visibility="Collapsed"/>
-                    
+
                     <!-- Middle: key grid left, binding list right -->
                     <Grid Grid.Row="4">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="500"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        
+
                         <controls:KeyboardLayoutControl Grid.Column="0"
                                 x:Name="KeyLayoutControl"
                                 ShowLabel="False"

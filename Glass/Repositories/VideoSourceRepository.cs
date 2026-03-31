@@ -16,11 +16,11 @@ public class VideoSourceRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // GetAll
     //
-    // Returns all VideoSource records from the database, ordered by name.
+    // Returns all video sources from the database.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public List<VideoSource> GetAll()
     {
-        DebugLog.Write(DebugLog.Log_Database, "VideoSourceRepository.GetAll: loading all video sources.");
+        DebugLog.Write(DebugLog.Log_Database, "VideoSourceRepository.GetAll: loading sources.");
 
         List<VideoSource> sources = new List<VideoSource>();
 
@@ -28,7 +28,7 @@ public class VideoSourceRepository
         conn.Open();
 
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT id, name, x, y, width, height FROM VideoSources ORDER BY name";
+        cmd.CommandText = "SELECT id, name, ui_skin_id, x, y, width, height FROM VideoSources";
 
         using SqliteDataReader reader = cmd.ExecuteReader();
         while (reader.Read())
@@ -37,25 +37,25 @@ public class VideoSourceRepository
             {
                 Id = reader.GetInt32(0),
                 Name = reader.GetString(1),
-                X = reader.GetInt32(2),
-                Y = reader.GetInt32(3),
-                Width = reader.GetInt32(4),
-                Height = reader.GetInt32(5)
+                UISkinId = reader.GetInt32(2),
+                X = reader.GetInt32(3),
+                Y = reader.GetInt32(4),
+                Width = reader.GetInt32(5),
+                Height = reader.GetInt32(6)
             };
             sources.Add(source);
-            DebugLog.Write(DebugLog.Log_Database, $"VideoSourceRepository.GetAll: loaded source id={source.Id} name='{source.Name}' x={source.X} y={source.Y} w={source.Width} h={source.Height}.");
         }
 
-        DebugLog.Write(DebugLog.Log_Database, $"VideoSourceRepository.GetAll: {sources.Count} sources loaded.");
+        DebugLog.Write(DebugLog.Log_Database, $"VideoSourceRepository.GetAll: loaded {sources.Count} sources.");
         return sources;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // GetById
     //
-    // Returns the VideoSource with the given ID, or null if not found.
+    // Returns a video source by ID, or null if not found.
     //
-    // id:  The ID of the source to load.
+    // id: The source ID to retrieve
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public VideoSource? GetById(int id)
     {
@@ -65,93 +65,111 @@ public class VideoSourceRepository
         conn.Open();
 
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT id, name, x, y, width, height FROM VideoSources WHERE id = @id";
+        cmd.CommandText = "SELECT id, name, ui_skin_id, x, y, width, height FROM VideoSources WHERE id = @id";
         cmd.Parameters.AddWithValue("@id", id);
 
         using SqliteDataReader reader = cmd.ExecuteReader();
-        if (!reader.Read())
+        if (reader.Read())
         {
-            DebugLog.Write(DebugLog.Log_Database, $"VideoSourceRepository.GetById: id={id} not found.");
-            return null;
+            VideoSource source = new VideoSource
+            {
+                Id = reader.GetInt32(0),
+                Name = reader.GetString(1),
+                UISkinId = reader.GetInt32(2),
+                X = reader.GetInt32(3),
+                Y = reader.GetInt32(4),
+                Width = reader.GetInt32(5),
+                Height = reader.GetInt32(6)
+            };
+            DebugLog.Write(DebugLog.Log_Database, $"VideoSourceRepository.GetById: found '{source.Name}'.");
+            return source;
         }
 
-        VideoSource source = new VideoSource
-        {
-            Id = reader.GetInt32(0),
-            Name = reader.GetString(1),
-            X = reader.GetInt32(2),
-            Y = reader.GetInt32(3),
-            Width = reader.GetInt32(4),
-            Height = reader.GetInt32(5)
-        };
-
-        DebugLog.Write(DebugLog.Log_Database, $"VideoSourceRepository.GetById: loaded name='{source.Name}' x={source.X} y={source.Y} w={source.Width} h={source.Height}.");
-        return source;
+        DebugLog.Write(DebugLog.Log_Database, $"VideoSourceRepository.GetById: id={id} not found.");
+        return null;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Save
     //
-    // Inserts or updates a VideoSource. If the source has Id == 0 it is inserted
-    // and the new ID is assigned back to the model. Otherwise the existing row
-    // is updated.
+    // Inserts or updates a video source. If Id is 0, inserts and updates Id.
     //
-    // source:  The source to save.
+    // source: The source to save
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Save(VideoSource source)
     {
-        DebugLog.Write(DebugLog.Log_Database, $"VideoSourceRepository.Save: id={source.Id} name='{source.Name}' x={source.X} y={source.Y} w={source.Width} h={source.Height}.");
+        DebugLog.Write(DebugLog.Log_Database, $"VideoSourceRepository.Save: name='{source.Name}' uiSkinId={source.UISkinId}.");
 
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
 
-        using SqliteTransaction tx = conn.BeginTransaction();
-        try
+        if (source.Id == 0)
         {
             using SqliteCommand cmd = conn.CreateCommand();
-            cmd.Transaction = tx;
-
-            if (source.Id == 0)
-            {
-                DebugLog.Write(DebugLog.Log_Database, "VideoSourceRepository.Save: inserting new source.");
-                cmd.CommandText = @"
-                    INSERT INTO VideoSources (name, x, y, width, height)
-                    VALUES (@name, @x, @y, @width, @height);
-                    SELECT last_insert_rowid();";
-                cmd.Parameters.AddWithValue("@name", source.Name);
-                cmd.Parameters.AddWithValue("@x", source.X);
-                cmd.Parameters.AddWithValue("@y", source.Y);
-                cmd.Parameters.AddWithValue("@width", source.Width);
-                cmd.Parameters.AddWithValue("@height", source.Height);
-                source.Id = Convert.ToInt32(cmd.ExecuteScalar());
-                DebugLog.Write(DebugLog.Log_Database, $"VideoSourceRepository.Save: inserted, new id={source.Id}.");
-            }
-            else
-            {
-                DebugLog.Write(DebugLog.Log_Database, $"VideoSourceRepository.Save: updating id={source.Id}.");
-                cmd.CommandText = @"
-                    UPDATE VideoSources
-                    SET name = @name, x = @x, y = @y, width = @width, height = @height
-                    WHERE id = @id";
-                cmd.Parameters.AddWithValue("@id", source.Id);
-                cmd.Parameters.AddWithValue("@name", source.Name);
-                cmd.Parameters.AddWithValue("@x", source.X);
-                cmd.Parameters.AddWithValue("@y", source.Y);
-                cmd.Parameters.AddWithValue("@width", source.Width);
-                cmd.Parameters.AddWithValue("@height", source.Height);
-                cmd.ExecuteNonQuery();
-                DebugLog.Write(DebugLog.Log_Database, $"VideoSourceRepository.Save: updated id={source.Id}.");
-            }
-
-            tx.Commit();
-            DebugLog.Write(DebugLog.Log_Database, $"VideoSourceRepository.Save: committed id={source.Id}.");
+            cmd.CommandText = "INSERT INTO VideoSources (name, ui_skin_id, x, y, width, height) VALUES (@name, @uiSkinId, @x, @y, @width, @height); SELECT last_insert_rowid();";
+            cmd.Parameters.AddWithValue("@name", source.Name);
+            cmd.Parameters.AddWithValue("@uiSkinId", source.UISkinId);
+            cmd.Parameters.AddWithValue("@x", source.X);
+            cmd.Parameters.AddWithValue("@y", source.Y);
+            cmd.Parameters.AddWithValue("@width", source.Width);
+            cmd.Parameters.AddWithValue("@height", source.Height);
+            source.Id = Convert.ToInt32(cmd.ExecuteScalar());
+            DebugLog.Write(DebugLog.Log_Database, $"VideoSourceRepository.Save: inserted id={source.Id}.");
         }
-        catch (Exception ex)
+        else
         {
-            DebugLog.Write(DebugLog.Log_Database, $"VideoSourceRepository.Save: exception: {ex.Message}, rolling back.");
-            tx.Rollback();
-            throw;
+            using SqliteCommand cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE VideoSources SET name = @name, ui_skin_id = @uiSkinId, x = @x, y = @y, width = @width, height = @height WHERE id = @id";
+            cmd.Parameters.AddWithValue("@name", source.Name);
+            cmd.Parameters.AddWithValue("@uiSkinId", source.UISkinId);
+            cmd.Parameters.AddWithValue("@x", source.X);
+            cmd.Parameters.AddWithValue("@y", source.Y);
+            cmd.Parameters.AddWithValue("@width", source.Width);
+            cmd.Parameters.AddWithValue("@height", source.Height);
+            cmd.Parameters.AddWithValue("@id", source.Id);
+            cmd.ExecuteNonQuery();
+            DebugLog.Write(DebugLog.Log_Database, $"VideoSourceRepository.Save: updated id={source.Id}.");
         }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // GetByUISkin
+    //
+    // Returns all video sources for a specific UI skin.
+    //
+    // uiSkinId: The UI skin ID to filter by
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public List<VideoSource> GetByUISkin(int uiSkinId)
+    {
+        DebugLog.Write(DebugLog.Log_Database, $"VideoSourceRepository.GetByUISkin: uiSkinId={uiSkinId}.");
+
+        List<VideoSource> sources = new List<VideoSource>();
+
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT id, name, ui_skin_id, x, y, width, height FROM VideoSources WHERE ui_skin_id = @uiSkinId";
+        cmd.Parameters.AddWithValue("@uiSkinId", uiSkinId);
+
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            VideoSource source = new VideoSource
+            {
+                Id = reader.GetInt32(0),
+                Name = reader.GetString(1),
+                UISkinId = reader.GetInt32(2),
+                X = reader.GetInt32(3),
+                Y = reader.GetInt32(4),
+                Width = reader.GetInt32(5),
+                Height = reader.GetInt32(6)
+            };
+            sources.Add(source);
+        }
+
+        DebugLog.Write(DebugLog.Log_Database, $"VideoSourceRepository.GetByUISkin: loaded {sources.Count} sources.");
+        return sources;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

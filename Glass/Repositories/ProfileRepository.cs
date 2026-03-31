@@ -28,7 +28,7 @@ public class ProfileRepository
         conn.Open();
 
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT id, name, machine_id, layout_id FROM Profiles WHERE name = @name";
+        cmd.CommandText = "SELECT id, name, machine_id, layout_id, ui_skin_id FROM Profiles WHERE name = @name";
         cmd.Parameters.AddWithValue("@name", profileName);
 
         using SqliteDataReader reader = cmd.ExecuteReader();
@@ -39,7 +39,8 @@ public class ProfileRepository
                 Id = reader.GetInt32(0),
                 Name = reader.GetString(1),
                 MachineId = reader.IsDBNull(2) ? null : reader.GetInt32(2),
-                LayoutId = reader.IsDBNull(3) ? null : reader.GetInt32(3)
+                LayoutId = reader.IsDBNull(3) ? null : reader.GetInt32(3),
+                UISkinId = reader.IsDBNull(4) ? null : reader.GetInt32(4)
             };
             reader.Close();
 
@@ -130,6 +131,19 @@ public class ProfileRepository
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // SetUISkinId
+    //
+    // Sets the UI skin ID for this profile.
+    //
+    // uiSkinId: The UI skin ID, or null to clear
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void SetUISkinId(int? uiSkinId)
+    {
+        DebugLog.Write(DebugLog.Log_Database, $"ProfileRepository.SetUISkinId: uiSkinId={uiSkinId}.");
+        _profile.UISkinId = uiSkinId;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // GetSlots
     //
     // Returns a read-only view of the cached slot assignments.
@@ -216,9 +230,10 @@ public class ProfileRepository
 
                 using var updateCmd = conn.CreateCommand();
                 updateCmd.Transaction = tx;
-                updateCmd.CommandText = "UPDATE Profiles SET machine_id = @machineId, layout_id = @layoutId WHERE id = @id";
+                updateCmd.CommandText = "UPDATE Profiles SET machine_id = @machineId, layout_id = @layoutId, ui_skin_id = @uiSkinId WHERE id = @id";
                 updateCmd.Parameters.AddWithValue("@machineId", _profile.MachineId.HasValue ? _profile.MachineId.Value : DBNull.Value);
                 updateCmd.Parameters.AddWithValue("@layoutId", _profile.LayoutId.HasValue ? _profile.LayoutId.Value : DBNull.Value);
+                updateCmd.Parameters.AddWithValue("@uiSkinId", _profile.UISkinId.HasValue ? _profile.UISkinId.Value : DBNull.Value);
                 updateCmd.Parameters.AddWithValue("@id", profileId);
                 updateCmd.ExecuteNonQuery();
 
@@ -228,10 +243,11 @@ public class ProfileRepository
             {
                 using var insertCmd = conn.CreateCommand();
                 insertCmd.Transaction = tx;
-                insertCmd.CommandText = "INSERT INTO Profiles (name, machine_id, layout_id) VALUES (@name, @machineId, @layoutId); SELECT last_insert_rowid();";
+                insertCmd.CommandText = "INSERT INTO Profiles (name, machine_id, layout_id, ui_skin_id) VALUES (@name, @machineId, @layoutId, @uiSkinId); SELECT last_insert_rowid();";
                 insertCmd.Parameters.AddWithValue("@name", profileName);
                 insertCmd.Parameters.AddWithValue("@machineId", _profile.MachineId.HasValue ? _profile.MachineId.Value : DBNull.Value);
                 insertCmd.Parameters.AddWithValue("@layoutId", _profile.LayoutId.HasValue ? _profile.LayoutId.Value : DBNull.Value);
+                insertCmd.Parameters.AddWithValue("@uiSkinId", _profile.UISkinId.HasValue ? _profile.UISkinId.Value : DBNull.Value);
                 profileId = Convert.ToInt32(insertCmd.ExecuteScalar());
 
                 DebugLog.Write(DebugLog.Log_Database, $"ProfileRepository.Save: inserted new profile, profileId={profileId}. machineId={_profile.MachineId} layoutId={_profile.LayoutId}.");

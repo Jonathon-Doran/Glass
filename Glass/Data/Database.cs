@@ -251,6 +251,34 @@ public class Database
         {
             ApplyMigration(conn, 28, Migration_028);
         }
+        if (version < 29)
+        {
+            using SqliteCommand pragmaOff = conn.CreateCommand();
+            pragmaOff.CommandText = "PRAGMA foreign_keys = OFF";
+            pragmaOff.ExecuteNonQuery();
+
+            ApplyMigration(conn, 29, Migration_029);
+
+            using SqliteCommand pragmaOn = conn.CreateCommand();
+            pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
+            pragmaOn.ExecuteNonQuery();
+        }
+        if (version < 30)
+        {
+            ApplyMigration(conn, 30, Migration_030);
+        }
+        if (version < 31)
+        {
+            using SqliteCommand pragmaOff = conn.CreateCommand();
+            pragmaOff.CommandText = "PRAGMA foreign_keys = OFF";
+            pragmaOff.ExecuteNonQuery();
+
+            ApplyMigration(conn, 31, Migration_031);
+
+            using SqliteCommand pragmaOn = conn.CreateCommand();
+            pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
+            pragmaOn.ExecuteNonQuery();
+        }
     }
 
     private int GetSchemaVersion()
@@ -775,6 +803,69 @@ public class Database
 
         DROP TABLE CharacterPlacements;
     ";
+
+    private const string Migration_029 = @"
+        CREATE TABLE VideoDestinations_new (
+            id          INTEGER PRIMARY KEY,
+            profile_id  INTEGER NOT NULL REFERENCES Profiles(id) ON DELETE CASCADE,
+            source_id   INTEGER NOT NULL REFERENCES VideoSources(id) ON DELETE CASCADE,
+            x           INTEGER NOT NULL,
+            y           INTEGER NOT NULL,
+            width       INTEGER NOT NULL,
+            height      INTEGER NOT NULL
+        );
+
+        INSERT INTO VideoDestinations_new SELECT * FROM VideoDestinations;
+        DROP TABLE VideoDestinations;
+        ALTER TABLE VideoDestinations_new RENAME TO VideoDestinations;
+    ";
+
+    private const string Migration_030 = @"
+        ALTER TABLE VideoDestinations ADD COLUMN name TEXT NOT NULL DEFAULT '';
+    ";
+
+    private const string Migration_031 = @"
+        CREATE TABLE UISkins (
+            id      INTEGER PRIMARY KEY,
+            name    TEXT NOT NULL UNIQUE
+        );
+
+        INSERT INTO UISkins (name) VALUES ('DefaultUI');
+        INSERT INTO UISkins (name) VALUES ('SparxHD');
+        INSERT INTO UISkins (name) VALUES ('Flame (4K)');
+
+        ALTER TABLE Profiles ADD COLUMN ui_skin_id INTEGER REFERENCES UISkins(id);
+    
+        CREATE TABLE VideoSources_new (
+            id          INTEGER PRIMARY KEY,
+            name        TEXT NOT NULL,
+            ui_skin_id  INTEGER NOT NULL REFERENCES UISkins(id),
+            x           INTEGER NOT NULL,
+            y           INTEGER NOT NULL,
+            width       INTEGER NOT NULL,
+            height      INTEGER NOT NULL,
+            UNIQUE (name, ui_skin_id)
+        );
+
+        INSERT INTO VideoSources_new (id, name, ui_skin_id, x, y, width, height)
+        SELECT id, name, 1, x, y, width, height FROM VideoSources;
+
+        DROP TABLE VideoSources;
+        ALTER TABLE VideoSources_new RENAME TO VideoSources;
+
+        CREATE TABLE VideoDestinations_new (
+            id      INTEGER PRIMARY KEY,
+            name    TEXT NOT NULL UNIQUE,
+            x       INTEGER NOT NULL,
+            y       INTEGER NOT NULL,
+            width   INTEGER NOT NULL,
+            height  INTEGER NOT NULL
+        );
+
+        DROP TABLE VideoDestinations;
+        ALTER TABLE VideoDestinations_new RENAME TO VideoDestinations;
+    ";
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"

@@ -18,6 +18,7 @@ public partial class ManageVideoSourcesDialog : Window
 {
     private List<VideoSource> _sources = new();
     private VideoSource? _selectedSource = null;
+    private UISkin? _selectedSkin = null;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // ManageVideoSourcesDialog
@@ -27,21 +28,73 @@ public partial class ManageVideoSourcesDialog : Window
     public ManageVideoSourcesDialog()
     {
         InitializeComponent();
+        LoadUISkins();
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // LoadUISkins
+    //
+    // Loads all UI skins and populates the dropdown.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void LoadUISkins()
+    {
+        DebugLog.Write("ManageVideoSourcesDialog.LoadUISkins: loading skins.");
+
+        UISkinRepository skinRepo = new UISkinRepository();
+        List<UISkin> skins = skinRepo.GetAll();
+
+        UISkinComboBox.ItemsSource = skins;
+
+        if (skins.Count > 0)
+        {
+            UISkinComboBox.SelectedIndex = 0;
+        }
+
+        DebugLog.Write($"ManageVideoSourcesDialog.LoadUISkins: loaded {skins.Count} skins.");
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // UISkinComboBox_SelectionChanged
+    //
+    // Fires when a UI skin is selected. Loads sources for that skin.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void UISkinComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (UISkinComboBox.SelectedItem is not UISkin skin)
+        {
+            DebugLog.Write("ManageVideoSourcesDialog.UISkinComboBox_SelectionChanged: no skin selected.");
+            _selectedSkin = null;
+            _sources.Clear();
+            SourceListView.ItemsSource = null;
+            return;
+        }
+
+        DebugLog.Write($"ManageVideoSourcesDialog.UISkinComboBox_SelectionChanged: selected '{skin.Name}'.");
+        _selectedSkin = skin;
         LoadSources();
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // LoadSources
     //
-    // Loads all video sources from the database and populates the list view.
+    // Loads video sources for the selected UI skin and populates the list view.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void LoadSources()
     {
-        DebugLog.Write("ManageVideoSourcesDialog.LoadSources: loading sources.");
+        if (_selectedSkin == null)
+        {
+            DebugLog.Write("ManageVideoSourcesDialog.LoadSources: no skin selected.");
+            _sources.Clear();
+            SourceListView.ItemsSource = null;
+            return;
+        }
+
+        DebugLog.Write($"ManageVideoSourcesDialog.LoadSources: loading sources for skin '{_selectedSkin.Name}'.");
 
         VideoSourceRepository repo = new VideoSourceRepository();
-        _sources = repo.GetAll().ToList();
+        _sources = repo.GetByUISkin(_selectedSkin.Id).ToList();
 
+        SourceListView.ItemsSource = null;
         SourceListView.ItemsSource = _sources;
 
         DebugLog.Write($"ManageVideoSourcesDialog.LoadSources: loaded {_sources.Count} sources.");
@@ -130,6 +183,13 @@ public partial class ManageVideoSourcesDialog : Window
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void NewUpdateButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_selectedSkin == null)
+        {
+            DebugLog.Write("ManageVideoSourcesDialog.NewUpdateButton_Click: no skin selected.");
+            MessageBox.Show("Please select a UI skin first.", "No Skin Selected", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         string name = NameTextBox.Text.Trim();
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -172,6 +232,7 @@ public partial class ManageVideoSourcesDialog : Window
         {
             DebugLog.Write($"ManageVideoSourcesDialog.NewUpdateButton_Click: updating source id={_selectedSource.Id}.");
             _selectedSource.Name = name;
+            _selectedSource.UISkinId = _selectedSkin.Id;
             _selectedSource.X = x;
             _selectedSource.Y = y;
             _selectedSource.Width = width;
@@ -185,6 +246,7 @@ public partial class ManageVideoSourcesDialog : Window
             VideoSource newSource = new VideoSource
             {
                 Name = name,
+                UISkinId = _selectedSkin.Id,
                 X = x,
                 Y = y,
                 Width = width,
