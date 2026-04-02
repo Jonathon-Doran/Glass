@@ -299,8 +299,11 @@ void PipeManager::ReaderThread()
         Reset();
     }
 
-    CloseHandle(_readerPipe);
-    _readerPipe = INVALID_HANDLE_VALUE;
+    if (_readerPipe != INVALID_HANDLE_VALUE)
+    {
+        CloseHandle(_readerPipe);
+        _readerPipe = INVALID_HANDLE_VALUE;
+    }
     Log("reader thread exiting.");
 }
 
@@ -405,7 +408,10 @@ void PipeManager::WriterThread()
         Reset();
     }
 
-    CloseHandle(_writerPipe);
-    _writerPipe = INVALID_HANDLE_VALUE;
+    if (_writerPipe != INVALID_HANDLE_VALUE)
+    {
+        CloseHandle(_writerPipe);
+        _writerPipe = INVALID_HANDLE_VALUE;
+    }
     Log("writer thread exiting.");
 }
