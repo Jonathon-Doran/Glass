@@ -41,6 +41,7 @@ public partial class EditLayoutDialog : Window
         DebugLog.Write($"EditLayoutDialog: opened. mode={(_existingLayout == null ? "new" : $"edit layoutId={_existingLayout.Id}")}");
 
         LoadMachineComboBox();
+        LoadUISkinComboBox();
 
         _initialized = true;
 
@@ -710,6 +711,43 @@ public partial class EditLayoutDialog : Window
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // LoadUISkinComboBox
+    //
+    // Populates the UI skin dropdown from UISkinRepository.
+    // Pre-selects the skin assigned to the current layout if one exists.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void LoadUISkinComboBox()
+    {
+        DebugLog.Write("EditLayoutDialog.LoadUISkinComboBox: loading.");
+
+        UISkinRepository skinRepo = new UISkinRepository();
+        List<UISkin> skins = skinRepo.GetAll();
+
+        UISkinComboBox.Items.Clear();
+
+        foreach (UISkin skin in skins)
+        {
+            UISkinComboBox.Items.Add(new ComboBoxItem { Content = skin.Name, Tag = skin.Id });
+        }
+
+        if (_existingLayout?.UISkinId.HasValue == true)
+        {
+            foreach (ComboBoxItem item in UISkinComboBox.Items)
+            {
+                if (item.Tag is int id && id == _existingLayout.UISkinId.Value)
+                {
+                    UISkinComboBox.SelectedItem = item;
+                    DebugLog.Write($"EditLayoutDialog.LoadUISkinComboBox: pre-selected uiSkinId={id}.");
+                    return;
+                }
+            }
+        }
+
+        UISkinComboBox.SelectedIndex = 0;
+        DebugLog.Write("EditLayoutDialog.LoadUISkinComboBox: loaded, no skin pre-selected.");
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Save_Click
     //
     // Validates the layout name and monitor configuration, then persists to the database.
@@ -819,7 +857,15 @@ public partial class EditLayoutDialog : Window
 
         layoutRepo.SaveSlotPlacements(layoutId, placements);
 
-        DebugLog.Write($"EditLayoutDialog.Save_Click: saved layoutId={layoutId} name='{layoutName}' monitors={monitorSettings.Count} placements={placements.Count}.");
+        // Save UI skin selection.
+        int? selectedUISkinId = null;
+        if (UISkinComboBox.SelectedItem is ComboBoxItem skinItem && skinItem.Tag is int skinId)
+        {
+            selectedUISkinId = skinId;
+        }
+        layoutRepo.SetUISkinId(layoutId, selectedUISkinId);
+        DebugLog.Write($"EditLayoutDialog.Save_Click: uiSkinId={selectedUISkinId?.ToString() ?? "null"} saved.");
+
         DialogResult = true;
     }
 

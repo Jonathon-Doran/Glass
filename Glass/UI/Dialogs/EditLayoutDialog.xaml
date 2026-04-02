@@ -73,9 +73,9 @@
                 </ComboBox>
             </DockPanel>
 
-            <!-- Layout Strategy -->
-            <DockPanel Grid.Row="6">
-                <TextBlock DockPanel.Dock="Left" Text="Layout Strategy:" VerticalAlignment="Center"
+            <!-- Layout Strategy and UI Skin -->
+            <StackPanel Grid.Row="6" Orientation="Horizontal">
+                <TextBlock Text="Layout Strategy:" VerticalAlignment="Center"
                            Width="140" Margin="0,0,8,0"/>
                 <ComboBox x:Name="LayoutStrategyComboBox" Width="200"
                           SelectedIndex="0"
@@ -87,7 +87,10 @@
                     <ComboBoxItem Content="Summary Windows"
                                   ToolTip="Display summary windows and focus full windows as needed."/>
                 </ComboBox>
-            </DockPanel>
+                <TextBlock Text="UI Skin:" VerticalAlignment="Center"
+                           Margin="24,0,8,0"/>
+                <ComboBox x:Name="UISkinComboBox" Width="160"/>
+            </StackPanel>
 
             <!-- Monitor Configuration Cards -->
             <ScrollViewer Grid.Row="8" HorizontalScrollBarVisibility="Auto"

@@ -279,6 +279,30 @@ public class Database
             pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
             pragmaOn.ExecuteNonQuery();
         }
+        if (version < 32)
+        {
+            using SqliteCommand pragmaOff = conn.CreateCommand();
+            pragmaOff.CommandText = "PRAGMA foreign_keys = OFF";
+            pragmaOff.ExecuteNonQuery();
+
+            ApplyMigration(conn, 32, Migration_032);
+
+            using SqliteCommand pragmaOn = conn.CreateCommand();
+            pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
+            pragmaOn.ExecuteNonQuery();
+        }
+        if (version < 33)
+        {
+            using SqliteCommand pragmaOff = conn.CreateCommand();
+            pragmaOff.CommandText = "PRAGMA foreign_keys = OFF";
+            pragmaOff.ExecuteNonQuery();
+
+            ApplyMigration(conn, 33, Migration_033);
+
+            using SqliteCommand pragmaOn = conn.CreateCommand();
+            pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
+            pragmaOn.ExecuteNonQuery();
+        }
     }
 
     private int GetSchemaVersion()
@@ -866,6 +890,41 @@ public class Database
         ALTER TABLE VideoDestinations_new RENAME TO VideoDestinations;
     ";
 
+    private const string Migration_032 = @"
+        CREATE TABLE VideoDestinations_new (
+            id          INTEGER PRIMARY KEY,
+            name        TEXT NOT NULL,
+            ui_skin_id  INTEGER NOT NULL REFERENCES UISkins(id),
+            x           INTEGER NOT NULL,
+            y           INTEGER NOT NULL,
+            width       INTEGER NOT NULL,
+            height      INTEGER NOT NULL,
+            UNIQUE (name, ui_skin_id)
+        );
+
+        INSERT INTO VideoDestinations_new (id, name, ui_skin_id, x, y, width, height)
+        SELECT id, name, 1, x, y, width, height FROM VideoDestinations;
+
+        DROP TABLE VideoDestinations;
+        ALTER TABLE VideoDestinations_new RENAME TO VideoDestinations;
+    ";
+
+    private const string Migration_033 = @"
+        ALTER TABLE WindowLayouts ADD COLUMN ui_skin_id INTEGER REFERENCES UISkins(id);
+
+        CREATE TABLE Profiles_new (
+            id          INTEGER PRIMARY KEY,
+            name        TEXT NOT NULL UNIQUE,
+            machine_id  INTEGER REFERENCES Machines(id),
+            layout_id   INTEGER REFERENCES WindowLayouts(id)
+        );
+
+        INSERT INTO Profiles_new (id, name, machine_id, layout_id)
+        SELECT id, name, machine_id, layout_id FROM Profiles;
+
+        DROP TABLE Profiles;
+        ALTER TABLE Profiles_new RENAME TO Profiles;
+    ";
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"

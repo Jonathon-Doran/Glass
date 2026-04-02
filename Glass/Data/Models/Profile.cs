@@ -14,5 +14,4 @@ public class Profile
     public int? LayoutId { get; set; }
     public int? StartPageId { get; set; }
     public List<SlotAssignment> Slots { get; set; } = new();
-    public int? UISkinId { get; set; }
 }

@@ -124,6 +124,25 @@ public partial class RegionOverlayWindow : Window
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // AspectRatio dependency property
+    //
+    // Optional aspect ratio constraint for resizing. Set to width/height ratio to lock,
+    // or 0.0 to allow free resize (default).
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public static readonly DependencyProperty AspectRatioProperty =
+        DependencyProperty.Register(
+            nameof(AspectRatio),
+            typeof(double),
+            typeof(RegionOverlayWindow),
+            new PropertyMetadata(0.0));
+
+    public double AspectRatio
+    {
+        get { return (double)GetValue(AspectRatioProperty); }
+        set { SetValue(AspectRatioProperty, value); }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // OnHandleColorChanged
     //
     // Updates all corner handle brushes when the HandleColor property changes.
@@ -259,14 +278,11 @@ public partial class RegionOverlayWindow : Window
         else if (_currentResizeCorner != ResizeCorner.None)
         {
             GetCursorPos(out Win32Point cursorPos);
-
             Point currentPoint = new Point(cursorPos.X, cursorPos.Y);
             double deltaX = currentPoint.X - _resizeStartPoint.X;
             double deltaY = currentPoint.Y - _resizeStartPoint.Y;
 
-
             PresentationSource source = PresentationSource.FromVisual(this);
-
             if (source == null)
             {
                 return;
@@ -280,29 +296,51 @@ public partial class RegionOverlayWindow : Window
             double newLeft = this.Left;
             double newTop = this.Top;
 
+            double ldX = logicalDelta.X;
+            double ldY = logicalDelta.Y;
+
+            // If aspect ratio is locked, compute the constrained delta.
+            if (AspectRatio > 0.0)
+            {
+                // Determine which axis has the larger absolute delta and drive from that.
+                double absDeltaX = Math.Abs(ldX);
+                double absDeltaY = Math.Abs(ldY);
+
+                if (absDeltaX >= absDeltaY)
+                {
+                    // Width drives — compute height from width delta.
+                    ldY = ldX / AspectRatio;
+                }
+                else
+                {
+                    // Height drives — compute width from height delta.
+                    ldX = ldY * AspectRatio;
+                }
+            }
+
             if (_currentResizeCorner == ResizeCorner.TopLeft)
             {
-                newWidth = _resizeStartSize.Width - logicalDelta.X;
-                newHeight = _resizeStartSize.Height - logicalDelta.Y;
-                newLeft = _resizeStartWindowLeft + logicalDelta.X;
-                newTop = _resizeStartWindowTop + logicalDelta.Y;
+                newWidth = _resizeStartSize.Width - ldX;
+                newHeight = _resizeStartSize.Height - ldY;
+                newLeft = _resizeStartWindowLeft + ldX;
+                newTop = _resizeStartWindowTop + ldY;
             }
             else if (_currentResizeCorner == ResizeCorner.TopRight)
             {
-                newWidth = _resizeStartSize.Width + logicalDelta.X;
-                newHeight = _resizeStartSize.Height - logicalDelta.Y;
-                newTop = _resizeStartWindowTop + logicalDelta.Y;
+                newWidth = _resizeStartSize.Width + ldX;
+                newHeight = _resizeStartSize.Height - ldY;
+                newTop = _resizeStartWindowTop + ldY;
             }
             else if (_currentResizeCorner == ResizeCorner.BottomLeft)
             {
-                newWidth = _resizeStartSize.Width - logicalDelta.X;
-                newHeight = _resizeStartSize.Height + logicalDelta.Y;
-                newLeft = _resizeStartWindowLeft + logicalDelta.X;
+                newWidth = _resizeStartSize.Width - ldX;
+                newHeight = _resizeStartSize.Height + ldY;
+                newLeft = _resizeStartWindowLeft + ldX;
             }
             else if (_currentResizeCorner == ResizeCorner.BottomRight)
             {
-                newWidth = _resizeStartSize.Width + logicalDelta.X;
-                newHeight = _resizeStartSize.Height + logicalDelta.Y;
+                newWidth = _resizeStartSize.Width + ldX;
+                newHeight = _resizeStartSize.Height + ldY;
             }
 
             if (newWidth >= _minWidth && newHeight >= _minHeight)

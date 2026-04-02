@@ -56,7 +56,7 @@ public class WindowLayoutRepository
     private void LoadLayouts(SqliteConnection conn)
     {
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT id, name, machine_id FROM WindowLayouts ORDER BY name";
+        cmd.CommandText = "SELECT id, name, machine_id, ui_skin_id FROM WindowLayouts ORDER BY name";
 
         using SqliteDataReader reader = cmd.ExecuteReader();
         while (reader.Read())
@@ -65,7 +65,8 @@ public class WindowLayoutRepository
             {
                 Id = reader.GetInt32(0),
                 Name = reader.GetString(1),
-                MachineId = reader.IsDBNull(2) ? null : reader.GetInt32(2)
+                MachineId = reader.IsDBNull(2) ? null : reader.GetInt32(2),
+                UISkinId = reader.IsDBNull(3) ? null : reader.GetInt32(3)
             };
 
             _layouts.Add(layout);
@@ -340,6 +341,39 @@ public class WindowLayoutRepository
         }
 
         return layout;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // SetUISkinId
+    //
+    // Updates the ui_skin_id for the given layout in the database and cache.
+    //
+    // layoutId:  The layout to update
+    // uiSkinId:  The UI skin ID to assign, or null to clear
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void SetUISkinId(int layoutId, int? uiSkinId)
+    {
+        DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.SetUISkinId: layoutId={layoutId} uiSkinId={uiSkinId?.ToString() ?? "null"}.");
+
+        WindowLayout? layout = _layouts.FirstOrDefault(l => l.Id == layoutId);
+        if (layout == null)
+        {
+            DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.SetUISkinId: layoutId={layoutId} not found.");
+            return;
+        }
+
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE WindowLayouts SET ui_skin_id = @uiSkinId WHERE id = @id";
+        cmd.Parameters.AddWithValue("@uiSkinId", uiSkinId.HasValue ? uiSkinId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@id", layoutId);
+        cmd.ExecuteNonQuery();
+
+        layout.UISkinId = uiSkinId;
+
+        DebugLog.Write(DebugLog.Log_Database, $"WindowLayoutRepository.SetUISkinId: updated.");
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

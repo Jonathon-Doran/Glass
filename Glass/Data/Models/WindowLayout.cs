@@ -17,6 +17,7 @@ public class WindowLayout
     public string Name { get; set; } = string.Empty;
     public int? MachineId { get; set; }
     public List<LayoutMonitorSettings> Monitors { get; set; } = new();
+    public int? UISkinId { get; set; }
     public List<SlotPlacement> Slots { get; set; } = new();
     public string DisplayName => GetDisplayName();
 

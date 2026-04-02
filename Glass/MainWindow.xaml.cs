@@ -329,12 +329,12 @@ public partial class MainWindow : Window
             }
         }
 
-        // Send video source regions (filtered by profile's UI skin)
-        int? uiSkinId = _activeProfile.GetUISkinId();
-        if (uiSkinId.HasValue)
+        // Send video source regions filtered by the layout's UI skin.
+        WindowLayout? layout = layoutRepo.GetLayoutById(layoutId);
+        if (layout?.UISkinId.HasValue == true)
         {
             VideoSourceRepository sourceRepo = new VideoSourceRepository();
-            IReadOnlyList<VideoSource> sources = sourceRepo.GetByUISkin(uiSkinId.Value);
+            IReadOnlyList<VideoSource> sources = sourceRepo.GetByUISkin(layout.UISkinId.Value);
 
             foreach (VideoSource source in sources)
             {
@@ -347,7 +347,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            DebugLog.Write(DebugLog.Log_Sessions, "MainWindow.SendGlassVideoLayout: no UI skin assigned, skipping video sources.");
+            DebugLog.Write(DebugLog.Log_Sessions, "MainWindow.SendGlassVideoLayout: no UI skin assigned to layout, skipping video sources.");
         }
 
         // Send video destination regions (all global destinations)
@@ -836,10 +836,12 @@ public partial class MainWindow : Window
     // ManageVideoDestinations_Click
     //
     // Opens the Manage Video Destinations dialog.
+    // Passes the active layout ID so the dialog can convert overlay coordinates to slot-relative.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void ManageVideoDestinations_Click(object sender, RoutedEventArgs e)
     {
-        ManageVideoDestinationsDialog dialog = new ManageVideoDestinationsDialog { Owner = this };
+        int layoutId = _activeProfile?.GetLayoutId() ?? 0;
+        ManageVideoDestinationsDialog dialog = new ManageVideoDestinationsDialog(layoutId) { Owner = this };
         dialog.ShowDialog();
     }
 

@@ -99,7 +99,8 @@ bool VideoWindow::IsValid() const
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // VideoWindow::Render
 //
-// Renders all active slots into their viewport rectangles and presents.
+// Renders all active slots into their viewport rectangles, then renders
+// region destinations for each slot that has an active capture.
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void VideoWindow::Render()
 {
@@ -108,9 +109,14 @@ void VideoWindow::Render()
     ID3D11RenderTargetView* rtv = _renderer.GetRenderTargetView();
     _renderer.GetContext()->OMSetRenderTargets(1, &rtv, nullptr);
 
-    for (auto& pair : g_slotManager.GetSlots())
+    const std::multimap<SlotID, std::unique_ptr<SlotInfo>>& slots = g_slotManager.GetSlots();
+    const RegionSourceMap& sources = g_slotManager.GetSources();
+    const RegionDestMap& destinations = g_slotManager.GetDestinations();
+
+    for (const std::pair<const SlotID, std::unique_ptr<SlotInfo>>& pair : slots)
     {
         SlotInfo* slot = pair.second.get();
+
         ID3D11ShaderResourceView* srv = slot->capture.GetShaderResourceView();
 
         if (!srv)
@@ -122,16 +128,8 @@ void VideoWindow::Render()
             }
         }
 
-        D3D11_VIEWPORT vp = {};
-        vp.TopLeftX = (float)slot->x;
-        vp.TopLeftY = (float)slot->y;
-        vp.Width = (float)slot->width;
-        vp.Height = (float)slot->height;
-        vp.MinDepth = 0.0f;
-        vp.MaxDepth = 1.0f;
-        _renderer.GetContext()->RSSetViewports(1, &vp);
-
-        float topCropUV = 0.0f;
+        // Calculate title bar crop for this slot.
+        float titleBarUV = 0.0f;
         if (slot->hwnd != NULL)
         {
             RECT clientRect = {};
@@ -144,11 +142,78 @@ void VideoWindow::Render()
                 int titleBarHeight = topLeft.y - windowRect.top;
                 if ((titleBarHeight > 0) && (slot->capture.GetHeight() > 0))
                 {
-                    topCropUV = (float)titleBarHeight / (float)slot->capture.GetHeight();
+                    titleBarUV = (float)titleBarHeight / (float)slot->capture.GetHeight();
                 }
             }
         }
-        _renderer.GetQuadRenderer().Render(_renderer.GetContext(), srv, 0.0f, topCropUV, 1.0f, 1.0f);
+
+        // Render full slot.
+        D3D11_VIEWPORT vp = {};
+        vp.TopLeftX = (float)slot->x;
+        vp.TopLeftY = (float)slot->y;
+        vp.Width = (float)slot->width;
+        vp.Height = (float)slot->height;
+        vp.MinDepth = 0.0f;
+        vp.MaxDepth = 1.0f;
+        _renderer.GetContext()->RSSetViewports(1, &vp);
+        _renderer.GetQuadRenderer().Render(_renderer.GetContext(), srv, 0.0f, titleBarUV, 1.0f, 1.0f);
+
+        // Skip region rendering if no active capture.
+        if (slot->hwnd == NULL)
+        {
+            continue;
+        }
+
+        ID3D11ShaderResourceView* regionSrv = slot->capture.GetShaderResourceView();
+        if (regionSrv == nullptr)
+        {
+            continue;
+        }
+
+        int captureWidth = slot->capture.GetWidth();
+        int captureHeight = slot->capture.GetHeight();
+
+        if ((captureWidth <= 0) || (captureHeight <= 0))
+        {
+            continue;
+        }
+
+        for (const std::pair<const std::string, RegionDest>& destPair : destinations)
+        {
+            const RegionDest& dest = destPair.second;
+
+            const RegionSourceMap::const_iterator sourceIt = sources.find(dest.name);
+            if (sourceIt == sources.end())
+            {
+                continue;
+            }
+
+            const RegionSource& source = sourceIt->second;
+
+            // Compute UV rect, offsetting v by title bar crop.
+            float u0 = (float)source.x / (float)captureWidth;
+            float v0 = titleBarUV + (float)source.y / (float)captureHeight;
+            float u1 = (float)(source.x + source.width) / (float)captureWidth;
+            float v1 = titleBarUV + (float)(source.y + source.height) / (float)captureHeight;
+
+            // Clamp UVs to valid range.
+            u0 = max(0.0f, min(1.0f, u0));
+            v0 = max(0.0f, min(1.0f, v0));
+            u1 = max(0.0f, min(1.0f, u1));
+            v1 = max(0.0f, min(1.0f, v1));
+
+            // Destination viewport is slot origin + dest offset.
+            D3D11_VIEWPORT destVp = {};
+            destVp.TopLeftX = (float)(slot->x + dest.x);
+            destVp.TopLeftY = (float)(slot->y + dest.y);
+            destVp.Width = (float)dest.width;
+            destVp.Height = (float)dest.height;
+            destVp.MinDepth = 0.0f;
+            destVp.MaxDepth = 1.0f;
+            _renderer.GetContext()->RSSetViewports(1, &destVp);
+
+            _renderer.GetQuadRenderer().Render(_renderer.GetContext(), regionSrv, u0, v0, u1, v1);
+        }
     }
 
     _renderer.Present();

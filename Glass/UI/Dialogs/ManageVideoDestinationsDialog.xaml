@@ -4,26 +4,36 @@
         xmlns:ui="http://schemas.modernwpf.com/2019"
         ui:WindowHelper.UseModernWindowStyle="True"
         Title="Manage Video Destinations"
-        Height="500" Width="700"
-        MinHeight="400" MinWidth="600"
+        Height="530" Width="700"
+        MinHeight="530" MinWidth="600"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
 
     <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="12"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="12"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="12"/>
             <ColumnDefinition Width="300"/>
         </Grid.ColumnDefinitions>
 
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="12"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+        <!-- UI Skin Selector -->
+        <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal" Margin="0,0,0,0">
+            <TextBlock Text="UI Skin:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <ComboBox x:Name="UISkinComboBox" Width="200"
+                      DisplayMemberPath="Name"
+                      SelectionChanged="UISkinComboBox_SelectionChanged"/>
+        </StackPanel>
 
-        <!-- Left Side: Destinations List -->
-        <Grid Grid.Column="0" Grid.Row="0">
+        <!-- Left Side: Destination List -->
+        <Grid Grid.Row="2" Grid.Column="0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
@@ -49,7 +59,7 @@
             </Border>
 
             <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0">
-                <Button x:Name="NewUpdateButton" Content="New" Width="80" Margin="0,0,8,0" 
+                <Button x:Name="NewUpdateButton" Content="New" Width="80" Margin="0,0,8,0"
                         Click="NewUpdateButton_Click" IsEnabled="False"/>
                 <Button x:Name="DeleteButton" Content="Delete" Width="80" IsEnabled="False"
                         Click="DeleteButton_Click"/>
@@ -57,23 +67,24 @@
         </Grid>
 
         <!-- Right Side: Edit Panel -->
-        <Border Grid.Column="2" Grid.Row="0" BorderBrush="Gray" BorderThickness="1" Padding="12">
+        <Border Grid.Column="2" Grid.Row="2" BorderBrush="Gray" BorderThickness="1" Padding="12">
             <StackPanel>
                 <TextBlock Text="Video Destination" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,12"/>
 
-                <TextBlock Text="Name:" Margin="0,0,0,4"/>
-                <TextBox x:Name="NameTextBox" Margin="0,0,0,12" 
-                         TextChanged="NameTextBox_TextChanged"/>
+                <TextBlock Text="Source:" Margin="0,0,0,4"/>
+                <ComboBox x:Name="SourceComboBox" Width="200" HorizontalAlignment="Left"
+                          DisplayMemberPath="Name" Margin="0,0,0,12"
+                          SelectionChanged="SourceComboBox_SelectionChanged"/>
 
                 <TextBlock Text="X:" Margin="0,0,0,4"/>
-                <Grid Margin="0,0,0,12">
+                <Grid Margin="0,0,4,12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <TextBox x:Name="XTextBox" Grid.Column="0" Width="60" HorizontalAlignment="Left"/>
+                    <TextBox x:Name="XTextBox" Grid.Column="0" Width="60" Margin="0,0,4,0"/>
                     <ToggleButton x:Name="PositionOverlayButton" Grid.Column="1"
-                                  Width="32" Height="32" Padding="0" 
+                                  Width="32" Height="32" Padding="0"
                                   HorizontalAlignment="Right"
                                   Checked="PositionOverlayButton_Checked"
                                   Unchecked="PositionOverlayButton_Unchecked">
@@ -93,7 +104,7 @@
         </Border>
 
         <!-- Cancel Button -->
-        <StackPanel Grid.Column="2" Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+        <StackPanel Grid.Column="2" Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="Cancel" Width="80" Click="Cancel_Click"/>
         </StackPanel>
     </Grid>

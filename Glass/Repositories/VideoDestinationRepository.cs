@@ -8,8 +8,8 @@ namespace Glass.Data.Repositories;
 // VideoDestinationRepository
 //
 // Handles persistence of VideoDestination records.
-// VideoDestinations are per-profile and define slot-relative render coordinates
-// for each named VideoSource region. All slots in a profile share the same offsets.
+// VideoDestinations are global and define slot-relative render coordinates
+// for each named VideoSource region, keyed by name and UI skin.
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 public class VideoDestinationRepository
 {
@@ -28,7 +28,7 @@ public class VideoDestinationRepository
         conn.Open();
 
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT id, name, x, y, width, height FROM VideoDestinations";
+        cmd.CommandText = "SELECT id, name, ui_skin_id, x, y, width, height FROM VideoDestinations";
 
         using SqliteDataReader reader = cmd.ExecuteReader();
         while (reader.Read())
@@ -37,10 +37,11 @@ public class VideoDestinationRepository
             {
                 Id = reader.GetInt32(0),
                 Name = reader.GetString(1),
-                X = reader.GetInt32(2),
-                Y = reader.GetInt32(3),
-                Width = reader.GetInt32(4),
-                Height = reader.GetInt32(5)
+                UISkinId = reader.GetInt32(2),
+                X = reader.GetInt32(3),
+                Y = reader.GetInt32(4),
+                Width = reader.GetInt32(5),
+                Height = reader.GetInt32(6)
             };
             destinations.Add(destination);
         }
@@ -50,22 +51,64 @@ public class VideoDestinationRepository
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // GetByName
+    // GetByUISkin
     //
-    // Returns a video destination by name, or null if not found.
+    // Returns all video destinations for a specific UI skin.
     //
-    // name: The destination name to retrieve
+    // uiSkinId:  The UI skin ID to filter by
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public VideoDestination? GetByName(string name)
+    public List<VideoDestination> GetByUISkin(int uiSkinId)
     {
-        DebugLog.Write(DebugLog.Log_Database, $"VideoDestinationRepository.GetByName: name='{name}'.");
+        DebugLog.Write(DebugLog.Log_Database, $"VideoDestinationRepository.GetByUISkin: uiSkinId={uiSkinId}.");
+
+        List<VideoDestination> destinations = new List<VideoDestination>();
 
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
 
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT id, name, x, y, width, height FROM VideoDestinations WHERE name = @name";
+        cmd.CommandText = "SELECT id, name, ui_skin_id, x, y, width, height FROM VideoDestinations WHERE ui_skin_id = @uiSkinId";
+        cmd.Parameters.AddWithValue("@uiSkinId", uiSkinId);
+
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            VideoDestination destination = new VideoDestination
+            {
+                Id = reader.GetInt32(0),
+                Name = reader.GetString(1),
+                UISkinId = reader.GetInt32(2),
+                X = reader.GetInt32(3),
+                Y = reader.GetInt32(4),
+                Width = reader.GetInt32(5),
+                Height = reader.GetInt32(6)
+            };
+            destinations.Add(destination);
+        }
+
+        DebugLog.Write(DebugLog.Log_Database, $"VideoDestinationRepository.GetByUISkin: loaded {destinations.Count} destinations.");
+        return destinations;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // GetByNameAndSkin
+    //
+    // Returns a video destination by name and UI skin, or null if not found.
+    //
+    // name:      The destination name to retrieve
+    // uiSkinId:  The UI skin ID to filter by
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public VideoDestination? GetByNameAndSkin(string name, int uiSkinId)
+    {
+        DebugLog.Write(DebugLog.Log_Database, $"VideoDestinationRepository.GetByNameAndSkin: name='{name}' uiSkinId={uiSkinId}.");
+
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT id, name, ui_skin_id, x, y, width, height FROM VideoDestinations WHERE name = @name AND ui_skin_id = @uiSkinId";
         cmd.Parameters.AddWithValue("@name", name);
+        cmd.Parameters.AddWithValue("@uiSkinId", uiSkinId);
 
         using SqliteDataReader reader = cmd.ExecuteReader();
         if (reader.Read())
@@ -74,16 +117,17 @@ public class VideoDestinationRepository
             {
                 Id = reader.GetInt32(0),
                 Name = reader.GetString(1),
-                X = reader.GetInt32(2),
-                Y = reader.GetInt32(3),
-                Width = reader.GetInt32(4),
-                Height = reader.GetInt32(5)
+                UISkinId = reader.GetInt32(2),
+                X = reader.GetInt32(3),
+                Y = reader.GetInt32(4),
+                Width = reader.GetInt32(5),
+                Height = reader.GetInt32(6)
             };
-            DebugLog.Write(DebugLog.Log_Database, $"VideoDestinationRepository.GetByName: found '{destination.Name}'.");
+            DebugLog.Write(DebugLog.Log_Database, $"VideoDestinationRepository.GetByNameAndSkin: found id={destination.Id}.");
             return destination;
         }
 
-        DebugLog.Write(DebugLog.Log_Database, $"VideoDestinationRepository.GetByName: '{name}' not found.");
+        DebugLog.Write(DebugLog.Log_Database, $"VideoDestinationRepository.GetByNameAndSkin: not found.");
         return null;
     }
 
@@ -92,11 +136,11 @@ public class VideoDestinationRepository
     //
     // Inserts or updates a video destination. If Id is 0, inserts and updates Id.
     //
-    // destination: The destination to save
+    // destination:  The destination to save
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Save(VideoDestination destination)
     {
-        DebugLog.Write(DebugLog.Log_Database, $"VideoDestinationRepository.Save: name='{destination.Name}'.");
+        DebugLog.Write(DebugLog.Log_Database, $"VideoDestinationRepository.Save: name='{destination.Name}' uiSkinId={destination.UISkinId}.");
 
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
@@ -104,8 +148,9 @@ public class VideoDestinationRepository
         if (destination.Id == 0)
         {
             using SqliteCommand cmd = conn.CreateCommand();
-            cmd.CommandText = "INSERT INTO VideoDestinations (name, x, y, width, height) VALUES (@name, @x, @y, @width, @height); SELECT last_insert_rowid();";
+            cmd.CommandText = "INSERT INTO VideoDestinations (name, ui_skin_id, x, y, width, height) VALUES (@name, @uiSkinId, @x, @y, @width, @height); SELECT last_insert_rowid();";
             cmd.Parameters.AddWithValue("@name", destination.Name);
+            cmd.Parameters.AddWithValue("@uiSkinId", destination.UISkinId);
             cmd.Parameters.AddWithValue("@x", destination.X);
             cmd.Parameters.AddWithValue("@y", destination.Y);
             cmd.Parameters.AddWithValue("@width", destination.Width);
@@ -116,8 +161,9 @@ public class VideoDestinationRepository
         else
         {
             using SqliteCommand cmd = conn.CreateCommand();
-            cmd.CommandText = "UPDATE VideoDestinations SET name = @name, x = @x, y = @y, width = @width, height = @height WHERE id = @id";
+            cmd.CommandText = "UPDATE VideoDestinations SET name = @name, ui_skin_id = @uiSkinId, x = @x, y = @y, width = @width, height = @height WHERE id = @id";
             cmd.Parameters.AddWithValue("@name", destination.Name);
+            cmd.Parameters.AddWithValue("@uiSkinId", destination.UISkinId);
             cmd.Parameters.AddWithValue("@x", destination.X);
             cmd.Parameters.AddWithValue("@y", destination.Y);
             cmd.Parameters.AddWithValue("@width", destination.Width);
@@ -133,7 +179,7 @@ public class VideoDestinationRepository
     //
     // Deletes a video destination by ID.
     //
-    // id: The destination ID to delete
+    // id:  The destination ID to delete
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Delete(int id)
     {
