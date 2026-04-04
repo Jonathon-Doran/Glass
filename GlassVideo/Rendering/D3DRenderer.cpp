@@ -54,6 +54,8 @@ bool D3DRenderer::Initialize(HWND hwnd, int width, int height)
     flags |= D3D11_CREATE_DEVICE_DEBUG;
 #endif
 
+    Logger::Instance().Write("D3DRenderer: Create swap chain %dx%d", width, height);
+
     HRESULT hr = D3D11CreateDeviceAndSwapChain(
         nullptr,
         D3D_DRIVER_TYPE_HARDWARE,

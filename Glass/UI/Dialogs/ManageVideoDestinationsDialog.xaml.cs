@@ -34,6 +34,9 @@ public partial class ManageVideoDestinationsDialog : Window
     [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
     private static extern IntPtr FindWindow(string lpClassName, string? lpWindowName);
 
+    [DllImport("user32.dll")]
+    private static extern bool ClientToScreen(IntPtr hwnd, ref Win32Point point);
+
     [StructLayout(LayoutKind.Sequential)]
     private struct Win32Rect
     {
@@ -427,10 +430,30 @@ public partial class ManageVideoDestinationsDialog : Window
     // PositionOverlayButton_Checked
     //
     // Opens the region overlay window when the toggle button is checked.
+    // If a destination is selected, pre-populates the overlay from its stored coordinates.
+    // If no destination is selected, positions the overlay near the mouse cursor.
+    // If GlassVideo is not running, logs and unchecks the button without opening the overlay.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void PositionOverlayButton_Checked(object sender, RoutedEventArgs e)
     {
         DebugLog.Write("ManageVideoDestinationsDialog.PositionOverlayButton_Checked: opening overlay window.");
+
+        IntPtr glassVideoHwnd = FindWindow("GlassVideoWindow", null);
+        if (glassVideoHwnd == IntPtr.Zero)
+        {
+            DebugLog.Write("ManageVideoDestinationsDialog.PositionOverlayButton_Checked: GlassVideo window not found, aborting.");
+            PositionOverlayButton.IsChecked = false;
+            return;
+        }
+
+        if (!GetWindowRect(glassVideoHwnd, out Win32Rect glassVideoRect))
+        {
+            DebugLog.Write("ManageVideoDestinationsDialog.PositionOverlayButton_Checked: GetWindowRect failed for GlassVideo, aborting.");
+            PositionOverlayButton.IsChecked = false;
+            return;
+        }
+
+        DebugLog.Write($"ManageVideoDestinationsDialog.PositionOverlayButton_Checked: GlassVideo window at ({glassVideoRect.Left},{glassVideoRect.Top}) {glassVideoRect.Right - glassVideoRect.Left}x{glassVideoRect.Bottom - glassVideoRect.Top}.");
 
         RegionOverlayWindow overlay = new RegionOverlayWindow();
         overlay.BorderColor = System.Windows.Media.Brushes.Teal;
@@ -447,29 +470,64 @@ public partial class ManageVideoDestinationsDialog : Window
             DebugLog.Write("ManageVideoDestinationsDialog.PositionOverlayButton_Checked: no source selected or invalid dimensions, aspect ratio unlocked.");
         }
 
-        // Set initial size from source dimensions, scaled to logical pixels.
-        if (SourceComboBox.SelectedItem is VideoSource sourceForSize && sourceForSize.Width > 0 && sourceForSize.Height > 0)
+        PresentationSource presentationSource = PresentationSource.FromVisual(this);
+        if (presentationSource == null)
         {
-            PresentationSource ps = PresentationSource.FromVisual(this);
-            if (ps != null)
-            {
-                Matrix transform = ps.CompositionTarget.TransformFromDevice;
-                Point logicalSize = transform.Transform(new Point(sourceForSize.Width, sourceForSize.Height));
-                overlay.Width = logicalSize.X;
-                overlay.Height = logicalSize.Y;
-            }
+            DebugLog.Write("ManageVideoDestinationsDialog.PositionOverlayButton_Checked: PresentationSource not available, aborting.");
+            PositionOverlayButton.IsChecked = false;
+            return;
         }
 
-        // Position near mouse cursor.
-        GetCursorPos(out Win32Point cursorPos);
-        PresentationSource psCursor = PresentationSource.FromVisual(this);
-        if (psCursor != null)
+        Matrix transformFromDevice = presentationSource.CompositionTarget.TransformFromDevice;
+        overlay.WindowStartupLocation = WindowStartupLocation.Manual;
+
+        if (_selectedDestination != null && _selectedDestination.Width > 0 && _selectedDestination.Height > 0)
         {
-            Matrix cursorTransform = psCursor.CompositionTarget.TransformFromDevice;
-            Point logicalCursor = cursorTransform.Transform(new Point(cursorPos.X, cursorPos.Y));
-            overlay.WindowStartupLocation = WindowStartupLocation.Manual;
+            DebugLog.Write($"ManageVideoDestinationsDialog.PositionOverlayButton_Checked: pre-populating from destination '{_selectedDestination.Name}' at ({_selectedDestination.X},{_selectedDestination.Y}) {_selectedDestination.Width}x{_selectedDestination.Height}.");
+
+            // Convert slot-relative physical pixels back to screen coordinates.
+            // Screen = GlassVideo origin + slot 1 origin + destination offset.
+            int slot1X = _slot1Placement?.X ?? 0;
+            int slot1Y = _slot1Placement?.Y ?? 0;
+
+            Win32Point clientOrigin = new Win32Point { X = 0, Y = 0 };
+            ClientToScreen(glassVideoHwnd, ref clientOrigin);
+            DebugLog.Write($"ManageVideoDestinationsDialog.PositionOverlayButton_Checked: GlassVideo client origin=({clientOrigin.X},{clientOrigin.Y}).");
+
+            int screenPhysicalX = clientOrigin.X + slot1X + _selectedDestination.X;
+            int screenPhysicalY = clientOrigin.Y + slot1Y + _selectedDestination.Y;
+
+            DebugLog.Write($"ManageVideoDestinationsDialog.PositionOverlayButton_Checked: screen physical position ({screenPhysicalX},{screenPhysicalY}), slot1 offset ({slot1X},{slot1Y}).");
+            Point logicalPosition = transformFromDevice.Transform(new Point(screenPhysicalX, screenPhysicalY));
+            Point logicalSize = transformFromDevice.Transform(new Point(_selectedDestination.Width, _selectedDestination.Height));
+
+            overlay.Left = logicalPosition.X;
+            overlay.Top = logicalPosition.Y;
+            overlay.Width = logicalSize.X;
+            overlay.Height = logicalSize.Y;
+
+            DebugLog.Write($"ManageVideoDestinationsDialog.PositionOverlayButton_Checked: overlay logical position ({overlay.Left:F1},{overlay.Top:F1}) size ({overlay.Width:F1}x{overlay.Height:F1}).");
+        }
+        else
+        {
+            DebugLog.Write("ManageVideoDestinationsDialog.PositionOverlayButton_Checked: no existing destination, sizing from source and positioning near cursor.");
+
+            // Size from source dimensions if available.
+            if (SourceComboBox.SelectedItem is VideoSource sourceForSize && sourceForSize.Width > 0 && sourceForSize.Height > 0)
+            {
+                Point logicalSize = transformFromDevice.Transform(new Point(sourceForSize.Width, sourceForSize.Height));
+                overlay.Width = logicalSize.X;
+                overlay.Height = logicalSize.Y;
+                DebugLog.Write($"ManageVideoDestinationsDialog.PositionOverlayButton_Checked: overlay sized to {overlay.Width:F1}x{overlay.Height:F1} from source.");
+            }
+
+            // Position near mouse cursor.
+            GetCursorPos(out Win32Point cursorPos);
+            Point logicalCursor = transformFromDevice.Transform(new Point(cursorPos.X, cursorPos.Y));
             overlay.Left = logicalCursor.X;
             overlay.Top = logicalCursor.Y;
+
+            DebugLog.Write($"ManageVideoDestinationsDialog.PositionOverlayButton_Checked: overlay positioned at cursor ({overlay.Left:F1},{overlay.Top:F1}).");
         }
 
         overlay.Show();
@@ -509,23 +567,27 @@ public partial class ManageVideoDestinationsDialog : Window
             int width = rect.Right - rect.Left;
             int height = rect.Bottom - rect.Top;
 
+            DebugLog.Write($"ManageVideoDestinationsDialog.PositionOverlayButton_Unchecked: GetWindowRect=({rect.Left},{rect.Top},{rect.Right},{rect.Bottom}), overlay WPF Left={_activeOverlay.Left:F2} Top={_activeOverlay.Top:F2} Width={_activeOverlay.Width:F2} Height={_activeOverlay.Height:F2}.");
+
             // Convert virtual desktop coordinates to slot-relative.
-            // Find GlassVideo window origin, then subtract it and slot 1's position.
+            // Use ClientToScreen to get the true client area origin, excluding window chrome.
             IntPtr glassVideoHwnd = FindWindow("GlassVideoWindow", null);
-            if (glassVideoHwnd != IntPtr.Zero && GetWindowRect(glassVideoHwnd, out Win32Rect glassVideoRect))
+            if (glassVideoHwnd != IntPtr.Zero)
             {
-                DebugLog.Write($"ManageVideoDestinationsDialog.PositionOverlayButton_Unchecked: GlassVideo origin=({glassVideoRect.Left},{glassVideoRect.Top}).");
+                Win32Point clientOrigin = new Win32Point { X = 0, Y = 0 };
+                ClientToScreen(glassVideoHwnd, ref clientOrigin);
+                DebugLog.Write($"ManageVideoDestinationsDialog.PositionOverlayButton_Unchecked: GlassVideo client origin=({clientOrigin.X},{clientOrigin.Y}).");
 
                 if (_slot1Placement != null)
                 {
-                    x -= glassVideoRect.Left + _slot1Placement.X;
-                    y -= glassVideoRect.Top + _slot1Placement.Y;
+                    x -= clientOrigin.X + _slot1Placement.X;
+                    y -= clientOrigin.Y + _slot1Placement.Y;
                     DebugLog.Write($"ManageVideoDestinationsDialog.PositionOverlayButton_Unchecked: raw ({rect.Left},{rect.Top}) -> slot-relative ({x},{y}) {width}x{height}.");
                 }
                 else
                 {
-                    x -= glassVideoRect.Left;
-                    y -= glassVideoRect.Top;
+                    x -= clientOrigin.X;
+                    y -= clientOrigin.Y;
                     DebugLog.Write($"ManageVideoDestinationsDialog.PositionOverlayButton_Unchecked: raw ({rect.Left},{rect.Top}) -> GlassVideo-relative ({x},{y}) {width}x{height} (no slot 1).");
                 }
             }

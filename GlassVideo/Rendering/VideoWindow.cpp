@@ -4,6 +4,8 @@
 
 const char* VideoWindow::ClassName = "GlassVideoWindow";
 
+extern bool g_debugNextFrame;
+
 VideoWindow::VideoWindow()
     : _hwnd(nullptr)
     , _instance(nullptr)
@@ -63,7 +65,14 @@ bool VideoWindow::Create(HINSTANCE instance, const std::string& title, int x, in
     ShowWindow(_hwnd, SW_SHOW);
     UpdateWindow(_hwnd);
 
-    if (!_renderer.Initialize(_hwnd, width, height))
+    RECT clientRect = {};
+    GetClientRect(_hwnd, &clientRect);
+    int clientWidth = clientRect.right - clientRect.left;
+    int clientHeight = clientRect.bottom - clientRect.top;
+    Logger::Instance().Write("VideoWindow: client area=%dx%d (window=%dx%d).",
+        clientWidth, clientHeight, width, height);
+
+    if (!_renderer.Initialize(_hwnd, clientWidth, clientHeight))
     {
         Logger::Instance().Write("VideoWindow: D3DRenderer initialization failed.");
         Destroy();
@@ -210,6 +219,19 @@ void VideoWindow::Render()
             destVp.Height = (float)dest.height;
             destVp.MinDepth = 0.0f;
             destVp.MaxDepth = 1.0f;
+
+            if (g_debugNextFrame)
+            {
+                Logger::Instance().Write("Render: dest=%s slot=(%d,%d) dest=(%d,%d) titleBarUV=%.4f captureSize=(%dx%d) viewport=(%.0f,%.0f) size=(%dx%d)",
+                    dest.name.c_str(),
+                    slot->x, slot->y,
+                    dest.x, dest.y,
+                    titleBarUV,
+                    captureWidth, captureHeight,
+                    destVp.TopLeftX, destVp.TopLeftY,
+                    dest.width, dest.height);
+            }
+
             _renderer.GetContext()->RSSetViewports(1, &destVp);
 
             _renderer.GetQuadRenderer().Render(_renderer.GetContext(), regionSrv, u0, v0, u1, v1);
@@ -217,6 +239,10 @@ void VideoWindow::Render()
     }
 
     _renderer.Present();
+    if (g_debugNextFrame)
+    {
+        g_debugNextFrame = false;
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

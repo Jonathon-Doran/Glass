@@ -515,7 +515,7 @@ public partial class MainWindow : Window
 
         switch (parts[0].ToLower())
         {
-            case "log":
+            case "flags":
                 {
                     if (parts.Length == 1)
                     {
@@ -527,7 +527,7 @@ public partial class MainWindow : Window
                     }
                     if (parts.Length < 3)
                     {
-                        Log("Usage: log <feature> on|off");
+                        Log("Usage: flags <feature> on|off");
                         break;
                     }
                     bool enabled = parts[2].ToLower() == "on";
@@ -558,8 +558,16 @@ public partial class MainWindow : Window
                     Log($"Screenshot requested for slot {slotId}.");
                     break;
                 }
+
+            case "debugnextframe":
+                GlassContext.GlassVideoPipe.Send($"debugnextframe");
+                break;
+
             default:
                 Log($"Unknown command: {parts[0]}");
+                Log("flags:  show the debug log flags");
+                Log("screenshot <slot>:  save a screenshot from the designated slot next frame");
+                Log("debugnextframe:  generic debug action for GlassVideo to occur next frame only");
                 break;
         }
     }

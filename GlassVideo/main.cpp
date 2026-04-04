@@ -27,6 +27,8 @@ std::queue<std::string>  g_commandQueue;
 std::mutex               g_commandMutex;
 ConsumerManager          g_consumerManager;
 
+bool g_debugNextFrame = false;
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // ParseInt
 //
@@ -457,7 +459,12 @@ static void OnCommand(const std::string& command)
         }
         Logger::Instance().Write("OnCommand: screenshot slotId=%u", slotId);
         SaveScreenshot(slotId);
-        }
+    }
+    else if (cmd == "debugnextframe")
+    {
+        Logger::Instance().Write("OnCommand: debugnextframe requested.");
+        g_debugNextFrame = true;
+    }
     else
     {
         Logger::Instance().Write("OnCommand: unrecognized command: %s", cmd.c_str());
