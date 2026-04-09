@@ -11,10 +11,12 @@ public static class DebugLog
     public static bool Log_Sessions = true;
     public static bool Log_Input = false;
     public static bool Log_Database = true;
+    public static bool Log_Network = true;
 
     private static volatile Action<string>? _log;
     private static StreamWriter? _fileWriter;
     private static readonly object _fileLock = new object();
+    public static bool SuppressUI = false;
 
     // Initializes the debug log, wiring up the console action and opening the log file.
     // The log file is written alongside the executable and cleared on each startup.
@@ -54,12 +56,20 @@ public static class DebugLog
         }
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Write
+    //
     // Writes a message unconditionally — for high priority messages that always log.
-    // Parameters:
-    //   message - the message to write
+    // Writes to the log file always.  Writes to the UI unless SuppressUI is set.
+    //
+    // message:  The message to write
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     public static void Write(string message)
     {
-        _log?.Invoke(message);
+        if (!SuppressUI)
+        {
+            _log?.Invoke(message);
+        }
 
         lock (_fileLock)
         {
@@ -70,10 +80,15 @@ public static class DebugLog
         }
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Write
+    //
     // Writes a message only if the specified feature flag is enabled.
-    // Parameters:
-    //   flag    - feature flag; message is suppressed if false
-    //   message - the message to write
+    // Writes to the log file always.  Writes to the UI unless SuppressUI is set.
+    //
+    // flag:     Feature flag; message is suppressed if false
+    // message:  The message to write
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     public static void Write(bool flag, string message)
     {
         if (flag)
@@ -104,6 +119,9 @@ public static class DebugLog
                 return true;
             case "database":
                 Log_Database = enabled;
+                return true;
+            case "network":
+                Log_Network = enabled;
                 return true;
             default:
                 return false;

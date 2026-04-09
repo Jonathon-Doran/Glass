@@ -42,6 +42,7 @@
                 <MenuItem x:Name="ManageVideoDestinationsMenuItem" Header="Manage VideoDestinations..." Click="ManageVideoDestinations_Click"/>
                 <MenuItem Header="Toggle G15 OSD" Click="ToggleG15Osd_Click"/>
                 <MenuItem Header="Key Test..." Click="KeyTest_Click"/>
+                <MenuItem Header="Pcap Test..." Click="Pcap_Click"/>
                 <Separator/>
                 <MenuItem Header="_Generate EQ UI Files" Click="MenuItem_GenerateEQUI_Click"/>
             </MenuItem>

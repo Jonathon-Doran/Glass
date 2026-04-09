@@ -216,7 +216,7 @@ public class ProfileRepository
 
                 using var updateCmd = conn.CreateCommand();
                 updateCmd.Transaction = tx;
-                updateCmd.CommandText = "UPDATE Profiles SET machine_id = @machineId, layout_id = @layoutId = @uiSkinId WHERE id = @id";
+                updateCmd.CommandText = "UPDATE Profiles SET machine_id = @machineId, layout_id = @layoutId WHERE id = @id";
                 updateCmd.Parameters.AddWithValue("@machineId", _profile.MachineId.HasValue ? _profile.MachineId.Value : DBNull.Value);
                 updateCmd.Parameters.AddWithValue("@layoutId", _profile.LayoutId.HasValue ? _profile.LayoutId.Value : DBNull.Value);
                 updateCmd.Parameters.AddWithValue("@id", profileId);
@@ -228,7 +228,7 @@ public class ProfileRepository
             {
                 using var insertCmd = conn.CreateCommand();
                 insertCmd.Transaction = tx;
-                insertCmd.CommandText = "INSERT INTO Profiles (name, machine_id, layout_id) VALUES (@name, @machineId, @layoutId, @uiSkinId); SELECT last_insert_rowid();";
+                insertCmd.CommandText = "INSERT INTO Profiles (name, machine_id, layout_id) VALUES (@name, @machineId, @layoutId); SELECT last_insert_rowid();";
                 insertCmd.Parameters.AddWithValue("@name", profileName);
                 insertCmd.Parameters.AddWithValue("@machineId", _profile.MachineId.HasValue ? _profile.MachineId.Value : DBNull.Value);
                 insertCmd.Parameters.AddWithValue("@layoutId", _profile.LayoutId.HasValue ? _profile.LayoutId.Value : DBNull.Value);

@@ -4,6 +4,9 @@ using Glass.Data;
 using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Input;
+using Glass.Network.Capture;
+using Glass.Network.Client;
+using Glass.Network.Protocol;
 using ModernWpf.Controls;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -862,6 +865,62 @@ public partial class MainWindow : Window
     {
         var dialog = new KeyTestDialog { Owner = this };
         dialog.Show();
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Pcap_Click
+    //
+    // Handles the Tools > Pcap Test menu item.  Opens a file dialog to select
+    // a pcap file, creates the network pipeline, and processes the file.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void Pcap_Click(object sender, RoutedEventArgs e)
+    {
+        Microsoft.Win32.OpenFileDialog dialog = new Microsoft.Win32.OpenFileDialog();
+        dialog.Filter = "Pcap files (*.pcap;*.pcapng)|*.pcap;*.pcapng|All files (*.*)|*.*";
+        dialog.Title = "Select a packet capture file";
+
+        bool? result = dialog.ShowDialog();
+
+        if (result != true)
+        {
+            return;
+        }
+
+        string filePath = dialog.FileName;
+
+        DebugLog.Write("Pcap_Click: selected file '" + filePath + "'");
+
+        string localIp = "10.146.79.19";
+
+        PacketRouter router = new PacketRouter(localIp);
+        PcapFileReader reader = new PcapFileReader(router);
+
+        int routed = reader.ProcessFile(filePath);
+
+        DebugLog.Write("Pcap_Click: " + routed + " packets routed");
+
+        foreach (KeyValuePair<int, EqClient> kvp in router.GetAllClients())
+        {
+            for (int i = 0; i < SoeConstants.MaxStreams; i++)
+            {
+                SoeStream stream = kvp.Value.GetStream(i);
+                if (stream.OpcodeCount.Count > 0)
+                {
+                    DebugLog.Write("Opcode summary for " + SoeConstants.StreamNames[i]
+                        + " port " + kvp.Key + ":");
+
+                    List<KeyValuePair<ushort, int>> sorted =
+                        new List<KeyValuePair<ushort, int>>(stream.OpcodeCount);
+                    sorted.Sort((a, b) => a.Key.CompareTo(b.Key));
+
+                    foreach (KeyValuePair<ushort, int> op in sorted)
+                    {
+                        DebugLog.Write("  0x" + op.Key.ToString("x4")
+                            + ": " + op.Value + " times");
+                    }
+                }
+            }
+        }
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

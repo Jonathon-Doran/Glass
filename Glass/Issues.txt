@@ -2,25 +2,14 @@
 
 Glass:
 No way to delete a profile
+No way to create characters in a profile
 
 ISXGlass:
 
-Subsampling not in
-
-
-Variables
-
-driver.name
-driver.shortname
-
-
 Phase 2 (layout UI):
 
-Add a machine selector dropdown to the layout configuration UI
-Populated from the Machines table
-Defaults to Database.CurrentMachineId
-Pass selected machine id to WindowLayoutRepository.Save()
-Monitor upserts use the selected machine id
+
+
 Phase 3 (multi-machine operations):
 
 When Glass connects to a remote ISXGlass instance, it knows that machine's hostname from the config file
@@ -28,9 +17,4 @@ Look up or insert that hostname in Machines, get its id
 Layouts and monitors for that machine are stored under its id
 Client file generation uses the monitor dimensions for the target machine, not necessarily the current machine
 
-
-Monitor identification / EDID research
-MonitorInfoHelper refactoring
-MonitorRepository design
-LayoutMonitors schema design
 Cross-machine layout loading behaviour
