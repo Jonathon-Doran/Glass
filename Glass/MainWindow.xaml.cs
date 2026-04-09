@@ -892,7 +892,7 @@ public partial class MainWindow : Window
 
         string localIp = "10.146.79.19";
 
-        PacketRouter router = new PacketRouter(localIp);
+        SessionDemux router = new SessionDemux(localIp);
         PcapFileReader reader = new PcapFileReader(router);
 
         int routed = reader.ProcessFile(filePath);

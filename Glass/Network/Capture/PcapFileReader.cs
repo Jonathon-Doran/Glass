@@ -20,7 +20,7 @@ namespace Glass.Network.Capture;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class PcapFileReader
 {
-    private readonly PacketRouter _router;
+    private readonly SessionDemux _router;
     private int _frameCount;
     private int _routedCount;
 
@@ -29,7 +29,7 @@ public class PcapFileReader
     //
     // router:  The packet router that will receive decoded UDP payloads
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public PcapFileReader(PacketRouter router)
+    public PcapFileReader(SessionDemux router)
     {
         _router = router;
         _frameCount = 0;

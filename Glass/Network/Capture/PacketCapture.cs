@@ -24,7 +24,7 @@ namespace Glass.Network.Capture;
 public class PacketCapture
 {
     private ILiveDevice? _device;
-    private PacketRouter _router;
+    private SessionDemux _router;
     private bool _capturing;
     private int _frameCount;
 
@@ -44,7 +44,7 @@ public class PacketCapture
     //
     // router:  The packet router that will receive decoded UDP payloads
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public PacketCapture(PacketRouter router)
+    public PacketCapture(SessionDemux router)
     {
         _router = router;
         _device = null;

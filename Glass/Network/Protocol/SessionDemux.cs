@@ -7,7 +7,7 @@ using System.Net;
 namespace Glass.Network.Protocol;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// PacketRouter
+// SessionDemux
 //
 // Receives raw UDP packets from the capture layer and routes them to the
 // correct EqClient and stream.  Clients are identified by their local
@@ -20,7 +20,7 @@ namespace Glass.Network.Protocol;
 // The router also filters out chat and login traffic that is not
 // relevant to game state.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class PacketRouter
+public class SessionDemux
 {
     private readonly Dictionary<int, EqClient> _clientsByLocalPort;
     private readonly string _localIp;
@@ -28,19 +28,19 @@ public class PacketRouter
     private readonly int _arqSeqGiveUp;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // PacketRouter (constructor)
+    // SessionDemux (constructor)
     //
     // localIp:        The IP address of the local machine running EQ clients
     // arqSeqGiveUp:   Passed through to each stream's ARQ cache threshold
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public PacketRouter(string localIp, int arqSeqGiveUp = 512)
+    public SessionDemux(string localIp, int arqSeqGiveUp = 512)
     {
         _clientsByLocalPort = new Dictionary<int, EqClient>();
         _localIp = localIp;
         _localIpInt = IpToUInt32(localIp);
         _arqSeqGiveUp = arqSeqGiveUp;
 
-        DebugLog.Write("PacketRouter: created, localIp=" + localIp);
+        DebugLog.Write("SessionDemux: created, localIp=" + localIp);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -93,7 +93,7 @@ public class PacketRouter
         if (streamId < 0)
         {
             DebugLog.Write(DebugLog.Log_Network,
-                "PacketRouter.RoutePacket: unclassifiable packet "
+                "SessionDemux.RoutePacket: unclassifiable packet "
                 + sourceIp + ":" + sourcePort + " -> "
                 + destIp + ":" + destPort + ", dropping");
             return;
@@ -105,7 +105,7 @@ public class PacketRouter
             client = new EqClient(localPort, _arqSeqGiveUp);
             _clientsByLocalPort[localPort] = client;
 
-            DebugLog.Write("PacketRouter.RoutePacket: new client on local port "
+            DebugLog.Write("SessionDemux.RoutePacket: new client on local port "
                 + localPort + ", total clients=" + _clientsByLocalPort.Count);
         }
 
@@ -114,7 +114,7 @@ public class PacketRouter
 
         if (stream == null)
         {
-            DebugLog.Write("PacketRouter.RoutePacket: no stream for id="
+            DebugLog.Write("SessionDemux.RoutePacket: no stream for id="
                 + streamId + " on client port " + localPort);
             return;
         }
@@ -197,7 +197,7 @@ public class PacketRouter
             client.Dispose();
             _clientsByLocalPort.Remove(localPort);
 
-            DebugLog.Write("PacketRouter.RemoveClient: removed client on port "
+            DebugLog.Write("SessionDemux.RemoveClient: removed client on port "
                 + localPort + ", remaining clients=" + _clientsByLocalPort.Count);
         }
     }
@@ -229,7 +229,7 @@ public class PacketRouter
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void Shutdown()
     {
-        DebugLog.Write("PacketRouter.Shutdown: disposing " + _clientsByLocalPort.Count
+        DebugLog.Write("SessionDemux.Shutdown: disposing " + _clientsByLocalPort.Count
             + " clients");
 
         foreach (KeyValuePair<int, EqClient> kvp in _clientsByLocalPort)
@@ -258,7 +258,7 @@ public class PacketRouter
 
         if (parts.Length != 4)
         {
-            DebugLog.Write("PacketRouter.IpToUInt32: invalid IP '" + ip + "'");
+            DebugLog.Write("SessionDemux.IpToUInt32: invalid IP '" + ip + "'");
             return 0;
         }
 
