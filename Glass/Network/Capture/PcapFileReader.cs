@@ -133,16 +133,17 @@ public class PcapFileReader
             return;
         }
 
-        string sourceIp = ipPacket.SourceAddress.ToString();
-        string destIp = ipPacket.DestinationAddress.ToString();
-        int sourcePort = udpPacket.SourcePort;
-        int destPort = udpPacket.DestinationPort;
+        PacketMetadata metadata = new PacketMetadata();
+        metadata.FrameNumber = _frameCount;
+        metadata.Timestamp = rawCapture.Timeval.Date;
+        metadata.SourceIp = ipPacket.SourceAddress.ToString();
+        metadata.SourcePort = udpPacket.SourcePort;
+        metadata.DestIp = ipPacket.DestinationAddress.ToString();
+        metadata.DestPort = udpPacket.DestinationPort;
 
         ReadOnlySpan<byte> payload = new ReadOnlySpan<byte>(payloadBytes);
 
-        _router.RoutePacket(payload, payloadBytes.Length,
-                                sourceIp, sourcePort, destIp, destPort,
-                                _frameCount);
+        _router.RoutePacket(payload, payloadBytes.Length, metadata);
 
         _routedCount++;
     }

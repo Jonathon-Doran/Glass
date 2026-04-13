@@ -109,11 +109,11 @@ public class OpcodeDispatch
     // opcode:     The application-level opcode
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void HandlePacket(ReadOnlySpan<byte> data, int length,
-                              byte direction, ushort opcode)
+                              byte direction, ushort opcode, PacketMetadata metadata)
     {
         if (_handlers.TryGetValue(opcode, out IHandleOpcodes? handler))
         {
-            handler.HandlePacket(data, length, direction, opcode);
+            handler.HandlePacket(data, length, direction, opcode, metadata);
         }
     }
 }

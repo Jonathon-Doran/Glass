@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Buffers.Binary;
 using Glass.Core;
 using Glass.Network.Protocol;
@@ -6,16 +6,14 @@ using Glass.Network.Protocol;
 namespace Glass.Network.Handlers;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// HandleZoneEntry
+// HandleClientUpdate
 //
-// Handles OP_ZoneEntry packets.  Server-to-client packets contain NPC/mob
-// spawn data with a null-terminated name at offset 0.  Client-to-server
-// packets contain the player's own zone entry with a different layout.
+// Handles OP_ClientUpdate packets.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleZoneEntry : IHandleOpcodes
+public class HandleClientUpdate : IHandleOpcodes
 {
-    private ushort _opcode = 0xe4b3;
-    private readonly string _opcodeName = "OP_ZoneEntry";
+    private ushort _opcode = 0x9c2d;
+    private readonly string _opcodeName = "OP_ClientUpdate";
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Opcode
@@ -48,75 +46,53 @@ public class HandleZoneEntry : IHandleOpcodes
     {
         if (direction == SoeConstants.DirectionServerToClient)
         {
-            HandleServerToClient(data, length);
+            HandleServerToClient(data, length, metadata);
         }
         else if (direction == SoeConstants.DirectionClientToServer)
         {
-            HandleClientToServer(data, length);
-        }
-        else
-        {
-            DebugLog.Write("HandleZoneEntry: unknown direction=" + direction);
+            HandleClientToServer(data, length, metadata);
         }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleServerToClient
     //
-    // Processes zone-to-client OP_ZoneEntry.
+    // Processes zone-to-client traffic
     //
     // data:    The application payload
     // length:  Length of the application payload
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleServerToClient(ReadOnlySpan<byte> data, int length)
+    private void HandleServerToClient(ReadOnlySpan<byte> data, int length, PacketMetadata metadata)
     {
-        if (length < 4)
-        {
-            DebugLog.Write("HandleZoneEntry.HandleServerToClient: "
-                + _opcodeName + " too short, length=" + length);
-            return;
-        }
-
-        // Find the null terminator for the name string at offset 0
-        int nullPos = -1;
-        for (int i = 0; i < length; i++)
-        {
-            if (data[i] == 0)
-            {
-                nullPos = i;
-                break;
-            }
-        }
-
-        if (nullPos < 0)
-        {
-            DebugLog.Write("HandleZoneEntry.HandleServerToClient: "
-                + _opcodeName + " no null terminator found, length=" + length);
-            return;
-        }
-
-        string name = System.Text.Encoding.ASCII.GetString(data.Slice(0, nullPos));
-
-        uint spawnId = BinaryPrimitives.ReadUInt16BigEndian(data.Slice(nullPos+1));
-        uint level = data[nullPos + 5];
-
         DebugLog.Write(_opcodeName);
-        DebugLog.Write("name=\"" + name + "\"  id=(0x" + spawnId.ToString("x4")+")");
-        DebugLog.Write("SpawnId=" + spawnId + " (0x" + spawnId.ToString("x4") + ")");
-        DebugLog.Write("Level=" + level + " (0x" + level.ToString("x4") + ")");
+        DebugLog.Write("Server to Client");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleClientToServer
     //
-    // Processes client-to-zone OP_ZoneEntry. 
+    // Processes client-to-zone
     //
     // data:    The application payload
     // length:  Length of the application payload
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleClientToServer(ReadOnlySpan<byte> data, int length)
+    private void HandleClientToServer(ReadOnlySpan<byte> data, int length, PacketMetadata metadata)
     {
-        DebugLog.Write("HandleZoneEntry.HandleClientToServer: "
-            + _opcodeName + " length=" + length);
+        DebugLog.Write("[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName + " length=" + length);
+
+        uint playerId = BinaryPrimitives.ReadUInt16BigEndian(data.Slice(2));
+        // skip 2 bytes
+        float deltaY = BinaryPrimitives.ReadSingleBigEndian(data.Slice(6));
+        float xPos = BinaryPrimitives.ReadSingleLittleEndian(data.Slice(10));
+        int deltaHeading = BinaryPrimitives.ReadInt32BigEndian(data.Slice(14));
+        deltaHeading >>= 22;
+        float yPos = BinaryPrimitives.ReadSingleLittleEndian(data.Slice(18));
+        float zPos = BinaryPrimitives.ReadSingleLittleEndian(data.Slice(34));
+
+        DebugLog.Write("Player " + playerId + " (0x" + playerId.ToString("x4") + ")");
+        DebugLog.Write("[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + " Position:  (" + xPos.ToString("F2") + "," + yPos.ToString("F2") + "," + zPos.ToString("F2") + ")");
+
+
+        // x looks possible at byte 13
     }
 }

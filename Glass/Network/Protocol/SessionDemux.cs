@@ -58,44 +58,41 @@ public class SessionDemux
     // destPort:     Destination UDP port
     // frameNumber:  Frame number from the pcap file, or 0 for live capture
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void RoutePacket(ReadOnlySpan<byte> rawData, int length,
-                            string sourceIp, int sourcePort,
-                            string destIp, int destPort,
-                            int frameNumber)
+    public void RoutePacket(ReadOnlySpan<byte> rawData, int length, PacketMetadata metadata)
     {
         // Filter chat server traffic
-        if (destPort == SoeConstants.ChatServerPort ||
-            sourcePort == SoeConstants.ChatServerPort)
+        if (metadata.DestPort == SoeConstants.ChatServerPort ||
+            metadata.SourcePort == SoeConstants.ChatServerPort)
         {
             return;
         }
 
         // Filter world chat traffic
-        if (destPort == SoeConstants.WorldServerChatPort ||
-            sourcePort == SoeConstants.WorldServerChatPort)
+        if (metadata.DestPort == SoeConstants.WorldServerChatPort ||
+            metadata.SourcePort == SoeConstants.WorldServerChatPort)
         {
             return;
         }
 
-        if (destPort == SoeConstants.WorldServerChat2Port ||
-            sourcePort == SoeConstants.WorldServerChat2Port)
+        if (metadata.DestPort == SoeConstants.WorldServerChat2Port ||
+            metadata.SourcePort == SoeConstants.WorldServerChat2Port)
         {
             return;
         }
 
         // Determine direction and local port
-        bool isFromClient = IsLocalIp(sourceIp);
-        int localPort = isFromClient ? sourcePort : destPort;
+        bool isFromClient = IsLocalIp(metadata.SourceIp);
+        int localPort = isFromClient ? metadata.SourcePort : metadata.DestPort;
 
         // Determine which stream type based on port ranges
-        int streamId = ClassifyStream(sourcePort, destPort, isFromClient);
+        int streamId = ClassifyStream(metadata.SourcePort, metadata.DestPort, isFromClient);
 
         if (streamId < 0)
         {
             DebugLog.Write(DebugLog.Log_Network,
                 "SessionDemux.RoutePacket: unclassifiable packet "
-                + sourceIp + ":" + sourcePort + " -> "
-                + destIp + ":" + destPort + ", dropping");
+                + metadata.SourceIp + ":" + metadata.SourcePort + " -> "
+                + metadata.DestIp + ":" + metadata.DestPort + ", dropping");
             return;
         }
 
@@ -125,9 +122,7 @@ public class SessionDemux
             return;
         }
 
-        stream.HandlePacket(rawData, length,
-                                    sourceIp, sourcePort, destIp, destPort,
-                                    frameNumber);
+        stream.HandlePacket(rawData, length, metadata);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

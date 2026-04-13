@@ -30,6 +30,7 @@ public class SoeStream : IDisposable
     {
         public ushort NetOpcode;
         public byte[] Payload;
+        public PacketMetadata Metadata;
     }
 
     // ---------------------------------------------------------------------------
@@ -38,7 +39,8 @@ public class SoeStream : IDisposable
     public delegate void AppPacketHandler(ReadOnlySpan<byte> data,
                                           int length,
                                           byte direction,
-                                          ushort opcode);
+                                          ushort opcode,
+                                          PacketMetadata metadata);
 
     // ---------------------------------------------------------------------------
     // Delegate for session key distribution
@@ -205,16 +207,9 @@ public class SoeStream : IDisposable
     //
     // rawData:      The complete UDP payload including the 2-byte net opcode
     // length:       Total length of rawData
-    // sourceIp:     Source IP as a string
-    // sourcePort:   Source UDP port
-    // destIp:       Destination IP as a string
-    // destPort:     Destination UDP port
-    // frameNumber:  Frame number from the pcap file, or 0 for live capture
+    // metadata:     Packet metadata (source/dest IP and port, timestamp, framenumber)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> rawData, int length,
-                             string sourceIp, int sourcePort,
-                             string destIp, int destPort,
-                             int frameNumber)
+    public void HandlePacket(ReadOnlySpan<byte> rawData, int length, PacketMetadata metadata)
     {
         _packetCount++;
 
@@ -232,11 +227,11 @@ public class SoeStream : IDisposable
         DebugLog.Write(DebugLog.Log_Network,
             "========================================================================");
         DebugLog.Write(DebugLog.Log_Network,
-            "Frame " + frameNumber + " Packet #" + _packetCount
+            "Frame " + metadata.FrameNumber + " Packet #" + _packetCount
             + " on stream " + SoeConstants.StreamNames[_streamId]);
         DebugLog.Write(DebugLog.Log_Network,
-            sourceIp + ":" + sourcePort + " -> "
-            + destIp + ":" + destPort + " len=" + length + " bytes");
+            metadata.SourceIp + ":" + metadata.SourcePort + " -> "
+            + metadata.DestIp + ":" + metadata.DestPort + " len=" + length + " bytes");
         DebugLog.Write(DebugLog.Log_Network, "");
         DebugLog.Write(DebugLog.Log_Network,
             SoeHexDump.Format(packet.RawPacket()));
@@ -290,8 +285,7 @@ public class SoeStream : IDisposable
         ReadOnlySpan<byte> payload = packet.Payload();
         bool hasArq = packet.HasArqSeq();
 
-        ProcessPacket(packet.NetOpCode, payload, packet.ArqSeq, hasArq, false,
-                      sourceIp, sourcePort, destIp, destPort);
+        ProcessPacket(packet.NetOpCode, payload, packet.ArqSeq, hasArq, false, metadata);
 
         // processCache
         if (_arqCache.Count > 0)
@@ -311,15 +305,11 @@ public class SoeStream : IDisposable
     // arqSeq:       The ARQ sequence number (valid only if hasArq is true)
     // hasArq:       True if this packet type carries an ARQ sequence
     // isSubpacket:  True if this packet was extracted from an OP_Combined container
-    // sourceIp:     Source IP for session tracking
-    // sourcePort:   Source port for session tracking
-    // destIp:       Destination IP for session tracking
-    // destPort:     Destination port for session tracking
+    // metadata:     Packet metadata (source/dest IP and port, timestamp, framenumber)
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void ProcessPacket(ushort netOpcode, ReadOnlySpan<byte> payload,
-                               ushort arqSeq, bool hasArq, bool isSubpacket,
-                               string sourceIp, int sourcePort,
-                               string destIp, int destPort)
+                                   ushort arqSeq, bool hasArq, bool isSubpacket,
+                                   PacketMetadata metadata)
     {
         DebugLog.Write(DebugLog.Log_Network,
             "          [processPacket] netop=0x" + netOpcode.ToString("x4")
@@ -331,33 +321,33 @@ public class SoeStream : IDisposable
             DebugLog.Write(DebugLog.Log_Network,
                 "          [processPacket] APP opcode on wire: 0x"
                 + netOpcode.ToString("x4"));
-            DispatchAppPacket(payload, payload.Length, netOpcode);
+            DispatchAppPacket(payload, payload.Length, netOpcode, metadata);
             return;
         }
 
         if (netOpcode == SoeConstants.OP_Combined)
         {
-            ProcessCombined(payload);
+            ProcessCombined(payload, metadata);
         }
         else if (netOpcode == SoeConstants.OP_AppCombined)
         {
-            ProcessAppCombined(payload);
+            ProcessAppCombined(payload, metadata);
         }
         else if (netOpcode == SoeConstants.OP_Packet)
         {
-            ProcessSequenced(payload, arqSeq);
+            ProcessSequenced(payload, arqSeq, metadata);
         }
         else if (netOpcode == SoeConstants.OP_Oversized)
         {
-            ProcessOversized(payload, arqSeq);
+            ProcessOversized(payload, arqSeq, metadata);
         }
         else if (netOpcode == SoeConstants.OP_SessionRequest)
         {
-            ProcessSessionRequest(payload, sourceIp, sourcePort);
+            ProcessSessionRequest(payload, metadata);
         }
         else if (netOpcode == SoeConstants.OP_SessionResponse)
         {
-            ProcessSessionResponse(payload, destIp, destPort, sourcePort);
+            ProcessSessionResponse(payload, metadata);
         }
         else if (netOpcode == SoeConstants.OP_SessionDisconnect)
         {
@@ -394,7 +384,7 @@ public class SoeStream : IDisposable
     // length:  Length of the application payload
     // opcode:  The application-level opcode
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void DispatchAppPacket(ReadOnlySpan<byte> data, int length, ushort opcode)
+    private void DispatchAppPacket(ReadOnlySpan<byte> data, int length, ushort opcode, PacketMetadata metadata)
     {
         DebugLog.Write(DebugLog.Log_Network, "");
         DebugLog.Write(DebugLog.Log_Network, "Opcode: 0x" + opcode.ToString("x4"));
@@ -417,7 +407,7 @@ public class SoeStream : IDisposable
 
         if (OnAppPacket != null)
         {
-            OnAppPacket(data, length, _direction, opcode);
+            OnAppPacket(data, length, _direction, opcode, metadata);
         }
     }
 
@@ -438,8 +428,9 @@ public class SoeStream : IDisposable
     // concatenated with a 1-byte length prefix each.
     //
     // payload:  The combined packet payload after opcode/flags/CRC have been stripped
+    // metadata:     Packet metadata (source/dest IP and port, timestamp, framenumber)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void ProcessCombined(ReadOnlySpan<byte> payload)
+    private void ProcessCombined(ReadOnlySpan<byte> payload, PacketMetadata metadata)
     {
         int pos = 0;
         int end = payload.Length;
@@ -479,6 +470,9 @@ public class SoeStream : IDisposable
             subNum++;
 
 
+            DebugLog.Write(DebugLog.Log_Network, "          ");
+            DebugLog.Write(DebugLog.Log_Network, "          ----------");
+            DebugLog.Write(DebugLog.Log_Network, "          ");
             DebugLog.Write(DebugLog.Log_Network,
                 "          Sub-packet #" + subNum + " (" + subpacketLength + " bytes)"
                 + " opcode=0x" + subOpCode.ToString("x4"));
@@ -498,17 +492,17 @@ public class SoeStream : IDisposable
                 }
                 subOpCode = (ushort)(payload[pos + 1] | (payload[pos + 2] << 8));
                 DispatchAppPacket(payload.Slice(pos + 3, subpacketLength - 3),
-                                  subpacketLength - 3, subOpCode);
+                                  subpacketLength - 3, subOpCode, metadata);
             }
             else if (SoeConstants.IsNetOpcode(subOpCode))
             {
                 ReadOnlySpan<byte> subData = payload.Slice(pos, subpacketLength);
-                ProcessSubpacket(subData);
+                ProcessSubpacket(subData, metadata);
             }
             else
             {
                 DispatchAppPacket(payload.Slice(pos + 2, subpacketLength - 2),
-                                  subpacketLength - 2, subOpCode);
+                                  subpacketLength - 2, subOpCode, metadata);
             }
 
             DebugLog.Write(DebugLog.Log_Network, "\n");
@@ -524,8 +518,9 @@ public class SoeStream : IDisposable
     // big-endian length follows.
     //
     // payload:  The app-combined payload after opcode/flags/CRC have been stripped
+    // metadata:     Packet metadata (source/dest IP and port, timestamp, framenumber)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void ProcessAppCombined(ReadOnlySpan<byte> payload)
+    private void ProcessAppCombined(ReadOnlySpan<byte> payload, PacketMetadata metadata)
     {
         int pos = 0;
         int end = payload.Length;
@@ -574,6 +569,8 @@ public class SoeStream : IDisposable
                 }
 
                 subNum++;
+                DebugLog.Write(DebugLog.Log_Network, "          ");
+
                 DebugLog.Write(DebugLog.Log_Network,
                     "          Sub-packet #" + subNum + " (" + subpacketLength + " bytes)"
                     + " opcode=0x" + subOpCode.ToString("x4"));
@@ -582,7 +579,7 @@ public class SoeStream : IDisposable
                         payload.Slice(pos, subpacketLength).ToArray()).Replace("-", " ").ToLower());
 
                 DispatchAppPacket(payload.Slice(dataPos + 2, actualLen - 2),
-                                  actualLen - 2, subOpCode);
+                                  actualLen - 2, subOpCode, metadata);
 
                 pos += subpacketLength;
             }
@@ -640,7 +637,7 @@ public class SoeStream : IDisposable
                         payload.Slice(pos, longLength).ToArray()).Replace("-", " ").ToLower());
 
                 DispatchAppPacket(payload.Slice(dataPos + 2, actualLen - 2),
-                                  actualLen - 2, subOpCode);
+                                  actualLen - 2, subOpCode, metadata);
 
                 pos += longLength;
             }
@@ -656,9 +653,10 @@ public class SoeStream : IDisposable
     //
     // payload:  The payload after ARQ sequence has been stripped
     // arqSeq:   The ARQ sequence number for this packet
+    // metadata:     Packet metadata (source/dest IP and port, timestamp, framenumber)
     ///////////////////////////////////////////////////////////////////////////////////////////////
 
-    private void ProcessSequenced(ReadOnlySpan<byte> payload, ushort arqSeq)
+    private void ProcessSequenced(ReadOnlySpan<byte> payload, ushort arqSeq, PacketMetadata metadata)
     {
         if (!_arqSeqFound)
         {
@@ -695,15 +693,15 @@ public class SoeStream : IDisposable
                     return;
                 }
                 subOpCode = (ushort)(payload[1] | (payload[2] << 8));
-                DispatchAppPacket(payload.Slice(3), payload.Length - 3, subOpCode);
+                DispatchAppPacket(payload.Slice(3), payload.Length - 3, subOpCode, metadata);
             }
             else if (SoeConstants.IsNetOpcode(subOpCode))
             {
-                ProcessSubpacket(payload);
+                ProcessSubpacket(payload, metadata);
             }
             else
             {
-                DispatchAppPacket(payload.Slice(2), payload.Length - 2, subOpCode);
+                DispatchAppPacket(payload.Slice(2), payload.Length - 2, subOpCode, metadata);
             }
         }
         else if (IsSequenceFuture(arqSeq))
@@ -712,7 +710,7 @@ public class SoeStream : IDisposable
                 "  Sequenced: seq=" + arqSeq.ToString("x4")
                 + " out of order (expecting " + _arqSeqExpected.ToString("x4")
                 + "), caching");
-            CachePacket(arqSeq, SoeConstants.OP_Packet, payload);
+            CachePacket(arqSeq, SoeConstants.OP_Packet, payload, metadata);
         }
         else
         {
@@ -729,8 +727,9 @@ public class SoeStream : IDisposable
     //
     // payload:  The payload after ARQ sequence has been stripped
     // arqSeq:   The ARQ sequence number for this fragment
+    // metadata:     Packet metadata (source/dest IP and port, timestamp, framenumber)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void ProcessOversized(ReadOnlySpan<byte> payload, ushort arqSeq)
+    private void ProcessOversized(ReadOnlySpan<byte> payload, ushort arqSeq, PacketMetadata metadata)
     {
         if (!_arqSeqFound)
         {
@@ -853,13 +852,13 @@ public class SoeStream : IDisposable
                         "dispatching complete fragment with new fragOpCode "
                         + fragOpCode.ToString("x4"));
                     DispatchAppPacket(fragPayload.Slice(3),
-                                      _fragmentDataSize - 3, fragOpCode);
+                                      _fragmentDataSize - 3, fragOpCode, metadata);
                 }
                 else if (SoeConstants.IsNetOpcode(fragOpCode))
                 {
                     DebugLog.Write(DebugLog.Log_Network,
                         "dispatching complete fragment via processPacket");
-                    ProcessSubpacket(fragPayload);
+                    ProcessSubpacket(fragPayload, metadata);
                 }
                 else
                 {
@@ -867,7 +866,7 @@ public class SoeStream : IDisposable
                         "dispatching complete fragment with fragOpcode "
                         + fragOpCode.ToString("x4") + " via dispatchPacket");
                     DispatchAppPacket(fragPayload.Slice(2),
-                                      _fragmentDataSize - 2, fragOpCode);
+                                      _fragmentDataSize - 2, fragOpCode, metadata);
                 }
 
                 FragmentReset();
@@ -879,7 +878,7 @@ public class SoeStream : IDisposable
                 "  Fragment: seq=" + arqSeq.ToString("x4")
                 + " out of order (expecting " + _arqSeqExpected.ToString("x4")
                 + "), caching");
-            CachePacket(arqSeq, SoeConstants.OP_Oversized, payload);
+            CachePacket(arqSeq, SoeConstants.OP_Oversized, payload, metadata);
         }
         else
         {
@@ -898,8 +897,9 @@ public class SoeStream : IDisposable
     // which means no flags, no CRC, no ARQ per _init_parse.
     //
     // data:  The complete sub-packet including its 2-byte net opcode
+    // metadata:     Packet metadata (source/dest IP and port, timestamp, framenumber)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void ProcessSubpacket(ReadOnlySpan<byte> data)
+    private void ProcessSubpacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         if (data.Length < 2)
         {
@@ -911,8 +911,7 @@ public class SoeStream : IDisposable
         SoePacket spacket = new SoePacket(data, data.Length, true);
 
         ProcessPacket(spacket.NetOpCode, spacket.Payload(), spacket.ArqSeq,
-                      spacket.HasArqSeq(), true,
-                      string.Empty, 0, string.Empty, 0);
+                      spacket.HasArqSeq(), true, metadata);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -928,13 +927,15 @@ public class SoeStream : IDisposable
     // netOpcode:  The net opcode (OP_Packet or OP_Oversized)
     // payload:    The packet payload to cache (ARQ already stripped)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void CachePacket(ushort arqSeq, ushort netOpcode, ReadOnlySpan<byte> payload)
+    private void CachePacket(ushort arqSeq, ushort netOpcode, ReadOnlySpan<byte> payload, PacketMetadata metadata)
     {
         if (!_arqCache.ContainsKey(arqSeq))
         {
             CachedPacket cached;
             cached.NetOpcode = netOpcode;
             cached.Payload = payload.ToArray();
+            cached.Metadata = metadata;
+
             _arqCache[arqSeq] = cached;
 
             if (_arqCache.Count > _arqCacheHighWater)
@@ -989,11 +990,11 @@ public class SoeStream : IDisposable
 
             if (cached.NetOpcode == SoeConstants.OP_Oversized)
             {
-                ProcessOversized(payload, seq);
+                ProcessOversized(payload, seq, cached.Metadata);
             }
             else
             {
-                ProcessSequenced(payload, seq);
+                ProcessSequenced(payload, seq, cached.Metadata);
             }
         }
     }
@@ -1059,11 +1060,9 @@ public class SoeStream : IDisposable
     // Resets the ARQ sequence to 0.
     //
     // payload:     The session request payload
-    // sourceIp:    Client IP address
-    // sourcePort:  Client source port
+    // metadata:    Packet metadata (source/dest IP/port, timestamp, framenumber)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void ProcessSessionRequest(ReadOnlySpan<byte> payload,
-                                        string sourceIp, int sourcePort)
+    private void ProcessSessionRequest(ReadOnlySpan<byte> payload, PacketMetadata metadata)
     {
         if (payload.Length != SoeConstants.SizeOfSessionRequest)
         {
@@ -1087,8 +1086,8 @@ public class SoeStream : IDisposable
 
         if (_sessionTrackingEnabled != 0)
         {
-            _sessionClientPort = sourcePort;
-            _sessionClientIP = SoeByteOrder.IpToUInt32(sourceIp);
+            _sessionClientPort = metadata.SourcePort;
+            _sessionClientIP = SoeByteOrder.IpToUInt32(metadata.SourceIp);
         }
     }
 
@@ -1100,13 +1099,9 @@ public class SoeStream : IDisposable
     // callback.  Resets the ARQ sequence to 0.
     //
     // payload:     The session response payload
-    // destIp:      Client IP (destination of the response)
-    // destPort:    Client port (destination of the response)
-    // sourcePort:  Server port (source of the response)
+    // metadata:    Packet metadata (source/dest IP/Port, timestamp, framenumber)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void ProcessSessionResponse(ReadOnlySpan<byte> payload,
-                                         string destIp, int destPort,
-                                         int sourcePort)
+    private void ProcessSessionResponse(ReadOnlySpan<byte> payload, PacketMetadata metadata)
     {
         if (payload.Length != SoeConstants.SizeOfSessionResponse)
         {
@@ -1137,8 +1132,8 @@ public class SoeStream : IDisposable
 
         if (_sessionTrackingEnabled != 0)
         {
-            _sessionClientPort = destPort;
-            _sessionClientIP = SoeByteOrder.IpToUInt32(destIp);
+            _sessionClientPort = metadata.DestPort;
+            _sessionClientIP = SoeByteOrder.IpToUInt32(metadata.DestIp);
 
             if (_streamId == SoeConstants.StreamWorld2Client)
             {
@@ -1150,7 +1145,7 @@ public class SoeStream : IDisposable
 
                 if (OnLockOnClient != null)
                 {
-                    OnLockOnClient(sourcePort, destPort, _sessionClientIP);
+                    OnLockOnClient(metadata.SourcePort, metadata.DestPort, _sessionClientIP);
                 }
             }
         }

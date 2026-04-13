@@ -65,8 +65,8 @@ public static class SoeConstants
     // ---------------------------------------------------------------------------
     // Direction flags
     // ---------------------------------------------------------------------------
-    public const byte DirectionClient = 0x01;
-    public const byte DirectionServer = 0x02;
+    public const byte DirectionClientToServer = 0x01;
+    public const byte DirectionServerToClient = 0x02;
 
     // ---------------------------------------------------------------------------
     // Protocol limits

@@ -34,10 +34,24 @@ public static class SoeByteOrder
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public static uint ReadUInt32(ReadOnlySpan<byte> data, int offset)
     {
-        return (uint)((data[offset] << 24) |
-                      (data[offset + 1] << 16) |
-                      (data[offset + 2] << 8) |
-                      data[offset + 3]);
+        return ((uint)data[offset] << 24) |
+               ((uint)data[offset + 1] << 16) |
+               ((uint)data[offset + 2] << 8) |
+               (uint)data[offset + 3];
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ReadFloat
+    //
+    // Reads a 32-bit IEEE 754 float in big-endian byte order.
+    //
+    // data:    The buffer to read from
+    // offset:  The byte offset to begin reading at
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public static float ReadFloat(ReadOnlySpan<byte> data, int offset)
+    {
+        uint raw = ReadUInt32(data, offset);
+        return BitConverter.Int32BitsToSingle((int)raw);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

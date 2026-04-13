@@ -275,11 +275,18 @@ public class PacketCapture
             return;
         }
 
+        PacketMetadata metadata = new PacketMetadata();
+        metadata.FrameNumber = _frameCount;
+        metadata.Timestamp = rawCapture.Timeval.Date;
+        metadata.SourceIp = sourceIp;
+        metadata.SourcePort = sourcePort;
+        metadata.DestIp = destIp;
+        metadata.DestPort = destPort;
+
         ReadOnlySpan<byte> udpPayload = new ReadOnlySpan<byte>(
             data, udpPayloadOffset, udpPayloadLength);
 
-        _router.RoutePacket(udpPayload, udpPayloadLength,
-                            sourceIp, sourcePort, destIp, destPort, _frameCount);
+        _router.RoutePacket(udpPayload, udpPayloadLength, metadata);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

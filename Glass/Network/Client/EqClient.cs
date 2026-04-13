@@ -37,25 +37,25 @@ public class EqClient : IDisposable
 
         _streams[SoeConstants.StreamClient2World] = new SoeStream(
             SoeConstants.StreamClient2World,
-            SoeConstants.DirectionClient,
+            SoeConstants.DirectionClientToServer,
             arqSeqGiveUp,
             "client-world:" + localPort);
 
         _streams[SoeConstants.StreamWorld2Client] = new SoeStream(
             SoeConstants.StreamWorld2Client,
-            SoeConstants.DirectionServer,
+            SoeConstants.DirectionServerToClient,
             arqSeqGiveUp,
             "world-client:" + localPort);
 
         _streams[SoeConstants.StreamClient2Zone] = new SoeStream(
             SoeConstants.StreamClient2Zone,
-            SoeConstants.DirectionClient,
+            SoeConstants.DirectionClientToServer,
             arqSeqGiveUp,
             "client-zone:" + localPort);
 
         _streams[SoeConstants.StreamZone2Client] = new SoeStream(
             SoeConstants.StreamZone2Client,
-            SoeConstants.DirectionServer,
+            SoeConstants.DirectionServerToClient,
             arqSeqGiveUp,
             "zone-client:" + localPort);
 
