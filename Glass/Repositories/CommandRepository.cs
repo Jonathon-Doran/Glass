@@ -22,7 +22,7 @@ public class CommandRepository
         conn.Open();
 
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT id, name, short_name FROM Commands ORDER BY name";
+        cmd.CommandText = "SELECT id, name, label FROM Commands ORDER BY name";
 
         List<Command> commands = new List<Command>();
         using (SqliteDataReader reader = cmd.ExecuteReader())
@@ -59,7 +59,7 @@ public class CommandRepository
         conn.Open();
 
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT id, name, short_name FROM Commands WHERE id = @id";
+        cmd.CommandText = "SELECT id, name, label FROM Commands WHERE id = @id";
         cmd.Parameters.AddWithValue("@id", id);
 
         using var reader = cmd.ExecuteReader();

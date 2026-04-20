@@ -303,6 +303,18 @@ public class Database
             pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
             pragmaOn.ExecuteNonQuery();
         }
+        if (version < 34)
+        {
+            using SqliteCommand pragmaOff = conn.CreateCommand();
+            pragmaOff.CommandText = "PRAGMA foreign_keys = OFF";
+            pragmaOff.ExecuteNonQuery();
+
+            ApplyMigration(conn, 34, Migration_034);
+
+            using SqliteCommand pragmaOn = conn.CreateCommand();
+            pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
+            pragmaOn.ExecuteNonQuery();
+        }
     }
 
     private int GetSchemaVersion()
@@ -924,6 +936,10 @@ public class Database
 
         DROP TABLE Profiles;
         ALTER TABLE Profiles_new RENAME TO Profiles;
+    ";
+
+    private const string Migration_034 = @"
+        ALTER TABLE Commands RENAME COLUMN short_name TO label;
     ";
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
