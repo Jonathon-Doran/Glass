@@ -574,6 +574,10 @@ public partial class MainWindow : Window
                 StopMovementExperiment();
                 break;
 
+            case "bitreader":
+                TestBitReader();
+                break;
+
             default:
                 Log($"Unknown command: {parts[0]}");
                 Log("flags:  show the debug log flags");
@@ -1216,4 +1220,37 @@ public partial class MainWindow : Window
         GlassContext.ISXGlassPipe.Send(message);
     }
 
+    private void TestBitReader()
+    {
+        byte[] packet = new byte[] {
+            0x49, 0x85, 0x00, 0x00, 0x72, 0x2b, 0x29, 0x42,
+            0xb5, 0xc8, 0x00, 0x7a, 0xea, 0xc1, 0x38, 0x0a,
+            0xe0, 0x32
+        };
+        BitReader reader = new BitReader(packet);
+
+        uint spawnId = reader.ReadUInt(16);
+        uint unknown16 = reader.ReadUInt(16);
+        uint flags = reader.ReadUInt(6);
+        int val1 = reader.ReadInt(19);
+        int val2 = reader.ReadInt(19);
+        int val3 = reader.ReadInt(19);
+        int heading = reader.ReadInt(12);
+
+        DebugLog.Write("NpcMoveUpdate decode:");
+        DebugLog.Write("  spawn_id = 0x" + spawnId.ToString("x"));
+        DebugLog.Write("  unknown16 = 0x" + unknown16.ToString("x"));
+        DebugLog.Write("  flags = 0x" + flags.ToString("x"));
+        DebugLog.Write("  val1 = " + val1);
+        DebugLog.Write("  val2 = " + val2);
+        DebugLog.Write("  val3 = " + val3);
+        DebugLog.Write("  heading = " + heading);
+
+        if ((flags & 0x01) != 0) { int vp = reader.ReadInt(12); DebugLog.Write("  vp = " + vp); }
+        if ((flags & 0x02) != 0) { int fh = reader.ReadInt(10); DebugLog.Write("  fh = " + fh); }
+        if ((flags & 0x04) != 0) { int v = reader.ReadInt(10); DebugLog.Write("  v = " + v); }
+        if ((flags & 0x08) != 0) { int vy = reader.ReadInt(13); DebugLog.Write("  vy = " + vy); }
+        if ((flags & 0x10) != 0) { int vx = reader.ReadInt(13); DebugLog.Write("  vx = " + vx); }
+        if ((flags & 0x20) != 0) { int vz = reader.ReadInt(13); DebugLog.Write("  vz = " + vz); }
+    }
 }

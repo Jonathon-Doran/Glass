@@ -40,6 +40,7 @@ public class HandleHpUpdate : IHandleOpcodes
     // length:     Length of the application payload
     // direction:  Direction byte
     // opcode:     The application-level opcode
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void HandlePacket(ReadOnlySpan<byte> data, int length,
                               byte direction, ushort opcode, PacketMetadata metadata)
@@ -58,6 +59,7 @@ public class HandleHpUpdate : IHandleOpcodes
     //
     // data:    The application payload
     // length:  Length of the application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleServerToClient(ReadOnlySpan<byte> data, int length, PacketMetadata metadata)
     {
@@ -70,8 +72,6 @@ public class HandleHpUpdate : IHandleOpcodes
         int playerId = BinaryPrimitives.ReadInt16BigEndian(data.Slice(0));
         int currentHP = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(2));
         int maxHP = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(10));
-
-
 
         DebugLog.Write("[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
             + _opcodeName + " length=" + length);

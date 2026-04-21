@@ -40,6 +40,7 @@ public class HandleManaUpdate : IHandleOpcodes
     // length:     Length of the application payload
     // direction:  Direction byte
     // opcode:     The application-level opcode
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void HandlePacket(ReadOnlySpan<byte> data, int length,
                               byte direction, ushort opcode, PacketMetadata metadata)
@@ -58,6 +59,7 @@ public class HandleManaUpdate : IHandleOpcodes
     //
     // data:    The application payload
     // length:  Length of the application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleServerToClient(ReadOnlySpan<byte> data, int length, PacketMetadata metadata)
     {
@@ -77,8 +79,6 @@ public class HandleManaUpdate : IHandleOpcodes
             + _opcodeName + " length=" + length);
         DebugLog.Write("Mana at " + currentMana + " / " + maxMana);
     }
-
-    
 }
 
 

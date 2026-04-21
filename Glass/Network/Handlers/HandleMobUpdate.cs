@@ -40,6 +40,7 @@ public class HandleMobUpdate : IHandleOpcodes
     // length:     Length of the application payload
     // direction:  Direction byte
     // opcode:     The application-level opcode
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void HandlePacket(ReadOnlySpan<byte> data, int length,
                               byte direction, ushort opcode, PacketMetadata metadata)
@@ -57,6 +58,7 @@ public class HandleMobUpdate : IHandleOpcodes
     //
     // data:    The application payload
     // length:  Length of the application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleServerToClient(ReadOnlySpan<byte> data, int length, PacketMetadata metadata)
     {
@@ -72,8 +74,9 @@ public class HandleMobUpdate : IHandleOpcodes
         const float FIXED_POINT_DIVISOR = 8.0f;
 
         ulong rawX = packed & MASK_19BIT;
-        ulong rawY = (packed >> 19) & MASK_19BIT;
-        ulong rawZ = (packed >> 45) & MASK_19BIT;
+        ulong rawY = (packed >> 45) & MASK_19BIT;
+        ulong rawZ = (packed >> 19) & MASK_19BIT;
+
 
         // -----------------------------------------------------------
         // Sign-extend 19-bit values to handle negative coordinates
@@ -89,10 +92,6 @@ public class HandleMobUpdate : IHandleOpcodes
 
 
         DebugLog.Write("[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-            + _opcodeName + " length=" + length);
-        DebugLog.Write("SpawnId=" + spawnId + " (0x" + spawnId.ToString("x4") + ")");
-        DebugLog.Write("ExtractPositionUpdate: rawX={0} rawY={1} rawZ={2} -> x={3:F2} y={5:F2} z={4:F2} ",
-    rawX, rawZ, rawY, x, y, z);
+            + _opcodeName + " spawnid: " + spawnId.ToString("x4") + " at ({0:F2},{1:F2},{2:F2}", x, y, z);
     }
-
 }

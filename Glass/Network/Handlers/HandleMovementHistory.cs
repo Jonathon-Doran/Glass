@@ -40,6 +40,7 @@ public class HandleMovementHistory : IHandleOpcodes
     // length:     Length of the application payload
     // direction:  Direction byte
     // opcode:     The application-level opcode
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void HandlePacket(ReadOnlySpan<byte> data, int length,
                               byte direction, ushort opcode, PacketMetadata metadata)
@@ -82,6 +83,7 @@ public class HandleMovementHistory : IHandleOpcodes
     //
     // data:    The application payload
     // length:  Length of the application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleClientToServer(ReadOnlySpan<byte> data, int length, PacketMetadata metadata)
     {
