@@ -96,6 +96,6 @@ public class HandleClientUpdate : IHandleOpcodes
 
         DebugLog.Write("Player " + playerId + " (0x" + playerId.ToString("x4") + ")");
         DebugLog.Write("[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + " ID: " + playerId.ToString("x4") + " Position:  (" + xPos.ToString("F2") + "," + yPos.ToString("F2") + "," + zPos.ToString("F2") + ")");
-        DebugLog.Write("[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + " Heading is " + heading.ToString() + " 0x(" + heading.ToString("x8") + ") = " + heading/8148.0*360.0 + " degrees");
+        DebugLog.Write("[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + " Heading is " + heading.ToString() + " 0x(" + heading.ToString("x8") + ") = " + heading/8192.0*360.0 + " degrees");
     }
 }
