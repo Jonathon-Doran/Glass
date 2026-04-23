@@ -15,5 +15,7 @@ public static class GlassContext
     public static SessionRegistry SessionRegistry { get; set; } = null!;
     public static KeyboardManager KeyboardManager { get; set; } = null!;
     public static FocusTracker FocusTracker { get; set; } = null!;
+    public static ProfileManager ProfileManager { get; set; } = null!;
+
     public static Machine? CurrentMachine { get; set; }
 }

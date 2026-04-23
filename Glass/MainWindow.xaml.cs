@@ -8,6 +8,7 @@ using Glass.Network.Capture;
 using Glass.Network.Client;
 using Glass.Network.Protocol;
 using ModernWpf.Controls;
+using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -23,10 +24,6 @@ public partial class MainWindow : Window
     [DllImport("user32.dll")]
     static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
 
-    private readonly HashSet<int> _definedSlots = new();
-    private ProfileRepository? _activeProfile;
-
-
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // MainWindow
     //
@@ -37,6 +34,8 @@ public partial class MainWindow : Window
         InitializeComponent();
         SetDatabaseMenuState(false);
         AutoLoadDatabase();
+
+        GlassContext.ProfileManager = new ProfileManager();
 
         DebugLog.Initialize(msg => Dispatcher.Invoke(() => Log(msg)));
 
@@ -50,8 +49,6 @@ public partial class MainWindow : Window
                 DebugLog.Write("MainWindow: no devices configured for this machine.");
             }
         }
-
-
 
         GlassContext.ISXGlassPipe = new PipeManager("ISXGlass", "ISXGlass_Commands", "ISXGlass_Notify");
         GlassContext.ISXGlassPipe.Connected += () => Dispatcher.Invoke(() => SetISXGlassStatus(true));
@@ -220,151 +217,10 @@ public partial class MainWindow : Window
             var sessionItem = new MenuItem { Header = name, Tag = "recent" };
             sessionItem.Click += async (s, e) =>
             {
-                await LaunchProfile(name);
+                await GlassContext.ProfileManager.LaunchProfile(name);
             };
             MenuSessions.Items.Add(sessionItem);
         }
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // LaunchProfile
-    //
-    // Launches a specified profile.  Sends a launch command to ISXGlass for the given profile, and sets up
-    // GlassVideo for all characters in the profile.
-    //
-    // profile:  The profile to launch
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    private async Task LaunchProfile(string profileName)
-    {
-        var repo = new ProfileRepository(profileName);
-        var slots = repo.GetSlots();
-        var charRepo = new CharacterRepository();
-
-        if (_activeProfile != null)
-        {
-            DebugLog.Write("MainWindow.LaunchProfile: a profile is already active, refusing launch.");
-            MessageBox.Show("A profile is already active. Please wait for all sessions to disconnect before launching a new profile.", "Profile Active", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        int layoutId = repo.GetLayoutId() ?? 0;
-        if (layoutId == 0)
-        {
-            DebugLog.Write("MainWindow.LaunchProfile: no layout assigned to profile, aborting.");
-            MessageBox.Show("This profile has no window layout assigned. Please edit the profile and configure a layout before launching.", "No Layout", MessageBoxButton.OK, MessageBoxImage.Warning);
-
-            return;
-        }
-
-        Log($"Launching profile: {profileName} ({slots.Count} characters)");
-        _activeProfile = repo;
-        _definedSlots.Clear();
-        GlassContext.FocusTracker.Start();
-
-        GlassContext.ISXGlassPipe.Send("new_profile");
-        PushRelayGroupState(repo.GetId());
-        PushCommandState();
-
-        UpdateToolsMenuState();     // should be safe to activate the menus now
-        SendGlassVideoLayout(layoutId);
-
-        // Launch characters with small random delays.
-        var rng = new Random();
-        foreach (var slot in slots)
-        {
-            Character? character = charRepo.GetById(slot.CharacterId);
-            if (character == null)
-            {
-                DebugLog.Write(DebugLog.Log_Sessions, $"LaunchProfile: no character found for id={slot.CharacterId}, skipping.");
-                continue;
-            }
-            GlassContext.KeyboardManager.LoadProfile(profileName);
-            Log($"  Launching: {character.Name} accountId={character.AccountId} server={character.Server} id={character.Id}");
-            GlassContext.ISXGlassPipe.Send($"launch {character.AccountId} {character.Name} {character.Server} {character.Id}");
-            int delay = rng.Next(4000, 7000);
-            await Task.Delay(delay);
-        }
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // SendGlassVideoLayout
-    //
-    // Sends slot and region definitions to GlassVideo for the active profile.
-    //
-    // layoutId:  The layout to send
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void SendGlassVideoLayout(int layoutId)
-    {
-        if (_activeProfile == null)
-        {
-            DebugLog.Write("MainWindow.SendGlassVideoLayout: no active profile.");
-            return;
-        }
-
-        WindowLayoutRepository layoutRepo = new WindowLayoutRepository();
-        IReadOnlyList<SlotPlacement> placements = layoutRepo.GetSlotPlacements(layoutId);
-        IReadOnlyList<SlotAssignment> slots = _activeProfile.GetSlots();
-        CharacterRepository charRepo = new CharacterRepository();
-
-        // Send slot definitions to GlassVideo
-        foreach (SlotPlacement placement in placements)
-        {
-            if (!_definedSlots.Contains(placement.SlotNumber))
-            {
-                string cmd = $"slot_define {placement.SlotNumber} {placement.X} {placement.Y} {placement.Width} {placement.Height}";
-                DebugLog.Write(DebugLog.Log_Sessions, $"MainWindow.SendGlassVideoLayout: sending {cmd}");
-                GlassContext.GlassVideoPipe.Send(cmd);
-                _definedSlots.Add(placement.SlotNumber);
-            }
-        }
-
-        // Send slot_assign for any already-connected sessions
-        foreach (SessionRegistry.SessionEntry session in GlassContext.SessionRegistry.GetSessions())
-        {
-            SlotAssignment? assignment = slots.FirstOrDefault(s =>
-                charRepo.GetById(s.CharacterId)?.Name == session.CharacterName);
-            if ((assignment != null) && (session.Hwnd != IntPtr.Zero))
-            {
-                string cmd = $"slot_assign {assignment.SlotNumber} {session.SessionName} {session.Hwnd:X}";
-                DebugLog.Write(DebugLog.Log_Sessions, $"MainWindow.SendGlassVideoLayout: sending {cmd}");
-                GlassContext.GlassVideoPipe.Send(cmd);
-            }
-        }
-
-        // Send video source regions filtered by the layout's UI skin.
-        WindowLayout? layout = layoutRepo.GetLayoutById(layoutId);
-        if (layout?.UISkinId.HasValue == true)
-        {
-            VideoSourceRepository sourceRepo = new VideoSourceRepository();
-            IReadOnlyList<VideoSource> sources = sourceRepo.GetByUISkin(layout.UISkinId.Value);
-
-            foreach (VideoSource source in sources)
-            {
-                string cmd = $"region_source {source.Name} {source.X} {source.Y} {source.Width} {source.Height}";
-                DebugLog.Write(DebugLog.Log_Sessions, $"MainWindow.SendGlassVideoLayout: sending {cmd}");
-                GlassContext.GlassVideoPipe.Send(cmd);
-            }
-
-            DebugLog.Write(DebugLog.Log_Sessions, $"MainWindow.SendGlassVideoLayout: sent {sources.Count} video sources.");
-        }
-        else
-        {
-            DebugLog.Write(DebugLog.Log_Sessions, "MainWindow.SendGlassVideoLayout: no UI skin assigned to layout, skipping video sources.");
-        }
-
-        // Send video destination regions (all global destinations)
-        VideoDestinationRepository destRepo = new VideoDestinationRepository();
-        IReadOnlyList<VideoDestination> destinations = destRepo.GetAll();
-
-        foreach (VideoDestination dest in destinations)
-        {
-            string cmd = $"region_dest {dest.Name} {dest.X} {dest.Y} {dest.Width} {dest.Height}";
-            DebugLog.Write(DebugLog.Log_Sessions, $"MainWindow.SendGlassVideoLayout: sending {cmd}");
-            GlassContext.GlassVideoPipe.Send(cmd);
-        }
-
-        DebugLog.Write(DebugLog.Log_Sessions, $"MainWindow.SendGlassVideoLayout: sent {destinations.Count} video destinations.");
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -604,8 +460,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        switch (parts[0])
+        string messageId = parts[0];
+
+        switch (messageId)
         {
+            // connect ONE session
             case "session_connected":
                 {
                     if (parts.Length < 4)
@@ -617,40 +476,30 @@ public partial class MainWindow : Window
                     string sessionName = parts[1];
                     uint pid = uint.Parse(parts[2]);
                     IntPtr hwnd = (IntPtr)Convert.ToUInt64(parts[3], 16);
+
                     string characterName = string.Empty;
 
-                    if (_activeProfile != null)
+                    if (GlassContext.ProfileManager.HasActiveProfile)
                     {
-                        CharacterRepository charRepo = new CharacterRepository();
-
-                        if (uint.TryParse(sessionName.Substring(2), out uint sessionId))
+                        bool hasId = uint.TryParse(sessionName.Substring(2), out uint accountId);
+                        if (! hasId)
                         {
-                            SlotAssignment? assignment = _activeProfile.GetSlots()
-                                .FirstOrDefault(s => charRepo.GetById(s.CharacterId)?.AccountId == (int)sessionId);
-                            if (assignment != null)
-                            {
-                                characterName = charRepo.GetById(assignment.CharacterId)?.Name ?? string.Empty;
-                            }
+                            DebugLog.Write(DebugLog.Log_Input, $"ISXGlass: no integer account-id: {sessionName}");
+                            return;
                         }
 
+                        characterName = GlassContext.ProfileManager.GetCharacterNameByAccountId(accountId);
                         DebugLog.Write(DebugLog.Log_Sessions, $"session connected: {sessionName}, pid={pid}, character={characterName}");
                         GlassContext.SessionRegistry.OnSessionConnected(sessionName, characterName, pid, hwnd);
-
-                        if (hwnd != IntPtr.Zero)
+                        int slot = GlassContext.ProfileManager.GetSlotForCharacter(characterName);
+                        if (slot == -1)
                         {
-                            SlotAssignment? assignment = _activeProfile.GetSlots()
-                                .FirstOrDefault(s => charRepo.GetById(s.CharacterId)?.Name == characterName);
-                            if (assignment != null)
-                            {
-                                string cmd = $"slot_assign {assignment.SlotNumber} {sessionName} {hwnd:X}";
-                                DebugLog.Write(DebugLog.Log_Sessions, $"HandleISXGlassMessage: sending {cmd}");
-                                GlassContext.GlassVideoPipe.Send(cmd);
-                            }
-                            else
-                            {
-                                DebugLog.Write(DebugLog.Log_Sessions, $"HandleISXGlassMessage: no slot assignment found for character '{characterName}'.");
-                            }
+                            return;
                         }
+
+                        string cmd = $"slot_assign {slot} {sessionName} {hwnd:X}";
+                        DebugLog.Write(DebugLog.Log_Sessions, $"HandleISXGlassMessage: sending {cmd}");
+                        GlassContext.GlassVideoPipe.Send(cmd);
                     }
                     else
                     {
@@ -691,7 +540,7 @@ public partial class MainWindow : Window
     private void OnAllSessionsDisconnected()
     {
         DebugLog.Write(DebugLog.Log_Sessions, "MainWindow.OnAllSessionsDisconnected: all sessions disconnected, clearing active profile.");
-        _activeProfile = null;
+        GlassContext.ProfileManager.ClearActiveProfile();
         UpdateToolsMenuState();
         GlassContext.FocusTracker.Stop();
         GlassContext.FocusTracker.ClearActiveSession();
@@ -787,7 +636,7 @@ public partial class MainWindow : Window
         var select = new SelectProfileDialog { Owner = this };
         if ((select.ShowDialog() == true) && (select.SelectedProfileName != null))
         {
-            await LaunchProfile(select.SelectedProfileName);
+            await GlassContext.ProfileManager.LaunchProfile(select.SelectedProfileName);
         }
     }
 
@@ -863,8 +712,13 @@ public partial class MainWindow : Window
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void ManageVideoDestinations_Click(object sender, RoutedEventArgs e)
     {
-        int layoutId = _activeProfile?.GetLayoutId() ?? 0;
-        ManageVideoDestinationsDialog dialog = new ManageVideoDestinationsDialog(layoutId) { Owner = this };
+        int? layoutId = GlassContext.ProfileManager.ActiveProfile?.GetLayoutId();
+        if (layoutId == null)
+        {
+            DebugLog.Write("ManageVideoDestinations_Click: no layout assigned");
+            return;
+        }
+        ManageVideoDestinationsDialog dialog = new ManageVideoDestinationsDialog(layoutId.Value) { Owner = this };
         dialog.ShowDialog();
     }
 
@@ -987,12 +841,9 @@ public partial class MainWindow : Window
 
     private void UpdateToolsMenuState()
     {
-        bool hasActiveProfile = (_activeProfile != null);
-        ManageVideoSourcesMenuItem.IsEnabled = hasActiveProfile;
-        ManageVideoDestinationsMenuItem.IsEnabled = hasActiveProfile;
+        ManageVideoSourcesMenuItem.IsEnabled = GlassContext.ProfileManager.HasActiveProfile;
+        ManageVideoDestinationsMenuItem.IsEnabled = GlassContext.ProfileManager.HasActiveProfile;
     }
-
-
 
     // =====================================================================
     // Movement experiment test harness

@@ -10,6 +10,8 @@ public class Profile
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
+    public string ServerType { get; set; } = string.Empty;
+    public string Server { get; set; } = string.Empty;
     public int? MachineId { get; set; }
     public int? LayoutId { get; set; }
     public int? StartPageId { get; set; }

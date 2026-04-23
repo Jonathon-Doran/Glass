@@ -43,8 +43,6 @@ public class Database
         _instance.Initialize();
 
         int version = _instance.GetSchemaVersion();
-
-        DebugLog.Write(DebugLog.Log_Database, $"Databae open, version {version}");
     }
     public void Initialize()
     {
@@ -318,6 +316,10 @@ public class Database
         if (version < 35)
         {
             ApplyMigration(conn, 35, Migration_035);
+        }
+        if (version < 36)
+        {
+            ApplyMigration(conn, 36, Migration_036);
         }
     }
 
@@ -988,7 +990,10 @@ public class Database
         );
     ";
 
-
+    private const string Migration_036 = @"
+        ALTER TABLE Profiles ADD COLUMN ServerType TEXT NOT NULL DEFAULT '';
+        ALTER TABLE Profiles ADD COLUMN Server TEXT NOT NULL DEFAULT '';
+    ";
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"

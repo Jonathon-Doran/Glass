@@ -9,8 +9,8 @@
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_File">
                 <MenuItem Header="_New Patch Level" Click="MenuItem_NewPatchLevel_Click"/>
-                <MenuItem x:Name="MenuLaunchProfile" Header="_Launch Profile"
-                          Click="MenuItem_LaunchProfile_Click" IsEnabled="False"/>
+                <MenuItem Header="_Open Patch Level" Click="MenuItem_OpenPatchLevel_Click"/>
+
                 <Separator/>
                 <MenuItem x:Name="MenuSave" Header="_Save"
                           Click="MenuItem_Save_Click" IsEnabled="False"/>
@@ -20,6 +20,10 @@
             <MenuItem Header="_Edit">
                 <MenuItem x:Name="MenuUndo" Header="_Undo"
                           Click="MenuItem_Undo_Click" IsEnabled="False"/>
+            </MenuItem>
+            <MenuItem Header="_Profile" x:Name="MenuProfile" IsEnabled="False">
+                <MenuItem Header="_Launch Profile..." Click="MenuItem_LaunchProfile_Click"/>
+                <Separator/>
             </MenuItem>
         </Menu>
         <StatusBar DockPanel.Dock="Bottom">
@@ -117,9 +121,14 @@
                 </DockPanel>
             </TabItem>
             <TabItem Header="Debug Log">
-                <ListBox x:Name="DebugLogList"
-                         FontFamily="Consolas"
-                         FontSize="12"/>
+                <ScrollViewer x:Name="DebugLogScroller" VerticalScrollBarVisibility="Auto">
+                    <TextBox x:Name="DebugLogOutput"
+                             IsReadOnly="True"
+                             TextWrapping="NoWrap"
+                             FontFamily="Consolas"
+                             FontSize="12"
+                             BorderThickness="0"/>
+                </ScrollViewer>
             </TabItem>
         </TabControl>
     </DockPanel>

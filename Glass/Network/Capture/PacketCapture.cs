@@ -169,6 +169,53 @@ public class PacketCapture
         DebugLog.Write("PacketCapture.Stop: capture stopped");
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetDefaultCaptureDevice
+    //
+    // Queries SharpPcap for the first capture device with an IPv4 address.
+    // Returns the device index and local IP address, or (-1, null) if no
+    // suitable device is found.
+    //
+    // Returns:
+    //   deviceIndex:  The index of the device in the SharpPcap device list,
+    //                 or -1 if no suitable device was found.
+    //   localIp:      The IPv4 address string of the selected device,
+    //                 or null if no suitable device was found.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public static (int deviceIndex, string? localIp) GetDefaultCaptureDevice()
+    {
+        CaptureDeviceList deviceList = CaptureDeviceList.Instance;
+        if (deviceList.Count == 0)
+        {
+            DebugLog.Write("PacketCapture.GetDefaultCaptureDevice: no capture devices found");
+            return (-1, null);
+        }
+
+        for (int i = 0; i < deviceList.Count; i++)
+        {
+            ILiveDevice device = deviceList[i];
+            if (device is LibPcapLiveDevice libPcapDevice)
+            {
+                foreach (PcapAddress address in libPcapDevice.Addresses)
+                {
+                    if (address.Addr != null &&
+                        address.Addr.ipAddress != null &&
+                        address.Addr.ipAddress.AddressFamily ==
+                            System.Net.Sockets.AddressFamily.InterNetwork)
+                    {
+                        DebugLog.Write("PacketCapture.GetDefaultCaptureDevice: found '"
+                            + device.Description + "' index=" + i
+                            + " ip=" + address.Addr.ipAddress);
+                        return (i, address.Addr.ipAddress.ToString());
+                    }
+                }
+            }
+        }
+
+        DebugLog.Write("PacketCapture.GetDefaultCaptureDevice: no suitable device found");
+        return (-1, null);
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ListDevices
     //

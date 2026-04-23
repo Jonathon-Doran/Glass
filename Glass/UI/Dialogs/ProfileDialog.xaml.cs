@@ -1,4 +1,5 @@
-﻿using Glass.Controls;
+﻿using Glass.ClientUI;
+using Glass.Controls;
 using Glass.Core;
 using Glass.Data;
 using Glass.Data.Models;
@@ -87,6 +88,25 @@ public partial class ProfileDialog : Window
                     AccountId = character?.AccountId ?? 0
                 };
             }).ToList();
+
+
+            string serverType = repo.GetServerType();
+            string server = repo.GetServer();
+
+
+
+            if (!string.IsNullOrEmpty(serverType))
+            {
+                ServerTypeComboBox.SelectedItem = ServerTypeComboBox.Items
+                    .OfType<ComboBoxItem>()
+                    .FirstOrDefault(i => i.Content.ToString() == serverType);
+            }
+            if (!string.IsNullOrEmpty(server))
+            {
+                ServerComboBox.SelectedItem = ServerComboBox.Items
+                    .OfType<string>()
+                    .FirstOrDefault(s => s == server);
+            }
             PopulateCharacterList(repo.GetSlots());
         }
         else
@@ -97,6 +117,80 @@ public partial class ProfileDialog : Window
         ProfileName.TextChanged += (s, e) => ValidateSave();
         _initialized = true;
     }
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ServerTypeComboBox_SelectionChanged
+    //
+    // Handles changes to the server type selection. Populates the server combo box
+    // with servers matching the selected type.
+    //
+    // sender:  The combo box that raised the event.
+    // e:       Event arguments.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void ServerTypeComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ServerComboBox == null)
+        {
+            return;
+        }
+
+        ServerComboBox.Items.Clear();
+
+        ComboBoxItem? selected = ServerTypeComboBox.SelectedItem as ComboBoxItem;
+        if (selected == null)
+        {
+            return;
+        }
+
+        string serverType = selected.Content.ToString() ?? string.Empty;
+        DebugLog.Write("ProfileDialog.ServerTypeComboBox_SelectionChanged: serverType=" + serverType);
+
+        switch (serverType)
+        {
+            case "Test":
+                {
+                    ServerComboBox.Items.Add("Test");
+                    break;
+                }
+            case "Live":
+                {
+                    ServerComboBox.Items.Add("Antonius Bayle - Kane Bayle");
+                    ServerComboBox.Items.Add("Bertoxxulous - Saryn");
+                    ServerComboBox.Items.Add("Bristlebane - The Tribunal");
+                    ServerComboBox.Items.Add("Cazic-Thule - Fennin Ro");
+                    ServerComboBox.Items.Add("Drinal - Maelin Starpyre");
+                    ServerComboBox.Items.Add("Erollisi Marr - The Nameless");
+                    ServerComboBox.Items.Add("Firiona Vie");
+                    ServerComboBox.Items.Add("Luclin - Stromm");
+                    ServerComboBox.Items.Add("Mangler");
+                    ServerComboBox.Items.Add("Mischief");
+                    ServerComboBox.Items.Add("Povar - Quellious");
+                    ServerComboBox.Items.Add("The Rathe - Prexus");
+                    ServerComboBox.Items.Add("Teek");
+                    ServerComboBox.Items.Add("Tunare - The Seventh Hammer");
+                    ServerComboBox.Items.Add("Vox");
+                    ServerComboBox.Items.Add("Xegony - Druzzil Ro");
+                    ServerComboBox.Items.Add("Zek");
+                    break;
+                }
+            case "Progression":
+                {
+                    ServerComboBox.Items.Add("Agnarr");
+                    ServerComboBox.Items.Add("Aradune");
+                    ServerComboBox.Items.Add("Fangbreaker"); 
+                    ServerComboBox.Items.Add("Oakwynd");
+                    ServerComboBox.Items.Add("Tormax");
+                    ServerComboBox.Items.Add("Vaniki");
+                    ServerComboBox.Items.Add("Yelinak");
+                    break;
+                }
+        }
+
+        if (!_initialized)
+        {
+            return;
+        }
+        PopulateCharacterList(_slotAssignments.ToList());
+    }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // PopulateCharacterList
@@ -105,18 +199,23 @@ public partial class ProfileDialog : Window
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void PopulateCharacterList(IReadOnlyList<SlotAssignment> existingSlots)
     {
-        var charRepo = new CharacterRepository();
-        var allCharacters = charRepo.GetAll();
-        var selectedIds = existingSlots.Select(s => s.CharacterId).ToHashSet();
+
+        CharacterRepository charRepo = new CharacterRepository();
+        IReadOnlyList<Character> allCharacters = charRepo.GetAll();
+        HashSet<int> selectedIds = existingSlots.Select(s => s.CharacterId).ToHashSet();
+
+        DebugLog.Write("PopulateCharacterList: selectedServer='" + (ServerComboBox.SelectedItem as string ?? "null") + "' characterCount=" + allCharacters.Count);
+
+        string? selectedServer = ServerComboBox.SelectedItem as string;
 
         CharactersListView.ItemsSource = allCharacters
+            .Where(c => string.IsNullOrEmpty(selectedServer) || c.Server == selectedServer)
             .Select(c => new CharacterSelection
             {
                 Character = c,
                 IsSelected = selectedIds.Contains(c.Id)
             })
             .ToList();
-
         ValidateSave();
     }
 
@@ -225,6 +324,17 @@ public partial class ProfileDialog : Window
         if (MachineComboBox.SelectedItem is ComboBoxItem machineItem && machineItem.Tag is int machineId)
         {
             repo.SetMachineId(machineId);
+        }
+
+        ComboBoxItem? serverTypeItem = ServerTypeComboBox.SelectedItem as ComboBoxItem;
+        if (serverTypeItem != null)
+        {
+            repo.SetServerType(serverTypeItem.Content.ToString() ?? string.Empty);
+        }
+        string? selectedServer = ServerComboBox.SelectedItem as string;
+        if (selectedServer != null)
+        {
+            repo.SetServer(selectedServer);
         }
 
         int profileId = repo.Save();
@@ -593,6 +703,57 @@ public partial class ProfileDialog : Window
         }
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ServerComboBox_SelectionChanged
+    //
+    // Handles changes to the server selection. Repopulates the character list
+    // filtered to the selected server.
+    //
+    // sender:  The combo box that raised the event.
+    // e:       Event arguments.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void ServerComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_initialized)
+        {
+            return;
+        }
+        PopulateCharacterList(_slotAssignments.ToList());
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Button_NewCharacter_Click
+    //
+    // Handles the New Character button click on the Character Selection tab.
+    // Opens the character creation dialog and refreshes the character list
+    // if a new character was created.
+    //
+    // sender:  The button that raised the event.
+    // e:       Event arguments.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void Button_NewCharacter_Click(object sender, RoutedEventArgs e)
+    {
+        DebugLog.Write("ProfileDialog.Button_NewCharacter_Click");
+
+        string? selectedServer = ServerComboBox.SelectedItem as string;
+        if (string.IsNullOrEmpty(selectedServer))
+        {
+            MessageBox.Show("Please select a server before creating a character.",
+                "No Server Selected", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        NewCharacterDialog dialog = new NewCharacterDialog(selectedServer);
+        dialog.Owner = this;
+
+        if (dialog.ShowDialog() == true)
+        {
+            CharacterRepository charRepo = new CharacterRepository();
+            charRepo.Add(dialog.CreatedCharacter);
+            DebugLog.Write("ProfileDialog.Button_NewCharacter_Click: character added, refreshing list");
+            PopulateCharacterList(_slotAssignments.ToList());
+        }
+    }
     private void CharacterSlotsListView_DragOver(object sender, DragEventArgs e)
     {
         e.Effects = DragDropEffects.Move;

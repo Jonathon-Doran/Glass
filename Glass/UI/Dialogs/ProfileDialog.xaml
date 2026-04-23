@@ -7,7 +7,7 @@
         xmlns:controls="clr-namespace:Glass.Controls"
         ui:WindowHelper.UseModernWindowStyle="True"
         Title="Profile"
-        Height="800" Width="800"
+        Height="815" Width="800"
         MinHeight="600" MinWidth="600"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
@@ -31,7 +31,22 @@
             <ComboBox x:Name="MachineComboBox" Width="300"
               SelectionChanged="MachineComboBox_SelectionChanged"/>
         </StackPanel>
-        
+        <!-- Server Type -->
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,12">
+            <TextBlock Text="Server Type:" VerticalAlignment="Center" Margin="0,0,8,0" Width="90"/>
+            <ComboBox x:Name="ServerTypeComboBox" Width="300"
+                      SelectionChanged="ServerTypeComboBox_SelectionChanged">
+                <ComboBoxItem Content="Test"/>
+                <ComboBoxItem Content="Live"/>
+                <ComboBoxItem Content="Progression"/>
+            </ComboBox>
+        </StackPanel>
+        <!-- Server -->
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,12">
+            <TextBlock Text="Server:" VerticalAlignment="Center" Margin="0,0,8,0" Width="90"/>
+            <ComboBox x:Name="ServerComboBox" Width="300"
+                      SelectionChanged="ServerComboBox_SelectionChanged"/>
+        </StackPanel>
         <!-- OK / Cancel -->
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
                     HorizontalAlignment="Right" Margin="0,12,0,0">
@@ -43,24 +58,29 @@
         <!-- Tabs -->
         <TabControl SelectionChanged="TabControl_SelectionChanged">
             <TabItem Header="Character Selection">
-                <ListView x:Name="CharactersListView" Margin="4">
-                    <ListView.View>
-                        <GridView>
-                            <GridViewColumn Header="Select" Width="60">
-                                <GridViewColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                              IsEnabled="{Binding IsEnabled}"
-                                              Click="CharacterCheckBox_Click"/>
-                                    </DataTemplate>
-                                </GridViewColumn.CellTemplate>
-                            </GridViewColumn>
-                            <GridViewColumn Header="Name" DisplayMemberBinding="{Binding Character.Name}" Width="150"/>
-                            <GridViewColumn Header="Class" DisplayMemberBinding="{Binding Character.Class}" Width="100"/>
-                            <GridViewColumn Header="Account ID" DisplayMemberBinding="{Binding Character.AccountId}" Width="100"/>
-                        </GridView>
-                    </ListView.View>
-                </ListView>
+                <DockPanel Margin="4">
+                    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button Content="New Character" Click="Button_NewCharacter_Click" Padding="8,4"/>
+                    </StackPanel>
+                    <ListView x:Name="CharactersListView">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="Select" Width="60">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      IsEnabled="{Binding IsEnabled}"
+                                      Click="CharacterCheckBox_Click"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="Name" DisplayMemberBinding="{Binding Character.Name}" Width="150"/>
+                                <GridViewColumn Header="Class" DisplayMemberBinding="{Binding Character.Class}" Width="100"/>
+                                <GridViewColumn Header="Account ID" DisplayMemberBinding="{Binding Character.AccountId}" Width="100"/>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                </DockPanel>
             </TabItem>
             <TabItem Header="Slot Assignment" x:Name="SlotAssignmentTab">
                 <DockPanel Margin="4">

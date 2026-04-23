@@ -28,7 +28,7 @@ public class ProfileRepository
         conn.Open();
 
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT id, name, machine_id, layout_id FROM Profiles WHERE name = @name";
+        cmd.CommandText = "SELECT id, name, machine_id, layout_id, ServerType, Server FROM Profiles WHERE name = @name";
         cmd.Parameters.AddWithValue("@name", profileName);
 
         using SqliteDataReader reader = cmd.ExecuteReader();
@@ -40,6 +40,8 @@ public class ProfileRepository
                 Name = reader.GetString(1),
                 MachineId = reader.IsDBNull(2) ? null : reader.GetInt32(2),
                 LayoutId = reader.IsDBNull(3) ? null : reader.GetInt32(3),
+                ServerType = reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
+                Server = reader.IsDBNull(5) ? string.Empty : reader.GetString(5)
             };
             reader.Close();
 
@@ -216,9 +218,11 @@ public class ProfileRepository
 
                 using var updateCmd = conn.CreateCommand();
                 updateCmd.Transaction = tx;
-                updateCmd.CommandText = "UPDATE Profiles SET machine_id = @machineId, layout_id = @layoutId WHERE id = @id";
+                updateCmd.CommandText = "UPDATE Profiles SET machine_id = @machineId, layout_id = @layoutId, ServerType = @serverType, Server = @server WHERE id = @id";
                 updateCmd.Parameters.AddWithValue("@machineId", _profile.MachineId.HasValue ? _profile.MachineId.Value : DBNull.Value);
                 updateCmd.Parameters.AddWithValue("@layoutId", _profile.LayoutId.HasValue ? _profile.LayoutId.Value : DBNull.Value);
+                updateCmd.Parameters.AddWithValue("@serverType", _profile.ServerType);
+                updateCmd.Parameters.AddWithValue("@server", _profile.Server);
                 updateCmd.Parameters.AddWithValue("@id", profileId);
                 updateCmd.ExecuteNonQuery();
 
@@ -228,10 +232,12 @@ public class ProfileRepository
             {
                 using var insertCmd = conn.CreateCommand();
                 insertCmd.Transaction = tx;
-                insertCmd.CommandText = "INSERT INTO Profiles (name, machine_id, layout_id) VALUES (@name, @machineId, @layoutId); SELECT last_insert_rowid();";
+                insertCmd.CommandText = "INSERT INTO Profiles (name, machine_id, layout_id, ServerType, Server) VALUES (@name, @machineId, @layoutId, @serverType, @server); SELECT last_insert_rowid();";
                 insertCmd.Parameters.AddWithValue("@name", profileName);
                 insertCmd.Parameters.AddWithValue("@machineId", _profile.MachineId.HasValue ? _profile.MachineId.Value : DBNull.Value);
                 insertCmd.Parameters.AddWithValue("@layoutId", _profile.LayoutId.HasValue ? _profile.LayoutId.Value : DBNull.Value);
+                insertCmd.Parameters.AddWithValue("@serverType", _profile.ServerType);
+                insertCmd.Parameters.AddWithValue("@server", _profile.Server);
                 profileId = Convert.ToInt32(insertCmd.ExecuteScalar());
 
                 DebugLog.Write(DebugLog.Log_Database, $"ProfileRepository.Save: inserted new profile, profileId={profileId}. machineId={_profile.MachineId} layoutId={_profile.LayoutId}.");
@@ -261,6 +267,50 @@ public class ProfileRepository
             tx.Rollback();
             throw;
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetServerType
+    //
+    // Returns the server type for the active profile.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public string GetServerType()
+    {
+        return _profile.ServerType;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetServer
+    //
+    // Returns the server name for the active profile.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public string GetServer()
+    {
+        return _profile.Server;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // SetServerType
+    //
+    // Sets the server type for the active profile.
+    //
+    // serverType:  The server type string (Test, Live, Progression).
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void SetServerType(string serverType)
+    {
+        _profile.ServerType = serverType;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // SetServer
+    //
+    // Sets the server name for the active profile.
+    //
+    // server:  The server name string.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void SetServer(string server)
+    {
+        _profile.Server = server;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
