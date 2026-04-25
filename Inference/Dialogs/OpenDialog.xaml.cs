@@ -1,8 +1,9 @@
-﻿using System;
+﻿using Inference.Core;
+using Microsoft.Data.Sqlite;
+using System;
 using System.Collections.Specialized;
 using System.Windows;
 using System.Windows.Controls;
-using Inference.Core;
 
 namespace Inference.Dialogs;
 
@@ -37,30 +38,43 @@ public partial class OpenDialog : Window
     public OpenDialog()
     {
         InitializeComponent();
-        LoadRecentPatches();
+        LoadPatchLevels();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // LoadRecentPatches
+    // LoadPatchLevels
     //
-    // Reads the RecentPatches setting and populates the list box. Each entry is
-    // stored as "ServerType|PatchDate".
+    // Loads all distinct patch levels from the PatchOpcode table and populates
+    // the PatchList with entries formatted as "2026-04-15 (Live)". Results are
+    // ordered by patch_date descending so the most recent patch appears first.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private void LoadRecentPatches()
+    private void LoadPatchLevels()
     {
-        StringCollection? recentPatches = Properties.Settings.Default.RecentPatches;
-        if (recentPatches == null)
+        InferenceDebugLog.Write("OpenDialog.LoadPatchLevels: loading patch levels from database");
+        using (SqliteConnection connection = Glass.Data.Database.Instance.Connect())
         {
-            InferenceDebugLog.Write("OpenDialog.LoadRecentPatches: no recent patches found");
-            return;
+            connection.Open();
+            using (SqliteCommand command = connection.CreateCommand())
+            {
+                command.CommandText =
+                    "SELECT DISTINCT patch_date, server_type FROM PatchOpcode"
+                    + " ORDER BY patch_date DESC";
+                using (SqliteDataReader reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        string patchDate = reader.GetString(0);
+                        string serverType = reader.GetString(1);
+                        string displayServerType = serverType.Substring(0, 1).ToUpper()
+                            + serverType.Substring(1);
+                        string entry = patchDate + " (" + displayServerType + ")";
+                        PatchList.Items.Add(entry);
+                    }
+                }
+            }
         }
-
-        foreach (string? entry in recentPatches)
-        {
-            PatchList.Items.Add(entry);
-        }
-
-        InferenceDebugLog.Write("OpenDialog.LoadRecentPatches: loaded " + recentPatches.Count + " recent patches");
+        InferenceDebugLog.Write("OpenDialog.LoadPatchLevels: loaded " + PatchList.Items.Count
+            + " patch levels");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -80,28 +94,31 @@ public partial class OpenDialog : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Button_Open_Click
     //
-    // Handles the Open button click. Parses the selected entry and closes the
-    // dialog with a positive result.
+    // Handles the Open button click. Parses the selected patch level entry
+    // and sets PatchDate and ServerType for the caller.
     //
     // sender:  The button that raised the event.
     // e:       Event arguments.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void Button_Open_Click(object sender, RoutedEventArgs e)
     {
+        if (PatchList.SelectedItem == null)
+        {
+            return;
+        }
         string selected = (string)PatchList.SelectedItem;
-        string[] parts = selected.Split('|');
-        if (parts.Length != 2)
+        int spaceIndex = selected.IndexOf(' ');
+        int openParen = selected.IndexOf('(');
+        int closeParen = selected.IndexOf(')');
+        if (spaceIndex < 0 || openParen < 0 || closeParen < 0 || closeParen <= openParen + 1)
         {
             InferenceDebugLog.Write("OpenDialog.Button_Open_Click: malformed entry: " + selected);
             return;
         }
-
-        ServerType = parts[0];
-        PatchDate = parts[1];
-
+        PatchDate = selected.Substring(0, spaceIndex);
+        ServerType = selected.Substring(openParen + 1, closeParen - openParen - 1);
         InferenceDebugLog.Write("OpenDialog.Button_Open_Click: opened ServerType=" + ServerType
             + " PatchDate=" + PatchDate);
-
         DialogResult = true;
         Close();
     }

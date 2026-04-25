@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using Glass.Core;
-
+using static Glass.Network.Protocol.SoeConstants;
 namespace Glass.Network.Protocol;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -46,13 +46,13 @@ public class SoeStream : IDisposable
     // Delegate for session key distribution
     // ---------------------------------------------------------------------------
     public delegate void SessionKeyHandler(uint sessionId,
-                                            int streamId,
+                                            StreamId streamId,
                                             uint sessionKey);
 
     // ---------------------------------------------------------------------------
     // Delegate for session close notification
     // ---------------------------------------------------------------------------
-    public delegate void SessionCloseHandler(uint sessionId, int streamId);
+    public delegate void SessionCloseHandler(uint sessionId, StreamId streamId);
 
     // ---------------------------------------------------------------------------
     // Delegate for client lock-on (zone2client only)
@@ -64,7 +64,7 @@ public class SoeStream : IDisposable
     // ---------------------------------------------------------------------------
     // Stream identity
     // ---------------------------------------------------------------------------
-    private readonly int _streamId;
+    private readonly StreamId _streamId;
     private readonly byte _direction;
     private readonly string _name;
 
@@ -121,7 +121,7 @@ public class SoeStream : IDisposable
     // arqSeqGiveUp:   Number of cached out-of-order packets before skipping ahead
     // name:           Human-readable name for logging
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public SoeStream(int streamId, byte direction, int arqSeqGiveUp, string name)
+    public SoeStream(StreamId streamId, byte direction, int arqSeqGiveUp, string name)
     {
         _streamId = streamId;
         _direction = direction;
@@ -369,7 +369,7 @@ public class SoeStream : IDisposable
         {
             DebugLog.Write(DebugLog.Log_Network,
                 "EQPacket: Unhandled net opcode " + netOpcode.ToString("x4")
-                + ", stream " + SoeConstants.StreamNames[_streamId]
+                + ", stream " + StreamNames[_streamId]
                 + ", size " + payload.Length);
         }
     }
@@ -390,7 +390,7 @@ public class SoeStream : IDisposable
         DebugLog.Write(DebugLog.Log_Network, "Opcode: 0x" + opcode.ToString("x4"));
 
         DebugLog.Write(DebugLog.Log_Network,
-            "          [dispatchPacket] stream=" + SoeConstants.StreamNames[_streamId]
+            "          [dispatchPacket] stream=" + StreamNames[_streamId]
             + " opCode=0x" + opcode.ToString("x4") + " len=" + length);
 
         DebugLog.Write(DebugLog.Log_Network,
@@ -976,7 +976,7 @@ public class SoeStream : IDisposable
                 DebugLog.Write(
                     "SEQ: Giving up on finding arq "
                     + _arqSeqExpected.ToString("x4") + " in stream "
-                    + SoeConstants.StreamNames[_streamId] + " cache, skipping!");
+                    + StreamNames[_streamId] + " cache, skipping!");
                 _arqSeqExpected = (ushort)((_arqSeqExpected + 1) & 0xFFFF);
             }
         }
@@ -984,7 +984,7 @@ public class SoeStream : IDisposable
         {
             DebugLog.Write(
                 "  Cache: processing arq " + _arqSeqExpected.ToString("x4")
-                + " on stream " + SoeConstants.StreamNames[_streamId]);
+                + " on stream " + StreamNames[_streamId]);
             _arqCache.Remove(_arqSeqExpected);
             ReadOnlySpan<byte> payload = new ReadOnlySpan<byte>(cached.Payload);
             if (cached.NetOpcode == SoeConstants.OP_Oversized)
@@ -1037,8 +1037,8 @@ public class SoeStream : IDisposable
         _fragmentDataSize = 0;
         _fragmentTotalLength = 0;
 
-        if (_streamId == SoeConstants.StreamClient2World ||
-            _streamId == SoeConstants.StreamWorld2Client)
+        if (_streamId == StreamId.StreamClientToWorld ||
+            _streamId == StreamId.StreamWorldToClient)
         {
             _fragmentBuffer = null;
 
@@ -1116,7 +1116,7 @@ public class SoeStream : IDisposable
 
         DebugLog.Write(
             "EQPacket: SessionResponse found, stream "
-            + SoeConstants.StreamNames[_streamId] + " (" + _streamId + "), "
+            + StreamNames[_streamId] + " (" + _streamId + "), "
             + "sessionId " + _sessionId.ToString("x8")
             + ", maxLength " + _maxLength
             + ", key " + _sessionKey.ToString("x8"));
@@ -1134,11 +1134,11 @@ public class SoeStream : IDisposable
             _sessionClientPort = metadata.DestPort;
             _sessionClientIP = SoeByteOrder.IpToUInt32(metadata.DestIp);
 
-            if (_streamId == SoeConstants.StreamWorld2Client)
+            if (_streamId == StreamId.StreamWorldToClient)
             {
                 _sessionTrackingEnabled = 1;
             }
-            else if (_streamId == SoeConstants.StreamZone2Client)
+            else if (_streamId == StreamId.StreamZoneToClient)
             {
                 _sessionTrackingEnabled = 2;
 
@@ -1210,7 +1210,7 @@ public class SoeStream : IDisposable
     // fromStream:  The stream ID that discovered the key
     // sessionKey:  The session key value
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void ReceiveSessionKey(uint sessionId, int fromStream, uint sessionKey)
+    public void ReceiveSessionKey(uint sessionId, StreamId fromStream, uint sessionKey)
     {
         if (fromStream != _streamId && _sessionId == sessionId)
         {
@@ -1219,9 +1219,9 @@ public class SoeStream : IDisposable
             DebugLog.Write(
                 "EQPacket: Received key " + sessionKey.ToString("x8")
                 + " for session " + _sessionId
-                + " on stream " + SoeConstants.StreamNames[_streamId]
+                + " on stream " + StreamNames[_streamId]
                 + " (" + _streamId + ")"
-                + " from stream " + SoeConstants.StreamNames[fromStream]
+                + " from stream " + StreamNames[fromStream]
                 + " (" + fromStream + ")");
         }
     }
@@ -1236,7 +1236,7 @@ public class SoeStream : IDisposable
     // fromStream:        The stream ID that disconnected
     // sessionTracking:   The session tracking state to restore
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void Close(uint sessionId, int fromStream, int sessionTracking)
+    public void Close(uint sessionId, StreamId fromStream, int sessionTracking)
     {
         if (sessionId == _sessionId)
         {
@@ -1254,9 +1254,9 @@ public class SoeStream : IDisposable
     // ---------------------------------------------------------------------------
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // StreamId
+    // Channel
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public int StreamId
+    public StreamId Channel
     {
         get { return _streamId; }
     }

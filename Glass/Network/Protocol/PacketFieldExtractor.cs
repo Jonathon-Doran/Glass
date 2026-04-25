@@ -38,22 +38,22 @@ public class PacketFieldExtractor
     // patchDate:   Patch date string (e.g. "2026-04-15")
     // serverType:  Server type string (e.g. "live", "test")
     // opcodeName:  The opcode name (e.g. "OP_ClientUpdate")
-    // direction:   Direction (0 = client-to-server, 1 = server-to-client)
+    // version:     Opcode version
     // payload:     The raw packet payload bytes
     //
     // Returns:     Dictionary of field name to typed value, empty if no fields found
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public Dictionary<string, object> Extract(string patchDate, string serverType,
-        string opcodeName, int direction, ReadOnlySpan<byte> payload)
+        string opcodeName, int version, ReadOnlySpan<byte> payload)
     {
         Dictionary<string, object> results = new Dictionary<string, object>();
 
         DebugLog.Write("PacketFieldExtractor.Extract: opcodeName=" + opcodeName
             + " patchDate=" + patchDate + " serverType=" + serverType
-            + " direction=" + direction + " payloadLength=" + payload.Length);
+            + " version=" + version + " payloadLength=" + payload.Length);
 
         List<FieldDefinition> fields = LoadFieldDefinitions(patchDate, serverType,
-            opcodeName, direction);
+            opcodeName, version);
 
         if (fields.Count == 0)
         {
@@ -92,31 +92,28 @@ public class PacketFieldExtractor
         return results;
     }
 
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // LoadFieldDefinitions
     //
-    // Queries the PatchOpcode and PacketField tables to load all field definitions
-    // for the given opcode name, patch date, server type, and direction.
+    // Loads the ordered PacketField rows for the PatchOpcode row identified by
+    // (patchDate, serverType, opcodeName, version). Returns an empty list if no
+    // matching PatchOpcode exists or if it has no defined fields.
     //
-    // patchDate:   Patch date string (e.g. "2026-04-15")
-    // serverType:  Server type string (e.g. "live", "test")
-    // opcodeName:  The opcode name (e.g. "OP_ClientUpdate")
-    // direction:   Direction (0 = client-to-server, 1 = server-to-client)
-    //
-    // Returns:     List of FieldDefinition ordered by bit offset, empty if no match found
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // patchDate:   Patch date string (e.g. "2026-04-15").
+    // serverType:  Server type string ("live" or "test").
+    // opcodeName:  The opcode name (e.g. "OP_ClientUpdate").
+    // version:     The PatchOpcode version.
+    // Returns:     List of FieldDefinition ordered by bit_offset ascending.
+    ///////////////////////////////////////////////////////////////////////////////////////////
     private List<FieldDefinition> LoadFieldDefinitions(string patchDate, string serverType,
-        string opcodeName, int direction)
+        string opcodeName, int version)
     {
         List<FieldDefinition> fields = new List<FieldDefinition>();
-
         DebugLog.Write("PacketFieldExtractor.LoadFieldDefinitions: opcodeName=" + opcodeName
             + " patchDate=" + patchDate + " serverType=" + serverType
-            + " direction=" + direction);
-
+            + " version=" + version);
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
-
         using SqliteCommand cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT pf.field_name, pf.bit_offset, pf.bit_length, pf.encoding"
             + " FROM PacketField pf"
@@ -124,13 +121,12 @@ public class PacketFieldExtractor
             + " WHERE po.patch_date = @patchDate"
             + " AND po.server_type = @serverType"
             + " AND po.opcode_name = @opcodeName"
-            + " AND po.direction = @direction"
+            + " AND po.version = @version"
             + " ORDER BY pf.bit_offset";
         cmd.Parameters.AddWithValue("@patchDate", patchDate);
         cmd.Parameters.AddWithValue("@serverType", serverType);
         cmd.Parameters.AddWithValue("@opcodeName", opcodeName);
-        cmd.Parameters.AddWithValue("@direction", direction);
-
+        cmd.Parameters.AddWithValue("@version", version);
         using SqliteDataReader reader = cmd.ExecuteReader();
         while (reader.Read())
         {
@@ -140,16 +136,13 @@ public class PacketFieldExtractor
             field.BitLength = reader.GetInt32(2);
             field.Encoding = reader.GetString(3);
             fields.Add(field);
-
             DebugLog.Write("PacketFieldExtractor.LoadFieldDefinitions: loaded field="
                 + field.FieldName + " bitOffset=" + field.BitOffset
                 + " bitLength=" + field.BitLength + " encoding=" + field.Encoding);
         }
-
         DebugLog.Write("PacketFieldExtractor.LoadFieldDefinitions: total fields=" + fields.Count);
         return fields;
     }
-
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // DecodeField
     //
@@ -361,91 +354,128 @@ public class PacketFieldExtractor
         return result;
     }
 
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // GetCandidateOpcodes
     //
-    // Queries the PatchOpcode table for all opcodes that could match a packet
-    // of the given direction and payload length.  An opcode is a candidate if
-    // its direction matches and its known byte_length is less than or equal to
-    // the payload length.  Variable-length opcodes (null byte_length) are
-    // included if the payload is at least large enough to contain the highest
-    // defined field.
+    // Returns the list of opcode names in the given patch level that could match a
+    // packet of the given channel and payload length. A PatchOpcode is a candidate if:
+    //   - It belongs to the specified patch (patch_date + server_type).
+    //   - It has a PatchOpcodeChannel row matching the specified channel.
+    //   - Its fixed byte_length (if non-null) fits within payloadLength, OR
+    //     its variable layout's minimum byte requirement fits within payloadLength.
     //
-    // patchDate:     Patch date string (e.g. "2026-04-15")
-    // serverType:    Server type string (e.g. "live", "test")
-    // direction:     Direction (0 = client-to-server, 1 = server-to-client)
-    // payloadLength: Length of the observed payload in bytes
+    // When more than one version of the same opcode_name qualifies, each qualifying
+    // entry is suffixed with " v<version>" in the returned list. When only one version
+    // qualifies, the name is returned bare. Suffixed names are for display only and
+    // must not be stored as opcode_name values.
     //
-    // Returns:       List of opcode names that could match
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // patchDate:     Patch date string, e.g. "2026-04-15".
+    // serverType:    "live" or "test".
+    // channel:       Channel string: "C2Z", "Z2C", "C2W", or "W2C".
+    // payloadLength: Length of the decoded packet payload in bytes.
+    // Returns:       List of display names, ordered by opcode_name then version ascending.
+    ///////////////////////////////////////////////////////////////////////////////////////////
     public List<string> GetCandidateOpcodes(string patchDate, string serverType,
-        int direction, int payloadLength)
+        string channel, int payloadLength)
     {
-        List<string> candidates = new List<string>();
-
+        List<(string name, int version)> matches = new List<(string name, int version)>();
         DebugLog.Write("PacketFieldExtractor.GetCandidateOpcodes: patchDate=" + patchDate
-            + " serverType=" + serverType + " direction=" + direction
+            + " serverType=" + serverType + " channel=" + channel
             + " payloadLength=" + payloadLength);
-
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
-
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT po.opcode_name, po.byte_length,"
+        cmd.CommandText = "SELECT po.opcode_name, po.version, po.byte_length,"
             + " MAX(pf.bit_offset + pf.bit_length) AS max_bit"
             + " FROM PatchOpcode po"
+            + " INNER JOIN PatchOpcodeChannel poc ON poc.patch_opcode_id = po.id"
             + " LEFT JOIN PacketField pf ON pf.patch_opcode_id = po.id"
             + " WHERE po.patch_date = @patchDate"
             + " AND po.server_type = @serverType"
-            + " AND po.direction = @direction"
+            + " AND poc.channel = @channel"
             + " GROUP BY po.id"
-            + " ORDER BY po.opcode_name";
+            + " ORDER BY po.opcode_name, po.version";
         cmd.Parameters.AddWithValue("@patchDate", patchDate);
         cmd.Parameters.AddWithValue("@serverType", serverType);
-        cmd.Parameters.AddWithValue("@direction", direction);
-
+        cmd.Parameters.AddWithValue("@channel", channel);
         using SqliteDataReader reader = cmd.ExecuteReader();
         while (reader.Read())
         {
             string opcodeName = reader.GetString(0);
-            bool hasFixedLength = !reader.IsDBNull(1);
-
+            int version = reader.GetInt32(1);
+            bool hasFixedLength = !reader.IsDBNull(2);
             if (hasFixedLength)
             {
-                int byteLength = reader.GetInt32(1);
+                int byteLength = reader.GetInt32(2);
                 if (payloadLength >= byteLength)
                 {
-                    candidates.Add(opcodeName);
+                    matches.Add((opcodeName, version));
                     DebugLog.Write("PacketFieldExtractor.GetCandidateOpcodes: candidate="
-                        + opcodeName + " fixedLength=" + byteLength + " MATCH");
+                        + opcodeName + " version=" + version
+                        + " fixedLength=" + byteLength
+                        + " payloadLength=" + payloadLength + " MATCH");
                 }
                 else
                 {
                     DebugLog.Write("PacketFieldExtractor.GetCandidateOpcodes: candidate="
-                        + opcodeName + " fixedLength=" + byteLength + " TOO LARGE");
+                        + opcodeName + " version=" + version
+                        + " fixedLength=" + byteLength
+                        + " payloadLength=" + payloadLength
+                        + " REJECTED (definition larger than payload)");
                 }
             }
             else
             {
                 int minBytes = 0;
-                if (!reader.IsDBNull(2))
+                if (!reader.IsDBNull(3))
                 {
-                    int maxBit = reader.GetInt32(2);
+                    int maxBit = reader.GetInt32(3);
                     minBytes = (maxBit + 7) / 8;
                 }
-
                 if (payloadLength >= minBytes)
                 {
-                    candidates.Add(opcodeName);
+                    matches.Add((opcodeName, version));
                     DebugLog.Write("PacketFieldExtractor.GetCandidateOpcodes: candidate="
-                        + opcodeName + " variable minBytes=" + minBytes + " MATCH");
+                        + opcodeName + " version=" + version
+                        + " variable minBytes=" + minBytes
+                        + " payloadLength=" + payloadLength + " MATCH");
                 }
                 else
                 {
                     DebugLog.Write("PacketFieldExtractor.GetCandidateOpcodes: candidate="
-                        + opcodeName + " variable minBytes=" + minBytes + " TOO LARGE");
+                        + opcodeName + " version=" + version
+                        + " variable minBytes=" + minBytes
+                        + " payloadLength=" + payloadLength
+                        + " REJECTED (minimum fields larger than payload)");
                 }
             }
+        }
+
+        // Count how many versions of each name qualified. Names with more than one
+        // qualifying version get a " v<version>" suffix on every entry; names with
+        // exactly one qualifying version are returned bare.
+        Dictionary<string, int> nameCounts = new Dictionary<string, int>();
+        foreach ((string name, int version) match in matches)
+        {
+            if (nameCounts.ContainsKey(match.name))
+            {
+                nameCounts[match.name] = nameCounts[match.name] + 1;
+            }
+            else
+            {
+                nameCounts[match.name] = 1;
+            }
+        }
+
+        List<string> candidates = new List<string>();
+        foreach ((string name, int version) match in matches)
+        {
+            string displayName = match.name;
+            if (nameCounts[match.name] > 1)
+            {
+                displayName = match.name + " v" + match.version;
+            }
+            candidates.Add(displayName);
         }
 
         DebugLog.Write("PacketFieldExtractor.GetCandidateOpcodes: total candidates="

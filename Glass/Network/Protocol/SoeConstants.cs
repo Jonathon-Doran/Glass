@@ -48,18 +48,29 @@ public static class SoeConstants
     // ---------------------------------------------------------------------------
     // Stream identifiers
     // ---------------------------------------------------------------------------
-    public const int StreamClient2World = 0;
-    public const int StreamWorld2Client = 1;
-    public const int StreamClient2Zone = 2;
-    public const int StreamZone2Client = 3;
-    public const int MaxStreams = 4;
 
-    public static readonly string[] StreamNames =
+    public enum StreamId
     {
-        "client-world",
-        "world-client",
-        "client-zone",
-        "zone-client"
+        StreamClientToWorld = 0,
+        StreamWorldToClient = 1,
+        StreamClientToZone = 2,
+        StreamZoneToClient = 3
+    }
+
+    public static readonly Dictionary<StreamId, string> StreamNames = new Dictionary<StreamId, string>
+    {
+        { StreamId.StreamClientToWorld, "client->world" },
+        { StreamId.StreamWorldToClient, "world->client" },
+        { StreamId.StreamClientToZone, "client->zone" },
+        { StreamId.StreamZoneToClient, "zone->client" }
+    };
+
+    public static readonly Dictionary<StreamId, string> StreamAbbrev = new Dictionary<StreamId, string>
+    {
+        { StreamId.StreamClientToWorld, "C2W" },
+        { StreamId.StreamWorldToClient, "W2C" },
+        { StreamId.StreamClientToZone, "C2Z" },
+        { StreamId.StreamZoneToClient, "Z2C" }
     };
 
     // ---------------------------------------------------------------------------

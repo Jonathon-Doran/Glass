@@ -1,15 +1,20 @@
 ﻿using Glass.Core;
-using Glass.Data.Models;
-using Glass.Data.Repositories;
-using Glass.Network.Protocol;
 using Glass.Network.Capture;
+using Glass.Network.Protocol;
 using Inference.Core;
 using Inference.Dialogs;
+using Inference.Models;
+using Microsoft.Data.Sqlite;
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
+using System.Collections.ObjectModel;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
+using System.Windows.Interop;
+using System.Windows.Media;
+using static Glass.Network.Protocol.SoeConstants;
 
 namespace Inference;
 
@@ -20,11 +25,36 @@ namespace Inference;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public partial class MainWindow : Window
 {
+    private const int MaxDisplayBytes = 256;
+
+    private struct HexDumpByte
+    {
+        public byte Value;
+        public bool IsConstant;
+    }
+
+    private struct HexDumpLine
+    {
+        public string Offset;
+        public HexDumpByte[] Bytes;
+    }
+
+    private struct HexDumpSample
+    {
+        public string Header;
+        public List<HexDumpLine> Lines;
+    }
+
     private bool _hasPatchLevel = false;
     private bool _hasUnsavedChanges = false;
     private readonly Stack<object> _undoStack = new Stack<object>();
     private SessionDemux? _sessionDemux;
     private PacketCapture? _packetCapture;
+    private readonly ObservableCollection<OpcodeEntry> _opcodeEntries;
+    private readonly Dictionary<uint, OpcodeEntry> _opcodeLookup;
+    private Dictionary<uint, string> _patchOpcodes;
+    private readonly List<CapturedPacket> _capturedPackets = new List<CapturedPacket>();
+    private readonly object _payloadLock;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // MainWindow
@@ -42,8 +72,20 @@ public partial class MainWindow : Window
 
         InferenceDebugLog.Write("Inference application started");
         InferenceLog.Write("Inference log initialized");
+
+        _opcodeEntries = new ObservableCollection<OpcodeEntry>();
+        _opcodeLookup = new Dictionary<uint, OpcodeEntry>();
+        OpcodeGrid.ItemsSource = _opcodeEntries;
+
+        InferenceDebugLog.Write("MainWindow: OpcodeGrid bound to collection");
+
+        _patchOpcodes = new Dictionary<uint, string>();
+        _payloadLock = new object();
+
+
         InitializePipes();
         OpenDatabase();
+        BuildRecentPatchesMenu();
         RestoreLastPatchLevel();
         UpdateControlStates();
     }
@@ -58,15 +100,17 @@ public partial class MainWindow : Window
     {
         string patchDate = Properties.Settings.Default.LastOpenedPatchDate;
         string serverType = Properties.Settings.Default.LastOpenedPatchServerType;
-
         if (string.IsNullOrEmpty(patchDate) || string.IsNullOrEmpty(serverType))
         {
             InferenceDebugLog.Write("RestoreLastPatchLevel: no previous patch level found");
             return;
         }
-
+        _patchOpcodes = LoadPatchOpcodes(patchDate, serverType);
         _hasPatchLevel = true;
-        StatusPatchLevel.Text = serverType + " " + patchDate;
+        string displayServerType = serverType.Substring(0, 1).ToUpper() + serverType.Substring(1);
+        StatusPatchLevel.Text = patchDate + " (" + displayServerType + ")";
+        UpdateRecentPatches(patchDate, serverType);
+        BuildRecentPatchesMenu();
         InferenceDebugLog.Write("RestoreLastPatchLevel: restored " + serverType + " " + patchDate);
     }
 
@@ -93,7 +137,7 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void InitializePipes()
     {
-      //  DebugLog.Initialize(msg => InferenceDebugLog.Write(msg));
+        DebugLog.Initialize(msg => InferenceDebugLog.Write(msg));
 
         GlassContext.ISXGlassPipe = new PipeManager("ISXGlass", "ISXGlass_Commands", "ISXGlass_Notify");
         GlassContext.ISXGlassPipe.Connected += () => Dispatcher.Invoke(() =>
@@ -183,6 +227,251 @@ public partial class MainWindow : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // LoadPatchOpcodes
+    //
+    // Loads all PatchOpcode rows for the given patch level and returns a mapping of
+    // opcode_value to opcode_name for identifying opcodes in the packet grid.
+    //
+    // When multiple versions of an opcode share an opcode_value (as variants of the
+    // same logical opcode like OP_Tracking v1/v2/v3), they collapse to a single
+    // dictionary entry with the shared opcode_name. The grid will display that name
+    // for any matching packet without distinguishing which version it is; callers
+    // needing version precision must query PatchOpcode differently.
+    //
+    // patchDate:  Patch date string, e.g. "2026-04-15".
+    // serverType: "live" or "test".
+    // Returns:    Dictionary of opcode_value to opcode_name.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private Dictionary<uint, string> LoadPatchOpcodes(string patchDate, string serverType)
+    {
+        Dictionary<uint, string> result = new Dictionary<uint, string>();
+        using (SqliteConnection connection = Glass.Data.Database.Instance.Connect())
+        {
+            connection.Open();
+            using (SqliteCommand command = connection.CreateCommand())
+            {
+                command.CommandText =
+                    "SELECT opcode_value, opcode_name, version FROM PatchOpcode "
+                    + "WHERE patch_date = @patchDate AND server_type = @serverType";
+                command.Parameters.AddWithValue("@patchDate", patchDate);
+                command.Parameters.AddWithValue("@serverType", serverType);
+                using (SqliteDataReader reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        int opcodeValue = reader.GetInt32(0);
+                        string opcodeName = reader.GetString(1);
+                        int version = reader.GetInt32(2);
+                        result[(uint)opcodeValue] = opcodeName;
+                        InferenceDebugLog.Write("LoadPatchOpcodes: loaded 0x"
+                            + opcodeValue.ToString("x4") + " " + opcodeName
+                            + " version=" + version);
+                    }
+                }
+            }
+        }
+        InferenceDebugLog.Write("LoadPatchOpcodes: loaded "
+            + result.Count + " distinct opcodes");
+        return result;
+    }
+
+    private void UpdateRecentPatches(string patchDate, string serverType)
+    {
+        string displayServerType = serverType.Substring(0, 1).ToUpper() + serverType.Substring(1);
+        string entry = patchDate + " (" + displayServerType + ")";
+        if (Properties.Settings.Default.RecentPatches == null)
+        {
+            Properties.Settings.Default.RecentPatches = new System.Collections.Specialized.StringCollection();
+        }
+        if (Properties.Settings.Default.RecentPatches.Contains(entry))
+        {
+            Properties.Settings.Default.RecentPatches.Remove(entry);
+        }
+        while (Properties.Settings.Default.RecentPatches.Count >= 5)
+        {
+            Properties.Settings.Default.RecentPatches.RemoveAt(Properties.Settings.Default.RecentPatches.Count - 1);
+        }
+        Properties.Settings.Default.RecentPatches.Insert(0, entry);
+        Properties.Settings.Default.Save();
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // BuildRecentPatchesMenu
+    //
+    // Rebuilds the Recent Patches section of the File menu by reading the
+    // RecentPatches setting and validating each entry against the database.
+    // An entry is valid only if at least one PatchOpcode row exists for that
+    // patch_date and server_type combination. Invalid entries (no opcodes in
+    // the database, or malformed strings) are pruned from the setting.
+    //
+    // Valid entries are inserted as MenuItems into the File menu immediately
+    // after MenuOpenPatchLevel, preceded by a Separator. Entries appear in
+    // setting order, which is most-recent first (index 0 is most-recent).
+    // If no entries are valid, nothing is inserted and no Separator appears.
+    //
+    // Previously inserted Recent items and their Separator are removed before
+    // rebuilding, so this method is safe to call repeatedly.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void BuildRecentPatchesMenu()
+    {
+        MenuItem fileMenu = (MenuItem)MenuOpenPatchLevel.Parent;
+
+        // Remove previously inserted Recent items and their separator.
+        // This is to handle the case where patch levels are modified during the run
+        for (int i = fileMenu.Items.Count - 1; i >= 0; i--)
+        {
+            object item = fileMenu.Items[i];
+            if (item is MenuItem menuItem && menuItem.Tag is string tag && tag == "RecentPatch")
+            {
+                fileMenu.Items.RemoveAt(i);
+            }
+            else if (item is Separator separator && separator.Tag is string sepTag && sepTag == "RecentPatch")
+            {
+                fileMenu.Items.RemoveAt(i);
+            }
+        }
+
+        if (Properties.Settings.Default.RecentPatches == null
+            || Properties.Settings.Default.RecentPatches.Count == 0)
+        {
+            return;
+        }
+
+        // Validate each entry against the database. Walk forward through the
+        // setting, collecting valid entries and preserving their order.
+        // Prune invalid or malformed entries.
+        List<string> validEntries = new List<string>();
+        bool pruned = false;
+        using (SqliteConnection connection = Glass.Data.Database.Instance.Connect())
+        {
+            connection.Open();
+            using (SqliteCommand command = connection.CreateCommand())
+            {
+                command.CommandText =
+                    "SELECT 1 FROM PatchOpcode WHERE patch_date = @patchDate"
+                    + " AND server_type = @serverType LIMIT 1";
+                SqliteParameter paramPatchDate = command.Parameters.Add("@patchDate", SqliteType.Text);
+                SqliteParameter paramServerType = command.Parameters.Add("@serverType", SqliteType.Text);
+                for (int i = 0; i < Properties.Settings.Default.RecentPatches.Count; i++)
+                {
+                    string? entry = Properties.Settings.Default.RecentPatches[i];
+                    if (entry == null)
+                    {
+                        Properties.Settings.Default.RecentPatches.RemoveAt(i);
+                        i--;
+                        pruned = true;
+                        continue;
+                    }
+                    string? patchDate = ParseRecentPatchDate(entry);
+                    string? serverType = ParseRecentServerType(entry);
+                    if (patchDate == null || serverType == null)
+                    {
+                        Properties.Settings.Default.RecentPatches.RemoveAt(i);
+                        i--;
+                        pruned = true;
+                        continue;
+                    }
+                    paramPatchDate.Value = patchDate;
+                    paramServerType.Value = serverType;
+                    object? result = command.ExecuteScalar();
+                    if (result != null)
+                    {
+                        validEntries.Add(entry);
+                    }
+                    else
+                    {
+                        Properties.Settings.Default.RecentPatches.RemoveAt(i);
+                        i--;
+                        pruned = true;
+                    }
+                }
+            }
+        }
+
+        if (pruned)
+        {
+            Properties.Settings.Default.Save();
+        }
+
+        if (validEntries.Count == 0)
+        {
+            return;
+        }
+
+        // Insert into the menu in setting order (most-recent first).
+        // Each item is inserted at an incrementing position after
+        // MenuOpenPatchLevel, so the menu matches the setting order.
+        int insertIndex = fileMenu.Items.IndexOf(MenuOpenPatchLevel) + 1;
+
+        Separator recentSeparator = new Separator();
+        recentSeparator.Tag = "RecentPatch";
+        fileMenu.Items.Insert(insertIndex, recentSeparator);
+        insertIndex++;
+
+        foreach (string entry in validEntries)
+        {
+            string? patchDate = ParseRecentPatchDate(entry);
+            string? serverType = ParseRecentServerType(entry);
+            MenuItem recentItem = new MenuItem();
+            recentItem.Header = entry;
+            recentItem.Tag = "RecentPatch";
+            string capturedPatchDate = patchDate!;
+            string capturedServerType = serverType!;
+            recentItem.Click += (object sender, RoutedEventArgs e) =>
+            {
+                _hasPatchLevel = true;
+                StatusPatchLevel.Text = entry;
+                Properties.Settings.Default.LastOpenedPatchDate = capturedPatchDate;
+                Properties.Settings.Default.LastOpenedPatchServerType = capturedServerType;
+                UpdateRecentPatches(capturedPatchDate, capturedServerType);
+                BuildRecentPatchesMenu();
+                UpdateControlStates();
+            };
+            fileMenu.Items.Insert(insertIndex, recentItem);
+            insertIndex++;
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ParseRecentPatchDate
+    //
+    // Extracts the patch date from a Recent Patches entry string.
+    // Expected format: "2026-04-15 (Live)"
+    //
+    // entry:   The Recent Patches entry string.
+    // Returns: The patch date string, or null if the format is invalid.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private string? ParseRecentPatchDate(string entry)
+    {
+        int spaceIndex = entry.IndexOf(' ');
+        if (spaceIndex < 0)
+        {
+            return null;
+        }
+        return entry.Substring(0, spaceIndex);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ParseRecentServerType
+    //
+    // Extracts the server type from a Recent Patches entry string.
+    // Expected format: "2026-04-15 (Live)"
+    //
+    // entry:   The Recent Patches entry string.
+    // Returns: The server type string in lowercase (e.g. "live"), or null if invalid.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private string? ParseRecentServerType(string entry)
+    {
+        int openParen = entry.IndexOf('(');
+        int closeParen = entry.IndexOf(')');
+        if (openParen < 0 || closeParen < 0 || closeParen <= openParen + 1)
+        {
+            return null;
+        }
+        return entry.Substring(openParen + 1, closeParen - openParen - 1);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeGrid_SelectionChanged
     //
     // Handles selection changes in the Opcodes data grid.
@@ -193,7 +482,6 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void OpcodeGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        InferenceDebugLog.Write("OpcodeGrid_SelectionChanged");
         UpdateControlStates();
     }
 
@@ -208,7 +496,6 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void CandidateGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        InferenceDebugLog.Write("CandidateGrid_SelectionChanged");
         UpdateControlStates();
     }
 
@@ -234,12 +521,12 @@ public partial class MainWindow : Window
         {
             string patchDate = dialog.PatchDate.ToString("yyyy-MM-dd");
             string serverType = dialog.ServerType;
-            string entry = serverType + "|" + patchDate;
+            string entry = patchDate + " (" + serverType + ")";
 
             InferenceDebugLog.Write("New patch level created: " + entry);
 
             _hasPatchLevel = true;
-            StatusPatchLevel.Text = serverType + " " + patchDate;
+            StatusPatchLevel.Text = patchDate + " (" + serverType.Substring(0, 1).ToUpper() + serverType.Substring(1) + ")";
 
             if (Properties.Settings.Default.RecentPatches == null)
             {
@@ -282,12 +569,14 @@ public partial class MainWindow : Window
                 + dialog.ServerType + " PatchDate=" + dialog.PatchDate);
 
             _hasPatchLevel = true;
-            StatusPatchLevel.Text = dialog.ServerType + " " + dialog.PatchDate;
+            StatusPatchLevel.Text = dialog.PatchDate + " (" + dialog.ServerType.Substring(0, 1).ToUpper() + dialog.ServerType.Substring(1) + ")";
 
             Properties.Settings.Default.LastOpenedPatchDate = dialog.PatchDate;
             Properties.Settings.Default.LastOpenedPatchServerType = dialog.ServerType;
             Properties.Settings.Default.Save();
 
+            UpdateRecentPatches(dialog.PatchDate, dialog.ServerType);
+            BuildRecentPatchesMenu();
             UpdateControlStates();
         }
     }
@@ -327,10 +616,11 @@ public partial class MainWindow : Window
             InferenceDebugLog.Write("MenuItem_LaunchProfile_Click: capture device index="
                 + deviceIndex + " localIp=" + localIp);
 
-            _sessionDemux = new SessionDemux(localIp);
+            _sessionDemux = new SessionDemux(localIp, HandleAppPacket);
             _packetCapture = new PacketCapture(_sessionDemux);
 
-            string bpfFilter = "udp and (net 69.0.0.0/8 or net 64.0.0.0/8)";
+            // string bpfFilter = "udp and (net 64.37.128.0/18 or net 69.174.192.0/19 or net 209.0.234.0/23)";
+            string bpfFilter = "udp and (net 69.174.0.0/16 or net 64.37.0.0/16 or net 209.0.0.0/16)";
             if (!_packetCapture.Start(bpfFilter, deviceIndex))
             {
                 InferenceDebugLog.Write("MenuItem_LaunchProfile_Click: capture failed to start");
@@ -392,8 +682,8 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Button_Analyze_Click
     //
-    // Handles the Analyze button click on the Opcodes tab.
-    // Triggers analysis on the currently selected opcode row.
+    // Handles the Analyze button click. Retrieves filtered packets for the selected
+    // opcode from the session buffer and launches the analysis on a background thread.
     //
     // sender:  The button that raised the event.
     // e:       Event arguments.
@@ -405,7 +695,210 @@ public partial class MainWindow : Window
             InferenceDebugLog.Write("Button_Analyze_Click: no opcode selected");
             return;
         }
-        InferenceDebugLog.Write("Button_Analyze_Click: analyzing selected opcode");
+        OpcodeEntry selected = (OpcodeEntry)OpcodeGrid.SelectedItem;
+        List<CapturedPacket> packets = GetFilteredPackets(
+            selected.RawOpcode, null, null, 20, 256);
+        if (packets.Count == 0)
+        {
+            InferenceDebugLog.Write("Button_Analyze_Click: no packets for "
+                + selected.Opcode);
+            return;
+        }
+        InferenceDebugLog.Write("Button_Analyze_Click: starting analysis for "
+            + selected.Opcode + " packets=" + packets.Count);
+        Thread analysisThread = new Thread(() => AnalyzeOpcode(packets));
+        analysisThread.IsBackground = true;
+        analysisThread.Name = "AnalysisThread";
+        analysisThread.Start();
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // AnalyzeOpcode
+    //
+    // Computes constant-byte analysis across the given packets and builds hex dump
+    // data for display. Each packet's payload is formatted as a hex dump with
+    // constant bytes highlighted. Results are dispatched to the UI thread for
+    // rendering.
+    //
+    // packets:  List of captured packets with payloads (possibly truncated by the
+    //           caller via GetFilteredPackets).
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void AnalyzeOpcode(List<CapturedPacket> packets)
+    {
+        bool[] isConstant = ComputeConstantBytes(packets);
+        List<HexDumpSample> dumpData = new List<HexDumpSample>();
+        for (int packetIndex = 0; packetIndex < packets.Count; packetIndex++)
+        {
+            CapturedPacket packet = packets[packetIndex];
+            int displayLength = Math.Min(packet.Payload.Length, MaxDisplayBytes);
+            bool truncated = packet.Payload.Length > MaxDisplayBytes;
+            HexDumpSample dumpSample = new HexDumpSample();
+            dumpSample.Header = "--- Packet " + (packetIndex + 1)
+                + "  " + packet.Metadata.Timestamp.ToString("HH:mm:ss.fff")
+                + "  (" + packet.Payload.Length + " bytes)"
+                + (truncated ? "  [showing first " + MaxDisplayBytes + "]" : "")
+                + " ---";
+            dumpSample.Lines = new List<HexDumpLine>();
+            int offset = 0;
+            while (offset < displayLength)
+            {
+                int bytesThisRow = Math.Min(16, displayLength - offset);
+                HexDumpLine line = new HexDumpLine();
+                line.Offset = offset.ToString("x8");
+                line.Bytes = new HexDumpByte[bytesThisRow];
+                for (int i = 0; i < bytesThisRow; i++)
+                {
+                    line.Bytes[i].Value = packet.Payload[offset + i];
+                    line.Bytes[i].IsConstant = isConstant[offset + i];
+                }
+                dumpSample.Lines.Add(line);
+                offset = offset + 16;
+            }
+            dumpData.Add(dumpSample);
+        }
+
+        Dispatcher.Invoke(() => RenderHexDump(dumpData));
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // RenderHexDump
+    //
+    // Renders pre-computed hex dump data into the HexDumpDisplay RichTextBox.
+    // Called on the UI thread via Dispatcher.Invoke.  Bytes that are constant
+    // across all samples are highlighted in cyan.
+    //
+    // dumpData:  Pre-computed hex dump lines from the analysis thread
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void RenderHexDump(List<HexDumpSample> dumpData)
+    {
+        HexDumpDisplay.Document.Blocks.Clear();
+
+        SolidColorBrush constantBrush = new SolidColorBrush(Colors.Cyan);
+        SolidColorBrush normalBrush = (SolidColorBrush)HexDumpDisplay.Foreground;
+
+        for (int sampleIndex = 0; sampleIndex < dumpData.Count; sampleIndex++)
+        {
+            HexDumpSample dumpSample = dumpData[sampleIndex];
+
+            Paragraph header = new Paragraph();
+            header.Margin = new Thickness(0, sampleIndex > 0 ? 8 : 0, 0, 2);
+            header.Inlines.Add(new Run(dumpSample.Header)
+            {
+                Foreground = normalBrush
+            });
+            HexDumpDisplay.Document.Blocks.Add(header);
+
+            for (int lineIndex = 0; lineIndex < dumpSample.Lines.Count; lineIndex++)
+            {
+                HexDumpLine line = dumpSample.Lines[lineIndex];
+
+                Paragraph para = new Paragraph();
+                para.Margin = new Thickness(0);
+
+                para.Inlines.Add(new Run(line.Offset + "  ")
+                {
+                    Foreground = normalBrush
+                });
+
+                for (int i = 0; i < 16; i++)
+                {
+                    if (i == 8)
+                    {
+                        para.Inlines.Add(new Run(" ") { Foreground = normalBrush });
+                    }
+
+                    if (i < line.Bytes.Length)
+                    {
+                        SolidColorBrush brush = line.Bytes[i].IsConstant
+                            ? constantBrush : normalBrush;
+
+                        para.Inlines.Add(new Run(line.Bytes[i].Value.ToString("x2") + " ")
+                        {
+                            Foreground = brush
+                        });
+                    }
+                    else
+                    {
+                        para.Inlines.Add(new Run("   ") { Foreground = normalBrush });
+                    }
+                }
+
+                para.Inlines.Add(new Run(" |") { Foreground = normalBrush });
+
+                for (int i = 0; i < line.Bytes.Length; i++)
+                {
+                    byte b = line.Bytes[i].Value;
+                    char c = (b >= 0x20 && b <= 0x7e) ? (char)b : '.';
+
+                    SolidColorBrush brush = line.Bytes[i].IsConstant
+                        ? constantBrush : normalBrush;
+
+                    para.Inlines.Add(new Run(c.ToString()) { Foreground = brush });
+                }
+
+                para.Inlines.Add(new Run("|") { Foreground = normalBrush });
+
+                HexDumpDisplay.Document.Blocks.Add(para);
+            }
+        }
+
+        InferenceDebugLog.Write("RenderHexDump: rendered " + dumpData.Count + " samples");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ComputeConstantBytes
+    //
+    // Determines which byte positions have identical values across all packets.
+    // For each byte offset, checks whether every packet that is long enough to
+    // contain that offset has the same value. If any packet is shorter than the
+    // offset, that byte is marked as not constant.
+    //
+    // packets:  List of captured packets to compare.
+    // Returns:  Boolean array indexed by byte offset. True if that byte position
+    //           has the same value across all packets.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private bool[] ComputeConstantBytes(List<CapturedPacket> packets)
+    {
+        if (packets.Count == 0)
+        {
+            return Array.Empty<bool>();
+        }
+        int maxLength = 0;
+        for (int i = 0; i < packets.Count; i++)
+        {
+            if (packets[i].Payload.Length > maxLength)
+            {
+                maxLength = packets[i].Payload.Length;
+            }
+        }
+        bool[] isConstant = new bool[maxLength];
+        for (int byteIndex = 0; byteIndex < maxLength; byteIndex++)
+        {
+            bool allSame = true;
+            byte firstValue = 0;
+            bool hasFirst = false;
+            for (int packetIndex = 0; packetIndex < packets.Count; packetIndex++)
+            {
+                byte[] payload = packets[packetIndex].Payload;
+                if (byteIndex >= payload.Length)
+                {
+                    allSame = false;
+                    break;
+                }
+                if (!hasFirst)
+                {
+                    firstValue = payload[byteIndex];
+                    hasFirst = true;
+                }
+                else if (payload[byteIndex] != firstValue)
+                {
+                    allSame = false;
+                    break;
+                }
+            }
+            isConstant[byteIndex] = allSame;
+        }
+        return isConstant;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -509,6 +1002,124 @@ public partial class MainWindow : Window
                 InferenceDebugLog.Write($"{msg}");
                 break;
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // HandleAppPacket
+    //
+    // Handles a decoded application-layer packet. Stores the full packet in the
+    // session buffer for later analysis and pcapng save. Updates the opcode grid
+    // entry on the UI thread with count, min/max size, and channel information.
+    //
+    // data:      Raw packet payload bytes.
+    // length:    Length of the payload in bytes.
+    // direction: Legacy direction byte (retained for compatibility until refactored).
+    // opcode:    The decoded opcode value.
+    // metadata:  Wire-level metadata including timestamp, IPs, ports, session, stream.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void HandleAppPacket(ReadOnlySpan<byte> data, int length,
+                                 byte direction, ushort opcode, PacketMetadata metadata)
+    {
+        byte[] copy = data.Slice(0, length).ToArray();
+        CapturedPacket packet;
+        packet.Metadata = metadata;
+        packet.Payload = copy;
+        packet.OpcodeValue = opcode;
+
+        lock (_payloadLock)
+        {
+            _capturedPackets.Add(packet);
+        }
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (_opcodeLookup.TryGetValue(opcode, out OpcodeEntry? entry))
+            {
+                entry.Count = entry.Count + 1;
+                if (length < entry.MinSize)
+                {
+                    entry.MinSize = length;
+                }
+                if (length > entry.MaxSize)
+                {
+                    entry.MaxSize = length;
+                }
+            }
+            else
+            {
+                string opcodeHex = "0x" + opcode.ToString("x4");
+                entry = new OpcodeEntry(opcodeHex, metadata.Channel, length)
+                {
+                    RawOpcode = opcode,
+                    RawDirection = direction
+                };
+                if (_patchOpcodes.TryGetValue(opcode, out string? knownName))
+                {
+                    entry.Name = knownName;
+                }
+                _opcodeEntries.Add(entry);
+                _opcodeLookup[opcode] = entry;
+            }
+        });
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetFilteredPackets
+    //
+    // Queries the session packet buffer for packets matching the given filters.
+    // All filter parameters are optional — pass null to skip that filter.
+    // Returns up to maxResults packets with payloads truncated to maxPayloadBytes
+    // for display purposes.
+    //
+    // opcodeValue:     Optional opcode value to filter on. Null includes all opcodes.
+    // channel:         Optional channel filter (StreamId). Null includes all channels.
+    // sessionId:       Optional session filter. Null includes all sessions.
+    // maxResults:      Maximum number of packets to return.
+    // maxPayloadBytes: Maximum payload bytes to include per packet (truncation for display).
+    // Returns:         List of CapturedPacket with truncated payloads.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private List<CapturedPacket> GetFilteredPackets(uint? opcodeValue,
+        SoeConstants.StreamId? channel, int? sessionId,
+        int maxResults, int maxPayloadBytes)
+    {
+        List<CapturedPacket> results = new List<CapturedPacket>();
+        lock (_payloadLock)
+        {
+            for (int i = 0; i < _capturedPackets.Count; i++)
+            {
+                CapturedPacket packet = _capturedPackets[i];
+                if (opcodeValue != null && packet.OpcodeValue != opcodeValue.Value)
+                {
+                    continue;
+                }
+                if (channel != null && packet.Metadata.Channel != channel.Value)
+                {
+                    continue;
+                }
+                if (sessionId != null && packet.Metadata.SessionId != sessionId.Value)
+                {
+                    continue;
+                }
+                CapturedPacket truncated;
+                truncated.Metadata = packet.Metadata;
+                truncated.OpcodeValue = packet.OpcodeValue;
+                if (packet.Payload.Length > maxPayloadBytes)
+                {
+                    truncated.Payload = new byte[maxPayloadBytes];
+                    Array.Copy(packet.Payload, truncated.Payload, maxPayloadBytes);
+                }
+                else
+                {
+                    truncated.Payload = packet.Payload;
+                }
+                results.Add(truncated);
+                if (results.Count >= maxResults)
+                {
+                    break;
+                }
+            }
+        }
+        return results;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

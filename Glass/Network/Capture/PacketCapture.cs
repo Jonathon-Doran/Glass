@@ -249,6 +249,7 @@ public class PacketCapture
     private void OnPacketArrival(object sender, SharpPcapCapture e)
     {
         RawCapture rawCapture = e.GetPacket();
+        _frameCount++;
 
         if (rawCapture == null)
         {

@@ -1,6 +1,7 @@
-using System;
 using Glass.Core;
 using Glass.Network.Protocol;
+using System;
+using static Glass.Network.Protocol.SoeConstants;
 
 namespace Glass.Network.Client;
 
@@ -17,7 +18,7 @@ namespace Glass.Network.Client;
 public class EqClient : IDisposable
 {
     private readonly int _localPort;
-    private readonly SoeStream[] _streams;
+    private readonly Dictionary<StreamId, SoeStream> _streams;
     private bool _disposed;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -33,43 +34,39 @@ public class EqClient : IDisposable
         _localPort = localPort;
         _disposed = false;
 
-        _streams = new SoeStream[SoeConstants.MaxStreams];
+        _streams = new Dictionary<StreamId, SoeStream>();
 
-        _streams[SoeConstants.StreamClient2World] = new SoeStream(
-            SoeConstants.StreamClient2World,
+        _streams[StreamId.StreamClientToWorld] = new SoeStream(
+            StreamId.StreamClientToWorld,
             SoeConstants.DirectionClientToServer,
-            arqSeqGiveUp,
-            "client-world:" + localPort);
+            arqSeqGiveUp, StreamNames[StreamId.StreamClientToWorld] + ": " + localPort);
 
-        _streams[SoeConstants.StreamWorld2Client] = new SoeStream(
-            SoeConstants.StreamWorld2Client,
+        _streams[StreamId.StreamWorldToClient] = new SoeStream(
+            StreamId.StreamWorldToClient,
             SoeConstants.DirectionServerToClient,
-            arqSeqGiveUp,
-            "world-client:" + localPort);
+            arqSeqGiveUp, StreamNames[StreamId.StreamWorldToClient] + ": " + localPort);
 
-        _streams[SoeConstants.StreamClient2Zone] = new SoeStream(
-            SoeConstants.StreamClient2Zone,
+        _streams[StreamId.StreamClientToZone] = new SoeStream(
+            StreamId.StreamClientToZone,
             SoeConstants.DirectionClientToServer,
-            arqSeqGiveUp,
-            "client-zone:" + localPort);
+            arqSeqGiveUp, StreamNames[StreamId.StreamClientToZone] + ": " + localPort);
 
-        _streams[SoeConstants.StreamZone2Client] = new SoeStream(
-            SoeConstants.StreamZone2Client,
+        _streams[StreamId.StreamZoneToClient] = new SoeStream(
+            StreamId.StreamZoneToClient,
             SoeConstants.DirectionServerToClient,
-            arqSeqGiveUp,
-            "zone-client:" + localPort);
+            arqSeqGiveUp, StreamNames[StreamId.StreamZoneToClient] + ": " + localPort);
 
         // Wire session key distribution
-        for (int i = 0; i < SoeConstants.MaxStreams; i++)
+        foreach (StreamId streamId in Enum.GetValues<StreamId>())
         {
-            _streams[i].OnSessionKey = DistributeSessionKey;
-            _streams[i].OnClosing = PropagateClose;
+            _streams[streamId].OnSessionKey = DistributeSessionKey;
+            _streams[streamId].OnClosing = PropagateClose;
         }
 
         // Enable session tracking on all streams
-        for (int i = 0; i < SoeConstants.MaxStreams; i++)
+        foreach (StreamId streamId in Enum.GetValues<StreamId>())
         {
-            _streams[i].SessionTrackingEnabled = 1;
+            _streams[streamId].SessionTrackingEnabled = 1;
         }
 
         DebugLog.Write("EqClient: created for local port " + localPort);
@@ -82,17 +79,8 @@ public class EqClient : IDisposable
     //
     // streamId:  One of the SoeConstants.Stream* values
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public SoeStream GetStream(int streamId)
+    public SoeStream GetStream(SoeConstants.StreamId streamId)
     {
-        if (streamId < 0 || streamId >= SoeConstants.MaxStreams)
-        {
-            DebugLog.Write("EqClient.GetStream: invalid streamId=" + streamId
-                + " on port " + _localPort);
-            throw new ArgumentOutOfRangeException("streamId",
-                "Stream ID " + streamId + " is out of range (0-"
-                + (SoeConstants.MaxStreams - 1) + ")");
-        }
-
         return _streams[streamId];
     }
 
@@ -106,16 +94,16 @@ public class EqClient : IDisposable
     // fromStream:  The stream that received the key
     // sessionKey:  The key value
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void DistributeSessionKey(uint sessionId, int fromStream, uint sessionKey)
+    private void DistributeSessionKey(uint sessionId, StreamId fromStream, uint sessionKey)
     {
         DebugLog.Write(DebugLog.Log_Network,
             "EqClient.DistributeSessionKey [port " + _localPort
             + "]: key=0x" + sessionKey.ToString("X8")
             + " from " + SoeConstants.StreamNames[fromStream]);
 
-        for (int i = 0; i < SoeConstants.MaxStreams; i++)
+        foreach (StreamId streamId in Enum.GetValues<StreamId>())
         {
-            _streams[i].ReceiveSessionKey(sessionId, fromStream, sessionKey);
+            _streams[streamId].ReceiveSessionKey(sessionId, fromStream, sessionKey);
         }
     }
 
@@ -128,15 +116,15 @@ public class EqClient : IDisposable
     // sessionId:   The session ID that disconnected
     // fromStream:  The stream that received the disconnect
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void PropagateClose(uint sessionId, int fromStream)
+    private void PropagateClose(uint sessionId, StreamId fromStream)
     {
         DebugLog.Write("EqClient.PropagateClose [port " + _localPort
             + "]: session=0x" + sessionId.ToString("X8")
             + " from " + SoeConstants.StreamNames[fromStream]);
 
-        for (int i = 0; i < SoeConstants.MaxStreams; i++)
+        foreach (StreamId streamId in Enum.GetValues<StreamId>())
         {
-            _streams[i].Close(sessionId, fromStream, 1);
+            _streams[streamId].Close(sessionId, fromStream, 1);
         }
     }
 
@@ -149,11 +137,11 @@ public class EqClient : IDisposable
     {
         if (!_disposed)
         {
-            for (int i = 0; i < SoeConstants.MaxStreams; i++)
+            foreach (StreamId streamId in Enum.GetValues<StreamId>())
             {
-                if (_streams[i] != null)
+                if (_streams[streamId] != null)
                 {
-                    _streams[i].Dispose();
+                    _streams[streamId].Dispose();
                 }
             }
 

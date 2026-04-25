@@ -1,4 +1,5 @@
 ﻿using System;
+using static Glass.Network.Protocol.SoeConstants;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // PacketMetadata
@@ -21,4 +22,6 @@ public struct PacketMetadata
     public int SourcePort;
     public string DestIp;
     public int DestPort;
+    public int SessionId;
+    public StreamId Channel;
 }

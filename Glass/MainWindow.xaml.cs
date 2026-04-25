@@ -15,6 +15,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
+using static Glass.Network.Protocol.SoeConstants;
 using static System.Reflection.Metadata.BlobBuilder;
 
 namespace Glass;
@@ -756,7 +757,7 @@ public partial class MainWindow : Window
 
         string localIp = "10.146.79.19";
 
-        SessionDemux router = new SessionDemux(localIp);
+        SessionDemux router = new SessionDemux(localIp, OpcodeDispatch.Instance.HandlePacket);
         PcapFileReader reader = new PcapFileReader(router);
 
         int routed = reader.ProcessFile(filePath);
@@ -765,12 +766,12 @@ public partial class MainWindow : Window
 
         foreach (KeyValuePair<int, EqClient> kvp in router.GetAllClients())
         {
-            for (int i = 0; i < SoeConstants.MaxStreams; i++)
+            foreach (StreamId streamId in Enum.GetValues<StreamId>())
             {
-                SoeStream stream = kvp.Value.GetStream(i);
+                SoeStream stream = kvp.Value.GetStream(streamId);
                 if (stream.OpcodeCount.Count > 0)
                 {
-                    DebugLog.Write("Opcode summary for " + SoeConstants.StreamNames[i]
+                    DebugLog.Write("Opcode summary for " + SoeConstants.StreamNames[streamId]
                         + " port " + kvp.Key + ":");
 
                     List<KeyValuePair<ushort, int>> sorted =
@@ -1096,7 +1097,7 @@ public partial class MainWindow : Window
 
         PacketFieldExtractor extractor = new PacketFieldExtractor();
         Dictionary<string, object> results = extractor.Extract("2026-04-15", "live",
-            "OP_ClientUpdate", 0, payload);
+            "OP_ClientUpdate", 1, payload);
 
         DebugLog.Write("TestExtract: extracted " + results.Count + " fields");
 

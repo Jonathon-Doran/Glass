@@ -321,6 +321,18 @@ public class Database
         {
             ApplyMigration(conn, 36, Migration_036);
         }
+        if (version < 37)
+        {
+            using SqliteCommand pragmaOff = conn.CreateCommand();
+            pragmaOff.CommandText = "PRAGMA foreign_keys = OFF";
+            pragmaOff.ExecuteNonQuery();
+
+            ApplyMigration(conn, 37, Migration_037);
+
+            using SqliteCommand pragmaOn = conn.CreateCommand();
+            pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
+            pragmaOn.ExecuteNonQuery();
+        }
     }
 
     private int GetSchemaVersion()
@@ -993,6 +1005,56 @@ public class Database
     private const string Migration_036 = @"
         ALTER TABLE Profiles ADD COLUMN ServerType TEXT NOT NULL DEFAULT '';
         ALTER TABLE Profiles ADD COLUMN Server TEXT NOT NULL DEFAULT '';
+    ";
+
+
+    private const string Migration_037 = @"
+        CREATE TABLE PatchOpcode_new
+        (
+            id              INTEGER PRIMARY KEY,
+            patch_date      TEXT NOT NULL,
+            server_type     TEXT NOT NULL,
+            opcode_value    INTEGER NOT NULL,
+            opcode_name     TEXT NOT NULL,
+            version         INTEGER NOT NULL DEFAULT 1,
+            byte_length     INTEGER,
+            UNIQUE (patch_date, server_type, opcode_value, opcode_name, version)
+        );
+
+        INSERT INTO PatchOpcode_new
+            (id, patch_date, server_type, opcode_value, opcode_name, version, byte_length)
+        SELECT
+            id, patch_date, server_type, opcode_value, opcode_name, 1, byte_length
+        FROM PatchOpcode;
+
+        CREATE TABLE PatchOpcodeChannel_temp
+        (
+            patch_opcode_id INTEGER NOT NULL,
+            channel         TEXT NOT NULL
+        );
+
+        INSERT INTO PatchOpcodeChannel_temp (patch_opcode_id, channel)
+        SELECT id, 'C2Z' FROM PatchOpcode WHERE direction = 0;
+
+        INSERT INTO PatchOpcodeChannel_temp (patch_opcode_id, channel)
+        SELECT id, 'Z2C' FROM PatchOpcode WHERE direction = 1;
+
+        DROP TABLE PatchOpcode;
+
+        ALTER TABLE PatchOpcode_new RENAME TO PatchOpcode;
+
+        CREATE TABLE PatchOpcodeChannel
+        (
+            id              INTEGER PRIMARY KEY,
+            patch_opcode_id INTEGER NOT NULL REFERENCES PatchOpcode(id),
+            channel         TEXT NOT NULL,
+            UNIQUE (patch_opcode_id, channel)
+        );
+
+        INSERT INTO PatchOpcodeChannel (patch_opcode_id, channel)
+        SELECT patch_opcode_id, channel FROM PatchOpcodeChannel_temp;
+
+        DROP TABLE PatchOpcodeChannel_temp;
     ";
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

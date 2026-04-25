@@ -9,11 +9,10 @@
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_File">
                 <MenuItem Header="_New Patch Level" Click="MenuItem_NewPatchLevel_Click"/>
-                <MenuItem Header="_Open Patch Level" Click="MenuItem_OpenPatchLevel_Click"/>
-
+                <MenuItem x:Name="MenuOpenPatchLevel" Header="_Open Patch Level" Click="MenuItem_OpenPatchLevel_Click"/>
                 <Separator/>
                 <MenuItem x:Name="MenuSave" Header="_Save"
-                          Click="MenuItem_Save_Click" IsEnabled="False"/>
+                         Click="MenuItem_Save_Click" IsEnabled="False"/>
                 <Separator/>
                 <MenuItem Header="E_xit" Click="MenuItem_Exit_Click"/>
             </MenuItem>
@@ -63,7 +62,7 @@
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Opcode" Width="80" Binding="{Binding Opcode}"/>
                             <DataGridTextColumn Header="Name" Width="200" Binding="{Binding Name}"/>
-                            <DataGridTextColumn Header="Direction" Width="100" Binding="{Binding Direction}"/>
+                            <DataGridTextColumn Header="Direction" Width="100" Binding="{Binding ChannelAbbrev}"/>
                             <DataGridTextColumn Header="Count" Width="80" Binding="{Binding Count}"/>
                             <DataGridTextColumn Header="Min Size" Width="80" Binding="{Binding MinSize}"/>
                             <DataGridTextColumn Header="Max Size" Width="80" Binding="{Binding MaxSize}"/>

@@ -3,6 +3,8 @@ using Glass.Network.Client;
 using System;
 using System.Collections.Generic;
 using System.Net;
+using static Glass.Network.Protocol.SoeStream;
+using static Glass.Network.Protocol.SoeConstants;
 
 namespace Glass.Network.Protocol;
 
@@ -26,21 +28,25 @@ public class SessionDemux
     private readonly string _localIp;
     private readonly uint _localIpInt;
     private readonly int _arqSeqGiveUp;
+    private readonly AppPacketHandler _appPacketHandler;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // SessionDemux (constructor)
     //
-    // localIp:        The IP address of the local machine running EQ clients
-    // arqSeqGiveUp:   Passed through to each stream's ARQ cache threshold
+    // localIp:            The IP address of the local machine running EQ clients
+    // appPacketHandler:   Delegate called for each decoded application-layer packet
+    // arqSeqGiveUp:       Passed through to each stream's ARQ cache threshold
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public SessionDemux(string localIp, int arqSeqGiveUp = 512)
+    public SessionDemux(string localIp, AppPacketHandler appPacketHandler, int arqSeqGiveUp = 512)
     {
         _clientsByLocalPort = new Dictionary<int, EqClient>();
         _localIp = localIp;
         _localIpInt = IpToUInt32(localIp);
         _arqSeqGiveUp = arqSeqGiveUp;
+        _appPacketHandler = appPacketHandler;
 
-        DebugLog.Write("SessionDemux: created, localIp=" + localIp);
+        DebugLog.Write("SessionDemux: created, localIp=" + localIp
+            + ", appPacketHandler=" + (appPacketHandler != null ? "provided" : "null"));
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -85,16 +91,7 @@ public class SessionDemux
         int localPort = isFromClient ? metadata.SourcePort : metadata.DestPort;
 
         // Determine which stream type based on port ranges
-        int streamId = ClassifyStream(metadata.SourcePort, metadata.DestPort, isFromClient);
-
-        if (streamId < 0)
-        {
-            DebugLog.Write(DebugLog.Log_Network,
-                "SessionDemux.RoutePacket: unclassifiable packet "
-                + metadata.SourceIp + ":" + metadata.SourcePort + " -> "
-                + metadata.DestIp + ":" + metadata.DestPort + ", dropping");
-            return;
-        }
+        StreamId streamId = ClassifyStream(metadata.SourcePort, metadata.DestPort, isFromClient);
 
         // Find or create the client
         if (!_clientsByLocalPort.TryGetValue(localPort, out EqClient? client))
@@ -102,14 +99,18 @@ public class SessionDemux
             client = new EqClient(localPort, _arqSeqGiveUp);
             _clientsByLocalPort[localPort] = client;
 
-            client.GetStream(SoeConstants.StreamClient2Zone).OnAppPacket
-                = OpcodeDispatch.Instance.HandlePacket;
-            client.GetStream(SoeConstants.StreamZone2Client).OnAppPacket
-                = OpcodeDispatch.Instance.HandlePacket;
+            client.GetStream(StreamId.StreamClientToZone).OnAppPacket
+                            = _appPacketHandler;
+            client.GetStream(StreamId.StreamZoneToClient).OnAppPacket
+                            = _appPacketHandler;
+            client.GetStream(StreamId.StreamClientToWorld).OnAppPacket
+                            = _appPacketHandler;
+            client.GetStream(StreamId.StreamWorldToClient).OnAppPacket
+                            = _appPacketHandler;
 
             DebugLog.Write("SessionDemux.RoutePacket: new client on local port "
                 + localPort + ", total clients=" + _clientsByLocalPort.Count
-                + ", zone streams wired to OpcodeDispatch");
+                + ", zone streams wired to appPacketHandler");
         }
 
         // Route to the stream
@@ -122,6 +123,7 @@ public class SessionDemux
             return;
         }
 
+        metadata.Channel = streamId;
         stream.HandlePacket(rawData, length, metadata);
     }
 
@@ -135,7 +137,7 @@ public class SessionDemux
     // destPort:     Destination UDP port
     // isFromClient: True if the source is the local machine
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private int ClassifyStream(int sourcePort, int destPort, bool isFromClient)
+    private StreamId ClassifyStream(int sourcePort, int destPort, bool isFromClient)
     {
         // Login server traffic
         if ((destPort >= SoeConstants.LoginServerMinPort &&
@@ -145,9 +147,9 @@ public class SessionDemux
         {
             if (isFromClient)
             {
-                return SoeConstants.StreamClient2World;
+                return StreamId.StreamClientToWorld;
             }
-            return SoeConstants.StreamWorld2Client;
+            return StreamId.StreamWorldToClient;
         }
 
         // World server traffic
@@ -158,17 +160,17 @@ public class SessionDemux
         {
             if (isFromClient)
             {
-                return SoeConstants.StreamClient2World;
+                return StreamId.StreamClientToWorld;
             }
-            return SoeConstants.StreamWorld2Client;
+            return StreamId.StreamWorldToClient;
         }
 
         // Everything else is zone traffic
         if (isFromClient)
         {
-            return SoeConstants.StreamClient2Zone;
+            return StreamId.StreamClientToZone;
         }
-        return SoeConstants.StreamZone2Client;
+        return StreamId.StreamZoneToClient;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
