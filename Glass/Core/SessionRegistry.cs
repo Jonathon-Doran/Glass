@@ -1,4 +1,7 @@
-﻿using System.Diagnostics;
+﻿using Glass.Network.Client;
+using Glass.Network.Protocol;
+using Glass.Network.Capture;
+using static Glass.Network.Protocol.SoeConstants;
 using System.Runtime.InteropServices;
 
 namespace Glass.Core;
@@ -20,24 +23,80 @@ public class SessionRegistry
     public event Action? AllSessionsDisconnected;
 
     private int _sessionCount = 0;
+    private readonly Dictionary<string, SessionEntry> _sessions = new();
+    private readonly Dictionary<int, Connection> _connectionsByPort = new();
+    private readonly SoeStream.AppPacketHandler _appPacketHandler;
+    private readonly int _arqSeqGiveUp = 512;
+    private readonly string? _localIp;
+    private readonly object _lock = new();
 
     // Represents a single active EverQuest session.
     public class SessionEntry
     {
+        ///////////////////////////////////////////////////////////////////////////////////////////////
+        // SessionName
+        //
+        // The Inner Space session name (e.g., "is1", "is7").
+        // Empty until ISX reports the session.
+        ///////////////////////////////////////////////////////////////////////////////////////////////
         public string SessionName { get; set; } = string.Empty;
-        public string CharacterName { get; set; } = string.Empty;
-        public uint Pid { get; set; }
-        public IntPtr Hwnd { get; set; }
-    }
 
-    private readonly Dictionary<string, SessionEntry> _sessions = new();
-    private readonly object _lock = new();
+        ///////////////////////////////////////////////////////////////////////////////////////////////
+        // CharacterName
+        //
+        // The character logged in to this session.
+        // Set initially from ISX, confirmed later from network traffic.
+        ///////////////////////////////////////////////////////////////////////////////////////////////
+        public string CharacterName { get; set; } = string.Empty;
+
+        ///////////////////////////////////////////////////////////////////////////////////////////////
+        // CharacterId
+        //
+        // The database primary key for this character.
+        // Set when the character is identified, either from profile data
+        // or from network traffic.  Zero means not yet identified.
+        ///////////////////////////////////////////////////////////////////////////////////////////////
+        public int CharacterId { get; set; }
+
+        ///////////////////////////////////////////////////////////////////////////////////////////////
+        // Pid
+        //
+        // The process ID of the EQ client.  Set by ISX on connection.
+        ///////////////////////////////////////////////////////////////////////////////////////////////
+        public uint Pid { get; set; }
+
+        ///////////////////////////////////////////////////////////////////////////////////////////////
+        // Hwnd
+        //
+        // The main window handle of the EQ client.  Set by ISX on connection.
+        ///////////////////////////////////////////////////////////////////////////////////////////////
+        public IntPtr Hwnd { get; set; }
+
+        ///////////////////////////////////////////////////////////////////////////////////////////////
+        // LocalPort
+        //
+        // The local UDP port used by this EQ client.  Set by SessionDemux
+        // when network traffic is first seen.  Zero means no network
+        // traffic observed yet.
+        ///////////////////////////////////////////////////////////////////////////////////////////////
+        public int LocalPort { get; set; }
+
+        ///////////////////////////////////////////////////////////////////////////////////////////////
+        // SlotNumber
+        //
+        // The slot position in the active profile.  Set at launch time.
+        // Zero means not assigned.
+        ///////////////////////////////////////////////////////////////////////////////////////////////
+        public int SlotNumber { get; set; }
+    }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // SessionRegistry Constructor
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public SessionRegistry()
+    public SessionRegistry(SoeStream.AppPacketHandler _handler)
     {
+        _appPacketHandler = _handler;
+        _localIp = PacketCapture.GetLocalIP();
         GlassContext.FocusTracker.SessionActivated += OnSessionActivated;
     }
 
@@ -133,19 +192,6 @@ public class SessionRegistry
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // GetSessions
-    //
-    // Returns a snapshot of all current sessions.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public IReadOnlyList<SessionEntry> GetSessions()
-    {
-        lock (_lock)
-        {
-            return _sessions.Values.ToList();
-        }
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // GetSession
     //
     // Returns the entry for a specific session, or null if not found.
@@ -157,6 +203,80 @@ public class SessionRegistry
         lock (_lock)
         {
             return _sessions.TryGetValue(sessionName, out var entry) ? entry : null;
+        }
+    }
+
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetAllClients
+    //
+    // Returns a read-only view of all active clients.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public IReadOnlyDictionary<int, Connection> GetAllConnections()
+    {
+        return _connectionsByPort;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetChannel
+    //
+    // Classifies a packet into a stream type based on port ranges and direction.
+    //
+    // metadata:  The packet metadata containing source/dest IP and ports.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public SoeConstants.StreamId GetChannel(PacketMetadata metadata)
+    {
+        bool isFromClient = (metadata.SourceIp == _localIp);
+        int remotePort = isFromClient ? metadata.DestPort : metadata.SourcePort;
+
+        if (remotePort >= SoeConstants.LoginServerMinPort &&
+            remotePort <= SoeConstants.LoginServerMaxPort)
+        {
+            return isFromClient
+                ? SoeConstants.StreamId.StreamClientToWorld
+                : SoeConstants.StreamId.StreamWorldToClient;
+        }
+
+        if (remotePort >= SoeConstants.WorldServerGeneralMinPort &&
+            remotePort <= SoeConstants.WorldServerGeneralMaxPort)
+        {
+            return isFromClient
+                ? SoeConstants.StreamId.StreamClientToWorld
+                : SoeConstants.StreamId.StreamWorldToClient;
+        }
+
+        return isFromClient
+            ? SoeConstants.StreamId.StreamClientToZone
+            : SoeConstants.StreamId.StreamZoneToClient;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetStream
+    //
+    // Returns the SoeStream for the given packet metadata.  Determines the
+    // channel, looks up or creates the Connection, and returns the
+    // appropriate stream.  Thread-safe.
+    //
+    // metadata:  The packet metadata containing source/dest IP, ports, etc.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public SoeStream GetStream(PacketMetadata metadata)
+    {
+        bool isFromClient = (metadata.SourceIp == _localIp);
+        int localPort = isFromClient ? metadata.SourcePort : metadata.DestPort;
+
+        lock (_lock)
+        {
+            if (!_connectionsByPort.TryGetValue(localPort, out Connection? connection))
+            {
+                connection = new Connection(localPort, _arqSeqGiveUp, _appPacketHandler);
+                _connectionsByPort[localPort] = connection;
+
+                DebugLog.Write(DebugLog.Log_Sessions,
+                    "SessionRegistry.GetStream: new connection on port " + localPort
+                    + ", connections=" + _connectionsByPort.Count);
+            }
+
+            return connection.GetStream(metadata.Channel);
         }
     }
 }

@@ -69,7 +69,7 @@ public partial class MainWindow : Window
         GlassContext.GlassVideoPipe.MessageReceived += msg => Dispatcher.Invoke(() => Log($"GlassVideo: {msg}"));
         GlassContext.GlassVideoPipe.Start();
         GlassContext.FocusTracker = new FocusTracker();
-        GlassContext.SessionRegistry = new SessionRegistry();
+        GlassContext.SessionRegistry = new SessionRegistry(OpcodeDispatch.Instance.HandlePacket);
         GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
     }
 
@@ -764,7 +764,7 @@ public partial class MainWindow : Window
 
         DebugLog.Write(routed + " packets routed");
 
-        foreach (KeyValuePair<int, EqClient> kvp in router.GetAllClients())
+        foreach (KeyValuePair<int, Connection> kvp in GlassContext.SessionRegistry.GetAllConnections())
         {
             foreach (StreamId streamId in Enum.GetValues<StreamId>())
             {

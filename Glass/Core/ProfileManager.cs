@@ -149,18 +149,6 @@ public class ProfileManager
             }
         }
 
-        foreach (SessionRegistry.SessionEntry session in GlassContext.SessionRegistry.GetSessions())
-        {
-            SlotAssignment? assignment = slots.FirstOrDefault(s =>
-                charRepo.GetById(s.CharacterId)?.Name == session.CharacterName);
-            if ((assignment != null) && (session.Hwnd != IntPtr.Zero))
-            {
-                string cmd = $"slot_assign {assignment.SlotNumber} {session.SessionName} {session.Hwnd:X}";
-                DebugLog.Write(DebugLog.Log_Sessions, "ProfileManager.SendGlassVideoLayout: sending " + cmd);
-                GlassContext.GlassVideoPipe.Send(cmd);
-            }
-        }
-
         WindowLayout? layout = layoutRepo.GetLayoutById(layoutId);
         if (layout?.UISkinId.HasValue == true)
         {

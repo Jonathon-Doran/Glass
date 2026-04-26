@@ -6,32 +6,32 @@ using static Glass.Network.Protocol.SoeConstants;
 namespace Glass.Network.Client;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// EqClient
+// Connection
 //
-// Represents one EQ client process.  Owns the four SOE protocol streams
+// Represents the low-level connection to one EQ client process.  Owns the four SOE protocol streams
 // (client->world, world->client, client->zone, zone->client) and handles
 // session key distribution and close propagation between them.
 //
 // Identified by the local ephemeral port, which is stable for the lifetime
 // of the EQ process.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class EqClient : IDisposable
+public class Connection : IDisposable
 {
     private readonly int _localPort;
     private readonly Dictionary<StreamId, SoeStream> _streams;
     private bool _disposed;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // EqClient (constructor)
+    // Connection (constructor)
     //
     // Creates the four streams and wires up session key and close callbacks.
     //
-    // localPort:      The local ephemeral port identifying this client
+    // me:      The local ephemeral port identifying this client
     // arqSeqGiveUp:   ARQ cache threshold passed through to each stream
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public EqClient(int localPort, int arqSeqGiveUp)
+    public Connection(int localport, int arqSeqGiveUp, SoeStream.AppPacketHandler _handler)
     {
-        _localPort = localPort;
+        _localPort = localport;
         _disposed = false;
 
         _streams = new Dictionary<StreamId, SoeStream>();
@@ -39,22 +39,22 @@ public class EqClient : IDisposable
         _streams[StreamId.StreamClientToWorld] = new SoeStream(
             StreamId.StreamClientToWorld,
             SoeConstants.DirectionClientToServer,
-            arqSeqGiveUp, StreamNames[StreamId.StreamClientToWorld] + ": " + localPort);
+            arqSeqGiveUp, StreamNames[StreamId.StreamClientToWorld] + ": " + _localPort);
 
         _streams[StreamId.StreamWorldToClient] = new SoeStream(
             StreamId.StreamWorldToClient,
             SoeConstants.DirectionServerToClient,
-            arqSeqGiveUp, StreamNames[StreamId.StreamWorldToClient] + ": " + localPort);
+            arqSeqGiveUp, StreamNames[StreamId.StreamWorldToClient] + ": " + _localPort);
 
         _streams[StreamId.StreamClientToZone] = new SoeStream(
             StreamId.StreamClientToZone,
             SoeConstants.DirectionClientToServer,
-            arqSeqGiveUp, StreamNames[StreamId.StreamClientToZone] + ": " + localPort);
+            arqSeqGiveUp, StreamNames[StreamId.StreamClientToZone] + ": " + _localPort);
 
         _streams[StreamId.StreamZoneToClient] = new SoeStream(
             StreamId.StreamZoneToClient,
             SoeConstants.DirectionServerToClient,
-            arqSeqGiveUp, StreamNames[StreamId.StreamZoneToClient] + ": " + localPort);
+            arqSeqGiveUp, StreamNames[StreamId.StreamZoneToClient] + ": " + _localPort);
 
         // Wire session key distribution
         foreach (StreamId streamId in Enum.GetValues<StreamId>())
@@ -67,9 +67,10 @@ public class EqClient : IDisposable
         foreach (StreamId streamId in Enum.GetValues<StreamId>())
         {
             _streams[streamId].SessionTrackingEnabled = 1;
+            _streams[streamId].OnAppPacket = _handler;
         }
 
-        DebugLog.Write("EqClient: created for local port " + localPort);
+        DebugLog.Write("Connection: created for local port " + _localPort);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -96,11 +97,6 @@ public class EqClient : IDisposable
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void DistributeSessionKey(uint sessionId, StreamId fromStream, uint sessionKey)
     {
-        DebugLog.Write(DebugLog.Log_Network,
-            "EqClient.DistributeSessionKey [port " + _localPort
-            + "]: key=0x" + sessionKey.ToString("X8")
-            + " from " + SoeConstants.StreamNames[fromStream]);
-
         foreach (StreamId streamId in Enum.GetValues<StreamId>())
         {
             _streams[streamId].ReceiveSessionKey(sessionId, fromStream, sessionKey);
@@ -118,7 +114,7 @@ public class EqClient : IDisposable
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void PropagateClose(uint sessionId, StreamId fromStream)
     {
-        DebugLog.Write("EqClient.PropagateClose [port " + _localPort
+        DebugLog.Write("Connection.PropagateClose [port " + _localPort
             + "]: session=0x" + sessionId.ToString("X8")
             + " from " + SoeConstants.StreamNames[fromStream]);
 
@@ -147,7 +143,7 @@ public class EqClient : IDisposable
 
             _disposed = true;
 
-            DebugLog.Write("EqClient.Dispose: disposed client on port " + _localPort);
+            DebugLog.Write("Connection.Dispose: disposed client on port " + _localPort);
         }
     }
 

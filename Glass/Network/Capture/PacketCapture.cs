@@ -27,6 +27,7 @@ public class PacketCapture
     private SessionDemux _router;
     private bool _capturing;
     private int _frameCount;
+    private static int _captureDevice = -1;
 
     // Ethernet header: 14 bytes (dst MAC 6 + src MAC 6 + ethertype 2)
     private const int EthernetHeaderLength = 14;
@@ -60,12 +61,10 @@ public class PacketCapture
     //
     // bpfFilter:    The BPF filter string to apply (e.g.
     //               "udp and (net 69.0.0.0/8 or net 64.0.0.0/8)")
-    // deviceIndex:  Index into CaptureDeviceList.Instance.  Pass -1 to
-    //               auto-select the first device with an IPv4 address.
     //
     // Returns true if capture started successfully.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public bool Start(string bpfFilter, int deviceIndex = -1)
+    public bool Start(string bpfFilter)
     {
         if (_capturing)
         {
@@ -90,16 +89,16 @@ public class PacketCapture
                 return false;
             }
 
-            if (deviceIndex >= 0)
+            if (_captureDevice >= 0)
             {
-                if (deviceIndex >= deviceList.Count)
+                if (_captureDevice >= deviceList.Count)
                 {
                     DebugLog.Write("PacketCapture.Start: device index "
-                        + deviceIndex + " out of range (0-"
+                        + _captureDevice + " out of range (0-"
                         + (deviceList.Count - 1) + ")");
                     return false;
                 }
-                _device = deviceList[deviceIndex];
+                _device = deviceList[_captureDevice];
             }
             else
             {
@@ -170,26 +169,19 @@ public class PacketCapture
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetDefaultCaptureDevice
+    // GetLocalIP
     //
     // Queries SharpPcap for the first capture device with an IPv4 address.
     // Returns the device index and local IP address, or (-1, null) if no
     // suitable device is found.
     //
     // Returns:
-    //   deviceIndex:  The index of the device in the SharpPcap device list,
-    //                 or -1 if no suitable device was found.
     //   localIp:      The IPv4 address string of the selected device,
     //                 or null if no suitable device was found.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public static (int deviceIndex, string? localIp) GetDefaultCaptureDevice()
+    public static string? GetLocalIP()
     {
         CaptureDeviceList deviceList = CaptureDeviceList.Instance;
-        if (deviceList.Count == 0)
-        {
-            DebugLog.Write("PacketCapture.GetDefaultCaptureDevice: no capture devices found");
-            return (-1, null);
-        }
 
         for (int i = 0; i < deviceList.Count; i++)
         {
@@ -203,17 +195,15 @@ public class PacketCapture
                         address.Addr.ipAddress.AddressFamily ==
                             System.Net.Sockets.AddressFamily.InterNetwork)
                     {
-                        DebugLog.Write("PacketCapture.GetDefaultCaptureDevice: found '"
-                            + device.Description + "' index=" + i
-                            + " ip=" + address.Addr.ipAddress);
-                        return (i, address.Addr.ipAddress.ToString());
+                        _captureDevice = i;
+                        return address.Addr.ipAddress.ToString();
                     }
                 }
             }
         }
 
         DebugLog.Write("PacketCapture.GetDefaultCaptureDevice: no suitable device found");
-        return (-1, null);
+        return null;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

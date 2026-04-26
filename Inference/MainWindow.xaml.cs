@@ -92,6 +92,8 @@ public partial class MainWindow : Window
         InitializeAnalysisFilters();
         AddDummyCandidates();
         InitializePipes();
+        GlassContext.FocusTracker = new FocusTracker();
+        GlassContext.SessionRegistry = new SessionRegistry(HandleAppPacket);
         OpenDatabase();
         BuildRecentPatchesMenu();
         RestoreLastPatchLevel();
@@ -169,8 +171,6 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void InitializePipes()
     {
-
-
         GlassContext.ISXGlassPipe = new PipeManager("ISXGlass", "ISXGlass_Commands", "ISXGlass_Notify");
         GlassContext.ISXGlassPipe.Connected += () => Dispatcher.Invoke(() =>
         {
@@ -204,8 +204,7 @@ public partial class MainWindow : Window
 
         InferenceDebugLog.Write("InitializePipes: pipes started");
         
-        GlassContext.FocusTracker = new FocusTracker();
-        GlassContext.SessionRegistry = new SessionRegistry();
+
 
 
         InferenceDebugLog.Write("InitializePipes: session registry and focus tracker initialized");
@@ -715,8 +714,8 @@ public partial class MainWindow : Window
         {
             InferenceDebugLog.Write("Profile selected: " + dialog.SelectedProfileName);
 
-            (int deviceIndex, string? localIp) = PacketCapture.GetDefaultCaptureDevice();
-            if (deviceIndex == -1 || localIp == null)
+            string? localIp = PacketCapture.GetLocalIP();
+            if (localIp == null)
             {
                 InferenceDebugLog.Write("MenuItem_LaunchProfile_Click: no capture device found");
                 MessageBox.Show("No suitable capture device found. Is Npcap installed?",
@@ -724,15 +723,14 @@ public partial class MainWindow : Window
                 return;
             }
             DebugLog.Log_Network = false;
-            InferenceDebugLog.Write("MenuItem_LaunchProfile_Click: capture device index="
-                + deviceIndex + " localIp=" + localIp);
+
 
             _sessionDemux = new SessionDemux(localIp, HandleAppPacket);
             _packetCapture = new PacketCapture(_sessionDemux);
 
             // string bpfFilter = "udp and (net 64.37.128.0/18 or net 69.174.192.0/19 or net 209.0.234.0/23)";
             string bpfFilter = "udp and (net 69.174.0.0/16 or net 64.37.0.0/16 or net 209.0.0.0/16)";
-            if (!_packetCapture.Start(bpfFilter, deviceIndex))
+            if (!_packetCapture.Start(bpfFilter))
             {
                 InferenceDebugLog.Write("MenuItem_LaunchProfile_Click: capture failed to start");
                 MessageBox.Show("Failed to start packet capture.",
