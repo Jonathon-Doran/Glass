@@ -2,6 +2,7 @@
 using Glass.Core.Logging;
 using Glass.Network.Capture;
 using Glass.Network.Protocol;
+using Glass.Network.Protocol.Fields;
 using Inference.Core;
 using Inference.Dialogs;
 using Inference.Models;
@@ -46,6 +47,9 @@ public partial class MainWindow : Window
     }
 
     private bool _hasPatchLevel = false;
+    private string? patchDate;
+    private string? serverType;
+
     private bool _hasUnsavedChanges = false;
     private readonly Stack<object> _undoStack = new Stack<object>();
     private SessionDemux? _sessionDemux;
@@ -73,11 +77,7 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         GlassContext.ProfileManager = new ProfileManager();
-
-     //   InferenceDebugLog.Initialize(WriteToDebugLog);
-     //   InferenceLog.Initialize(WriteToInferenceLog);
-        // DebugLog.Initialize(msg => InferenceDebugLog.Write(msg));
-
+        InitializeLogging();
         DebugLog.Write(LogChannel.InferenceDebug, "Inference application started");
         DebugLog.Write(LogChannel.Inference, "Inference log initialized");
 
@@ -99,6 +99,49 @@ public partial class MainWindow : Window
         BuildRecentPatchesMenu();
         RestoreLastPatchLevel();
         UpdateControlStates();
+    }
+
+    private void InitializeLogging()
+    {
+        GlassDebugLogHandler glassDebugLogHandler = new GlassDebugLogHandler("glass.log");
+        DebugLog.AddHandler(LogSink.GlassDebugLogfile, glassDebugLogHandler);
+
+        DebugLog.Route(LogChannel.General, LogSink.GlassDebugLogfile);
+        DebugLog.Route(LogChannel.ISXGlass, LogSink.GlassDebugLogfile);
+        DebugLog.Route(LogChannel.Pipes, LogSink.GlassDebugLogfile);
+
+        DebugLog.Route(LogChannel.Video, LogSink.GlassDebugLogfile);
+        DebugLog.Route(LogChannel.Sessions, LogSink.GlassDebugLogfile);
+        DebugLog.Route(LogChannel.Profiles, LogSink.GlassDebugLogfile);
+        DebugLog.Route(LogChannel.Input, LogSink.GlassDebugLogfile);
+        DebugLog.Route(LogChannel.Database, LogSink.GlassDebugLogfile);
+        DebugLog.Route(LogChannel.LowNetwork, LogSink.GlassDebugLogfile);
+        DebugLog.Route(LogChannel.Network, LogSink.GlassDebugLogfile);
+
+        // The inference debug log.  Debug messages for the inference app
+        GlassDebugLogHandler debugLogHandler = new GlassDebugLogHandler("debug.log");
+        DebugLog.AddHandler(LogSink.InferenceDebugLogfile, debugLogHandler);
+        DebugLog.Route(LogChannel.InferenceDebug, LogSink.InferenceDebugLogfile);
+
+        // The debug tab, just debug messages for inference
+        GlassConsoleLogHandler debugTabHandler = new GlassConsoleLogHandler(DebugLogOutput, DebugLogScroller);
+        DebugLog.AddHandler(LogSink.InferenceDebugTab, debugTabHandler);
+        DebugLog.Route(LogChannel.InferenceDebug, LogSink.InferenceDebugTab);
+
+        // The inference logfile.  Just inference messages
+        GlassDebugLogHandler inferenceLogHandler = new GlassDebugLogHandler("inference.log");
+        DebugLog.AddHandler(LogSink.InferenceLogfile, inferenceLogHandler);
+        DebugLog.Route(LogChannel.Inference, LogSink.InferenceLogfile);
+        DebugLog.Route(LogChannel.Opcodes, LogSink.InferenceLogfile);
+
+        GlassDebugLogHandler fieldsLogHandler = new GlassDebugLogHandler("fields.log");
+        DebugLog.AddHandler(LogSink.Aux1LogFile, fieldsLogHandler);
+        DebugLog.Route(LogChannel.Fields, LogSink.Aux1LogFile);
+
+        // The inference tab, just inference messages
+        GlassConsoleLogHandler inferenceTabHandler = new GlassConsoleLogHandler(InferenceLogOutput, InferenceLogScroller);
+        DebugLog.AddHandler(LogSink.InferenceTab, inferenceTabHandler);
+        DebugLog.Route(LogChannel.Inference, LogSink.InferenceTab);
     }
 
     private void AddDummyCandidates()
@@ -133,8 +176,8 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void RestoreLastPatchLevel()
     {
-        string patchDate = Properties.Settings.Default.LastOpenedPatchDate;
-        string serverType = Properties.Settings.Default.LastOpenedPatchServerType;
+        patchDate = Properties.Settings.Default.LastOpenedPatchDate;
+        serverType = Properties.Settings.Default.LastOpenedPatchServerType;
         if (string.IsNullOrEmpty(patchDate) || string.IsNullOrEmpty(serverType))
         {
             DebugLog.Write(LogChannel.InferenceDebug, "RestoreLastPatchLevel: no previous patch level found");
@@ -704,9 +747,19 @@ public partial class MainWindow : Window
     {
         DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_LaunchProfile_Click");
 
-        string serverType = Properties.Settings.Default.LastOpenedPatchServerType;
-        LaunchProfileDialog dialog = new LaunchProfileDialog(serverType);
+        if (! _hasPatchLevel)
+        {
+            DebugLog.Write(LogChannel.General, "No patch level before launch.");
+            return;
+        }
+
+        LaunchProfileDialog dialog = new LaunchProfileDialog(serverType!);
         dialog.Owner = this;
+
+        GlassContext.PatchDate = patchDate;
+        GlassContext.ServerType = serverType;
+        GlassContext.FieldExtractor = new FieldExtractor(patchDate!, serverType!);
+
 
         if (dialog.ShowDialog() == true)
         {
@@ -990,6 +1043,13 @@ public partial class MainWindow : Window
         for (int packetIndex = 0; packetIndex < packets.Count; packetIndex++)
         {
             CapturedPacket packet = packets[packetIndex];
+            string name = "(unknown)";
+
+            if (packet.Metadata.SessionId >= 0)
+            {
+                name = "(" + GlassContext.SessionRegistry.CharacterFromSession(packet.Metadata.SessionId) + ")";
+            }
+
             int displayLength = Math.Min(packet.Payload.Length, _analysisMaxHexBytes);
             bool truncated = packet.OriginalLength > _analysisMaxHexBytes;
             HexDumpSample dumpSample = new HexDumpSample();
@@ -1000,7 +1060,7 @@ public partial class MainWindow : Window
                 + " ---" + Environment.NewLine;
             dumpSample.Header += packet.Metadata.SourceIp + ":" + packet.Metadata.SourcePort + " -> " +
                 packet.Metadata.DestIp + ":" + packet.Metadata.DestPort + Environment.NewLine;
-            dumpSample.Header += "Session " + packet.Metadata.SessionId + ", Channel " + StreamAbbrev[packet.Metadata.Channel];
+            dumpSample.Header += "Session " + packet.Metadata.SessionId + " " + name + ", Channel " + StreamAbbrev[packet.Metadata.Channel];
 
             dumpSample.Lines = new List<HexDumpLine>();
 
@@ -1356,29 +1416,5 @@ public partial class MainWindow : Window
             }
         }
         return results;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // WriteToDebugLog
-    //
-    // Callback for DebugLog. Appends a message to the Debug Log list box.
-    // Dispatches to the UI thread if called from a background thread.
-    //
-    // message:  The message to display.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private void WriteToDebugLog(string message)
-    {
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // WriteToInferenceLog
-    //
-    // Callback for InferenceLog. Appends a message to the Inference Log list box.
-    // Dispatches to the UI thread if called from a background thread.
-    //
-    // message:  The message to display.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private void WriteToInferenceLog(string message)
-    {
     }
 }

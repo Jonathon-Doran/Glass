@@ -104,7 +104,7 @@ public partial class MainWindow : Window
 
     private void InitializeLogging()
     {
-        GlassDebugLogHandler glassDebugLogHandler = new GlassDebugLogHandler();
+        GlassDebugLogHandler glassDebugLogHandler = new GlassDebugLogHandler("glass.log");
         DebugLog.AddHandler(LogSink.GlassDebugLogfile, glassDebugLogHandler);
 
         DebugLog.Route(LogChannel.General, LogSink.GlassDebugLogfile);
@@ -117,14 +117,11 @@ public partial class MainWindow : Window
         DebugLog.Route(LogChannel.Database, LogSink.GlassDebugLogfile);
         DebugLog.Route(LogChannel.LowNetwork, LogSink.GlassDebugLogfile);
         DebugLog.Route(LogChannel.Network, LogSink.GlassDebugLogfile);
-        DebugLog.Route(LogChannel.General, LogSink.GlassDebugLogfile);
-
 
         GlassConsoleLogHandler glassConsoleLogHandler = new GlassConsoleLogHandler(ConsoleOutput, ConsoleScroller);
         DebugLog.AddHandler(LogSink.GlassConsole, glassConsoleLogHandler);
+        DebugLog.Route(LogChannel.General, LogSink.GlassConsole);
 
-        DebugLog.Route(LogChannel.General, LogSink.GlassConsole);
-        DebugLog.Route(LogChannel.General, LogSink.GlassConsole);
 
         DebugLog.Write(LogChannel.General, "MainWindow: logging initialized");
     }
@@ -818,6 +815,8 @@ public partial class MainWindow : Window
                 }
             }
         }
+
+        DebugLog.Write(LogChannel.General, "pcap playback finished");
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

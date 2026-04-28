@@ -224,7 +224,7 @@ public class SoeStream : IDisposable
             metadata.SourceIp + ":" + metadata.SourcePort + " -> "
             + metadata.DestIp + ":" + metadata.DestPort + " len=" + length + " bytes");
         DebugLog.Write(LogChannel.LowNetwork, "");
-        DebugLog.Write(LogChannel.LowNetwork,
+        DebugLog.WriteMultiline(LogChannel.LowNetwork,
             SoeHexDump.Format(packet.RawPacket()));
         DebugLog.Write(LogChannel.LowNetwork,
              "========================================================================");
@@ -384,7 +384,7 @@ public class SoeStream : IDisposable
             "          [dispatchPacket] stream=" + StreamNames[_streamId]
             + " opCode=0x" + opcode.ToString("x4") + " len=" + length);
 
-        DebugLog.Write(LogChannel.LowNetwork,
+        DebugLog.WriteMultiline(LogChannel.LowNetwork,
             SoeHexDump.Format(data.Slice(0, length), "          "));
 
         if (_opcodeCount.ContainsKey(opcode))

@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Reflection.PortableExecutable;
+using System.Text;
 
 namespace Glass.Core.Logging;
 
@@ -25,6 +27,7 @@ public enum LogChannel
     Opcodes,
     Inference,
     InferenceDebug,
+    Fields,
     Count
 }
 
@@ -43,6 +46,8 @@ public enum LogSink
     InferenceTab,
     GlassDebugLogfile,
     InferenceLogfile,
+    Aux1LogFile,                // spare log file
+    Aux2LogFile,                // spare log file
     InferenceDebugLogfile,
     Count
 }
@@ -208,11 +213,13 @@ public static class DebugLog
     {
         if (_shutdown)
         {
+            System.Diagnostics.Debug.WriteLine("Write aborted during shutdown");
             return;
         }
 
         if ((_enabled & (1UL << (int)channel)) == 0)
         {
+            System.Diagnostics.Debug.WriteLine("Write aborted due to channel not enabled");
             return;
         }
 
@@ -236,6 +243,68 @@ public static class DebugLog
                 for (int j = 0; j < sinkHandlers.Count; j++)
                 {
                     sinkHandlers[j].Write(timestamped);
+                }
+            }
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // WriteMultiline
+    //
+    // Writes a multiline message to the specified channel.  The first line
+    // receives the timestamp.  Continuation lines are padded with spaces to
+    // align with the message text after the timestamp bracket.
+    //
+    // channel:  The channel to write to
+    // message:  The message text, which may contain embedded newlines
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public static void WriteMultiline(LogChannel channel, string message)
+    {
+        if (_shutdown)
+        {
+            return;
+        }
+
+        if ((_enabled & (1UL << (int)channel)) == 0)
+        {
+            return;
+        }
+
+        ulong mask = _routing[(int)channel];
+
+        if (mask == 0)
+        {
+            return;
+        }
+
+        string timestamp = "[" + DateTime.Now.ToString("HH:mm:ss.fff") + "] ";
+        string padding = new string(' ', timestamp.Length);
+        string[] lines = message.Split('\n');
+
+        StringBuilder formatted = new StringBuilder();
+        formatted.Append(timestamp);
+        formatted.Append(lines[0].TrimEnd('\r'));
+
+        for (int i = 1; i < lines.Length; i++)
+        {
+            formatted.Append(Environment.NewLine);
+            formatted.Append(padding);
+            formatted.Append(lines[i].TrimEnd('\r'));
+        }
+
+        string result = formatted.ToString();
+
+        List<IHandleLogMessages>[] snapshot = _handlers;
+
+        for (int i = 0; i < SinkCount; i++)
+        {
+            if ((mask & (1UL << i)) != 0)
+            {
+                List<IHandleLogMessages> sinkHandlers = snapshot[i];
+
+                for (int j = 0; j < sinkHandlers.Count; j++)
+                {
+                    sinkHandlers[j].Write(result);
                 }
             }
         }

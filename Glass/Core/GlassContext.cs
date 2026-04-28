@@ -1,4 +1,5 @@
 ﻿using Glass.Data.Models;
+using Glass.Network.Protocol.Fields;
 
 namespace Glass.Core;
 
@@ -16,6 +17,8 @@ public static class GlassContext
     public static KeyboardManager KeyboardManager { get; set; } = null!;
     public static FocusTracker FocusTracker { get; set; } = null!;
     public static ProfileManager ProfileManager { get; set; } = null!;
-
+    public static FieldExtractor FieldExtractor { get; set; } = null!;
     public static Machine? CurrentMachine { get; set; }
+    public static string? PatchDate { get; set; }
+    public static string? ServerType { get; set; }
 }

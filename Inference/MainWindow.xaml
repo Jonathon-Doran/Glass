@@ -132,18 +132,23 @@
             <TabItem Header="Inference Log">
                 <DockPanel>
                     <Border DockPanel.Dock="Bottom" Padding="4" MinHeight="60"
-                            Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}">
+                Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}">
                         <DockPanel>
                             <TextBlock DockPanel.Dock="Top" Text="Next Actions"
-                                       FontWeight="SemiBold" Margin="0,0,0,4"/>
+                           FontWeight="SemiBold" Margin="0,0,0,4"/>
                             <TextBlock x:Name="NextActionsText"
-                                       TextWrapping="Wrap"
-                                       Text="No actions pending."/>
+                           TextWrapping="Wrap"
+                           Text="No actions pending."/>
                         </DockPanel>
                     </Border>
-                    <ListBox x:Name="InferenceLogList"
-                             FontFamily="Consolas"
-                             FontSize="12"/>
+                    <ScrollViewer x:Name="InferenceLogScroller" VerticalScrollBarVisibility="Auto">
+                        <TextBox x:Name="InferenceLogOutput"
+                     IsReadOnly="True"
+                     TextWrapping="NoWrap"
+                     FontFamily="Consolas"
+                     FontSize="12"
+                     BorderThickness="0"/>
+                    </ScrollViewer>
                 </DockPanel>
             </TabItem>
             <TabItem Header="Debug Log">

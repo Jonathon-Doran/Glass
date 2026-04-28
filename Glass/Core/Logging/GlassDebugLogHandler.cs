@@ -22,15 +22,15 @@ public class GlassDebugLogHandler : IHandleLogMessages
     // Opens the glass.log file for writing.  Creates the Logs directory if
     // it does not exist.  Overwrites any existing file.
     //
-    // solutionDirectory:  The path to the solution directory
+    // basename:  The base name of the file.  Should be placed in the Logs directory.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public GlassDebugLogHandler()
+    public GlassDebugLogHandler(string basename)
     {
         string solutionDirectory = FindSolutionDirectory();
         string logsDirectory = Path.Combine(solutionDirectory, "Logs");
         Directory.CreateDirectory(logsDirectory);
 
-        string logPath = Path.Combine(logsDirectory, "glass.log");
+        string logPath = Path.Combine(logsDirectory, basename);
 
         _writer = new StreamWriter(logPath, append: false);
         _writer.AutoFlush = true;
@@ -45,13 +45,13 @@ public class GlassDebugLogHandler : IHandleLogMessages
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private string FindSolutionDirectory()
     {
-        string? directory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+        string? directory = AppContext.BaseDirectory;
 
         while (directory != null)
         {
-            string[] slnFiles = Directory.GetFiles(directory, "*.sln");
+            string logsPath = Path.Combine(directory, "Logs");
 
-            if (slnFiles.Length > 0)
+            if (Directory.Exists(logsPath))
             {
                 return directory;
             }
@@ -60,8 +60,8 @@ public class GlassDebugLogHandler : IHandleLogMessages
         }
 
         throw new InvalidOperationException(
-            "GlassDebugLogHandler: could not locate solution directory from "
-            + Assembly.GetExecutingAssembly().Location);
+            "GlassDebugLogHandler: could not locate Logs directory from "
+            + AppContext.BaseDirectory);
     }
 
 
