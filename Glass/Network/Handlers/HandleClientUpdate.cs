@@ -1,9 +1,9 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
 using Glass.Network.Protocol;
-using System;
+using Glass.Network.Protocol.Fields;
 using System.Buffers.Binary;
-using System.Security.RightsManagement;
+
 
 namespace Glass.Network.Handlers;
 
@@ -14,8 +14,43 @@ namespace Glass.Network.Handlers;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class HandleClientUpdate : IHandleOpcodes
 {
-    private ushort _opcode = 0x0aa7;
     private readonly string _opcodeName = "OP_ClientUpdate";
+
+    private ushort _opcode;
+    private readonly FieldDefinition[]? _fields;
+
+    private readonly int _sequenceId;
+    private readonly int _playerId;
+    private readonly int _xPosId;
+    private readonly int _yPosId;
+    private readonly int _zPosId;
+    private readonly int _headingId;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // HandlePlayerProfile (constructor)
+    //
+    // Resolves the wire opcode and loads the field definitions for OP_PlayerProfile from the
+    // active patch via GlassContext.FieldExtractor.  Caches the index of each field the
+    // handler reads so the hot path can access the bag by integer index without name lookup.
+    //
+    // If the active patch does not define OP_PlayerProfile, GetOpcodeValue returns 0 and the
+    // handler is effectively disabled — OpcodeDispatch refuses to register handlers with a
+    // zero opcode, so this handler simply will not receive packets.  All field index lookups
+    // resolve to -1 in that case but are never consulted.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public HandleClientUpdate()
+    {
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        _opcode = extractor.GetOpcodeValue(_opcodeName);
+        _fields = extractor.GetFieldDefinitions(_opcodeName);
+
+        _sequenceId = _fields.IndexOfField("sequence");
+        _playerId = _fields.IndexOfField("player_id");
+        _xPosId = _fields.IndexOfField("x_pos");
+        _yPosId = _fields.IndexOfField("y_pos");
+        _zPosId = _fields.IndexOfField("z_pos");
+        _headingId = _fields.IndexOfField("heading");
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Opcode
@@ -39,64 +74,59 @@ public class HandleClientUpdate : IHandleOpcodes
     // Dispatches to direction-specific handlers.
     //
     // data:       The application payload
-    // length:     Length of the application payload
-    // direction:  Direction byte
-    // opcode:     The application-level opcode
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, int length,
-                              byte direction, ushort opcode, PacketMetadata metadata)
+    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (direction == SoeConstants.DirectionServerToClient)
+        switch (metadata.Channel)
         {
-            HandleServerToClient(data, length, metadata);
-        }
-        else if (direction == SoeConstants.DirectionClientToServer)
-        {
-            HandleClientToServer(data, length, metadata);
+            case SoeConstants.StreamId.StreamClientToZone:
+                HandleClientToZone(data, metadata);
+                break;
         }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleServerToClient
-    //
-    // Processes zone-to-client traffic
-    //
-    // data:    The application payload
-    // length:  Length of the application payload
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleServerToClient(ReadOnlySpan<byte> data, int length, PacketMetadata metadata)
-    {
-        DebugLog.Write(LogChannel.Opcodes, _opcodeName);
-        DebugLog.Write(LogChannel.Opcodes, "Server to Client");
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleClientToServer
+    // HandleClientToZone
     //
     // Processes client-to-zone
     //
     // data:    The application payload
-    // length:  Length of the application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleClientToServer(ReadOnlySpan<byte> data, int length, PacketMetadata metadata)
+    private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName + " length=" + length);
+        if (_fields == null)
+        {
+            return;
+        }
 
-        ushort sequence = BinaryPrimitives.ReadUInt16BigEndian(data.Slice(0));
-        uint playerId = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(2));
-        // skip 2 bytes
-        float deltaY = BinaryPrimitives.ReadSingleBigEndian(data.Slice(30));
-        float xPos = BinaryPrimitives.ReadSingleLittleEndian(data.Slice(38));
-        float yPos = BinaryPrimitives.ReadSingleLittleEndian(data.Slice(18));
-        float zPos = BinaryPrimitives.ReadSingleLittleEndian(data.Slice(14));
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        FieldBag bag = extractor.Rent();
 
-        UInt32 lastword = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(38));
-        uint heading = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(27)) & 0x1FFFu;
+        try
+        {
+            extractor.Extract(_fields, data, bag);
 
-        // Note on heading:  measured as 160-degrees per second to within 0.2%.  One degree is 6.25ms of keypress.  
+            uint sequence = bag.GetUIntAt(_sequenceId);
+            uint playerId = bag.GetUIntAt(_playerId);
+            float xPos = bag.GetFloatAt(_xPosId);
+            float yPos = bag.GetFloatAt(_yPosId);
+            float zPos = bag.GetFloatAt(_zPosId);
 
-        DebugLog.Write(LogChannel.Opcodes, "Player " + playerId + " (0x" + playerId.ToString("x4") + ")");
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + " ID: " + playerId.ToString("x4") + " Position:  (" + xPos.ToString("F2") + "," + yPos.ToString("F2") + "," + zPos.ToString("F2") + ")");
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + " Heading is " + heading.ToString() + " 0x(" + heading.ToString("x8") + ") = " + heading/8192.0*360.0 + " degrees");
+            // Note on heading:  measured as 160-degrees per second to within 0.2%.  One degree is 6.25ms of keypress.  
+
+            float headingDeg = bag.GetUIntAt(_headingId) / 8192.0f * 360.0f;
+
+            DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName);
+            DebugLog.Write(LogChannel.Opcodes, "Player " + playerId + " (0x" + playerId.ToString("x4") + ")");
+            DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + " ID: " + playerId.ToString("x4") + " Position:  (" + xPos.ToString("F2") + "," + yPos.ToString("F2") + "," + zPos.ToString("F2") + ")");
+            DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + " Heading is " + headingDeg.ToString() + " degrees");
+
+        }
+        finally
+        {
+            bag.Release();
+        }
     }
 }

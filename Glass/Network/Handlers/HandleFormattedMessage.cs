@@ -38,38 +38,35 @@ public class HandleFormattedMessage : IHandleOpcodes
     //
     // Dispatches to direction-specific handlers.
     //
-    // data:       The application payload
-    // length:     Length of the application payload
-    // direction:  Direction byte
-    // opcode:     The application-level opcode
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, int length,
-                              byte direction, ushort opcode, PacketMetadata metadata)
+    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (direction == SoeConstants.DirectionServerToClient)
+        switch (metadata.Channel)
         {
-            HandleServerToClient(data, length, metadata);
+            case SoeConstants.StreamId.StreamZoneToClient:
+                HandleZoneToClient(data, metadata);
+                break;
         }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleServerToClient
+    // HandleZoneToClient
     //
     // Processes zone-to-client traffic
     //
-    // data:    The application payload
-    // length:  Length of the application payload
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleServerToClient(ReadOnlySpan<byte> data, int length, PacketMetadata metadata)
+    private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         uint msgLength = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(13));
         string msgText = Encoding.ASCII.GetString(data.Slice(17, (int) msgLength));
 
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-            + _opcodeName + " length=" + length);
+            + _opcodeName + " length=" + data.Length);
         DebugLog.Write(LogChannel.Opcodes, "Message: " + msgText);
-
     }
-
 }
 

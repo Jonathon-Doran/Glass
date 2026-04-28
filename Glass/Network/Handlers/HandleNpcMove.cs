@@ -47,30 +47,30 @@ public class HandleNpcMove : IHandleOpcodes
     // opcode:     The application-level opcode
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, int length,
-                              byte direction, ushort opcode, PacketMetadata metadata)
+    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (direction == SoeConstants.DirectionServerToClient)
+        switch (metadata.Channel)
         {
-            HandleServerToClient(data, length, metadata);
+            case SoeConstants.StreamId.StreamZoneToClient:
+                HandleZoneToClient(data, metadata);
+                break;
         }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleServerToClient
+    // HandleZoneToClient
     //
     // Processes zone-to-client traffic.  Decodes bit-packed position, heading, and
     // optional motion fields from the packet.
     //
-    // data:    The application payload
-    // length:  Length of the application payload
+    // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleServerToClient(ReadOnlySpan<byte> data, int length, PacketMetadata metadata)
+    private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (length < 14)
+        if (data.Length < 14)
         {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " minimum length is 14, saw " + length);
+            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " minimum length is 14, saw " + data.Length);
             return;
         }
 
@@ -80,7 +80,7 @@ public class HandleNpcMove : IHandleOpcodes
 
         // Copy the payload to a byte array for BitReader, skipping the first 2 bytes
         // which were already consumed as spawn_id.
-        byte[] buffer = new byte[length];
+        byte[] buffer = new byte[data.Length];
         data.CopyTo(buffer);
         BitReader reader = new BitReader(buffer);
 

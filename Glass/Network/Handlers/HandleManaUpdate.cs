@@ -37,34 +37,31 @@ public class HandleManaUpdate : IHandleOpcodes
     //
     // Dispatches to direction-specific handlers.
     //
-    // data:       The application payload
-    // length:     Length of the application payload
-    // direction:  Direction byte
-    // opcode:     The application-level opcode
+    // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, int length,
-                              byte direction, ushort opcode, PacketMetadata metadata)
+    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (direction == SoeConstants.DirectionServerToClient)
+        switch (metadata.Channel)
         {
-            HandleServerToClient(data, length, metadata);
+            case SoeConstants.StreamId.StreamZoneToClient:
+                HandleZoneToClient(data, metadata);
+                break;
         }
     }
 
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleServerToClient
+    // HandleZoneToClient
     //
     // Processes zone-to-client traffic
     //
-    // data:    The application payload
-    // length:  Length of the application payload
+    // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleServerToClient(ReadOnlySpan<byte> data, int length, PacketMetadata metadata)
+    private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (length < 10)
+        if (data.Length < 10)
         {
             DebugLog.Write(LogChannel.Opcodes, "ManaUpdate packet less than 10 bytes.  This is unusual");
             return;
@@ -77,7 +74,7 @@ public class HandleManaUpdate : IHandleOpcodes
 
 
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-            + _opcodeName + " length=" + length);
+            + _opcodeName + " length=" + data.Length);
         DebugLog.Write(LogChannel.Opcodes, "Mana at " + currentMana + " / " + maxMana);
     }
 }

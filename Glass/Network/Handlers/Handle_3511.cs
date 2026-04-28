@@ -38,32 +38,31 @@ public class Handle_3511 : IHandleOpcodes
     // Dispatches to direction-specific handlers.
     //
     // data:       The application payload
-    // length:     Length of the application payload
-    // direction:  Direction byte
-    // opcode:     The application-level opcode
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, int length,
-                              byte direction, ushort opcode, PacketMetadata metadata)
+    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (direction == SoeConstants.DirectionServerToClient)
+        switch (metadata.Channel)
         {
-            HandleServerToClient(data, length);
+            case SoeConstants.StreamId.StreamZoneToClient:
+                HandleZoneToClient(data, metadata);
+                break;
         }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleServerToClient
+    // HandleZoneToClient
     //
     // Processes zone-to-client traffic
     //
-    // data:    The application payload
-    // length:  Length of the application payload
+    // data:       The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleServerToClient(ReadOnlySpan<byte> data, int length)
+    private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (length != 6)
+        if (data.Length != 6)
         {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " wrong size, should be 4, length=" + length);
+            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " wrong size, should be 4, length=" + data.Length);
             return;
         }
 

@@ -38,39 +38,38 @@ public class HandleTarget : IHandleOpcodes
     // Dispatches to direction-specific handlers.
     //
     // data:       The application payload
-    // length:     Length of the application payload
-    // direction:  Direction byte
-    // opcode:     The application-level opcode
+    // metadata:   Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, int length,
-                              byte direction, ushort opcode, PacketMetadata metadata)
+    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (direction == SoeConstants.DirectionClientToServer)
+        switch (metadata.Channel)
         {
-            HandleClientToServer(data, length, metadata);
+            case SoeConstants.StreamId.StreamClientToZone:
+                HandleClientToZone(data, metadata);
+                break;
         }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleClientToServer
+    // HandleClientToZone
     //
     // Processes client-to-zone traffic
     //
-    // data:    The application payload
-    // length:  Length of the application payload
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleClientToServer(ReadOnlySpan<byte> data, int length, PacketMetadata metadata)
+    private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (length != 4)
+        if (data.Length != 4)
         {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " wrong size, should be 4, length=" + length);
+            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " wrong size, should be 4, length=" + data.Length);
             return;
         }
 
         uint spawnId = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(0));
 
 
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName + " length=" + length);
+        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName + " length=" + data.Length);
         DebugLog.Write(LogChannel.Opcodes, "Target=" + spawnId + " (0x" + spawnId.ToString("x4") + ")");
     }
 

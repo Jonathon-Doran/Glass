@@ -38,19 +38,15 @@ public class HandleSetChatServer : IHandleOpcodes
     //
     // Dispatches to direction-specific handlers.
     //
-    // data:       The application payload
-    // length:     Length of the application payload
-    // direction:  Direction byte
-    // opcode:     The application-level opcode
+    // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, int length,
-                              byte direction, ushort opcode, PacketMetadata metadata)
+    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         switch (metadata.Channel)
         {
             case SoeConstants.StreamId.StreamWorldToClient:
-                HandleWorldToClient(data, length, metadata);
+                HandleWorldToClient(data, metadata);
                 break;
         }
     }
@@ -60,14 +56,13 @@ public class HandleSetChatServer : IHandleOpcodes
     //
     // Processes world-to-client traffic
     //
-    // data:    The application payload
-    // length:  Length of the application payload
+    // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleWorldToClient(ReadOnlySpan<byte> data, int length, PacketMetadata metadata)
+    private void HandleWorldToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        int nullIndex = data.Slice(0, length).IndexOf((byte)0x00);
-        int stringLength = (nullIndex >= 0) ? nullIndex : length;
+        int nullIndex = data.Slice(0, data.Length).IndexOf((byte)0x00);
+        int stringLength = (nullIndex >= 0) ? nullIndex : data.Length;
         string payload = System.Text.Encoding.ASCII.GetString(data.Slice(0, stringLength));
 
         string[] fields = payload.Split(',');

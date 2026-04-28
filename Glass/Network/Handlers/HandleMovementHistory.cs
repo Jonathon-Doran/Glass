@@ -37,18 +37,16 @@ public class HandleMovementHistory : IHandleOpcodes
     //
     // Dispatches to direction-specific handlers.
     //
-    // data:       The application payload
-    // length:     Length of the application payload
-    // direction:  Direction byte
-    // opcode:     The application-level opcode
+    // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, int length,
-                              byte direction, ushort opcode, PacketMetadata metadata)
+    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (direction == SoeConstants.DirectionClientToServer)
+        switch (metadata.Channel)
         {
-            HandleClientToServer(data, length, metadata);
+            case SoeConstants.StreamId.StreamClientToZone:
+                HandleClientToZone(data, metadata);
+                break;
         }
     }
 
@@ -82,25 +80,24 @@ public class HandleMovementHistory : IHandleOpcodes
     //
     // Each entry contains three little-endian floats (X, Y, Z) and 5 unknown bytes.
     //
-    // data:    The application payload
-    // length:  Length of the application payload
+    // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleClientToServer(ReadOnlySpan<byte> data, int length, PacketMetadata metadata)
+    private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (length < 18)
+        if (data.Length < 18)
         {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " packet too short: length=" + length + ", minimum is 18.");
+            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " packet too short: length=" + data.Length + ", minimum is 18.");
             return;
         }
 
-        if ((length - 1) % 17 != 0)
+        if ((data.Length - 1) % 17 != 0)
         {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " WARNING: payload length " + length + " minus trailing byte is not a multiple of 17.");
+            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " WARNING: payload length " + data.Length + " minus trailing byte is not a multiple of 17.");
         }
 
-        int entryCount = (length - 1) / 17;
-        byte trailingByte = data[length - 1];
+        int entryCount = (data.Length - 1) / 17;
+        byte trailingByte = data[data.Length - 1];
 
         for (int i = 0; i < entryCount; i++)
         {

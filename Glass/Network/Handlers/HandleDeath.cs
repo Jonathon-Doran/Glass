@@ -37,33 +37,32 @@ public class HandleDeath : IHandleOpcodes
     //
     // Dispatches to direction-specific handlers.
     //
-    // data:       The application payload
-    // length:     Length of the application payload
-    // direction:  Direction byte
-    // opcode:     The application-level opcode
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, int length,
-                              byte direction, ushort opcode, PacketMetadata metadata)
+    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (direction == SoeConstants.DirectionServerToClient)
+        switch (metadata.Channel)
         {
-            HandleServerToClient(data, length, metadata);
+            case SoeConstants.StreamId.StreamZoneToClient:
+                HandleZoneToClient(data, metadata);
+                break;
         }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleServerToClient
+    // HandleZoneToClient
     //
     // Processes zone-to-client traffic
     //
-    // data:    The application payload
-    // length:  Length of the application payload
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleServerToClient(ReadOnlySpan<byte> data, int length, PacketMetadata metadata)
+    private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (length < 4)
+        if (data.Length < 4)
         {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " too short, length=" + length);
+            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " too short, length=" + data.Length);
             return;
         }
 
@@ -76,7 +75,7 @@ public class HandleDeath : IHandleOpcodes
         uint unk5 = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(24));
 
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-            + _opcodeName + " length=" + length);
+            + _opcodeName + " length=" + data.Length);
         DebugLog.Write(LogChannel.Opcodes, "Dead=" + spawnId + " (0x" + spawnId.ToString("x4") + ")");
         DebugLog.Write(LogChannel.Opcodes, "Killer=" + killerId + " (0x" + killerId.ToString("x4") + ")");
         DebugLog.Write(LogChannel.Opcodes, "Unk1=" + unk1 + " (0x" + unk1.ToString("x8") + ")");

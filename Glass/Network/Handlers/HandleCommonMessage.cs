@@ -43,41 +43,38 @@ public class HandleCommonMessage : IHandleOpcodes
     //
     // Dispatches to direction-specific handlers.
     //
-    // data:       The application payload
-    // length:     Length of the application payload
-    // direction:  Direction byte
-    // opcode:     The application-level opcode
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, int length,
-                              byte direction, ushort opcode, PacketMetadata metadata)
+    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (direction == SoeConstants.DirectionServerToClient)
+        switch (metadata.Channel)
         {
-            HandleServerToClient(data, length, metadata);
-        }
-        else if (direction == SoeConstants.DirectionClientToServer)
-        {
-            HandleClientToServer(data, length, metadata);
+            case SoeConstants.StreamId.StreamZoneToClient:
+                HandleZoneToClient(data, metadata);
+                break;
+            case SoeConstants.StreamId.StreamClientToZone:
+                HandleClientToZone(data, metadata);
+                break;
         }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleServerToClient
+    // HandleZoneToClient
     //
     // Processes zone-to-client traffic
     //
-    // data:    The application payload
-    // length:  Length of the application payload
+    // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleServerToClient(ReadOnlySpan<byte> data, int length, PacketMetadata metadata)
+    private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         DebugLog.Write(LogChannel.Opcodes, _opcodeName);
         DebugLog.Write(LogChannel.Opcodes, "Server to Client");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleClientToServer
+    // HandleClientToZone
     //
     // Processes client-to-zone OP_CommonMessage.
     //
@@ -88,17 +85,16 @@ public class HandleCommonMessage : IHandleOpcodes
     //   Offset 0x22 (34):  Message text, null-terminated
     //
     // data:      The application payload
-    // length:    Length of the application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleClientToServer(ReadOnlySpan<byte> data, int length, PacketMetadata metadata)
+    private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-            + _opcodeName + " length=" + length);
+            + _opcodeName + " length=" + data.Length);
 
-        if (length < 35)
+        if (data.Length < 35)
         {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " too short, length=" + length + ", minimum is 35.");
+            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " too short, length=" + data.Length + ", minimum is 35.");
             return;
         }
 

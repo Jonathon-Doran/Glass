@@ -36,26 +36,21 @@ public class HandleTrackingUpdate : IHandleOpcodes
     //
     // Dispatches to direction-specific handlers.
     //
-    // data:       The application payload
-    // length:     Length of the application payload
-    // direction:  Direction byte
-    // opcode:     The application-level opcode
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, int length,
-                              byte direction, ushort opcode, PacketMetadata metadata)
+    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (direction == SoeConstants.DirectionServerToClient)
+        switch (metadata.Channel)
         {
-            HandleServerToClient(data, length, metadata);
-        }
-        else if (direction == SoeConstants.DirectionClientToServer)
-        {
-            HandleClientToServer(data, length, metadata);
+            case SoeConstants.StreamId.StreamZoneToClient:
+                HandleZoneToClient(data, metadata);
+                break;
         }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleServerToClient
+    // HandleZoneToClient
     //
     // Processes zone-to-client traffic.  The packet is either a cooldown-control packet
     // (identified by magic 0x4f348bff in the first 4 bytes of entry[0]) or an array of
@@ -73,17 +68,16 @@ public class HandleTrackingUpdate : IHandleOpcodes
     // signals a cooldown control packet instead of an array.
     //
     // data:      The application payload
-    // length:    Length of the application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleServerToClient(ReadOnlySpan<byte> data, int length, PacketMetadata metadata)
+    private void HandleZoneToClient(ReadOnlySpan<byte> data,  PacketMetadata metadata)
     {
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-            + _opcodeName + " length=" + length + " zone->client");
+            + _opcodeName + " length=" + data.Length + " zone->client");
 
-        if (length < 4)
+        if (data.Length < 4)
         {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " too short for magic check, length=" + length);
+            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " too short for magic check, length=" + data.Length);
             return;
         }
 
@@ -96,9 +90,9 @@ public class HandleTrackingUpdate : IHandleOpcodes
         {
             DebugLog.Write(LogChannel.Opcodes, "magic=0x" + magic.ToString("x8"));
 
-            if (length < 8)
+            if (data.Length < 8)
             {
-                DebugLog.Write(LogChannel.Opcodes, _opcodeName + " cooldown packet too short, length=" + length);
+                DebugLog.Write(LogChannel.Opcodes, _opcodeName + " cooldown packet too short, length=" + data.Length);
                 return;
             }
 
@@ -107,9 +101,9 @@ public class HandleTrackingUpdate : IHandleOpcodes
             return;
         }
 
-        if (length < 2)
+        if (data.Length < 2)
         {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " too short for count, length=" + length);
+            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " too short for count, length=" + data.Length);
             return;
         }
 
@@ -129,7 +123,7 @@ public class HandleTrackingUpdate : IHandleOpcodes
 
         for (int i = 0; i < count; i++)
         {
-            int consumed = ParseSpawnEntry(data, offset, length, i);
+            int consumed = ParseSpawnEntry(data, offset, data.Length, i);
             if (consumed <= 0)
             {
                 DebugLog.Write(LogChannel.Opcodes, _opcodeName + " failed to parse entry " + i
@@ -140,10 +134,10 @@ public class HandleTrackingUpdate : IHandleOpcodes
             offset += consumed;
             parsedCount++;
 
-            if (offset > length)
+            if (offset > data.Length)
             {
                 DebugLog.Write(LogChannel.Opcodes, _opcodeName + " offset " + offset
-                    + " exceeds length " + length + " after entry " + i);
+                    + " exceeds length " + data.Length + " after entry " + i);
                 break;
             }
         }
@@ -234,13 +228,13 @@ public class HandleTrackingUpdate : IHandleOpcodes
     //
     // Processes client-to-zone
     //
-    // data:    The application payload
-    // length:  Length of the application payload
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleClientToServer(ReadOnlySpan<byte> data, int length, PacketMetadata metadata)
+    private void HandleClientToServer(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName + " length=" + length + " client->zone");
-        if (length == 0)
+        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName + " length=" + data.Length + " client->zone");
+        if (data.Length == 0)
         {
             DebugLog.Write(LogChannel.Opcodes, "Request tracking data");
         }

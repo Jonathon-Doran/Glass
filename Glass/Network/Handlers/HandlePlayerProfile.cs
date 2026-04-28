@@ -106,8 +106,7 @@ public class HandlePlayerProfile : IHandleOpcodes
     // opcode:     The application-level opcode
     // metadata:   Packet metadata; the Channel field selects the per-channel handler
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, int length,
-                              byte direction, ushort opcode, PacketMetadata metadata)
+    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         switch (metadata.Channel)
         {
@@ -123,7 +122,7 @@ public class HandlePlayerProfile : IHandleOpcodes
     // and stats.
     //
     // data:      The application payload
-    // metadata:  Packet metadata; Timestamp is used for the log line
+    // metadata:  Packet metadata
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {

@@ -30,5 +30,5 @@ public interface IHandleOpcodes
     // direction:  Direction byte (DirectionClient or DirectionServer)
     // opcode:     The application-level opcode
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    void HandlePacket(ReadOnlySpan<byte> data, int length, byte direction, ushort opcode, PacketMetadata metadata);
+    void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata);
 }

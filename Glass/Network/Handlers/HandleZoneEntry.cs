@@ -39,48 +39,42 @@ public class HandleZoneEntry : IHandleOpcodes
     //
     // Dispatches to direction-specific handlers.
     //
-    // data:       The application payload
-    // length:     Length of the application payload
-    // direction:  Direction byte
-    // opcode:     The application-level opcode
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, int length,
-                              byte direction, ushort opcode, PacketMetadata metadata)
+    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (direction == SoeConstants.DirectionServerToClient)
+        switch (metadata.Channel)
         {
-            HandleServerToClient(data, length, metadata);
-        }
-        else if (direction == SoeConstants.DirectionClientToServer)
-        {
-            HandleClientToServer(data, length);
-        }
-        else
-        {
-            DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry: unknown direction=" + direction);
+            case SoeConstants.StreamId.StreamZoneToClient:
+                HandleZoneToClient(data, metadata);
+                break;
+            case SoeConstants.StreamId.StreamClientToZone:
+                HandleClientToZone(data, metadata);
+                break;
         }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleServerToClient
+    // HandleZoneToClient
     //
     // Processes zone-to-client OP_ZoneEntry.
     //
-    // data:    The application payload
-    // length:  Length of the application payload
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleServerToClient(ReadOnlySpan<byte> data, int length, PacketMetadata metadata)
+    private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (length < 4)
+        if (data.Length < 4)
         {
             DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry.HandleServerToClient: "
-                + _opcodeName + " too short, length=" + length);
+                + _opcodeName + " too short, length=" + data.Length);
             return;
         }
 
         // Find the null terminator for the name string at offset 0
         int nullPos = -1;
-        for (int i = 0; i < length; i++)
+        for (int i = 0; i < data.Length; i++)
         {
             if (data[i] == 0)
             {
@@ -91,8 +85,8 @@ public class HandleZoneEntry : IHandleOpcodes
 
         if (nullPos < 0)
         {
-            DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry.HandleServerToClient: "
-                + _opcodeName + " no null terminator found, length=" + length);
+            DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry.HandleZoneToClient: "
+                + _opcodeName + " no null terminator found, length=" + data.Length);
             return;
         }
 
@@ -101,23 +95,23 @@ public class HandleZoneEntry : IHandleOpcodes
         uint spawnId = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(nullPos+1));
         uint level = data[nullPos + 5];
 
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName + " length=" + length);
+        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName + " length=" + data.Length);
         DebugLog.Write(LogChannel.Opcodes, "name=\"" + name + "\"  id=(0x" + spawnId.ToString("x4")+")");
         DebugLog.Write(LogChannel.Opcodes, "SpawnId=" + spawnId + " (0x" + spawnId.ToString("x4") + ")");
         DebugLog.Write(LogChannel.Opcodes, "Level=" + level + " (0x" + level.ToString("x4") + ")");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleClientToServer
+    // HandleClientToZone
     //
     // Processes client-to-zone OP_ZoneEntry. 
     //
-    // data:    The application payload
-    // length:  Length of the application payload
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleClientToServer(ReadOnlySpan<byte> data, int length)
+    private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry.HandleClientToServer: "
-            + _opcodeName + " length=" + length);
+        DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry.HandleClientToZone: "
+            + _opcodeName + " length=" + data.Length);
     }
 }
