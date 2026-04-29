@@ -51,7 +51,6 @@ public partial class LaunchProfileDialog : Window
     private void LoadFilteredProfiles(string serverType)
     {
         List<string> allNames = ProfileRepository.GetAllNames();
-        CharacterRepository characterRepo = new CharacterRepository();
         int matchCount = 0;
 
         foreach (string name in allNames)
@@ -66,7 +65,7 @@ public partial class LaunchProfileDialog : Window
                 continue;
             }
 
-            Character? firstCharacter = characterRepo.GetById(slots[0].CharacterId);
+            Character? firstCharacter = CharacterRepository.Instance.GetById(slots[0].CharacterId);
             if (firstCharacter == null)
             {
                 InferenceDebugLog.Write("LaunchProfileDialog.LoadFilteredProfiles: profile '"
@@ -115,7 +114,8 @@ public partial class LaunchProfileDialog : Window
     private void Button_Launch_Click(object sender, RoutedEventArgs e)
     {
         SelectedProfileName = (string)ProfileList.SelectedItem;
-
+        ProfileRepository profile = new ProfileRepository(SelectedProfileName);
+        CharacterRepository.Instance.Load(profile.GetCharacterIds());
         InferenceDebugLog.Write("LaunchProfileDialog.Button_Launch_Click: selected '"
             + SelectedProfileName + "'");
 

@@ -306,7 +306,7 @@ public partial class MainWindow : Window
             sb.Append($"relay_group {group.Id}");
             foreach (Character character in group.Characters)
             {
-                sb.Append($" {character.Id}");
+                sb.Append($" {character.CharacterId}");
             }
 
             string message = sb.ToString();
@@ -844,8 +844,7 @@ public partial class MainWindow : Window
             DebugLog.Write(LogChannel.Input, $"MainWindow.MenuItem_GenerateEQUI_Click: created output directory '{outputDirectory}'.");
         }
 
-        var characterRepo = new CharacterRepository();
-        var characters = characterRepo.GetAll();
+        var characters = CharacterRepository.Instance.GetAll();
 
         DebugLog.Write(LogChannel.Input, $"MainWindow.MenuItem_GenerateEQUI_Click: generating files for {characters.Count} characters.");
 

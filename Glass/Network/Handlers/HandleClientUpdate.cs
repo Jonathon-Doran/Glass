@@ -27,13 +27,13 @@ public class HandleClientUpdate : IHandleOpcodes
     private readonly int _headingId;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandlePlayerProfile (constructor)
+    // HandleClientUpdate(constructor)
     //
-    // Resolves the wire opcode and loads the field definitions for OP_PlayerProfile from the
+    // Resolves the wire opcode and loads the field definitions for OP_ClientUpdate from the
     // active patch via GlassContext.FieldExtractor.  Caches the index of each field the
     // handler reads so the hot path can access the bag by integer index without name lookup.
     //
-    // If the active patch does not define OP_PlayerProfile, GetOpcodeValue returns 0 and the
+    // If the active patch does not define OP_ClientUpdate, GetOpcodeValue returns 0 and the
     // handler is effectively disabled — OpcodeDispatch refuses to register handlers with a
     // zero opcode, so this handler simply will not receive packets.  All field index lookups
     // resolve to -1 in that case but are never consulted.
@@ -117,9 +117,10 @@ public class HandleClientUpdate : IHandleOpcodes
             // Note on heading:  measured as 160-degrees per second to within 0.2%.  One degree is 6.25ms of keypress.  
 
             float headingDeg = bag.GetUIntAt(_headingId) / 8192.0f * 360.0f;
+            string name = GlassContext.SessionRegistry.CharacterFromMetadata(metadata);
 
             DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName);
-            DebugLog.Write(LogChannel.Opcodes, "Player " + playerId + " (0x" + playerId.ToString("x4") + ")");
+            DebugLog.Write(LogChannel.Opcodes, "Player " + playerId + " (" + name + ", 0x" + playerId.ToString("x4") + ") sequence " + sequence);
             DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + " ID: " + playerId.ToString("x4") + " Position:  (" + xPos.ToString("F2") + "," + yPos.ToString("F2") + "," + zPos.ToString("F2") + ")");
             DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + " Heading is " + headingDeg.ToString() + " degrees");
 

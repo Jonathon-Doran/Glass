@@ -56,14 +56,13 @@ public class SessionDemux
     // to the appropriate stream.
     //
     // rawData:      The complete UDP payload
-    // length:       Length of rawData
     // sourceIp:     Source IP as a dotted-decimal string
     // sourcePort:   Source UDP port
     // destIp:       Destination IP as a dotted-decimal string
     // destPort:     Destination UDP port
     // frameNumber:  Frame number from the pcap file, or 0 for live capture
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void RoutePacket(ReadOnlySpan<byte> rawData, int length, PacketMetadata metadata)
+    public void RoutePacket(ReadOnlySpan<byte> rawData, PacketMetadata metadata)
     {
         // Filter chat server traffic
         if (metadata.DestPort == SoeConstants.ChatServerPort ||
@@ -93,7 +92,7 @@ public class SessionDemux
         // Route to the stream
         SoeStream stream = connection.GetStream(metadata.Channel);
 
-        stream.HandlePacket(rawData, length, metadata);
+        stream.HandlePacket(rawData, metadata);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

@@ -144,7 +144,7 @@ public class RelayGroupRepository
         {
             members.Add(new Character
             {
-                Id = reader.GetInt32(0),
+                CharacterId = reader.GetInt32(0),
                 Name = reader.GetString(1),
                 Class = (EQClass)reader.GetInt32(2),
                 AccountId = reader.GetInt32(3),
@@ -186,7 +186,7 @@ public class RelayGroupRepository
         {
             members.Add(new Character
             {
-                Id = reader.GetInt32(0),
+                CharacterId = reader.GetInt32(0),
                 Name = reader.GetString(1),
                 Class = (EQClass)reader.GetInt32(2),
                 AccountId = reader.GetInt32(3),

@@ -219,7 +219,7 @@ public class RelayGroupMatrix : Control
                 Margin = new Thickness(4, 4, 4, 2),
                 LayoutTransform = new RotateTransform(-90),
                 Cursor = Cursors.Hand,
-                Tag = character.Id
+                Tag = character.CharacterId
             };
 
             header.MouseLeftButtonDown += (s, e) =>
@@ -261,15 +261,15 @@ public class RelayGroupMatrix : Control
             for (int col = 0; col < _characters.Count; col++)
             {
                 Character character = _characters[col];
-                bool isMember = _membership.Contains((group.Id, character.Id));
+                bool isMember = _membership.Contains((group.Id, character.CharacterId));
 
-                Border cell = BuildCell(group.Id, character.Id, isMember);
+                Border cell = BuildCell(group.Id, character.CharacterId, isMember);
 
-                if (!_cellsByCharacter.ContainsKey(character.Id))
+                if (!_cellsByCharacter.ContainsKey(character.CharacterId))
                 {
-                    _cellsByCharacter[character.Id] = new List<Border>();
+                    _cellsByCharacter[character.CharacterId] = new List<Border>();
                 }
-                _cellsByCharacter[character.Id].Add(cell);
+                _cellsByCharacter[character.CharacterId].Add(cell);
 
                 Grid.SetRow(cell, row);
                 Grid.SetColumn(cell, gridCol);

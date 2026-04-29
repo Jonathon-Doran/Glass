@@ -20,38 +20,50 @@ namespace Glass.Data.Repositories;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 public class CharacterRepository
 {
-    private readonly List<Character> _characters;
+    private static CharacterRepository? _instance = null;
 
-    public CharacterRepository()
+    private readonly List<Character> _characters;
+    private readonly Dictionary<int, Character> _charactersById;
+    private readonly Dictionary<int, Character> _charactersBySpawnId;
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Instance
+    //
+    // Lazy singleton accessor. The instance is created on first access with empty caches;
+    // no database work is performed by the constructor. Call Load() or Load(profileId) to populate.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public static CharacterRepository Instance
+    {
+        get
+        {
+            if (_instance == null)
+            {
+                _instance = new CharacterRepository();
+            }
+            return _instance;
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // CharacterRepository
+    //
+    // Private constructor. Initializes empty caches. Does no database work.
+    // Use CharacterRepository.Instance to obtain the singleton, then call Load() to populate from the
+    // full Characters table or Load(idList) to populate a specific subset.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private CharacterRepository()
     {
         _characters = new List<Character>();
-
-        using var conn = Database.Instance.Connect();
-        conn.Open();
-
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT id, name, class, account_id, progression, server FROM Characters ORDER BY account_id, name";
-
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
-        {
-            _characters.Add(new Character
-            {
-                Id = reader.GetInt32(0),
-                Name = reader.GetString(1),
-                Class = (EQClass)reader.GetInt32(2),
-                AccountId = reader.GetInt32(3),
-                Progression = reader.GetInt32(4) != 0,
-                Server = reader.GetString(5)
-            });
-        }
+        _charactersById = new Dictionary<int, Character>();
+        _charactersBySpawnId = new Dictionary<int, Character>();
+        DebugLog.Write(LogChannel.Database, "CharacterRepository: singleton instance created with empty caches.");
     }
 
     // Returns all cached characters.
     public IReadOnlyList<Character> GetAll() => _characters.AsReadOnly();
 
     // Returns the character with the given id, or null if not found.
-    public Character? GetById(int id) => _characters.FirstOrDefault(c => c.Id == id);
+    public Character? GetById(int id) => _characters.FirstOrDefault(c => c.CharacterId == id);
 
     // Returns the character with the given name, or null if not found.
     public Character? GetByName(string name) => _characters.FirstOrDefault(c => c.Name == name);
@@ -59,6 +71,125 @@ public class CharacterRepository
     // Returns all characters belonging to the given account.
     public IReadOnlyList<Character> GetByAccount(int accountId) =>
         _characters.Where(c => c.AccountId == accountId).ToList().AsReadOnly();
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Load
+    //
+    // Loads characters from the database into the cache. Idempotent: characters already cached
+    // are skipped, not re-read or duplicated.
+    //
+    // Cold path. Two usage modes:
+    //   - Load(null) or Load() : loads all characters in the Characters table.
+    //   - Load(idList)         : loads only the characters with the given ids. Caller typically
+    //                            obtains the id list from ProfileRepository.GetCharacterIds().
+    //
+    // characterIds:  Optional list of character ids to load. If null, all characters are loaded.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void Load(List<int>? characterIds = null)
+    {
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        // Resolve the full id list when no list was supplied.
+        if (characterIds == null)
+        {
+            characterIds = new List<int>();
+            using SqliteCommand idsCmd = conn.CreateCommand();
+            idsCmd.CommandText = "SELECT id FROM Characters";
+            using SqliteDataReader idsReader = idsCmd.ExecuteReader();
+            while (idsReader.Read())
+            {
+                characterIds.Add(idsReader.GetInt32(0));
+            }
+        }
+
+        // Filter to ids not already cached.
+        List<int> missingIds = new List<int>();
+        foreach (int candidateId in characterIds)
+        {
+            if (!_charactersById.ContainsKey(candidateId))
+            {
+                missingIds.Add(candidateId);
+            }
+        }
+
+        if (missingIds.Count == 0)
+        {
+            return;
+        }
+
+        // Build the WHERE id IN (...) clause with parameter placeholders.
+        string idPlaceholders = string.Join(",", missingIds.Select((_, index) => "@id" + index));
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+        SELECT id, name, class, account_id, progression, server,
+               level, practice_points, max_hp, max_mana,
+               strength, stamina, charisma, dexterity,
+               intelligence, agility, wisdom,
+               platinum, gold, silver, copper
+        FROM Characters
+        WHERE id IN (" + idPlaceholders + @")
+        ORDER BY account_id, name";
+
+        for (int parameterIndex = 0; parameterIndex < missingIds.Count; parameterIndex++)
+        {
+            cmd.Parameters.AddWithValue("@id" + parameterIndex, missingIds[parameterIndex]);
+        }
+
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            Character character = ReadCharacterRow(reader);
+            _characters.Add(character);
+            _charactersById[character.CharacterId] = character;
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // ReadCharacterRow
+    //
+    // Builds a Character from the current row of the supplied SqliteDataReader. The reader is expected
+    // to have been opened with the canonical 21-column SELECT used by Load. Caller is responsible for
+    // advancing the reader (this method does not call Read()).
+    //
+    // Persisted fields are populated from the reader. Ephemeral fields (SpawnId) remain null.
+    // Nullable persisted columns produce null property values when the database column is NULL.
+    //
+    // reader:  The reader positioned on a row to convert.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private Character ReadCharacterRow(SqliteDataReader reader)
+    {
+        Character character = new Character
+        {
+            CharacterId = reader.GetInt32(0),
+            Name = reader.GetString(1),
+            Class = (EQClass)reader.GetInt32(2),
+            AccountId = reader.GetInt32(3),
+            Progression = reader.GetInt32(4) != 0,
+            Server = reader.GetString(5),
+
+            Level = reader.IsDBNull(6) ? null : reader.GetInt32(6),
+            PracticePoints = reader.IsDBNull(7) ? null : reader.GetInt32(7),
+            MaxHP = reader.IsDBNull(8) ? null : reader.GetInt32(8),
+            MaxMana = reader.IsDBNull(9) ? null : reader.GetInt32(9),
+
+            Strength = reader.IsDBNull(10) ? null : reader.GetInt32(10),
+            Stamina = reader.IsDBNull(11) ? null : reader.GetInt32(11),
+            Charisma = reader.IsDBNull(12) ? null : reader.GetInt32(12),
+            Dexterity = reader.IsDBNull(13) ? null : reader.GetInt32(13),
+            Intelligence = reader.IsDBNull(14) ? null : reader.GetInt32(14),
+            Agility = reader.IsDBNull(15) ? null : reader.GetInt32(15),
+            Wisdom = reader.IsDBNull(16) ? null : reader.GetInt32(16),
+
+            Platinum = reader.IsDBNull(17) ? null : reader.GetInt32(17),
+            Gold = reader.IsDBNull(18) ? null : reader.GetInt32(18),
+            Silver = reader.IsDBNull(19) ? null : reader.GetInt32(19),
+            Copper = reader.IsDBNull(20) ? null : reader.GetInt32(20)
+        };
+
+        return character;
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Add
@@ -80,11 +211,11 @@ public class CharacterRepository
         cmd.Parameters.AddWithValue("@server", character.Server);
         cmd.Parameters.AddWithValue("@progression", character.Progression ? 1 : 0);
 
-        character.Id = Convert.ToInt32(cmd.ExecuteScalar());
+        character.CharacterId = Convert.ToInt32(cmd.ExecuteScalar());
         _characters.Add(character);
 
         DebugLog.Write(LogChannel.Database, "CharacterRepository.Add: added character="
-            + character.Name + " id=" + character.Id
+            + character.Name + " id=" + character.CharacterId
             + " server=" + character.Server
             + " class=" + character.Class
             + " accountId=" + character.AccountId);
@@ -109,17 +240,17 @@ public class CharacterRepository
         cmd.Parameters.AddWithValue("@accountId", character.AccountId);
         cmd.Parameters.AddWithValue("@server", character.Server);
         cmd.Parameters.AddWithValue("@progression", character.Progression ? 1 : 0);
-        cmd.Parameters.AddWithValue("@id", character.Id);
+        cmd.Parameters.AddWithValue("@id", character.CharacterId);
         cmd.ExecuteNonQuery();
 
-        int index = _characters.FindIndex(c => c.Id == character.Id);
+        int index = _characters.FindIndex(c => c.CharacterId == character.CharacterId);
         if (index >= 0)
         {
             _characters[index] = character;
         }
 
         DebugLog.Write(LogChannel.Database, "CharacterRepository.Update: updated character="
-            + character.Name + " id=" + character.Id
+            + character.Name + " id=" + character.CharacterId
             + " server=" + character.Server
             + " class=" + character.Class
             + " accountId=" + character.AccountId);

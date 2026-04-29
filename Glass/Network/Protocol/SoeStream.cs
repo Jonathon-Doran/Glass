@@ -197,22 +197,21 @@ public class SoeStream : IDisposable
     // diagnostics, call decode, call processPacket, drain cache.
     //
     // rawData:      The complete UDP payload including the 2-byte net opcode
-    // length:       Total length of rawData
     // metadata:     Packet metadata (source/dest IP and port, timestamp, framenumber)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> rawData, int length, PacketMetadata metadata)
+    public void HandlePacket(ReadOnlySpan<byte> rawData, PacketMetadata metadata)
     {
         _packetCount++;
 
-        if (length < 2)
+        if (rawData.Length < 2)
         {
             DebugLog.Write(LogChannel.LowNetwork,
                 "SoeStream.HandlePacket: packet too short ("
-                + length + " bytes), dropping");
+                + rawData.Length + " bytes), dropping");
             return;
         }
 
-        SoePacket packet = new SoePacket(rawData, length, false);
+        SoePacket packet = new SoePacket(rawData, rawData.Length, false);
 
         // Diagnostic output — mirrors Python handlePacket
         DebugLog.Write(LogChannel.LowNetwork,
@@ -222,7 +221,7 @@ public class SoeStream : IDisposable
             + " on stream " + SoeConstants.StreamNames[_streamId]);
         DebugLog.Write(LogChannel.LowNetwork,
             metadata.SourceIp + ":" + metadata.SourcePort + " -> "
-            + metadata.DestIp + ":" + metadata.DestPort + " len=" + length + " bytes");
+            + metadata.DestIp + ":" + metadata.DestPort + " len=" + rawData.Length + " bytes");
         DebugLog.Write(LogChannel.LowNetwork, "");
         DebugLog.WriteMultiline(LogChannel.LowNetwork,
             SoeHexDump.Format(packet.RawPacket()));

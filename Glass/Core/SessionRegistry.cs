@@ -283,6 +283,23 @@ public class SessionRegistry
             return connection;
         }
     }
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // FindSessionByCharacter
+    //
+    // Finds the connection associated with metadata, then extracts the name from session associated with the connection.
+    //
+    // metadata:  Packet metadata from a received packet
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public string CharacterFromMetadata(PacketMetadata metadata)
+    {
+        Connection c = GetConnection(metadata);
+        if (c.SessionId != -1)
+        {
+            return CharacterFromSession(c.SessionId);
+        }
+
+        return ("unknown");
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // FindSessionByCharacter

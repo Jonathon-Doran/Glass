@@ -135,7 +135,7 @@ public struct FieldSlot
 
         if (destination.Length < _payloadLength)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.CopyAsciiBytesTo: destination length "
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.CopyAsciiBytesTo: " + GetName() + " length "
                 + destination.Length + " is smaller than payload length " + _payloadLength
                 + ", returning 0");
             return 0;
@@ -204,7 +204,7 @@ public struct FieldSlot
         int copyCount = bytes.Length;
         if (copyCount > PayloadCapacity)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.SetAsciiString: source length " + copyCount
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.SetAsciiString: " + GetName() + " length " + copyCount
                 + " exceeds PayloadCapacity " + PayloadCapacity + ", truncating");
             copyCount = PayloadCapacity;
         }
@@ -225,7 +225,7 @@ public struct FieldSlot
     {
         if (_type != FieldType.Int32)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.GetInt32: type mismatch, slot type is "
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.GetInt32: " + GetName() + " type mismatch, slot type is "
                 + _type + ", returning 0");
             return 0;
         }
@@ -244,7 +244,7 @@ public struct FieldSlot
     {
         if (_type != FieldType.UInt32)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.GetUInt32: type mismatch, slot type is "
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.GetUInt32: " + GetName() + " type mismatch, slot type is "
                 + _type + ", returning 0");
             return 0;
         }
@@ -263,7 +263,7 @@ public struct FieldSlot
     {
         if (_type != FieldType.UInt8)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.GetUInt8: type mismatch, slot type is "
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.GetUInt8: " + GetName() + " type mismatch, slot type is "
                 + _type + ", returning 0");
             return 0;
         }
@@ -299,7 +299,7 @@ public struct FieldSlot
     {
         if (_type != FieldType.Float)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.GetFloat: type mismatch, slot type is "
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.GetFloat: " + GetName() + " type mismatch, slot type is "
                 + _type + ", returning 0.0f");
             return 0.0f;
         }
@@ -323,7 +323,7 @@ public struct FieldSlot
     {
         if (_type != FieldType.AsciiString)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.GetAsciiBytes: type mismatch, slot type is "
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.GetAsciiBytes: " + GetName() + " type mismatch, slot type is "
                 + _type + ", returning empty span");
             return ReadOnlySpan<byte>.Empty;
         }
@@ -353,7 +353,7 @@ public struct FieldSlot
     {
         if (query.Length == 0)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.MatchesName: zero-length query, returning false");
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.MatchesName: " + GetName() + " zero-length query, returning false");
             return false;
         }
         if (query.Length != _nameLength)
@@ -364,5 +364,25 @@ public struct FieldSlot
         ReadOnlySpan<byte> activeName = nameBytes.Slice(0, _nameLength);
         bool isEqual = activeName.SequenceEqual(query);
         return isEqual;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetName
+    //
+    // Returns the slot's stored field name as an ASCII string.  Returns "(unnamed)" if no
+    // name has been set on the slot.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public string GetName()
+    {
+        if (_nameLength == 0)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.GetName: name is empty, returning placeholder");
+            return "(unnamed)";
+        }
+
+        ReadOnlySpan<byte> nameBytes = _name;
+        ReadOnlySpan<byte> activeName = nameBytes.Slice(0, _nameLength);
+        string result = Encoding.ASCII.GetString(activeName);
+        return result;
     }
 }

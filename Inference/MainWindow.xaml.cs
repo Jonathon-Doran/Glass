@@ -1049,6 +1049,8 @@ public partial class MainWindow : Window
             {
                 name = "(" + GlassContext.SessionRegistry.CharacterFromSession(packet.Metadata.SessionId) + ")";
             }
+            DebugLog.Write(LogChannel.Fields, "session " + packet.Metadata.SessionId + " is [" +
+                name + "] and using metadata we get " + GlassContext.SessionRegistry.CharacterFromMetadata(packet.Metadata));
 
             int displayLength = Math.Min(packet.Payload.Length, _analysisMaxHexBytes);
             bool truncated = packet.OriginalLength > _analysisMaxHexBytes;

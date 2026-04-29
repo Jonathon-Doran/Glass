@@ -337,4 +337,17 @@ public class ProfileRepository
 
         return names;
     }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // GetCharacterIds
+    //
+    // Returns the character ids assigned to slots in this profile.
+    // Generated on demand from the cached slot list; not itself cached.
+    // Cold-path usage only (e.g., feeding CharacterRepository.Load(profileId) at profile launch).
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public List<int> GetCharacterIds()
+    {
+        List<int> characterIds = _profile.Slots.Select(slot => slot.CharacterId).ToList();
+        return characterIds;
+    }
 }

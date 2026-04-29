@@ -64,8 +64,8 @@ public class ProfileManager
         }
 
         ProfileRepository repo = new ProfileRepository(profileName);
+        CharacterRepository.Instance.Load(repo.GetCharacterIds());
         IReadOnlyList<SlotAssignment> slots = repo.GetSlots();
-        CharacterRepository charRepo = new CharacterRepository();
 
         _activeProfile = repo;
         _definedSlots.Clear();
@@ -89,7 +89,7 @@ public class ProfileManager
         Random rng = new Random();
         foreach (SlotAssignment slot in slots)
         {
-            Character? character = charRepo.GetById(slot.CharacterId);
+            Character? character = CharacterRepository.Instance.GetById(slot.CharacterId);
             if (character == null)
             {
                 DebugLog.Write(LogChannel.Profiles, "ProfileManager.LaunchProfile: no character found for id="
@@ -100,12 +100,12 @@ public class ProfileManager
             DebugLog.Write(LogChannel.ISXGlass, "ProfileManager.LaunchProfile: launching " + character.Name
                 + " accountId=" + character.AccountId
                 + " server=" + character.Server
-                + " id=" + character.Id);
+                + " id=" + character.CharacterId);
 
             GlassContext.ISXGlassPipe.Send("launch " + character.AccountId
                 + " " + character.Name
                 + " " + character.Server
-                + " " + character.Id);
+                + " " + character.CharacterId);
 
             int delay = rng.Next(4000, 7000);
             await Task.Delay(delay);
@@ -133,7 +133,6 @@ public class ProfileManager
         WindowLayoutRepository layoutRepo = new WindowLayoutRepository();
         IReadOnlyList<SlotPlacement> placements = layoutRepo.GetSlotPlacements(layoutId);
         IReadOnlyList<SlotAssignment> slots = _activeProfile.GetSlots();
-        CharacterRepository charRepo = new CharacterRepository();
 
         foreach (SlotPlacement placement in placements)
         {
@@ -205,10 +204,9 @@ public class ProfileManager
             return string.Empty;
         }
 
-        CharacterRepository charRepo = new CharacterRepository();
         foreach (SlotAssignment slot in _activeProfile.GetSlots())
         {
-            Character? character = charRepo.GetById(slot.CharacterId);
+            Character? character = CharacterRepository.Instance.GetById(slot.CharacterId);
             if (character != null && character.AccountId == accountId)
             {
                 DebugLog.Write(LogChannel.Profiles, "ProfileManager.GetCharacterNameByAccountId: accountId=" + accountId
@@ -237,9 +235,8 @@ public class ProfileManager
             return -1;
         }
 
-        CharacterRepository charRepo = new CharacterRepository();
         SlotAssignment? assignment = _activeProfile.GetSlots()
-            .FirstOrDefault(s => charRepo.GetById(s.CharacterId)?.Name == characterName);
+            .FirstOrDefault(s => CharacterRepository.Instance.GetById(s.CharacterId)?.Name == characterName);
 
         if (assignment == null)
         {

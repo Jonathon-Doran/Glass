@@ -325,7 +325,7 @@ public class PacketCapture
         ReadOnlySpan<byte> udpPayload = new ReadOnlySpan<byte>(
             data, udpPayloadOffset, udpPayloadLength);
 
-        _router.RoutePacket(udpPayload, udpPayloadLength, metadata);
+        _router.RoutePacket(udpPayload, metadata);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

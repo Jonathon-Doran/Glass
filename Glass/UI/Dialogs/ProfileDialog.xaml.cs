@@ -39,7 +39,6 @@ public partial class ProfileDialog : Window
     private Point _dragStartPoint;
     public ObservableCollection<LayoutMonitorViewModel> Monitors { get; set; } = new();
     public LayoutManager LayoutSettings { get; set; } = new();
-    private readonly CharacterRepository _characterRepo = new CharacterRepository();
     private int? _selectedLayoutId;
     private bool _initialized = false;
 
@@ -73,13 +72,13 @@ public partial class ProfileDialog : Window
             foreach (var slot in repo.GetSlots())
             {
                 _slotAssignments.Add(slot);
-                var character = _characterRepo.GetById(slot.CharacterId);
+                var character = CharacterRepository.Instance.GetById(slot.CharacterId);
                 DebugLog.Write(LogChannel.Profiles, $"ProfileDialog: slot={slot.SlotNumber} characterId={slot.CharacterId} name='{character?.Name}'.");
             }
 
             CharacterSlotsListView.ItemsSource = _slotAssignments.Select(s =>
             {
-                var character = _characterRepo.GetById(s.CharacterId);
+                var character = CharacterRepository.Instance.GetById(s.CharacterId);
                 return new SlotAssignmentViewModel
                 {
                     SlotNumber = s.SlotNumber,
@@ -90,11 +89,8 @@ public partial class ProfileDialog : Window
                 };
             }).ToList();
 
-
             string serverType = repo.GetServerType();
             string server = repo.GetServer();
-
-
 
             if (!string.IsNullOrEmpty(serverType))
             {
@@ -200,9 +196,7 @@ public partial class ProfileDialog : Window
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void PopulateCharacterList(IReadOnlyList<SlotAssignment> existingSlots)
     {
-
-        CharacterRepository charRepo = new CharacterRepository();
-        IReadOnlyList<Character> allCharacters = charRepo.GetAll();
+        IReadOnlyList<Character> allCharacters = CharacterRepository.Instance.GetAll();
         HashSet<int> selectedIds = existingSlots.Select(s => s.CharacterId).ToHashSet();
 
         DebugLog.Write(LogChannel.Profiles, "PopulateCharacterList: selectedServer='" + (ServerComboBox.SelectedItem as string ?? "null") + "' characterCount=" + allCharacters.Count);
@@ -214,12 +208,11 @@ public partial class ProfileDialog : Window
             .Select(c => new CharacterSelection
             {
                 Character = c,
-                IsSelected = selectedIds.Contains(c.Id)
+                IsSelected = selectedIds.Contains(c.CharacterId)
             })
             .ToList();
         ValidateSave();
     }
-
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // CharacterSelection
@@ -263,7 +256,7 @@ public partial class ProfileDialog : Window
     {
         var selectedIds = (CharactersListView.ItemsSource as IEnumerable<CharacterSelection>)!
             .Where(c => c.IsSelected)
-            .Select(c => c.Character.Id)
+            .Select(c => c.Character.CharacterId)
             .ToList();
 
         // Remove assignments for characters no longer selected.
@@ -288,7 +281,7 @@ public partial class ProfileDialog : Window
 
         CharacterSlotsListView.ItemsSource = _slotAssignments.Select(s =>
         {
-            var character = _characterRepo.GetById(s.CharacterId);
+            var character = CharacterRepository.Instance.GetById(s.CharacterId);
             return new SlotAssignmentViewModel
             {
                 SlotNumber = s.SlotNumber,
@@ -641,7 +634,7 @@ public partial class ProfileDialog : Window
         DebugLog.Write(LogChannel.Profiles, $"ProfileDialog.LoadRelayGroupsTab: {groups.Count} groups.");
 
         List<Character> characters = _slotAssignments
-            .Select(s => _characterRepo.GetById(s.CharacterId))
+            .Select(s => CharacterRepository.Instance.GetById(s.CharacterId))
             .Where(c => c != null)
             .Cast<Character>()
             .ToList();
@@ -652,7 +645,7 @@ public partial class ProfileDialog : Window
         {
             foreach (Character member in group.Characters)
             {
-                membership.Add((group.Id, member.Id));
+                membership.Add((group.Id, member.CharacterId));
             }
         }
         DebugLog.Write(LogChannel.Profiles, $"ProfileDialog.LoadRelayGroupsTab: {membership.Count} membership pairs.");
@@ -749,8 +742,7 @@ public partial class ProfileDialog : Window
 
         if (dialog.ShowDialog() == true)
         {
-            CharacterRepository charRepo = new CharacterRepository();
-            charRepo.Add(dialog.CreatedCharacter);
+            CharacterRepository.Instance.Add(dialog.CreatedCharacter);
             DebugLog.Write(LogChannel.Profiles, "ProfileDialog.Button_NewCharacter_Click: character added, refreshing list");
             PopulateCharacterList(_slotAssignments.ToList());
         }

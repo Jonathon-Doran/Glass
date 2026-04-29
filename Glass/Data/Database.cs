@@ -333,6 +333,10 @@ public class Database
             pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
             pragmaOn.ExecuteNonQuery();
         }
+        if (version < 38)
+        {
+            ApplyMigration(conn, 38, Migration_038);
+        }
     }
 
     private int GetSchemaVersion()
@@ -1055,6 +1059,24 @@ public class Database
         SELECT patch_opcode_id, channel FROM PatchOpcodeChannel_temp;
 
         DROP TABLE PatchOpcodeChannel_temp;
+    ";
+
+    private const string Migration_038 = @"
+        ALTER TABLE Characters ADD COLUMN level INTEGER;
+        ALTER TABLE Characters ADD COLUMN practice_points INTEGER;
+        ALTER TABLE Characters ADD COLUMN max_hp INTEGER;
+        ALTER TABLE Characters ADD COLUMN max_mana INTEGER;
+        ALTER TABLE Characters ADD COLUMN strength INTEGER;
+        ALTER TABLE Characters ADD COLUMN stamina INTEGER;
+        ALTER TABLE Characters ADD COLUMN charisma INTEGER;
+        ALTER TABLE Characters ADD COLUMN dexterity INTEGER;
+        ALTER TABLE Characters ADD COLUMN intelligence INTEGER;
+        ALTER TABLE Characters ADD COLUMN agility INTEGER;
+        ALTER TABLE Characters ADD COLUMN wisdom INTEGER;
+        ALTER TABLE Characters ADD COLUMN platinum INTEGER;
+        ALTER TABLE Characters ADD COLUMN gold INTEGER;
+        ALTER TABLE Characters ADD COLUMN silver INTEGER;
+        ALTER TABLE Characters ADD COLUMN copper INTEGER;
     ";
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

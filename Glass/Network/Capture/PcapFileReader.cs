@@ -150,7 +150,7 @@ public class PcapFileReader
 
         ReadOnlySpan<byte> payload = new ReadOnlySpan<byte>(payloadBytes);
 
-        _router.RoutePacket(payload, payloadBytes.Length, metadata);
+        _router.RoutePacket(payload, metadata);
 
         _routedCount++;
     }
