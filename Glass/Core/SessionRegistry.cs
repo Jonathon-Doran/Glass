@@ -4,6 +4,7 @@ using Glass.Network.Capture;
 using static Glass.Network.Protocol.SoeConstants;
 using System.Runtime.InteropServices;
 using Glass.Core.Logging;
+using Glass.Data.Repositories;
 
 namespace Glass.Core;
 
@@ -158,6 +159,21 @@ public class SessionRegistry
     {
         DebugLog.Write(LogChannel.Sessions, $"SessionRegistry.OnSessionDisconnected: session={sessionName} count will be={_sessionCount - 1}.");
 
+        SessionEntry? session = GetSession(sessionName);
+        if (session == null)
+        {
+            DebugLog.Write(LogChannel.Database, $"SessionRegistry.OnSessionDisconnected: session '{sessionName}' not found, nothing to save.");
+            return;
+        }
+
+        if (session.CharacterId < 0)
+        {
+            DebugLog.Write(LogChannel.Database, $"SessionRegistry.OnSessionDisconnected: session '{sessionName}' has no bound character, nothing to save.");
+            return;
+        }
+
+        CharacterRepository.Instance.Save(session.CharacterId);
+
         lock (_lock)
         {
             _sessions.Remove(sessionName);
@@ -292,6 +308,7 @@ public class SessionRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public string CharacterFromMetadata(PacketMetadata metadata)
     {
+        // Note:  If the connection does not exist it will be created.  There is no possibility of null.
         Connection c = GetConnection(metadata);
         if (c.SessionId != -1)
         {
@@ -376,6 +393,7 @@ public class SessionRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public SoeStream GetStream(PacketMetadata metadata)
     {
+        // Note that the connection will never be null.  It is auto-created if it does not already exist
         Connection connection = GetConnection(metadata);
         return connection.GetStream(metadata.Channel);
     }

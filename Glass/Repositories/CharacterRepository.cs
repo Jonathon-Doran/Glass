@@ -24,7 +24,6 @@ public class CharacterRepository
 
     private readonly List<Character> _characters;
     private readonly Dictionary<int, Character> _charactersById;
-    private readonly Dictionary<int, Character> _charactersBySpawnId;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Instance
@@ -55,15 +54,11 @@ public class CharacterRepository
     {
         _characters = new List<Character>();
         _charactersById = new Dictionary<int, Character>();
-        _charactersBySpawnId = new Dictionary<int, Character>();
         DebugLog.Write(LogChannel.Database, "CharacterRepository: singleton instance created with empty caches.");
     }
 
     // Returns all cached characters.
     public IReadOnlyList<Character> GetAll() => _characters.AsReadOnly();
-
-    // Returns the character with the given id, or null if not found.
-    public Character? GetById(int id) => _characters.FirstOrDefault(c => c.CharacterId == id);
 
     // Returns the character with the given name, or null if not found.
     public Character? GetByName(string name) => _characters.FirstOrDefault(c => c.Name == name);
@@ -194,7 +189,8 @@ public class CharacterRepository
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Add
     //
-    // Inserts a new character into the database and updates the in-memory cache.
+    // Inserts a new character into the database and updates the in-memory cache.  Note that most fields
+    // are initially null and will be set via the network.
     //
     // character:  The character to add.
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -221,38 +217,104 @@ public class CharacterRepository
             + " accountId=" + character.AccountId);
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Update
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Save
     //
-    // Updates an existing character in the database and refreshes the in-memory cache.
+    // Persists the cached character's full row to the database. The cache is the source of truth;
+    // callers mutate the cached Character reference directly and call Save to persist.
     //
-    // character:  The character to update. Must have a valid Id.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public void Update(Character character)
+    // Called by:
+    //   - Profile Editor flows after the user edits a cached character.
+    //   - Session disconnect handler to capture packet-sourced state at session end.
+    //
+    // characterId:  The persistent Glass character id of the character to save.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void Save(int characterId)
     {
+        if (!_charactersById.TryGetValue(characterId, out Character? character))
+        {
+            DebugLog.Write(LogChannel.Database, $"CharacterRepository.Save: characterId={characterId} not in cache, ignoring.");
+            return;
+        }
+
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
 
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE Characters SET name = @name, class = @class, account_id = @accountId, server = @server, progression = @progression WHERE id = @id";
+        cmd.CommandText = @"
+        UPDATE Characters SET
+            name = @name,
+            class = @class,
+            account_id = @accountId,
+            server = @server,
+            progression = @progression,
+            level = @level,
+            practice_points = @practicePoints,
+            max_hp = @maxHp,
+            max_mana = @maxMana,
+            strength = @strength,
+            stamina = @stamina,
+            charisma = @charisma,
+            dexterity = @dexterity,
+            intelligence = @intelligence,
+            agility = @agility,
+            wisdom = @wisdom,
+            platinum = @platinum,
+            gold = @gold,
+            silver = @silver,
+            copper = @copper
+        WHERE id = @id";
+
         cmd.Parameters.AddWithValue("@name", character.Name);
         cmd.Parameters.AddWithValue("@class", (int)character.Class);
         cmd.Parameters.AddWithValue("@accountId", character.AccountId);
         cmd.Parameters.AddWithValue("@server", character.Server);
         cmd.Parameters.AddWithValue("@progression", character.Progression ? 1 : 0);
+
+        cmd.Parameters.AddWithValue("@level", character.Level.HasValue ? character.Level.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@practicePoints", character.PracticePoints.HasValue ? character.PracticePoints.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@maxHp", character.MaxHP.HasValue ? character.MaxHP.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@maxMana", character.MaxMana.HasValue ? character.MaxMana.Value : DBNull.Value);
+
+        cmd.Parameters.AddWithValue("@strength", character.Strength.HasValue ? character.Strength.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@stamina", character.Stamina.HasValue ? character.Stamina.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@charisma", character.Charisma.HasValue ? character.Charisma.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@dexterity", character.Dexterity.HasValue ? character.Dexterity.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@intelligence", character.Intelligence.HasValue ? character.Intelligence.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@agility", character.Agility.HasValue ? character.Agility.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@wisdom", character.Wisdom.HasValue ? character.Wisdom.Value : DBNull.Value);
+
+        cmd.Parameters.AddWithValue("@platinum", character.Platinum.HasValue ? character.Platinum.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@gold", character.Gold.HasValue ? character.Gold.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@silver", character.Silver.HasValue ? character.Silver.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@copper", character.Copper.HasValue ? character.Copper.Value : DBNull.Value);
+
         cmd.Parameters.AddWithValue("@id", character.CharacterId);
+
         cmd.ExecuteNonQuery();
 
-        int index = _characters.FindIndex(c => c.CharacterId == character.CharacterId);
-        if (index >= 0)
-        {
-            _characters[index] = character;
-        }
-
-        DebugLog.Write(LogChannel.Database, "CharacterRepository.Update: updated character="
-            + character.Name + " id=" + character.CharacterId
-            + " server=" + character.Server
+        DebugLog.Write(LogChannel.Database, "CharacterRepository.Save: persisted characterId=" + character.CharacterId
+            + " name=" + character.Name
             + " class=" + character.Class
-            + " accountId=" + character.AccountId);
+            + " level=" + (character.Level?.ToString() ?? "null")
+            + " maxHp=" + (character.MaxHP?.ToString() ?? "null")
+            + " maxMana=" + (character.MaxMana?.ToString() ?? "null"));
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // GetById
+    //
+    // Hot-path lookup. Returns the cached Character with the given persistent Glass character id,
+    // or null if not found.
+    //
+    // characterId:  The persistent Glass character id.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public Character? GetById(int characterId)
+    {
+        if (_charactersById.TryGetValue(characterId, out Character? character))
+        {
+            return character;
+        }
+        return null;
     }
 }
