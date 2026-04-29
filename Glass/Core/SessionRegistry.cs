@@ -1,6 +1,7 @@
 ﻿using Glass.Network.Client;
 using Glass.Network.Protocol;
 using Glass.Network.Capture;
+using Glass.Data.Models;
 using static Glass.Network.Protocol.SoeConstants;
 using System.Runtime.InteropServices;
 using Glass.Core.Logging;
@@ -26,6 +27,7 @@ public class SessionRegistry
 
     private int _sessionCount = 0;
     private readonly Dictionary<string, SessionEntry> _sessions = new();
+    private readonly Dictionary<int, int> _characterIdBySession = new();
     private readonly Dictionary<int, Connection> _connectionsByPort = new();
     private readonly SoeStream.AppPacketHandler _appPacketHandler;
     private readonly int _arqSeqGiveUp = 512;
@@ -226,6 +228,15 @@ public class SessionRegistry
         }
     }
 
+    public Character? CharacterFromSession(int sessionId)
+    {
+        if (! _characterIdBySession.TryGetValue(sessionId, out var characterId))
+        {
+            return null;
+        }
+
+        return CharacterRepository.Instance.GetById(characterId);
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetAllClients
@@ -306,13 +317,13 @@ public class SessionRegistry
     //
     // metadata:  Packet metadata from a received packet
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public string CharacterFromMetadata(PacketMetadata metadata)
+    public string CharacterNameFromMetadata(PacketMetadata metadata)
     {
         // Note:  If the connection does not exist it will be created.  There is no possibility of null.
         Connection c = GetConnection(metadata);
         if (c.SessionId != -1)
         {
-            return CharacterFromSession(c.SessionId);
+            return CharacterNameFromSession(c.SessionId);
         }
 
         return ("unknown");
@@ -366,7 +377,7 @@ public class SessionRegistry
         return null;
     }
 
-    public string CharacterFromSession(int sessionId)
+    public string CharacterNameFromSession(int sessionId)
     {
         lock (_lock)
         {
@@ -414,7 +425,7 @@ public class SessionRegistry
         bool isFromClient = (metadata.SourceIp == _localIp);
         int localPort = isFromClient ? metadata.SourcePort : metadata.DestPort;
         DebugLog.Write(LogChannel.Inference, "IdentifyConnection for " + characterName +
-            "on port " + metadata.DestPort);
+            " on port " + metadata.DestPort);
         lock (_lock)
         {
             if (!_connectionsByPort.TryGetValue(localPort, out Connection? connection))
@@ -446,10 +457,19 @@ public class SessionRegistry
 
                 if (pair.Value.CharacterName == characterName)
                 {
+                    Character? character = CharacterRepository.Instance.GetByName(characterName);
+                    if (character == null)
+                    {
+                        DebugLog.Write(LogChannel.Inference, "No Character named " + characterName + " found in the CharacterRepository");
+                        return;
+                    }
+
                     connection.SessionId = _nextSessionId;
                     _nextSessionId++;
                     pair.Value.LocalPort = localPort;
                     pair.Value.SessionId = connection.SessionId;
+                    pair.Value.CharacterId = character.CharacterId;
+                    _characterIdBySession[connection.SessionId] = character.CharacterId;
 
                     DebugLog.Write(LogChannel.Inference,
                         "SessionRegistry.IdentifyConnection: port " + localPort

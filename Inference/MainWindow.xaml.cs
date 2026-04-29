@@ -1047,10 +1047,10 @@ public partial class MainWindow : Window
 
             if (packet.Metadata.SessionId >= 0)
             {
-                name = "(" + GlassContext.SessionRegistry.CharacterFromSession(packet.Metadata.SessionId) + ")";
+                name = "(" + GlassContext.SessionRegistry.CharacterNameFromSession(packet.Metadata.SessionId) + ")";
             }
             DebugLog.Write(LogChannel.Fields, "session " + packet.Metadata.SessionId + " is [" +
-                name + "] and using metadata we get " + GlassContext.SessionRegistry.CharacterFromMetadata(packet.Metadata));
+                name + "] and using metadata we get " + GlassContext.SessionRegistry.CharacterNameFromMetadata(packet.Metadata));
 
             int displayLength = Math.Min(packet.Payload.Length, _analysisMaxHexBytes);
             bool truncated = packet.OriginalLength > _analysisMaxHexBytes;

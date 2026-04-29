@@ -117,7 +117,7 @@ public class HandleClientUpdate : IHandleOpcodes
             // Note on heading:  measured as 160-degrees per second to within 0.2%.  One degree is 6.25ms of keypress.  
 
             float headingDeg = bag.GetUIntAt(_headingId) / 8192.0f * 360.0f;
-            string name = GlassContext.SessionRegistry.CharacterFromMetadata(metadata);
+            string name = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
 
             DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName);
             DebugLog.Write(LogChannel.Opcodes, "Player " + playerId + " (" + name + ", 0x" + playerId.ToString("x4") + ") sequence " + sequence);
