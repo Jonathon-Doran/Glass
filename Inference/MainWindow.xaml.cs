@@ -753,7 +753,9 @@ public partial class MainWindow : Window
             return;
         }
 
+        DebugLog.Write(LogChannel.Inference, "launching profile for serverType: " + serverType);
         LaunchProfileDialog dialog = new LaunchProfileDialog(serverType!);
+
         dialog.Owner = this;
 
         GlassContext.PatchDate = patchDate;

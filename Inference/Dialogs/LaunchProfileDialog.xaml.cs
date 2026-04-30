@@ -1,4 +1,4 @@
-﻿using System;
+﻿using Glass.Core.Logging;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
@@ -51,29 +51,15 @@ public partial class LaunchProfileDialog : Window
     private void LoadFilteredProfiles(string serverType)
     {
         List<string> allNames = ProfileRepository.GetAllNames();
+
+        DebugLog.Write(LogChannel.Inference, "Launch: LoadFiltered sees " + allNames.Count + " profiles for " + serverType);
         int matchCount = 0;
 
         foreach (string name in allNames)
         {
-            ProfileRepository profileRepo = new ProfileRepository(name);
-            IReadOnlyList<SlotAssignment> slots = profileRepo.GetSlots();
+            string? profileType = ProfileRepository.GetServerTypeForProfile(name);
+            bool isTestProfile = profileType == "Test";
 
-            if (slots.Count == 0)
-            {
-                InferenceDebugLog.Write("LaunchProfileDialog.LoadFilteredProfiles: profile '"
-                    + name + "' has no slots, skipping");
-                continue;
-            }
-
-            Character? firstCharacter = CharacterRepository.Instance.GetById(slots[0].CharacterId);
-            if (firstCharacter == null)
-            {
-                InferenceDebugLog.Write("LaunchProfileDialog.LoadFilteredProfiles: profile '"
-                    + name + "' first character not found, skipping");
-                continue;
-            }
-
-            bool isTestProfile = firstCharacter.Server == "Test";
             bool matches = (serverType == "Test" && isTestProfile)
                         || (serverType == "Live" && !isTestProfile);
 
@@ -84,7 +70,7 @@ public partial class LaunchProfileDialog : Window
             }
         }
 
-        InferenceDebugLog.Write("LaunchProfileDialog.LoadFilteredProfiles: "
+        DebugLog.Write(LogChannel.Inference, "LaunchProfileDialog.LoadFilteredProfiles: "
             + matchCount + " profiles matched server type " + serverType);
     }
 
@@ -116,7 +102,7 @@ public partial class LaunchProfileDialog : Window
         SelectedProfileName = (string)ProfileList.SelectedItem;
         ProfileRepository profile = new ProfileRepository(SelectedProfileName);
         CharacterRepository.Instance.Load(profile.GetCharacterIds());
-        InferenceDebugLog.Write("LaunchProfileDialog.Button_Launch_Click: selected '"
+        DebugLog.Write(LogChannel.Inference, "LaunchProfileDialog.Button_Launch_Click: selected '"
             + SelectedProfileName + "'");
 
         DialogResult = true;
@@ -133,7 +119,7 @@ public partial class LaunchProfileDialog : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void Button_Cancel_Click(object sender, RoutedEventArgs e)
     {
-        InferenceDebugLog.Write("LaunchProfileDialog.Button_Cancel_Click: cancelled");
+        DebugLog.Write(LogChannel.Inference, "LaunchProfileDialog.Button_Cancel_Click: cancelled");
 
         DialogResult = false;
         Close();

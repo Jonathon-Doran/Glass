@@ -32,7 +32,7 @@ public class HotbuttonFileGenerator
         { EQClass.Cleric,       "CLR" },
         { EQClass.Druid,        "DRU" },
         { EQClass.Enchanter,    "ENC" },
-        { EQClass.Mage,         "MAG" },
+        { EQClass.Magician,         "MAG" },
         { EQClass.Monk,         "MNK" },
         { EQClass.Necromancer,  "NEC" },
         { EQClass.Paladin,      "PAL" },
@@ -117,7 +117,7 @@ public class HotbuttonFileGenerator
 
         // 6:2 Nuke
         writer.WriteLine("Page6Button2Name=Nuke");
-        if ((character.Class == EQClass.Mage) || (character.Class == EQClass.Enchanter))
+        if ((character.Class == EQClass.Magician) || (character.Class == EQClass.Enchanter))
         {
             writer.WriteLine($"Page6Button2Color={ColorGreen}");
             writer.WriteLine($"Page6Button2Line1=/chat #{Channel} Nuking %T");
@@ -154,7 +154,7 @@ public class HotbuttonFileGenerator
 
         // 6:5 Debuff
         writer.WriteLine("Page6Button5Name=Debuff");
-        if ((character.Class == EQClass.Mage) || (character.Class == EQClass.Enchanter))
+        if ((character.Class == EQClass.Magician) || (character.Class == EQClass.Enchanter))
         {
             writer.WriteLine($"Page6Button5Color={ColorGreen}");
             writer.WriteLine($"Page6Button5Line1=/chat #{Channel} Debuffing %T");
@@ -166,7 +166,7 @@ public class HotbuttonFileGenerator
 
         // 6:6 Pets
         writer.WriteLine("Page6Button6Name=Pets");
-        if ((character.Class == EQClass.Mage) || (character.Class == EQClass.Shaman) ||
+        if ((character.Class == EQClass.Magician) || (character.Class == EQClass.Shaman) ||
             (character.Class == EQClass.Shadowknight) || (character.Class == EQClass.Beastlord))
         {
             writer.WriteLine($"Page6Button6Color={ColorGreen}");
@@ -315,7 +315,7 @@ public class HotbuttonFileGenerator
 
         // 7:8 D Shield
         writer.WriteLine("Page7Button8Name=D Shield");
-        if ((character.Class == EQClass.Mage) || (character.Class == EQClass.Druid))
+        if ((character.Class == EQClass.Magician) || (character.Class == EQClass.Druid))
         {
             writer.WriteLine($"Page7Button8Color={ColorGreen}");
             writer.WriteLine($"Page7Button8Line1=/chat #{Channel} Damage Shield on %T");
@@ -354,7 +354,7 @@ public class HotbuttonFileGenerator
 
         // 7:11 Burnout
         writer.WriteLine("Page7Button11Name=Burnout");
-        if (character.Class == EQClass.Mage)
+        if (character.Class == EQClass.Magician)
         {
             writer.WriteLine($"Page7Button11Color={ColorGreen}");
             writer.WriteLine($"Page7Button11Line1=/chat #{Channel} Burnout on Pet");

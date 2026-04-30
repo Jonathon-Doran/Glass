@@ -218,30 +218,30 @@ public class CharacterRepository
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // Save
-    //
-    // Persists the cached character's full row to the database. The cache is the source of truth;
-    // callers mutate the cached Character reference directly and call Save to persist.
-    //
-    // Called by:
-    //   - Profile Editor flows after the user edits a cached character.
-    //   - Session disconnect handler to capture packet-sourced state at session end.
-    //
-    // characterId:  The persistent Glass character id of the character to save.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public void Save(int characterId)
+// Save
+//
+// Persists the cached character's full row to the database. The cache is the source of truth;
+// callers mutate the cached Character reference directly and call Save to persist.
+//
+// Called by:
+//   - Profile Editor flows after the user edits a cached character.
+//   - Session disconnect handler to capture packet-sourced state at session end.
+//
+// characterId:  The persistent Glass character id of the character to save.
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+public void Save(int characterId)
+{
+    if (!_charactersById.TryGetValue(characterId, out Character? character))
     {
-        if (!_charactersById.TryGetValue(characterId, out Character? character))
-        {
-            DebugLog.Write(LogChannel.Database, $"CharacterRepository.Save: characterId={characterId} not in cache, ignoring.");
-            return;
-        }
+        DebugLog.Write(LogChannel.Database, $"CharacterRepository.Save: characterId={characterId} not in cache, ignoring.");
+        return;
+    }
 
-        using SqliteConnection conn = Database.Instance.Connect();
-        conn.Open();
+    using SqliteConnection conn = Database.Instance.Connect();
+    conn.Open();
 
-        using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = @"
+    using SqliteCommand cmd = conn.CreateCommand();
+    cmd.CommandText = @"
         UPDATE Characters SET
             name = @name,
             class = @class,
@@ -265,41 +265,41 @@ public class CharacterRepository
             copper = @copper
         WHERE id = @id";
 
-        cmd.Parameters.AddWithValue("@name", character.Name);
-        cmd.Parameters.AddWithValue("@class", (int)character.Class);
-        cmd.Parameters.AddWithValue("@accountId", character.AccountId);
-        cmd.Parameters.AddWithValue("@server", character.Server);
-        cmd.Parameters.AddWithValue("@progression", character.Progression ? 1 : 0);
+    cmd.Parameters.AddWithValue("@name", character.Name);
+    cmd.Parameters.AddWithValue("@class", (int)character.Class);
+    cmd.Parameters.AddWithValue("@accountId", character.AccountId);
+    cmd.Parameters.AddWithValue("@server", character.Server);
+    cmd.Parameters.AddWithValue("@progression", character.Progression ? 1 : 0);
 
-        cmd.Parameters.AddWithValue("@level", character.Level.HasValue ? character.Level.Value : DBNull.Value);
-        cmd.Parameters.AddWithValue("@practicePoints", character.PracticePoints.HasValue ? character.PracticePoints.Value : DBNull.Value);
-        cmd.Parameters.AddWithValue("@maxHp", character.MaxHP.HasValue ? character.MaxHP.Value : DBNull.Value);
-        cmd.Parameters.AddWithValue("@maxMana", character.MaxMana.HasValue ? character.MaxMana.Value : DBNull.Value);
+    cmd.Parameters.AddWithValue("@level",          character.Level.HasValue          ? character.Level.Value          : DBNull.Value);
+    cmd.Parameters.AddWithValue("@practicePoints", character.PracticePoints.HasValue ? character.PracticePoints.Value : DBNull.Value);
+    cmd.Parameters.AddWithValue("@maxHp",          character.MaxHP.HasValue          ? character.MaxHP.Value          : DBNull.Value);
+    cmd.Parameters.AddWithValue("@maxMana",        character.MaxMana.HasValue        ? character.MaxMana.Value        : DBNull.Value);
 
-        cmd.Parameters.AddWithValue("@strength", character.Strength.HasValue ? character.Strength.Value : DBNull.Value);
-        cmd.Parameters.AddWithValue("@stamina", character.Stamina.HasValue ? character.Stamina.Value : DBNull.Value);
-        cmd.Parameters.AddWithValue("@charisma", character.Charisma.HasValue ? character.Charisma.Value : DBNull.Value);
-        cmd.Parameters.AddWithValue("@dexterity", character.Dexterity.HasValue ? character.Dexterity.Value : DBNull.Value);
-        cmd.Parameters.AddWithValue("@intelligence", character.Intelligence.HasValue ? character.Intelligence.Value : DBNull.Value);
-        cmd.Parameters.AddWithValue("@agility", character.Agility.HasValue ? character.Agility.Value : DBNull.Value);
-        cmd.Parameters.AddWithValue("@wisdom", character.Wisdom.HasValue ? character.Wisdom.Value : DBNull.Value);
+    cmd.Parameters.AddWithValue("@strength",     character.Strength.HasValue     ? character.Strength.Value     : DBNull.Value);
+    cmd.Parameters.AddWithValue("@stamina",      character.Stamina.HasValue      ? character.Stamina.Value      : DBNull.Value);
+    cmd.Parameters.AddWithValue("@charisma",     character.Charisma.HasValue     ? character.Charisma.Value     : DBNull.Value);
+    cmd.Parameters.AddWithValue("@dexterity",    character.Dexterity.HasValue    ? character.Dexterity.Value    : DBNull.Value);
+    cmd.Parameters.AddWithValue("@intelligence", character.Intelligence.HasValue ? character.Intelligence.Value : DBNull.Value);
+    cmd.Parameters.AddWithValue("@agility",      character.Agility.HasValue      ? character.Agility.Value      : DBNull.Value);
+    cmd.Parameters.AddWithValue("@wisdom",       character.Wisdom.HasValue       ? character.Wisdom.Value       : DBNull.Value);
 
-        cmd.Parameters.AddWithValue("@platinum", character.Platinum.HasValue ? character.Platinum.Value : DBNull.Value);
-        cmd.Parameters.AddWithValue("@gold", character.Gold.HasValue ? character.Gold.Value : DBNull.Value);
-        cmd.Parameters.AddWithValue("@silver", character.Silver.HasValue ? character.Silver.Value : DBNull.Value);
-        cmd.Parameters.AddWithValue("@copper", character.Copper.HasValue ? character.Copper.Value : DBNull.Value);
+    cmd.Parameters.AddWithValue("@platinum", character.Platinum.HasValue ? character.Platinum.Value : DBNull.Value);
+    cmd.Parameters.AddWithValue("@gold",     character.Gold.HasValue     ? character.Gold.Value     : DBNull.Value);
+    cmd.Parameters.AddWithValue("@silver",   character.Silver.HasValue   ? character.Silver.Value   : DBNull.Value);
+    cmd.Parameters.AddWithValue("@copper",   character.Copper.HasValue   ? character.Copper.Value   : DBNull.Value);
 
-        cmd.Parameters.AddWithValue("@id", character.CharacterId);
+    cmd.Parameters.AddWithValue("@id", character.CharacterId);
 
-        cmd.ExecuteNonQuery();
+    cmd.ExecuteNonQuery();
 
-        DebugLog.Write(LogChannel.Database, "CharacterRepository.Save: persisted characterId=" + character.CharacterId
-            + " name=" + character.Name
-            + " class=" + character.Class
-            + " level=" + (character.Level?.ToString() ?? "null")
-            + " maxHp=" + (character.MaxHP?.ToString() ?? "null")
-            + " maxMana=" + (character.MaxMana?.ToString() ?? "null"));
-    }
+    DebugLog.Write(LogChannel.Database, "CharacterRepository.Save: persisted characterId=" + character.CharacterId
+        + " name=" + character.Name
+        + " class=" + character.Class
+        + " level=" + (character.Level?.ToString() ?? "null")
+        + " maxHp=" + (character.MaxHP?.ToString() ?? "null")
+        + " maxMana=" + (character.MaxMana?.ToString() ?? "null"));
+}
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // GetById

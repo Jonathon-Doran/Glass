@@ -18,7 +18,7 @@ public static class EQClassExtensions
             "shaman" => EQClass.Shaman,
             "necromancer" => EQClass.Necromancer,
             "wizard" => EQClass.Wizard,
-            "mage" => EQClass.Mage,
+            "mage" => EQClass.Magician,
             "enchanter" => EQClass.Enchanter,
             "beastlord" => EQClass.Beastlord,
             "berserker" => EQClass.Berserker,

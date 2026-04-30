@@ -339,6 +339,34 @@ public class ProfileRepository
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // GetServerTypeForProfile
+    //
+    // Returns the ServerType column for the named profile, or null if the profile does not exist.
+    // Static helper for filtering profile lists by server type without instantiating a full
+    // ProfileRepository per profile.
+    //
+    // profileName:  The name of the profile to query.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public static string? GetServerTypeForProfile(string profileName)
+    {
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT ServerType FROM Profiles WHERE name = @name";
+        cmd.Parameters.AddWithValue("@name", profileName);
+
+        object? result = cmd.ExecuteScalar();
+        if (result == null || result == DBNull.Value)
+        {
+            DebugLog.Write(LogChannel.Database, $"ProfileRepository.GetServerTypeForProfile: '{profileName}' not found.");
+            return null;
+        }
+
+        return (string)result;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // GetCharacterIds
     //
     // Returns the character ids assigned to slots in this profile.

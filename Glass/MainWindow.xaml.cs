@@ -8,6 +8,7 @@ using Glass.Input;
 using Glass.Network.Capture;
 using Glass.Network.Client;
 using Glass.Network.Protocol;
+using Glass.Network.Protocol.Fields;
 using ModernWpf.Controls;
 using System.Drawing;
 using System.IO;
@@ -16,6 +17,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Xml.Linq;
 using static Glass.Network.Protocol.SoeConstants;
 using static System.Reflection.Metadata.BlobBuilder;
 
@@ -72,8 +74,7 @@ public partial class MainWindow : Window
    //     GlassContext.GlassVideoPipe.MessageReceived += msg => Dispatcher.Invoke(() => Log($"GlassVideo: {msg}"));
         GlassContext.GlassVideoPipe.Start();
         GlassContext.FocusTracker = new FocusTracker();
-        GlassContext.SessionRegistry = new SessionRegistry(OpcodeDispatch.Instance.HandlePacket);
-        GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
+
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -654,6 +655,16 @@ public partial class MainWindow : Window
         var select = new SelectProfileDialog { Owner = this };
         if ((select.ShowDialog() == true) && (select.SelectedProfileName != null))
         {
+            string patchDate = "2026 - 04 - 15";
+            string serverType = "Live";
+            GlassContext.FieldExtractor = new FieldExtractor(patchDate!, serverType!);
+
+            if (GlassContext.SessionRegistry == null)
+            {
+                GlassContext.SessionRegistry = new SessionRegistry(OpcodeDispatch.Instance.HandlePacket);
+                GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
+            }
+
             await GlassContext.ProfileManager.LaunchProfile(select.SelectedProfileName);
         }
     }
@@ -768,6 +779,20 @@ public partial class MainWindow : Window
         if (result != true)
         {
             return;
+        }
+        string patchDate = "2026-04-15";
+        string serverType = "Live";
+        GlassContext.FieldExtractor = new FieldExtractor(patchDate!, serverType!);
+
+        if (GlassContext.SessionRegistry == null)
+        {
+            GlassContext.SessionRegistry = new SessionRegistry(OpcodeDispatch.Instance.HandlePacket);
+            GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
+        }
+        if (GlassContext.SessionRegistry == null)
+        {
+            GlassContext.SessionRegistry = new SessionRegistry(OpcodeDispatch.Instance.HandlePacket);
+            GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
         }
 
         string filePath = dialog.FileName;

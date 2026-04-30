@@ -1,5 +1,7 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Data.Models;
+using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using System;
@@ -139,49 +141,49 @@ public class HandlePlayerProfile : IHandleOpcodes
 
             ReadOnlySpan<byte> nameBytes = bag.GetBytesAt(_nameId);
             string name = Encoding.ASCII.GetString(nameBytes);
-            int level = bag.GetIntAt(_levelId);
-            uint playerClass = bag.GetUIntAt(_playerClassId);
-            string className = GetClassName(playerClass);
-            uint practicePoints = bag.GetUIntAt(_practicePointsId);
-            uint mana = bag.GetUIntAt(_manaId);
-            int hitpoints = bag.GetIntAt(_hitpointsId);
-            int strength = bag.GetIntAt(_strengthId);
-            int stamina = bag.GetIntAt(_staminaId);
-            int charisma = bag.GetIntAt(_charismaId);
-            int dexterity = bag.GetIntAt(_dexterityId);
-            int intelligence = bag.GetIntAt(_intelligenceId);
-            int agility = bag.GetIntAt(_agilityId);
-            int wisdom = bag.GetIntAt(_wisdomId);
-            int platinumCarried = bag.GetIntAt(_platinumCarriedId);
-            int goldCarried = bag.GetIntAt(_goldCarriedId);
-            int silverCarried = bag.GetIntAt(_silverCarriedId);
-            int copperCarried = bag.GetIntAt(_copperCarriedId);
 
-            DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-                + _opcodeName + " length=" + data.Length);
-            DebugLog.Write(LogChannel.Opcodes, "Name: " + name + ", " + level + " " + className);
-            DebugLog.Write(LogChannel.Opcodes, "HP: " + hitpoints + ", Mana: " + mana + ", "
-                + platinumCarried + "pp/" + goldCarried + "gp/" + silverCarried + "sp/"
-                + copperCarried + "cp");
-            DebugLog.Write(LogChannel.Opcodes, "Str: " + strength + ", Sta: " + stamina
-                + ", Cha: " + charisma + ", Dex: " + dexterity + ", Int: " + intelligence
-                + ", Agi: " + agility + ", Wis: " + wisdom);
+            Character? character = CharacterRepository.Instance.GetByName(name);
+            if (character == null)
+            {
+                DebugLog.Write(LogChannel.Opcodes, _opcodeName + ": no Character named '" + name + "' in repository; fields not stored.");
+                return;
+            }
 
-            // PlayerProfile is the first time when we see the character name on the network
+            character.Level = (int) bag.GetUIntAt(_levelId);
+            character.PracticePoints = (int)bag.GetUIntAt(_practicePointsId);
+            character.MaxHP = bag.GetIntAt(_hitpointsId);
+            character.MaxMana = (int)bag.GetUIntAt(_manaId);
+
+            character.Strength = bag.GetIntAt(_strengthId);
+            character.Stamina = bag.GetIntAt(_staminaId);
+            character.Charisma = bag.GetIntAt(_charismaId);
+            character.Dexterity = bag.GetIntAt(_dexterityId);
+            character.Intelligence = bag.GetIntAt(_intelligenceId);
+            character.Agility = bag.GetIntAt(_agilityId);
+            character.Wisdom = bag.GetIntAt(_wisdomId);
+
+            character.Platinum = bag.GetIntAt(_platinumCarriedId);
+            character.Gold = bag.GetIntAt(_goldCarriedId);
+            character.Silver = bag.GetIntAt(_silverCarriedId);
+            character.Copper = bag.GetIntAt(_copperCarriedId);
+
+            // PlayerProfile is the first time we see the character name on the network.
             if (metadata.SessionId == -1)
             {
                 GlassContext.SessionRegistry.IdentifyConnection(name, metadata);
-                DebugLog.Write(LogChannel.Inference, "identifying port " + metadata.DestPort + " as " +
-                    name);
+                DebugLog.Write(LogChannel.Inference, "identifying port " + metadata.DestPort + " as " + name);
                 GlassContext.SessionRegistry.FindConnectionByCharacter(name);
             }
+
+            DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
+                + _opcodeName + " length=" + data.Length
+                + " name=" + name + " characterId=" + character.CharacterId
+                + " level=" + character.Level + " hp=" + character.MaxHP + " mana=" + character.MaxMana);
         }
         finally
         {
             bag.Release();
         }
-
-
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

@@ -2,7 +2,7 @@ namespace Glass.Data.Models;
 
 public enum EQClass
 {
-    Warrior,
+    Warrior = 1,
     Cleric,
     Paladin,
     Ranger,
@@ -14,7 +14,7 @@ public enum EQClass
     Shaman,
     Necromancer,
     Wizard,
-    Mage,
+    Magician,
     Enchanter,
     Beastlord,
     Berserker
