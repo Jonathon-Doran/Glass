@@ -70,6 +70,83 @@
                     </DataGrid>
                 </DockPanel>
             </TabItem>
+            <TabItem Header="Opcode Trace">
+                <DockPanel>
+                    <DockPanel DockPanel.Dock="Top" Margin="4">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <ToggleButton x:Name="ToggleOpcodeTraceColorOpcode"
+                                          Content="Color opcode"
+                                          Padding="8,4" Margin="0,0,8,0"
+                                          ToolTip="Next color click applies to all entries with the selected opcode"/>
+                            <Border Background="#FFFFE066" Width="24" Height="24" Margin="2,0"
+                                    BorderBrush="Gray" BorderThickness="1"
+                                    MouseLeftButtonUp="ColorPatch_MouseLeftButtonUp"
+                                    Tag="0xFFFFE066"
+                                    ToolTip="Yellow"/>
+                            <Border Background="#FF6BCB77" Width="24" Height="24" Margin="2,0"
+                                    BorderBrush="Gray" BorderThickness="1"
+                                    MouseLeftButtonUp="ColorPatch_MouseLeftButtonUp"
+                                    Tag="0xFF6BCB77"
+                                    ToolTip="Green"/>
+                            <Border Background="#FF4DD0E1" Width="24" Height="24" Margin="2,0"
+                                    BorderBrush="Gray" BorderThickness="1"
+                                    MouseLeftButtonUp="ColorPatch_MouseLeftButtonUp"
+                                    Tag="0xFF4DD0E1"
+                                    ToolTip="Cyan"/>
+                            <Border Background="#FFE066C7" Width="24" Height="24" Margin="2,0"
+                                    BorderBrush="Gray" BorderThickness="1"
+                                    MouseLeftButtonUp="ColorPatch_MouseLeftButtonUp"
+                                    Tag="0xFFE066C7"
+                                    ToolTip="Magenta"/>
+                            <Border Background="#FFFF9999" Width="24" Height="24" Margin="2,0"
+                                    BorderBrush="Gray" BorderThickness="1"
+                                    MouseLeftButtonUp="ColorPatch_MouseLeftButtonUp"
+                                    Tag="0xFFFF9999"
+                                    ToolTip="Salmon"/>
+                            <Border Background="Transparent" Width="24" Height="24" Margin="2,0"
+                                    BorderBrush="Gray" BorderThickness="1"
+                                    MouseLeftButtonUp="ColorPatch_MouseLeftButtonUp"
+                                    Tag="0x00000000"
+                                    ToolTip="Clear color">
+                                <TextBlock Text="✕" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Foreground="Gray" FontSize="14"/>
+                            </Border>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="ButtonOpcodeTraceRefresh" Content="Refresh"
+                                    Click="Button_OpcodeTraceRefresh_Click"
+                                    Padding="8,4" Margin="0,0,4,0"/>
+                            <Button x:Name="ButtonOpcodeTraceHide" Content="Hide"
+                                    Click="Button_OpcodeTraceHide_Click"
+                                    Padding="8,4" Margin="0,0,4,0" IsEnabled="False"/>
+                            <Button x:Name="ButtonOpcodeTraceManage" Content="Manage..."
+                                    Click="Button_OpcodeTraceManage_Click"
+                                    Padding="8,4" Margin="0,0,4,0" IsEnabled="False"/>
+                            <ToggleButton x:Name="ToggleOpcodeTraceExpand" Content="Expand"
+                                          Click="Toggle_OpcodeTraceExpand_Click"
+                                          Padding="8,4" Margin="0,0,12,0" IsEnabled="False"/>
+                            <TextBlock Text="Hex bytes:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <ComboBox x:Name="OpcodeTraceHexLength" Width="70"
+                                      SelectedIndex="2"
+                                      SelectionChanged="OpcodeTraceHexLength_SelectionChanged">
+                                <ComboBoxItem Content="64"/>
+                                <ComboBoxItem Content="128"/>
+                                <ComboBoxItem Content="256"/>
+                                <ComboBoxItem Content="512"/>
+                                <ComboBoxItem Content="Full"/>
+                            </ComboBox>
+                        </StackPanel>
+                    </DockPanel>
+                    <ListView x:Name="OpcodeTraceList"
+                              VirtualizingStackPanel.IsVirtualizing="True"
+                              VirtualizingStackPanel.VirtualizationMode="Recycling"
+                              ScrollViewer.IsDeferredScrollingEnabled="True"
+                              FontFamily="Consolas"
+                              FontSize="12"
+                              SelectionChanged="OpcodeTraceList_SelectionChanged">
+                    </ListView>
+                </DockPanel>
+            </TabItem>
             <TabItem Header="Analysis">
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4">

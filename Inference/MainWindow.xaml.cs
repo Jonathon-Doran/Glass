@@ -15,6 +15,7 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using static Glass.Network.Protocol.SoeConstants;
@@ -1049,6 +1050,104 @@ public partial class MainWindow : Window
         DebugLog.Write(LogChannel.InferenceDebug, "ToggleButton_AcceptCandidate_Click: accepted=" + isAccepted);
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeTraceList_SelectionChanged
+    //
+    // Selection handler for the Opcode Trace list.  Updates enabled state of the
+    // Hide and Expand toolbar controls based on whether anything is selected.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void OpcodeTraceList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        bool hasSelection = OpcodeTraceList.SelectedItem != null;
+
+        DebugLog.Write(LogChannel.Opcodes, "OpcodeTraceList_SelectionChanged: hasSelection=" + hasSelection);
+
+        ButtonOpcodeTraceHide.IsEnabled = hasSelection;
+        ToggleOpcodeTraceExpand.IsEnabled = hasSelection;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeTraceHexLength_SelectionChanged
+    //
+    // Hex length cap selector on the Opcode Trace toolbar.  Controls the maximum bytes
+    // shown in an expanded entry's hex dump.  Stub — implementation pending hex render.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void OpcodeTraceHexLength_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        ComboBoxItem? selectedItem = OpcodeTraceHexLength.SelectedItem as ComboBoxItem;
+        string selection = selectedItem?.Content?.ToString() ?? "(none)";
+        DebugLog.Write(LogChannel.Opcodes, "OpcodeTraceHexLength_SelectionChanged: selection=" + selection + " (stub, not yet implemented)");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Toggle_OpcodeTraceExpand_Click
+    //
+    // Expand/Collapse toggle on the Opcode Trace toolbar.  Toggles hex dump display
+    // for the selected entry.  Stub — implementation pending expand state.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void Toggle_OpcodeTraceExpand_Click(object sender, RoutedEventArgs e)
+    {
+        bool isChecked = ToggleOpcodeTraceExpand.IsChecked == true;
+        DebugLog.Write(LogChannel.Opcodes, "Toggle_OpcodeTraceExpand_Click: expand=" + isChecked + " (stub, not yet implemented)");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ColorPatch_MouseLeftButtonUp
+    //
+    // Click handler shared by all color patches on the Opcode Trace toolbar.  Reads the
+    // patch's Tag (an ARGB hex string) and applies the color to either the selected entry
+    // or, if "Color opcode" is armed, the opcode of the selected entry.
+    // Stub — implementation pending entry view model and color state.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void ColorPatch_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        Border? patch = sender as Border;
+
+        if (patch == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "ColorPatch_MouseLeftButtonUp: sender was not a Border, ignoring");
+            return;
+        }
+
+        string? tag = patch.Tag as string;
+        bool armed = ToggleOpcodeTraceColorOpcode.IsChecked == true;
+
+        DebugLog.Write(LogChannel.Opcodes, "ColorPatch_MouseLeftButtonUp: tag='" + tag + "' armedForOpcode=" + armed + " (stub, not yet implemented)");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Button_OpcodeTraceRefresh_Click
+    //
+    // Refresh button for the Opcode Trace tab.  Walks Inference's CapturedPacket array,
+    // decodes each packet via OpcodeDispatch.Extract, and rebuilds the list.
+    // Stub — implementation pending the view model and refresh logic.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void Button_OpcodeTraceRefresh_Click(object sender, RoutedEventArgs e)
+    {
+        DebugLog.Write(LogChannel.Opcodes, "Button_OpcodeTraceRefresh_Click: refresh requested (stub, not yet implemented)");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Button_OpcodeTraceHide_Click
+    //
+    // Hide button on the Opcode Trace toolbar.  Hides the opcode of the currently
+    // selected entry from the list.  Stub — implementation pending hide-set state.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void Button_OpcodeTraceHide_Click(object sender, RoutedEventArgs e)
+    {
+        DebugLog.Write(LogChannel.Opcodes, "Button_OpcodeTraceHide_Click: hide requested (stub, not yet implemented)");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Button_OpcodeTraceManage_Click
+    //
+    // Manage button on the Opcode Trace toolbar.  Opens the hide/unhide management
+    // dialog for opcodes seen this session.  Stub — implementation pending dialog.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void Button_OpcodeTraceManage_Click(object sender, RoutedEventArgs e)
+    {
+        DebugLog.Write(LogChannel.Opcodes, "Button_OpcodeTraceManage_Click: manage requested (stub, not yet implemented)");
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // AnalyzeOpcode
