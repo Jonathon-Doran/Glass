@@ -1,5 +1,7 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Data.Models;
+using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using System.Buffers.Binary;
@@ -53,6 +55,16 @@ public class HandleClientUpdate : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Dispose
+    //
+    // Log any errors in the cold-path, dispose of any local storage. 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+
+    public void Dispose()
+    {
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // Opcode
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public ushort Opcode
@@ -87,6 +99,25 @@ public class HandleClientUpdate : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Extract
+    //
+    // Fills the supplied bag with field values decoded from data, using this handler's cached
+    // field definitions.  Called by OpcodeDispatch.Extract on the cold path (e.g. the
+    // Inference opcode log tab during refresh).  Handlers not yet refactored to use the
+    // FieldExtractor may leave this empty; callers will see an empty bag.
+    //
+    // The caller owns the bag's lifetime — must Rent it before this call and Release it after.
+    //
+    // data:  The application payload
+    // bag:   A bag rented by the caller; will be filled by this method
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+
+    public void Extract(ReadOnlySpan<byte> data, FieldBag bag)
+    {
+
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleClientToZone
     //
     // Processes client-to-zone
@@ -108,21 +139,30 @@ public class HandleClientUpdate : IHandleOpcodes
         {
             extractor.Extract(_fields, data, bag);
 
+            int id = GlassContext.SessionRegistry.GetConnection(metadata).CharacterId;
+            Character? character = CharacterRepository.Instance.GetById(id);
+            if (character == null)
+            {
+                DebugLog.Write(LogChannel.Opcodes, _opcodeName + ": no Character with id '" + id + "' in repository; fields not stored.");
+                return;
+            }
+
+            character.XPos = bag.GetFloatAt(_xPosId);
+            character.YPos = bag.GetFloatAt(_yPosId);
+            character.ZPos = bag.GetFloatAt(_zPosId);
+
             uint sequence = bag.GetUIntAt(_sequenceId);
             uint playerId = bag.GetUIntAt(_playerId);
-            float xPos = bag.GetFloatAt(_xPosId);
-            float yPos = bag.GetFloatAt(_yPosId);
-            float zPos = bag.GetFloatAt(_zPosId);
 
             // Note on heading:  measured as 160-degrees per second to within 0.2%.  One degree is 6.25ms of keypress.  
+            character.Heading = bag.GetUIntAt(_headingId) / 8192.0f * 360.0f;
 
-            float headingDeg = bag.GetUIntAt(_headingId) / 8192.0f * 360.0f;
             string name = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
 
             DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName);
             DebugLog.Write(LogChannel.Opcodes, "Player " + playerId + " (" + name + ", 0x" + playerId.ToString("x4") + ") sequence " + sequence);
-            DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + " ID: " + playerId.ToString("x4") + " Position:  (" + xPos.ToString("F2") + "," + yPos.ToString("F2") + "," + zPos.ToString("F2") + ")");
-            DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + " Heading is " + headingDeg.ToString() + " degrees");
+            DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + " ID: " + playerId.ToString("x4") + " Position:  (" + character.XPos + "," + character.YPos + "," + character.ZPos + ")");
+            DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + " Heading is " + character.Heading.ToString() + " degrees");
 
         }
         finally

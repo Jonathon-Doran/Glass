@@ -361,9 +361,6 @@ public class SessionRegistry
             return null;
         }
 
-        DebugLog.Write(LogChannel.Inference, "found session " + session.SessionName);
-        DebugLog.Write(LogChannel.Inference, "port " + session.LocalPort);
-
         lock (_lock)
         {
             foreach (KeyValuePair<int, Connection> pair in _connectionsByPort)
@@ -424,19 +421,19 @@ public class SessionRegistry
     {
         bool isFromClient = (metadata.SourceIp == _localIp);
         int localPort = isFromClient ? metadata.SourcePort : metadata.DestPort;
-        DebugLog.Write(LogChannel.Inference, "IdentifyConnection for " + characterName +
+        DebugLog.Write(LogChannel.LowNetwork, "IdentifyConnection for " + characterName +
             " on port " + metadata.DestPort);
         lock (_lock)
         {
             if (!_connectionsByPort.TryGetValue(localPort, out Connection? connection))
             {
-                DebugLog.Write(LogChannel.Sessions,
+                DebugLog.Write(LogChannel.LowNetwork,
                     "SessionRegistry.IdentifyConnection: no connection for port " + localPort
                     + ", character=" + characterName);
                 return;
             }
 
-            DebugLog.Write(LogChannel.Inference, "Connection found on local port "
+            DebugLog.Write(LogChannel.LowNetwork, "Connection found on local port "
                 + connection.LocalPort);
 
             if (connection.SessionId >= 0)
@@ -448,11 +445,11 @@ public class SessionRegistry
                 return;
             }
 
-            DebugLog.Write(LogChannel.Inference, "Identify:  look for port " + localPort);
+            DebugLog.Write(LogChannel.LowNetwork, "Identify:  look for port " + localPort);
             
             foreach (KeyValuePair<string, SessionEntry> pair in _sessions)
             {
-                DebugLog.Write(LogChannel.Inference, "check " + pair.Value.CharacterName + " on key " +
+                DebugLog.Write(LogChannel.LowNetwork, "check " + pair.Value.CharacterName + " on key " +
                     pair.Key + " port " + pair.Value.LocalPort);
 
                 if (pair.Value.CharacterName == characterName)
@@ -460,7 +457,7 @@ public class SessionRegistry
                     Character? character = CharacterRepository.Instance.GetByName(characterName);
                     if (character == null)
                     {
-                        DebugLog.Write(LogChannel.Inference, "No Character named " + characterName + " found in the CharacterRepository");
+                        DebugLog.Write(LogChannel.LowNetwork, "No Character named " + characterName + " found in the CharacterRepository");
                         return;
                     }
 
@@ -470,8 +467,9 @@ public class SessionRegistry
                     pair.Value.SessionId = connection.SessionId;
                     pair.Value.CharacterId = character.CharacterId;
                     _characterIdBySession[connection.SessionId] = character.CharacterId;
+                    connection.CharacterId = character.CharacterId;
 
-                    DebugLog.Write(LogChannel.Inference,
+                    DebugLog.Write(LogChannel.LowNetwork,
                         "SessionRegistry.IdentifyConnection: port " + localPort
                         + " identified as character=" + characterName
                         + " session=" + pair.Value.SessionName
@@ -480,7 +478,7 @@ public class SessionRegistry
                 }
             }
 
-            DebugLog.Write(LogChannel.Inference,
+            DebugLog.Write(LogChannel.LowNetwork,
                 "SessionRegistry.IdentifyConnection: no SessionEntry for character="
                 + characterName + " on port " + localPort
                 + ", connection remains unidentified");

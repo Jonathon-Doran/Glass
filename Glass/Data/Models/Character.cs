@@ -47,6 +47,10 @@ public class Character
     public int? Gold { get; set; }
     public int? Silver { get; set; }
     public int? Copper { get; set; }
+    public float? XPos { get; set; }
+    public float? YPos { get; set; }
+    public float? ZPos { get; set; }
+    public float? Heading { get; set; }         // in degrees
 
     public int? SpawnId { get; set; }
 }

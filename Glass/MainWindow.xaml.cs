@@ -449,10 +449,6 @@ public partial class MainWindow : Window
                 StopMovementExperiment();
                 break;
 
-            case "test_extract":
-                TestExtract();
-                break;
-
             default:
                 DebugLog.Write(LogChannel.Input, $"Unknown command: {parts[0]}");
                 DebugLog.Write(LogChannel.Input, "flags:  show the debug log flags");
@@ -564,6 +560,7 @@ public partial class MainWindow : Window
         GlassContext.FocusTracker.Stop();
         GlassContext.FocusTracker.ClearActiveSession();
         GlassContext.GlassVideoPipe.Send("clear_all");
+        OpcodeDispatch.Instance.Dispose();
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1118,49 +1115,5 @@ public partial class MainWindow : Window
     {
         string message = $"cmd_execute {commandId} {MovementTargetGroup} 0";
         GlassContext.ISXGlassPipe.Send(message);
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // TestExtract
-    //
-    // Tests the PacketFieldExtractor against a known OP_ClientUpdate packet
-    // with verified values.  Logs the extracted fields and compares against
-    // expected values from the existing handler output.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void TestExtract()
-    {
-        DebugLog.Write(LogChannel.General, "TestExtract: begin");
-
-        byte[] payload = new byte[]
-        {
-            0x00, 0x00, 0x89, 0x54, 0x00, 0x00, 0x00, 0x30,
-            0x36, 0x5d, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x42, 0x41, 0x00, 0xc0, 0x11, 0xc3, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0xb0, 0x51, 0x20, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0xf7, 0x7f, 0x00, 0xb0,
-            0x78, 0x44
-        };
-
-        DebugLog.Write(LogChannel.General, "TestExtract: payload length=" + payload.Length);
-
-        PacketFieldExtractor extractor = new PacketFieldExtractor();
-        Dictionary<string, object> results = extractor.Extract("2026-04-15", "live",
-            "OP_ClientUpdate", 1, payload);
-
-        DebugLog.Write(LogChannel.General, "TestExtract: extracted " + results.Count + " fields");
-
-        foreach (KeyValuePair<string, object> kvp in results)
-        {
-            DebugLog.Write(LogChannel.General, "TestExtract: " + kvp.Key + " = " + kvp.Value);
-        }
-
-        DebugLog.Write(LogChannel.General, "TestExtract: expected values from handler:");
-        DebugLog.Write(LogChannel.General, "TestExtract:   player_id = 35156 (0x8954)");
-        DebugLog.Write(LogChannel.General, "TestExtract:   x_pos = 994.75");
-        DebugLog.Write(LogChannel.General, "TestExtract:   y_pos = -145.75");
-        DebugLog.Write(LogChannel.General, "TestExtract:   z_pos = 12.12");
-        DebugLog.Write(LogChannel.General, "TestExtract:   heading = 4528");
-
-        DebugLog.Write(LogChannel.General, "TestExtract: end");
     }
 }

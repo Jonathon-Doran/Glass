@@ -21,6 +21,7 @@ public class HandlePlayerProfile : IHandleOpcodes
 
     private ushort _opcode;
     private readonly FieldDefinition[]? _fields;
+    private bool _nullFieldsObserved = false;
 
     private readonly int _nameId;
     private readonly int _levelId;
@@ -82,6 +83,20 @@ public class HandlePlayerProfile : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Dispose
+    //
+    // Log any errors in the cold-path, dispose of any local storage. 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+
+    public void Dispose()
+    {
+        if (_nullFieldsObserved)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "PlayerProfile had null field descriptions");
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // Opcode
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public ushort Opcode
@@ -95,6 +110,21 @@ public class HandlePlayerProfile : IHandleOpcodes
     public string OpcodeName
     {
         get { return _opcodeName; }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Fields
+    //
+    // The field definitions this handler uses to decode payloads, exposed for callers that
+    // need to render or iterate fields without a separate FieldExtractor lookup (e.g. the
+    // Inference opcode log tab).  Null if the active patch does not define this opcode.
+    //
+    // Returned as IReadOnlyList so callers cannot replace elements in the handler's array.
+    // Element reads return copies; element mutation by callers does not affect the handler.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public IReadOnlyList<FieldDefinition>? Fields
+    {
+        get { return _fields; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -117,6 +147,27 @@ public class HandlePlayerProfile : IHandleOpcodes
                 break;
         }
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Extract
+    //
+    // Fills the supplied bag with field values decoded from data, using this handler's cached
+    // field definitions.  Public so callers other than HandlePacket (e.g. the Inference opcode
+    // log tab via OpcodeDispatch) can decode a captured packet for display without touching
+    // live game state.
+    //
+    // The caller owns the bag's lifetime — must Rent it before this call and Release it after.
+    //
+    // data:  The application payload
+    // bag:   A bag rented by the caller; will be filled by this method
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public void Extract(ReadOnlySpan<byte> data, FieldBag bag)
+    {
+        DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".Extract: filling bag, payload length=" + data.Length);
+
+        GlassContext.FieldExtractor.Extract(_fields!, data, bag);
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleZoneToClient
     //
@@ -128,16 +179,17 @@ public class HandlePlayerProfile : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
+        // Ensure that _fields exist if we process this packet
         if (_fields == null)
         {
+            _nullFieldsObserved = true;         // log this on exit
             return;
         }
 
-        FieldExtractor extractor = GlassContext.FieldExtractor;
-        FieldBag bag = extractor.Rent();
+        FieldBag bag = GlassContext.FieldExtractor.Rent();
         try
         {
-            extractor.Extract(_fields, data, bag);
+            Extract(data, bag);
 
             ReadOnlySpan<byte> nameBytes = bag.GetBytesAt(_nameId);
             string name = Encoding.ASCII.GetString(nameBytes);
@@ -186,77 +238,7 @@ public class HandlePlayerProfile : IHandleOpcodes
         }
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleServerToClient
-    //
-    // Processes zone-to-client traffic
-    //
-    // data:    The application payload
-    // length:  Length of the application payload
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleServerToClient(ReadOnlySpan<byte> data, int length, PacketMetadata metadata)
-    {
-        if (length < 4)
-        {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " too short, length=" + length);
-            return;
-        }
 
-        string name = "unknown";
-
-        int nullPosition = FindNullTerminator(data.Slice(0x4fcb), length - 0x4fcb);
-        if (nullPosition != -1)
-        {
-            name = System.Text.Encoding.ASCII.GetString(data.Slice(0x4fcb, nullPosition));
-        }
-
-        int level = BinaryPrimitives.ReadInt32BigEndian(data.Slice(0x1a));
-        uint playerClass = data[0x19];
-        string className = GetClassName(playerClass);
-        uint practicePoints = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(0x3b2));
-        uint mana = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(0x3b6));
-        int hitpoints = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(0x3ba));
-        int strength = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(0x3be));
-        int stamina = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(0x3c2));
-        int charisma = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(0x3c6));
-        int dexterity = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(0x3ca));
-        int intelligence = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(0x3ce));
-        int agility = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(0x3d2));
-        int wisdom = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(0x3d6));
-
-        int platinumCarried = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(0x4beb));
-        int goldCarried = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(0x4bef));
-        int silverCarried = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(0x4bf3));
-        int copperCarried = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(0x4bf7));
-
-
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-            + _opcodeName + " length=" + length);
-        DebugLog.Write(LogChannel.Opcodes, "Name: " + name + ", " + level + " " + className);
-        DebugLog.Write(LogChannel.Opcodes, "HP: " + hitpoints + ", Mana: " + mana + ", " + platinumCarried + "pp/" + goldCarried + "gp/" + silverCarried + "sp/" + copperCarried + "cp");
-        DebugLog.Write(LogChannel.Opcodes, "Str: " + strength + ", Cha: " + charisma + ", Dex: " + dexterity + ", Int: " + intelligence + ", Agi: " + agility + ", Wis: " + wisdom);
-    }
-    private int FindNullTerminator(ReadOnlySpan<byte> data, int length)
-    {
-        // Find the null terminator for the name string at offset 0
-        int nullPos = -1;
-        for (int i = 0; i < length; i++)
-        {
-            if (data[i] == 0)
-            {
-                nullPos = i;
-                break;
-            }
-        }
-
-        if (nullPos < 0)
-        {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + ": no null terminator found");
-            return -1;
-        }
-
-        return nullPos;
-    }
 
     private static readonly Dictionary<uint, string> ClassNames = new Dictionary<uint, string>()
     {

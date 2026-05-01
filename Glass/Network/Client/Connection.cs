@@ -22,6 +22,7 @@ public class Connection : IDisposable
     private readonly Dictionary<StreamId, SoeStream> _streams;
     private bool _disposed;
     private int _sessionId = -1;
+    private int _characterId = -1;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Connection (constructor)
@@ -79,6 +80,13 @@ public class Connection : IDisposable
     {
         get { return _sessionId; }
         set { _sessionId = value; }
+    }
+
+
+    public int CharacterId
+    {
+        get { return _characterId; }
+        set { _characterId = value; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

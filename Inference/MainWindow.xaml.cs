@@ -94,7 +94,7 @@ public partial class MainWindow : Window
         AddDummyCandidates();
         InitializePipes();
         GlassContext.FocusTracker = new FocusTracker();
-        GlassContext.SessionRegistry = new SessionRegistry(HandleAppPacket);
+
         OpenDatabase();
         BuildRecentPatchesMenu();
         RestoreLastPatchLevel();
@@ -137,6 +137,10 @@ public partial class MainWindow : Window
         GlassDebugLogHandler fieldsLogHandler = new GlassDebugLogHandler("fields.log");
         DebugLog.AddHandler(LogSink.Aux1LogFile, fieldsLogHandler);
         DebugLog.Route(LogChannel.Fields, LogSink.Aux1LogFile);
+
+        GlassDebugLogHandler lowNetLogHandler = new GlassDebugLogHandler("lowNet.log");
+        DebugLog.AddHandler(LogSink.Aux2LogFile, lowNetLogHandler);
+        DebugLog.Route(LogChannel.LowNetwork, LogSink.Aux2LogFile);
 
         // The inference tab, just inference messages
         GlassConsoleLogHandler inferenceTabHandler = new GlassConsoleLogHandler(InferenceLogOutput, InferenceLogScroller);
@@ -758,6 +762,9 @@ public partial class MainWindow : Window
 
         dialog.Owner = this;
 
+        GlassContext.SessionRegistry = new SessionRegistry(HandleAppPacket);
+        GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
+
         GlassContext.PatchDate = patchDate;
         GlassContext.ServerType = serverType;
         GlassContext.FieldExtractor = new FieldExtractor(patchDate!, serverType!);
@@ -797,6 +804,22 @@ public partial class MainWindow : Window
 
             await GlassContext.ProfileManager.LaunchProfile(dialog.SelectedProfileName);
         }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // OnAllSessionsDisconnected
+    //
+    // Called when all EQ sessions have disconnected.
+    // Clears the active profile and stops focus tracking.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void OnAllSessionsDisconnected()
+    {
+        DebugLog.Write(LogChannel.Sessions, "MainWindow.OnAllSessionsDisconnected: all sessions disconnected, clearing active profile.");
+        GlassContext.ProfileManager.ClearActiveProfile();
+        GlassContext.FocusTracker.Stop();
+        GlassContext.FocusTracker.ClearActiveSession();
+        GlassContext.GlassVideoPipe.Send("clear_all");
+        OpcodeDispatch.Instance.Dispose();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1322,6 +1345,7 @@ public partial class MainWindow : Window
         packet.Payload = copy;
         packet.OpcodeValue = opcode;
         packet.OriginalLength = length;
+        packet.HighlightColor = 0;
 
         lock (_payloadLock)
         {
@@ -1403,6 +1427,8 @@ public partial class MainWindow : Window
                 truncated.Metadata = packet.Metadata;
                 truncated.OpcodeValue = packet.OpcodeValue;
                 truncated.OriginalLength = packet.OriginalLength;
+                truncated.HighlightColor = 0;
+
                 if (packet.Payload.Length > maxPayloadBytes)
                 {
                     truncated.Payload = new byte[maxPayloadBytes];

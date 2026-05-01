@@ -1,5 +1,6 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Network.Protocol.Fields;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -16,7 +17,7 @@ namespace Glass.Network.Protocol;
 // Exposes HandlePacket matching the AppPacketHandler delegate so it can be
 // wired directly to SoeStream.OnAppPacket.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class OpcodeDispatch
+public class OpcodeDispatch : IDisposable
 {
     private static OpcodeDispatch? _instance = null;
     private readonly Dictionary<ushort, IHandleOpcodes> _handlers;
@@ -101,6 +102,38 @@ public class OpcodeDispatch
             + _handlers.Count + " handlers registered");
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Dispose
+    //
+    // Disposes every registered handler and tears down the singleton.  Called from the
+    // session-disconnected path, after all sessions are confirmed disconnected and no
+    // more packets will arrive.  Cold-path; handlers may log freely from their own
+    // Dispose methods.
+    //
+    // Clears _instance so that any subsequent access to OpcodeDispatch builds a fresh
+    // singleton with a fresh assembly scan.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public void Dispose()
+    {
+        foreach (IHandleOpcodes handler in _handlers.Values)
+        {
+            try
+            {
+                handler.Dispose();
+            }
+            catch (Exception ex)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "OpcodeDispatch.Dispose: handler "
+                    + handler.GetType().Name + " threw during Dispose: " + ex.Message);
+            }
+        }
+
+        _handlers.Clear();
+        _names.Clear();
+
+        _instance = null;
+    }
+
     // =============================================================================
     // IsOpcodeHandled
     //
@@ -145,5 +178,32 @@ public class OpcodeDispatch
         {
             handler.HandlePacket(data, metadata);
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Extract
+    //
+    // Looks up the handler for opcode and asks it to fill the supplied bag with field values
+    // decoded from data.  Used by callers that need decoded fields without triggering the
+    // hot-path side effects of HandlePacket (e.g. the Inference opcode log tab during refresh).
+    //
+    // The caller owns the bag's lifetime — must Rent it before this call and Release it after.
+    //
+    // Returns true if a handler was found and the bag was filled.  Returns false if no
+    // handler is registered for this opcode.
+    //
+    // opcode:  The application-level opcode to look up
+    // data:    The application payload to decode
+    // bag:     A bag rented by the caller; will be filled on success
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public bool Extract(ushort opcode, ReadOnlySpan<byte> data, FieldBag bag)
+    {
+        if (_handlers.TryGetValue(opcode, out IHandleOpcodes? handler))
+        {
+            handler.Extract(data, bag);
+            return true;
+        }
+
+        return false;
     }
 }

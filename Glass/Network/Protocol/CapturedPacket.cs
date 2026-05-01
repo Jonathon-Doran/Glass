@@ -11,4 +11,5 @@ public struct CapturedPacket
     public byte[] Payload;
     public uint OpcodeValue;
     public int OriginalLength;
+    public uint HighlightColor;  // ARGB; 0 = no highlight
 }
