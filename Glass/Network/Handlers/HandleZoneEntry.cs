@@ -27,6 +27,7 @@ public class HandleZoneEntry : IHandleOpcodes
 
     public void Dispose()
     {
+        GC.SuppressFinalize(this);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

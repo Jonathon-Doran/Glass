@@ -24,6 +24,7 @@ public class HandleTrackingUpdate : IHandleOpcodes
 
     public void Dispose()
     {
+        GC.SuppressFinalize(this);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

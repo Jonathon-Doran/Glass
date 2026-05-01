@@ -26,6 +26,7 @@ public class HandleSetChatServer : IHandleOpcodes
 
     public void Dispose()
     {
+        GC.SuppressFinalize(this);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

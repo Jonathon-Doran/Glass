@@ -132,6 +132,7 @@ public class OpcodeDispatch : IDisposable
         _names.Clear();
 
         _instance = null;
+        GC.SuppressFinalize(this);
     }
 
     // =============================================================================

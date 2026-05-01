@@ -25,6 +25,7 @@ public class HandleDeath : IHandleOpcodes
 
     public void Dispose()
     {
+        GC.SuppressFinalize(this);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

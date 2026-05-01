@@ -25,6 +25,7 @@ public class HandleHpUpdate : IHandleOpcodes
 
     public void Dispose()
     {
+        GC.SuppressFinalize(this);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

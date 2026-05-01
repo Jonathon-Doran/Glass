@@ -25,6 +25,7 @@ public class HandleMobUpdate : IHandleOpcodes
 
     public void Dispose()
     {
+        GC.SuppressFinalize(this);
     }
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Opcode

@@ -94,6 +94,7 @@ public class HandlePlayerProfile : IHandleOpcodes
         {
             DebugLog.Write(LogChannel.Opcodes, "PlayerProfile had null field descriptions");
         }
+        GC.SuppressFinalize(this);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
