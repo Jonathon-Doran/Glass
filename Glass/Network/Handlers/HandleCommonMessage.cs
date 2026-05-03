@@ -36,7 +36,7 @@ public class HandleCommonMessage : IHandleOpcodes
     // If the active patch does not define OP_CommonMessage, GetOpcodeValue returns 0 and the
     // handler is effectively disabled — OpcodeDispatch refuses to register handlers with a
     // zero opcode, so this handler simply will not receive packets.  All field index lookups
-    // resolve to -1 in that case but are never consulted. 
+    // resolve to -1 in that case but are never consulted.
 
     public HandleCommonMessage()
     {
