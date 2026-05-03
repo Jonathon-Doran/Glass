@@ -15,13 +15,35 @@ namespace Glass.Network.Handlers;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class HandleCommonMessage : IHandleOpcodes
 {
-    private ushort _opcode = 0xdd47;
     private readonly string _opcodeName = "OP_CommonMessage";
+
+    private readonly FieldDefinition[]? _fields;
+    private bool _nullFieldsObserved = false;
+    private ushort _opcode;
 
     private static readonly byte ChannelShout = 0x03;
     private static readonly byte ChannelOoc = 0x05;
     private static readonly byte ChannelSay = 0x08;
     private static readonly byte ChannelCustomBase = 0x10;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // HandleCommonMessage (constructor)
+    //
+    // Resolves the wire opcode and loads the field definitions for OP_CommonMessage from the
+    // active patch via GlassContext.FieldExtractor.  Caches the index of each field the
+    // handler reads so the hot path can access the bag by integer index without name lookup.
+    //
+    // If the active patch does not define OP_CommonMessage, GetOpcodeValue returns 0 and the
+    // handler is effectively disabled — OpcodeDispatch refuses to register handlers with a
+    // zero opcode, so this handler simply will not receive packets.  All field index lookups
+    // resolve to -1 in that case but are never consulted.
+
+    public HandleCommonMessage()
+    {
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        _opcode = extractor.GetOpcodeValue(_opcodeName);
+        _fields = extractor.GetFieldDefinitions(_opcodeName);
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Dispose
