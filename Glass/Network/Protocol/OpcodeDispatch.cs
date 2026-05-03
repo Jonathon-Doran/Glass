@@ -180,31 +180,4 @@ public class OpcodeDispatch : IDisposable
             handler.HandlePacket(data, metadata);
         }
     }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Extract
-    //
-    // Looks up the handler for opcode and asks it to fill the supplied bag with field values
-    // decoded from data.  Used by callers that need decoded fields without triggering the
-    // hot-path side effects of HandlePacket (e.g. the Inference opcode log tab during refresh).
-    //
-    // The caller owns the bag's lifetime — must Rent it before this call and Release it after.
-    //
-    // Returns true if a handler was found and the bag was filled.  Returns false if no
-    // handler is registered for this opcode.
-    //
-    // opcode:  The application-level opcode to look up
-    // data:    The application payload to decode
-    // bag:     A bag rented by the caller; will be filled on success
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public bool Extract(ushort opcode, ReadOnlySpan<byte> data, FieldBag bag)
-    {
-        if (_handlers.TryGetValue(opcode, out IHandleOpcodes? handler))
-        {
-            handler.Extract(data, bag);
-            return true;
-        }
-
-        return false;
-    }
 }

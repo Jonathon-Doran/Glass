@@ -17,9 +17,10 @@ public class HandleCommonMessage : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_CommonMessage";
 
-    private readonly FieldDefinition[]? _fields;
-    private bool _nullFieldsObserved = false;
     private ushort _opcode;
+    private readonly IReadOnlyList<FieldDefinition>? _fields;
+    private bool _nullFieldsObserved = false;
+
 
     private static readonly byte ChannelShout = 0x03;
     private static readonly byte ChannelOoc = 0x05;
@@ -41,8 +42,10 @@ public class HandleCommonMessage : IHandleOpcodes
     public HandleCommonMessage()
     {
         FieldExtractor extractor = GlassContext.FieldExtractor;
-        _opcode = extractor.GetOpcodeValue(_opcodeName);
-        _fields = extractor.GetFieldDefinitions(_opcodeName);
+        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
+
+        _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
+        _fields = extractor.GetFields(patchLevel, _opcodeName);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

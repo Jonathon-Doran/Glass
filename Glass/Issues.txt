@@ -5,13 +5,9 @@ No way to delete a profile
 Need to be able to edit characters
 Changes to relay groups needs to be tested (is custom control wired?)
 Glass is not capturing network traffic.
-pcap has patch level hard-coded
+pcap has patch level hard-coded - embed patch level and server type in pcapng metadata with libpcap.
 
 ISXGlass:
-
-Phase 2 (layout UI):
-
-
 
 Phase 3 (multi-machine operations):
 

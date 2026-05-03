@@ -19,6 +19,5 @@ public static class GlassContext
     public static ProfileManager ProfileManager { get; set; } = null!;
     public static FieldExtractor FieldExtractor { get; set; } = null!;
     public static Machine? CurrentMachine { get; set; }
-    public static string? PatchDate { get; set; }
-    public static string? ServerType { get; set; }
+    public static PatchLevel CurrentPatchLevel { get; set; }
 }

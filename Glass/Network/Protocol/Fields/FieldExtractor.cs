@@ -27,294 +27,267 @@ namespace Glass.Network.Protocol.Fields;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class FieldExtractor
 {
-    private readonly Dictionary<string, FieldEncoding> _encodingsByString;
-    private readonly Dictionary<string, ushort> _opcodeValuesByName;
-    private readonly string _patchDate;
-    private readonly string _serverType;
+    private readonly Dictionary<PatchLevel, PatchData> _patchDataByLevel;
     private readonly FieldBagPool _bagPool;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // FieldExtractor (constructor)
     //
-    // Builds the encoding string table and loads the opcode-name-to-wire-value map for the
-    // given patch level.  Both pieces of state are immutable after construction; the
-    // extractor is safe to use from any thread without locking once this returns.
+    // Builds the empty patch-data cache and the bag pool.  Both are owned by this instance
+    // for its lifetime; no per-patch state is loaded here.  Callers must invoke
+    // LoadPatchLevel or LoadLatestPatchLevel before any handler is constructed, since
+    // handlers consult their patch's data through this extractor in their constructors.
     //
-    // The set of encoding strings here must stay in sync with the FieldEncoding enum and
-    // with the dispatch switch in Extract — all three sites must agree.
-    //
-    // Parameters:
-    //   patchDate   - The patch_date column value (e.g. "2026-04-15").  Stored for use by
-    //                 GetFieldDefinitions when handlers query at construction time.
-    //   serverType  - The server_type column value (e.g. "live", "test").  Stored for the
-    //                 same reason.
+    // The extractor itself is patch-independent.  The bag pool is reusable across patches
+    // and the cache simply maps PatchLevel identifiers to fully-loaded PatchData objects.
+    // Adding more patches at runtime is supported via additional LoadPatchLevel calls.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public FieldExtractor(string patchDate, string serverType)
+    public FieldExtractor()
     {
-        _patchDate = patchDate;
-        _serverType = serverType;
-
-        _encodingsByString = new Dictionary<string, FieldEncoding>();
-        _encodingsByString.Add("uint8", FieldEncoding.UInt8);
-        _encodingsByString.Add("uint16_le", FieldEncoding.UInt16LE);
-        _encodingsByString.Add("uint16_be", FieldEncoding.UInt16BE);
-        _encodingsByString.Add("int16_le", FieldEncoding.Int16LE);
-        _encodingsByString.Add("int32_le", FieldEncoding.Int32LE);
-        _encodingsByString.Add("int32_be", FieldEncoding.Int32BE);
-        _encodingsByString.Add("uint32_le", FieldEncoding.UInt32LE);
-        _encodingsByString.Add("float_le", FieldEncoding.FloatLE);
-        _encodingsByString.Add("float_be", FieldEncoding.FloatBE);
-        _encodingsByString.Add("uint_le_masked", FieldEncoding.UIntLEMasked);
-        _encodingsByString.Add("sign_extend_fixed_div8", FieldEncoding.SignExtendFixedDiv8);
-        _encodingsByString.Add("string_null_terminated", FieldEncoding.StringNullTerminated);
-        _encodingsByString.Add("string_length_prefixed", FieldEncoding.StringLengthPrefixed);
-
-        DebugLog.Write(LogChannel.Network, "FieldExtractor ctor: encoding string table built with "
-            + _encodingsByString.Count + " entries, patchDate=" + patchDate
-            + " serverType=" + serverType);
-
-        _opcodeValuesByName = new Dictionary<string, ushort>();
-        LoadOpcodeMap();
-
-        if (_opcodeValuesByName.Count == 0)
-        {
-            DebugLog.Write(LogChannel.Network, "FieldExtractor ctor: no opcodes loaded for patchDate="
-                + patchDate + " serverType=" + serverType + ", throwing");
-            throw new InvalidOperationException("FieldExtractor: no PatchOpcode rows for patchDate='"
-                + patchDate + "' serverType='" + serverType + "'");
-        }
-
+        _patchDataByLevel = new Dictionary<PatchLevel, PatchData>();
         _bagPool = new FieldBagPool(FieldBag.DefaultPoolSize, FieldBag.DefaultSlotCount);
 
-        DebugLog.Write(LogChannel.Network, "FieldExtractor ctor: loaded "
-            + _opcodeValuesByName.Count + " opcode names");
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // LoadOpcodeMap
-    //
-    // Populates _opcodeValuesByName from the PatchOpcode table for the active patch level.
-    // Multiple versions of the same opcode share the same opcode_value, so SELECT DISTINCT
-    // on (opcode_name, opcode_value) yields the correct one-to-one map.  Called once from
-    // the constructor.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void LoadOpcodeMap()
-    {
-        using SqliteConnection conn = Database.Instance.Connect();
-        conn.Open();
-        using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT DISTINCT opcode_name, opcode_value"
-            + " FROM PatchOpcode"
-            + " WHERE patch_date = @patchDate"
-            + " AND server_type = @serverType";
-        cmd.Parameters.AddWithValue("@patchDate", _patchDate);
-        cmd.Parameters.AddWithValue("@serverType", _serverType);
-
-        using SqliteDataReader reader = cmd.ExecuteReader();
-        while (reader.Read())
-        {
-            string opcodeName = reader.GetString(0);
-            int opcodeValueRaw = reader.GetInt32(1);
-            ushort opcodeValue = (ushort)opcodeValueRaw;
-            _opcodeValuesByName[opcodeName] = opcodeValue;
-        }
+        DebugLog.Write(LogChannel.Network, "FieldExtractor ctor: empty patch cache, bag pool sized "
+            + FieldBag.DefaultPoolSize + " x " + FieldBag.DefaultSlotCount + " slots");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeValue
     //
-    // Returns the wire opcode value for the given logical name in the active patch level.
-    // Called by handlers at construction time so they know which wire opcode to register
-    // for.  Returns 0 if the name is unknown — handlers check for 0 and skip their own
-    // registration if the active patch does not define their opcode.  0 is not a valid
-    // wire opcode in EQ, so it serves as an unambiguous "not found" sentinel.
+    // Returns the wire opcode value for the given logical name in the given patch.  Looks
+    // up the patch's PatchData in the cache and delegates to it.  Called by handlers at
+    // construction time, once per opcode they care about.  Cold path.
+    //
+    // Throws InvalidOperationException if the patch level has not been loaded.  Callers
+    // must invoke LoadPatchLevel (or LoadLatestPatchLevel) for the patch before any
+    // handler that needs it is constructed; a missing entry here is a programmer error,
+    // not a runtime condition to recover from.
+    //
+    // Returns 0 if the opcode name is unknown to the loaded patch.  Handlers check for 0
+    // and skip their own dispatch registration if their opcode is missing — this is the
+    // expected runtime case when a patch genuinely lacks an opcode the handler knows
+    // about.
     //
     // Parameters:
-    //   opcodeName - The logical name (e.g. "OP_PlayerProfile").
+    //   patchLevel  - The patch identifier.  Must already be loaded.
+    //   opcodeName  - The logical name (e.g. "OP_PlayerProfile").
     //
     // Returns:
-    //   The wire opcode value (e.g. 0x6FA1), or 0 if the name is not in the active patch.
+    //   The wire opcode value (e.g. 0x6FA1), or 0 if the name is not in the patch.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public ushort GetOpcodeValue(string opcodeName)
+    public ushort GetOpcodeValue(PatchLevel patchLevel, string opcodeName)
     {
-        ushort opcodeValue;
-        bool found = _opcodeValuesByName.TryGetValue(opcodeName, out opcodeValue);
+        PatchData patchData;
+        bool found = _patchDataByLevel.TryGetValue(patchLevel, out patchData!);
         if (found == false)
         {
-            DebugLog.Write(LogChannel.Network, "FieldExtractor.GetOpcodeValue: unknown opcode name '"
-                + opcodeName + "' in patchDate=" + _patchDate
-                + " serverType=" + _serverType + ", returning 0");
-            return 0;
+            throw new InvalidOperationException("FieldExtractor.GetOpcodeValue: patchLevel "
+                + patchLevel + " is not loaded");
         }
-        return opcodeValue;
+
+        return patchData.GetOpcodeValue(opcodeName);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Rent
+    // LoadPatchLevel
     //
-    // Rents a FieldBag from the extractor's internal pool.  The bag is cleared before being
-    // returned so the caller always sees a fresh bag.  The caller must eventually call
-    // Release on the bag to return it to the pool.
+    // Ensures the PatchData for the given patch level is loaded and cached.  If the patch
+    // is already in the cache, returns immediately without rebuilding.  Otherwise constructs
+    // a PatchData (which runs the database queries to populate its opcode map and field
+    // definitions) and stores it.
     //
-    // Handlers use this in the hot path to get a bag for filling via Extract, reading,
-    // and releasing — the pool itself is an internal detail of FieldExtractor and is not
-    // exposed.
-    //
-    // Returns:
-    //   A bag with SlotCount == 0, ready to be filled.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public FieldBag Rent()
-    {
-        return _bagPool.Rent();
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GetFieldDefinitions
-    //
-    // Loads the field definitions for the given opcode name and version in the active patch
-    // level, returning them as an array ready for hot-path use.  The encoding string on each
-    // PacketField row is resolved to a FieldEncoding via the extractor's own string table
-    // during the load; the returned definitions can be passed straight to Extract.
-    //
-    // Called by handlers at construction time, once per (opcode name, version) pair the
-    // handler cares about.  Each call hits the database fresh; the result is not cached
-    // inside FieldExtractor — the handler is responsible for storing the array it receives.
-    //
-    // Returns null if the opcode name is unknown to the active patch.  In practice handlers
-    // validate the opcode name first via GetOpcodeValue (checking for the 0 sentinel) and
-    // skip the field-definition call entirely if the opcode is missing, so this null path
-    // is defensive rather than expected.  A known opcode name with no matching version
-    // returns an empty array, not null — that case is more plausibly an intentional probe.
+    // Idempotent: calling twice for the same patch level is safe and cheap on the second
+    // call.  Callers that may run before or after others doing the same load do not need
+    // to coordinate.
     //
     // Parameters:
-    //   opcodeName  - The logical name (e.g. "OP_PlayerProfile").
-    //   version     - The version number to load.  Defaults to 1.
-    //
-    // Returns:
-    //   An array of FieldDefinition with encodings resolved, possibly empty.  Null if the
-    //   opcode name is not in the active patch.
+    //   patchLevel  - The patch identifier to load.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public FieldDefinition[]? GetFieldDefinitions(string opcodeName, int version = 1)
+    public void LoadPatchLevel(PatchLevel patchLevel)
     {
-        if (_opcodeValuesByName.ContainsKey(opcodeName) == false)
+        if (_patchDataByLevel.ContainsKey(patchLevel) == true)
         {
-            DebugLog.Write(LogChannel.Network, "FieldExtractor.GetFieldDefinitions: unknown opcode name '"
-                + opcodeName + "' in patchDate=" + _patchDate
-                + " serverType=" + _serverType + ", returning null");
-            return null;
+            DebugLog.Write(LogChannel.Network, "FieldExtractor.LoadPatchLevel: patchLevel "
+                + patchLevel + " already loaded, returning");
+            return;
         }
 
-        List<FieldDefinition> definitions = new List<FieldDefinition>();
+        PatchData patchData = new PatchData(patchLevel);
+        _patchDataByLevel[patchLevel] = patchData;
 
+        DebugLog.Write(LogChannel.Network, "FieldExtractor.LoadPatchLevel: loaded patchLevel "
+            + patchLevel);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // LoadLatestPatchLevel
+    //
+    // Resolves the most recent patch_date in the database for the given server type,
+    // constructs the corresponding PatchLevel identifier, ensures its PatchData is loaded
+    // and cached, and returns the identifier.  Used by Glass at session launch when
+    // "use the latest patch for this server type" is the desired default.
+    //
+    // The cache check inside LoadPatchLevel makes this idempotent — calling twice with
+    // the same server type is safe and only does the database resolve a second time.
+    // The resolve query itself is cheap (one MAX() against an indexed column) so the
+    // duplicate cost is negligible.
+    //
+    // Throws InvalidOperationException via ResolveLatestPatchDate if no patches exist for
+    // the server type.  This means the database has no patch data for the server type at
+    // all — for example, a freshly-seeded Test server before any patches have been
+    // imported.  The caller may catch this and present a UI for selecting a different
+    // server type or for manually importing patch data.
+    //
+    // Parameters:
+    //   serverType  - The server_type column value (e.g. "live", "test").
+    //
+    // Returns:
+    //   The PatchLevel identifier for the loaded patch.  Caller typically stores this
+    //   on GlassContext.CurrentPatchLevel for handlers to read at construction time.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public PatchLevel LoadLatestPatchLevel(string serverType)
+    {
+        DebugLog.Write(LogChannel.Network, "FieldExtractor.LoadLatestPatchLevel: serverType="
+            + serverType);
+
+        string latestDate = ResolveLatestPatchDate(serverType);
+        PatchLevel patchLevel = new PatchLevel(latestDate, serverType);
+        LoadPatchLevel(patchLevel);
+
+        DebugLog.Write(LogChannel.Network, "FieldExtractor.LoadLatestPatchLevel: returning "
+            + patchLevel);
+        return patchLevel;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ResolveLatestPatchDate
+    //
+    // Queries PatchOpcode for the maximum patch_date for the given server_type.  Used by
+    // LoadLatestPatchLevel to pick the date before constructing the PatchLevel identifier.
+    // patch_date is stored as an ISO-8601 string (yyyy-MM-dd) which sorts lexicographically
+    // and is therefore safe to use with MAX().
+    //
+    // Throws InvalidOperationException if the query returns no rows for the server type.
+    // The thrown exception propagates out of LoadLatestPatchLevel to the caller, which is
+    // the right behavior — Glass startup wants to fail visibly if the database has no
+    // patch data for the configured server type.
+    //
+    // Parameters:
+    //   serverType  - The server_type column value to filter on.
+    //
+    // Returns:
+    //   The most recent patch_date string for that server type.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private static string ResolveLatestPatchDate(string serverType)
+    {
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT pf.field_name, pf.bit_offset, pf.bit_length, pf.encoding"
-            + " FROM PacketField pf"
-            + " JOIN PatchOpcode po ON pf.patch_opcode_id = po.id"
-            + " WHERE po.patch_date = @patchDate"
-            + " AND po.server_type = @serverType"
-            + " AND po.opcode_name = @opcodeName"
-            + " AND po.version = @version"
-            + " ORDER BY pf.bit_offset";
-        cmd.Parameters.AddWithValue("@patchDate", _patchDate);
-        cmd.Parameters.AddWithValue("@serverType", _serverType);
-        cmd.Parameters.AddWithValue("@opcodeName", opcodeName);
-        cmd.Parameters.AddWithValue("@version", version);
+        cmd.CommandText = "SELECT MAX(patch_date)"
+            + " FROM PatchOpcode"
+            + " WHERE server_type = @serverType";
+        cmd.Parameters.AddWithValue("@serverType", serverType);
 
-        using SqliteDataReader reader = cmd.ExecuteReader();
-        while (reader.Read())
+        object? result = cmd.ExecuteScalar();
+        if (result == null || result == DBNull.Value)
         {
-            FieldDefinition definition;
-            definition.Name = reader.GetString(0);
-            definition.BitOffset = (uint)reader.GetInt32(1);
-            definition.BitLength = (uint)reader.GetInt32(2);
-            string encodingString = reader.GetString(3);
-            definition.Encoding = GetEncodingId(encodingString);
-            definitions.Add(definition);
+            throw new InvalidOperationException("FieldExtractor.ResolveLatestPatchDate: "
+                + "no patches for serverType='" + serverType + "'");
         }
 
-        DebugLog.Write(LogChannel.Network, "FieldExtractor.GetFieldDefinitions: loaded "
-            + definitions.Count + " field(s) for opcodeName='" + opcodeName
-            + "' version=" + version);
-
-        return definitions.ToArray();
+        string latestDate = (string)result;
+        DebugLog.Write(LogChannel.Network, "FieldExtractor.ResolveLatestPatchDate: latest "
+            + "patch_date for serverType=" + serverType + " is " + latestDate);
+        return latestDate;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GetEncodingId
+    // GetFields
     //
-    // Translates a database encoding string (e.g. "uint16_le") into the corresponding
-    // FieldEncoding enum value.  Called by handler load routines once per FieldDefinition
-    // while reading rows from PacketField.  Not called from the hot path.
+    // Returns the field definitions for the given opcode name and version in the given
+    // patch.  Looks up the patch's PatchData in the cache and delegates to it.  Called by
+    // handlers at construction time, once per (opcode name, version) pair the handler
+    // cares about, and by Inference code that views field definitions without decoding.
+    // Cold path.
     //
-    // On an unrecognized encoding string, logs and returns FieldEncoding.Unknown.  The handler
-    // stores Unknown in the FieldDefinition; Extract silently skips fields with Unknown
-    // encoding.  This keeps a single misconfigured row from blocking the rest of the load and
-    // from spamming the hot-path log on every packet.
+    // The return type is IReadOnlyList rather than an array because nothing — handler or
+    // viewer — has a legitimate reason to mutate the cached definitions.  FieldDefinition
+    // is a value type, so element reads copy out cleanly; the cached data stays
+    // unmutated regardless of what callers do with the elements they read.
+    //
+    // Throws InvalidOperationException if the patch level has not been loaded.  Callers
+    // must invoke LoadPatchLevel (or LoadLatestPatchLevel) for the patch before any
+    // handler that needs it is constructed; a missing entry here is a programmer error,
+    // not a runtime condition to recover from.
+    //
+    // Returns null if the (opcode name, version) pair is not in the patch's cache.  This
+    // is the expected runtime case when a patch genuinely lacks definitions for an opcode
+    // — typically the channel-variant case where one version of an opcode has been
+    // characterized in the database and another has not.  Callers check for null and
+    // skip their own decode for that variant.
     //
     // Parameters:
-    //   encodingString - The encoding column value from a PacketField row.  A null value is
-    //                    treated as unrecognized and logged.
+    //   patchLevel  - The patch identifier.  Must already be loaded.
+    //   opcodeName  - The logical name (e.g. "OP_PlayerProfile").
+    //   version     - The version number.  Defaults to 1.
     //
     // Returns:
-    //   The FieldEncoding enum value if the string is in the table; FieldEncoding.Unknown
-    //   otherwise.
+    //   The field definitions for the (opcode, version) pair, or null if absent.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public FieldEncoding GetEncodingId(string encodingString)
+    public IReadOnlyList<FieldDefinition>? GetFields(PatchLevel patchLevel, string opcodeName,
+        int version = 1)
     {
-        if (encodingString == null)
-        {
-            DebugLog.Write(LogChannel.Fields, "FieldExtractor.GetEncodingId: null encodingString, "
-                + "returning Unknown");
-            return FieldEncoding.Unknown;
-        }
-
-        FieldEncoding resolved;
-        bool found = _encodingsByString.TryGetValue(encodingString, out resolved);
+        PatchData patchData;
+        bool found = _patchDataByLevel.TryGetValue(patchLevel, out patchData!);
         if (found == false)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldExtractor.GetEncodingId: unrecognized encoding '"
-                + encodingString + "', returning Unknown");
-            return FieldEncoding.Unknown;
+            throw new InvalidOperationException("FieldExtractor.GetFields: patchLevel "
+                + patchLevel + " is not loaded");
         }
 
-        return resolved;
+        return patchData.GetFieldDefinitions(opcodeName, version);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Extract
     //
-    // Walks the field definition array and writes one FieldSlot per definition into the
-    // caller-provided FieldBag, preserving definition-to-slot index alignment.  Called from
-    // the hot path on every decoded packet.
+    // Walks the field definition list and writes one FieldSlot per definition into the
+    // caller-provided FieldBag, preserving definition-to-slot index alignment.  Called
+    // from the hot path on every decoded packet.
     //
-    // Every definition produces exactly one slot.  Definitions whose decode does not succeed
-    // (Unknown encoding, payload too short for the bit range, unsupported bit width, etc.)
-    // produce slots that are added but left in their default Empty state.  This keeps cached
-    // field indices stable: a handler that caches "hp is field 3" at load time can read
-    // bag.GetXxxAt(3) without worrying that an upstream field failed to decode, and detect
-    // failure by checking the slot's type tag.
+    // Every definition produces exactly one slot.  Definitions whose decode does not
+    // succeed (Unknown encoding, payload too short for the bit range, unsupported bit
+    // width, etc.) produce slots that are added but left in their default Empty state.
+    // This keeps cached field indices stable: a handler that caches "hp is field 3" at
+    // load time can read bag.GetXxxAt(3) without worrying that an upstream field failed
+    // to decode, and detect failure by checking the slot's type tag.
     //
     // All per-field failure paths are silent.  Failures during Inference are the expected
-    // case (every handler is tried against every packet) and logging them would flood the
-    // log with non-anomalies.  Glass-runtime diagnostics belong in the handler, where the
-    // context to know whether a failure is surprising lives.
+    // case (every handler is tried against every packet) and logging them would flood
+    // the log with non-anomalies.  Glass-runtime diagnostics belong in the handler, where
+    // the context to know whether a failure is surprising lives.
     //
-    // Reentrancy: this method is safe to call concurrently from multiple threads on the same
-    // FieldExtractor instance, provided each thread passes its own FieldBag.  The bag is
-    // mutated; sharing a bag across threads is not supported.
+    // The definitions parameter is IReadOnlyList rather than an array.  Handlers cache
+    // the value returned by FieldExtractor.GetFields, which is the same reference held
+    // in PatchData's per-opcode cache.  No copy happens at the boundary.
+    //
+    // Reentrancy: this method is safe to call concurrently from multiple threads on the
+    // same FieldExtractor instance, provided each thread passes its own FieldBag.  The
+    // bag is mutated; sharing a bag across threads is not supported.
     //
     // Parameters:
-    //   definitions - Array of resolved FieldDefinitions, in the order they should appear in
-    //                 the bag.  The array reference is passed; no copy is made.
-    //   payload     - The raw packet payload bytes.  Bit offsets in definitions are relative
-    //                 to the start of this span.
+    //   definitions - The field definitions, in the order they should appear in the bag.
+    //                 Typically the same reference returned by GetFields and cached by
+    //                 the handler.  No copy is made.
+    //   payload     - The raw packet payload bytes.  Bit offsets in definitions are
+    //                 relative to the start of this span.
     //   bag         - The bag to fill.  Must have been rented from a FieldBagPool by the
-    //                 caller and must have enough capacity to hold one slot per definition.
-    //                 The caller is responsible for releasing the bag when done reading.
+    //                 caller and must have enough capacity to hold one slot per
+    //                 definition.  The caller is responsible for releasing the bag when
+    //                 done reading.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void Extract(FieldDefinition[] definitions, ReadOnlySpan<byte> payload, FieldBag bag)
+    public void Extract(IReadOnlyList<FieldDefinition> definitions, ReadOnlySpan<byte> payload,
+        FieldBag bag)
     {
         if (definitions == null)
         {
@@ -328,7 +301,7 @@ public class FieldExtractor
             return;
         }
 
-        for (int definitionIndex = 0; definitionIndex < definitions.Length; definitionIndex++)
+        for (int definitionIndex = 0; definitionIndex < definitions.Count; definitionIndex++)
         {
             FieldDefinition definition = definitions[definitionIndex];
 
@@ -748,5 +721,24 @@ public class FieldExtractor
 
         ReadOnlySpan<byte> stringBytes = payload.Slice((int)stringStart, (int)declaredLength);
         slot.SetAsciiString(stringBytes);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Rent
+    //
+    // Rents a FieldBag from the extractor's internal pool.  The bag is cleared before being
+    // returned so the caller always sees a fresh bag.  The caller must eventually call
+    // Release on the bag to return it to the pool.
+    //
+    // Handlers use this in the hot path to get a bag for filling via Extract, reading,
+    // and releasing — the pool itself is an internal detail of FieldExtractor and is not
+    // exposed.
+    //
+    // Returns:
+    //   A bag with SlotCount == 0, ready to be filled.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public FieldBag Rent()
+    {
+        return _bagPool.Rent();
     }
 }

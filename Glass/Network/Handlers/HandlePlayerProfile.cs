@@ -20,7 +20,7 @@ public class HandlePlayerProfile : IHandleOpcodes
     private readonly string _opcodeName = "OP_PlayerProfile";
 
     private ushort _opcode;
-    private readonly FieldDefinition[]? _fields;
+    private readonly IReadOnlyList<FieldDefinition>? _fields;
     private bool _nullFieldsObserved = false;
 
     private readonly int _nameId;
@@ -44,20 +44,23 @@ public class HandlePlayerProfile : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandlePlayerProfile (constructor)
     //
-    // Resolves the wire opcode and loads the field definitions for OP_PlayerProfile from the
-    // active patch via GlassContext.FieldExtractor.  Caches the index of each field the
-    // handler reads so the hot path can access the bag by integer index without name lookup.
+    // Resolves the wire opcode and loads the field definitions for OP_PlayerProfile from
+    // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
+    // Caches the index of each field the handler reads so the hot path can access the bag
+    // by integer index without name lookup.
     //
-    // If the active patch does not define OP_PlayerProfile, GetOpcodeValue returns 0 and the
-    // handler is effectively disabled — OpcodeDispatch refuses to register handlers with a
-    // zero opcode, so this handler simply will not receive packets.  All field index lookups
-    // resolve to -1 in that case but are never consulted.
+    // If the current patch does not define OP_PlayerProfile, GetOpcodeValue returns 0 and
+    // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
+    // with a zero opcode, so this handler simply will not receive packets.  All field
+    // index lookups resolve to -1 in that case but are never consulted.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public HandlePlayerProfile()
     {
         FieldExtractor extractor = GlassContext.FieldExtractor;
-        _opcode = extractor.GetOpcodeValue(_opcodeName);
-        _fields = extractor.GetFieldDefinitions(_opcodeName);
+        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
+
+        _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
+        _fields = extractor.GetFields(patchLevel, _opcodeName);
 
         _nameId = _fields.IndexOfField("name");
         _levelId = _fields.IndexOfField("level");
@@ -78,7 +81,7 @@ public class HandlePlayerProfile : IHandleOpcodes
         _copperCarriedId = _fields.IndexOfField("copper_carried");
 
         DebugLog.Write(LogChannel.Opcodes, _opcodeName + " ctor: opcode=0x"
-            + _opcode.ToString("x4") + ", " + (_fields == null ? 0 : _fields.Length)
+            + _opcode.ToString("x4") + ", " + (_fields == null ? 0 : _fields.Count)
             + " field definition(s) loaded");
     }
 
@@ -114,21 +117,6 @@ public class HandlePlayerProfile : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Fields
-    //
-    // The field definitions this handler uses to decode payloads, exposed for callers that
-    // need to render or iterate fields without a separate FieldExtractor lookup (e.g. the
-    // Inference opcode log tab).  Null if the active patch does not define this opcode.
-    //
-    // Returned as IReadOnlyList so callers cannot replace elements in the handler's array.
-    // Element reads return copies; element mutation by callers does not affect the handler.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public IReadOnlyList<FieldDefinition>? Fields
-    {
-        get { return _fields; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandlePacket
     //
     // Dispatches to channel-specific handlers.
@@ -147,26 +135,6 @@ public class HandlePlayerProfile : IHandleOpcodes
                 HandleZoneToClient(data, metadata);
                 break;
         }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Extract
-    //
-    // Fills the supplied bag with field values decoded from data, using this handler's cached
-    // field definitions.  Public so callers other than HandlePacket (e.g. the Inference opcode
-    // log tab via OpcodeDispatch) can decode a captured packet for display without touching
-    // live game state.
-    //
-    // The caller owns the bag's lifetime — must Rent it before this call and Release it after.
-    //
-    // data:  The application payload
-    // bag:   A bag rented by the caller; will be filled by this method
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void Extract(ReadOnlySpan<byte> data, FieldBag bag)
-    {
-        DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".Extract: filling bag, payload length=" + data.Length);
-
-        GlassContext.FieldExtractor.Extract(_fields!, data, bag);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -190,7 +158,7 @@ public class HandlePlayerProfile : IHandleOpcodes
         FieldBag bag = GlassContext.FieldExtractor.Rent();
         try
         {
-            Extract(data, bag);
+            GlassContext.FieldExtractor.Extract(_fields!, data, bag);
 
             ReadOnlySpan<byte> nameBytes = bag.GetBytesAt(_nameId);
             string name = Encoding.ASCII.GetString(nameBytes);

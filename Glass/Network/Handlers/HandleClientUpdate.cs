@@ -19,7 +19,8 @@ public class HandleClientUpdate : IHandleOpcodes
     private readonly string _opcodeName = "OP_ClientUpdate";
 
     private ushort _opcode;
-    private readonly FieldDefinition[]? _fields;
+    private readonly IReadOnlyList<FieldDefinition>? _fields;
+    private bool _nullFieldsObserved = false;
 
     private readonly int _sequenceId;
     private readonly int _playerId;
@@ -43,8 +44,10 @@ public class HandleClientUpdate : IHandleOpcodes
     public HandleClientUpdate()
     {
         FieldExtractor extractor = GlassContext.FieldExtractor;
-        _opcode = extractor.GetOpcodeValue(_opcodeName);
-        _fields = extractor.GetFieldDefinitions(_opcodeName);
+        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
+
+        _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
+        _fields = extractor.GetFields(patchLevel, _opcodeName);
 
         _sequenceId = _fields.IndexOfField("sequence");
         _playerId = _fields.IndexOfField("player_id");
@@ -62,6 +65,11 @@ public class HandleClientUpdate : IHandleOpcodes
 
     public void Dispose()
     {
+        if (_nullFieldsObserved)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "PlayerProfile had null field descriptions");
+        }
+
         GC.SuppressFinalize(this);
     }
 
@@ -100,25 +108,6 @@ public class HandleClientUpdate : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Extract
-    //
-    // Fills the supplied bag with field values decoded from data, using this handler's cached
-    // field definitions.  Called by OpcodeDispatch.Extract on the cold path (e.g. the
-    // Inference opcode log tab during refresh).  Handlers not yet refactored to use the
-    // FieldExtractor may leave this empty; callers will see an empty bag.
-    //
-    // The caller owns the bag's lifetime — must Rent it before this call and Release it after.
-    //
-    // data:  The application payload
-    // bag:   A bag rented by the caller; will be filled by this method
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    public void Extract(ReadOnlySpan<byte> data, FieldBag bag)
-    {
-
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleClientToZone
     //
     // Processes client-to-zone
@@ -130,15 +119,15 @@ public class HandleClientUpdate : IHandleOpcodes
     {
         if (_fields == null)
         {
+            _nullFieldsObserved = true;         // log this on exit
             return;
         }
 
-        FieldExtractor extractor = GlassContext.FieldExtractor;
-        FieldBag bag = extractor.Rent();
+        FieldBag bag = GlassContext.FieldExtractor.Rent();
 
         try
         {
-            extractor.Extract(_fields, data, bag);
+            GlassContext.FieldExtractor.Extract(_fields!, data, bag);
 
             int id = GlassContext.SessionRegistry.GetConnection(metadata).CharacterId;
             Character? character = CharacterRepository.Instance.GetById(id);

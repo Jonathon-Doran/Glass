@@ -47,9 +47,7 @@ public partial class MainWindow : Window
         public List<HexDumpLine> Lines;
     }
 
-    private bool _hasPatchLevel = false;
-    private string? patchDate;
-    private string? serverType;
+    private PatchLevel? _currentPatchLevel = null;
 
     private bool _hasUnsavedChanges = false;
     private readonly Stack<object> _undoStack = new Stack<object>();
@@ -181,20 +179,23 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void RestoreLastPatchLevel()
     {
-        patchDate = Properties.Settings.Default.LastOpenedPatchDate;
-        serverType = Properties.Settings.Default.LastOpenedPatchServerType;
-        if (string.IsNullOrEmpty(patchDate) || string.IsNullOrEmpty(serverType))
+        string? savedPatchDate = Properties.Settings.Default.LastOpenedPatchDate;
+        string? savedServerType = Properties.Settings.Default.LastOpenedPatchServerType;
+        if (string.IsNullOrEmpty(savedPatchDate) || string.IsNullOrEmpty(savedServerType))
         {
             DebugLog.Write(LogChannel.InferenceDebug, "RestoreLastPatchLevel: no previous patch level found");
             return;
         }
-        _patchOpcodes = LoadPatchOpcodes(patchDate, serverType);
-        _hasPatchLevel = true;
-        string displayServerType = serverType.Substring(0, 1).ToUpper() + serverType.Substring(1);
-        StatusPatchLevel.Text = patchDate + " (" + displayServerType + ")";
-        UpdateRecentPatches(patchDate, serverType);
+
+        _currentPatchLevel = new PatchLevel(savedPatchDate, savedServerType);
+        _patchOpcodes = LoadPatchOpcodes(savedPatchDate, savedServerType);
+
+        string displayServerType = savedServerType.Substring(0, 1).ToUpper() + savedServerType.Substring(1);
+        StatusPatchLevel.Text = savedPatchDate + " (" + displayServerType + ")";
+        UpdateRecentPatches(savedPatchDate, savedServerType);
         BuildRecentPatchesMenu();
-        DebugLog.Write(LogChannel.InferenceDebug, "RestoreLastPatchLevel: restored " + serverType + " " + patchDate);
+        DebugLog.Write(LogChannel.InferenceDebug, "RestoreLastPatchLevel: restored "
+            + savedServerType + " " + savedPatchDate);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -311,7 +312,7 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void UpdateControlStates()
     {
-        bool hasPatchLevel = _hasPatchLevel;
+        bool hasPatchLevel = (_currentPatchLevel != null);
         bool hasOpcodeSelected = OpcodeGrid.SelectedItem != null;
         bool hasCandidateSelected = CandidateGrid.SelectedItem != null;
         bool hasUndoHistory = _undoStack.Count > 0;
@@ -535,7 +536,7 @@ public partial class MainWindow : Window
             string capturedServerType = serverType!;
             recentItem.Click += (object sender, RoutedEventArgs e) =>
             {
-                _hasPatchLevel = true;
+                _currentPatchLevel = new PatchLevel(capturedPatchDate, capturedServerType);
                 StatusPatchLevel.Text = entry;
                 Properties.Settings.Default.LastOpenedPatchDate = capturedPatchDate;
                 Properties.Settings.Default.LastOpenedPatchServerType = capturedServerType;
@@ -681,7 +682,7 @@ public partial class MainWindow : Window
 
             DebugLog.Write(LogChannel.InferenceDebug, "New patch level created: " + entry);
 
-            _hasPatchLevel = true;
+            _currentPatchLevel = new PatchLevel(patchDate, serverType);
             StatusPatchLevel.Text = patchDate + " (" + serverType.Substring(0, 1).ToUpper() + serverType.Substring(1) + ")";
 
             if (Properties.Settings.Default.RecentPatches == null)
@@ -724,7 +725,7 @@ public partial class MainWindow : Window
             DebugLog.Write(LogChannel.InferenceDebug, "Opened patch level: ServerType="
                 + dialog.ServerType + " PatchDate=" + dialog.PatchDate);
 
-            _hasPatchLevel = true;
+            _currentPatchLevel = new PatchLevel(dialog.PatchDate, dialog.ServerType);
             StatusPatchLevel.Text = dialog.PatchDate + " (" + dialog.ServerType.Substring(0, 1).ToUpper() + dialog.ServerType.Substring(1) + ")";
 
             Properties.Settings.Default.LastOpenedPatchDate = dialog.PatchDate;
@@ -752,24 +753,26 @@ public partial class MainWindow : Window
     {
         DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_LaunchProfile_Click");
 
-        if (! _hasPatchLevel)
+        if (_currentPatchLevel == null)
         {
             DebugLog.Write(LogChannel.General, "No patch level before launch.");
             return;
         }
 
-        DebugLog.Write(LogChannel.Inference, "launching profile for serverType: " + serverType);
-        LaunchProfileDialog dialog = new LaunchProfileDialog(serverType!);
+        string serverType = _currentPatchLevel.Value.ServerType;
+
+        DebugLog.Write(LogChannel.Inference, "launching profile for serverType: " + 
+            serverType);
+        LaunchProfileDialog dialog = new LaunchProfileDialog(serverType);
 
         dialog.Owner = this;
 
         GlassContext.SessionRegistry = new SessionRegistry(HandleAppPacket);
         GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
 
-        GlassContext.PatchDate = patchDate;
-        GlassContext.ServerType = serverType;
-        GlassContext.FieldExtractor = new FieldExtractor(patchDate!, serverType!);
-
+        GlassContext.FieldExtractor = new FieldExtractor();
+        GlassContext.FieldExtractor.LoadPatchLevel(_currentPatchLevel.Value);
+        GlassContext.CurrentPatchLevel = _currentPatchLevel.Value;
 
         if (dialog.ShowDialog() == true)
         {

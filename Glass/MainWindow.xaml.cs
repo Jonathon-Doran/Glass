@@ -652,9 +652,11 @@ public partial class MainWindow : Window
         var select = new SelectProfileDialog { Owner = this };
         if ((select.ShowDialog() == true) && (select.SelectedProfileName != null))
         {
-            string patchDate = "2026 - 04 - 15";
-            string serverType = "Live";
-            GlassContext.FieldExtractor = new FieldExtractor(patchDate!, serverType!);
+            ProfileRepository repo = new ProfileRepository(select.SelectedProfileName);
+            string serverType = repo.GetServerType();
+
+            GlassContext.FieldExtractor = new FieldExtractor();
+            GlassContext.CurrentPatchLevel = GlassContext.FieldExtractor.LoadLatestPatchLevel(serverType);
 
             if (GlassContext.SessionRegistry == null)
             {
@@ -777,9 +779,10 @@ public partial class MainWindow : Window
         {
             return;
         }
-        string patchDate = "2026-04-15";
-        string serverType = "Live";
-        GlassContext.FieldExtractor = new FieldExtractor(patchDate!, serverType!);
+
+        GlassContext.FieldExtractor = new FieldExtractor();
+        GlassContext.CurrentPatchLevel = GlassContext.FieldExtractor.LoadLatestPatchLevel("Live");
+
 
         if (GlassContext.SessionRegistry == null)
         {
