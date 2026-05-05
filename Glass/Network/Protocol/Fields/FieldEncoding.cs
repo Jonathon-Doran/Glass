@@ -19,16 +19,10 @@
 public enum FieldEncoding
 {
     Unknown = 0,
-    UInt8,
-    UInt16LE,
-    UInt16BE,
-    Int16LE,
-    Int32LE,
-    Int32BE,
-    UInt32LE,
-    FloatLE,
-    FloatBE,
-    UIntLEMasked,
+    UInt,
+    Int,
+    Float,
+    UIntMasked,
     SignExtendFixedDiv8,
     StringNullTerminated,
     StringLengthPrefixed

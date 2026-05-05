@@ -337,6 +337,10 @@ public class Database
         {
             ApplyMigration(conn, 38, Migration_038);
         }
+        if (version < 39)
+        {
+            ApplyMigration(conn, 39, Migration_039);
+        }
     }
 
     private int GetSchemaVersion()
@@ -1077,6 +1081,15 @@ public class Database
         ALTER TABLE Characters ADD COLUMN gold INTEGER;
         ALTER TABLE Characters ADD COLUMN silver INTEGER;
         ALTER TABLE Characters ADD COLUMN copper INTEGER;
+    ";
+
+    private const string Migration_039 = @"
+        ALTER TABLE Characters ADD COLUMN x_position REAL;
+        ALTER TABLE Characters ADD COLUMN y_position REAL;
+        ALTER TABLE Characters ADD COLUMN z_position REAL;
+        ALTER TABLE Characters ADD COLUMN heading_degrees REAL;
+        ALTER TABLE Characters ADD COLUMN current_mana INTEGER;
+        ALTER TABLE Characters ADD COLUMN current_hp INTEGER;
     ";
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

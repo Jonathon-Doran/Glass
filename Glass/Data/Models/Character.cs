@@ -30,27 +30,29 @@ public class Character
     public string Server { get; set; } = string.Empty;
     public List<RelayGroup> RelayGroups { get; set; } = new();
 
-    public int? Level { get; set; }
-    public int? PracticePoints { get; set; }
-    public int? MaxHP { get; set; }
-    public int? MaxMana { get; set; }
+    public uint? Level { get; set; }
+    public uint? PracticePoints { get; set; }
+    public uint? CurrentHP { get; set; }
 
-    public int? Strength { get; set; }
-    public int? Stamina { get; set; }
-    public int? Charisma { get; set; }
-    public int? Dexterity { get; set; }
-    public int? Intelligence { get; set; }
-    public int? Agility { get; set; }
-    public int? Wisdom { get; set; }
+    public uint? MaxHP { get; set; }
+    public uint? CurrentMana { get; set; }
+    public uint? MaxMana { get; set; }
+    public uint? Strength { get; set; }
+    public uint? Stamina { get; set; }
+    public uint? Charisma { get; set; }
+    public uint? Dexterity { get; set; }
+    public uint? Intelligence { get; set; }
+    public uint? Agility { get; set; }
+    public uint? Wisdom { get; set; }
 
-    public int? Platinum { get; set; }
-    public int? Gold { get; set; }
-    public int? Silver { get; set; }
-    public int? Copper { get; set; }
+    public uint? Platinum { get; set; }
+    public uint? Gold { get; set; }
+    public uint? Silver { get; set; }
+    public uint? Copper { get; set; }
     public float? XPos { get; set; }
     public float? YPos { get; set; }
     public float? ZPos { get; set; }
     public float? Heading { get; set; }         // in degrees
 
-    public int? SpawnId { get; set; }
+    public uint? SpawnId { get; set; }
 }

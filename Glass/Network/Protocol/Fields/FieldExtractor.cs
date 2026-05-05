@@ -204,11 +204,10 @@ public class FieldExtractor
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetFields
     //
-    // Returns the field definitions for the given opcode name and version in the given
-    // patch.  Looks up the patch's PatchData in the cache and delegates to it.  Called by
-    // handlers at construction time, once per (opcode name, version) pair the handler
-    // cares about, and by Inference code that views field definitions without decoding.
-    // Cold path.
+    // Returns the field definitions for the given OpcodeId in the given patch.  Looks up
+    // the patch's PatchData in the cache and delegates to it.  Called by handlers at
+    // construction time, once per OpcodeId the handler cares about, and by Inference code
+    // that views field definitions without decoding.  Cold path.
     //
     // The return type is IReadOnlyList rather than an array because nothing — handler or
     // viewer — has a legitimate reason to mutate the cached definitions.  FieldDefinition
@@ -220,22 +219,17 @@ public class FieldExtractor
     // handler that needs it is constructed; a missing entry here is a programmer error,
     // not a runtime condition to recover from.
     //
-    // Returns null if the (opcode name, version) pair is not in the patch's cache.  This
-    // is the expected runtime case when a patch genuinely lacks definitions for an opcode
-    // — typically the channel-variant case where one version of an opcode has been
-    // characterized in the database and another has not.  Callers check for null and
-    // skip their own decode for that variant.
+    // Returns null if the OpcodeId is not in the patch's cache.  Callers check for null
+    // and skip their own decode for that variant.
     //
     // Parameters:
     //   patchLevel  - The patch identifier.  Must already be loaded.
-    //   opcodeName  - The logical name (e.g. "OP_PlayerProfile").
-    //   version     - The version number.  Defaults to 1.
+    //   opcodeId    - The OpcodeId whose field definitions to return.
     //
     // Returns:
-    //   The field definitions for the (opcode, version) pair, or null if absent.
+    //   The field definitions for the OpcodeId, or null if absent.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public IReadOnlyList<FieldDefinition>? GetFields(PatchLevel patchLevel, string opcodeName,
-        int version = 1)
+    public IReadOnlyList<FieldDefinition>? GetFields(PatchLevel patchLevel, OpcodeId opcodeId)
     {
         PatchData patchData;
         bool found = _patchDataByLevel.TryGetValue(patchLevel, out patchData!);
@@ -245,7 +239,7 @@ public class FieldExtractor
                 + patchLevel + " is not loaded");
         }
 
-        return patchData.GetFieldDefinitions(opcodeName, version);
+        return patchData.GetFieldDefinitions(opcodeId);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -318,9 +312,7 @@ public class FieldExtractor
                 case FieldEncoding.Unknown:
                     break;
 
-                case FieldEncoding.UInt8:
-                case FieldEncoding.UInt16LE:
-                case FieldEncoding.UInt32LE:
+                case FieldEncoding.UInt:
                     {
                         ulong raw;
                         if (TryReadBitsLE(payload, definition.BitOffset, definition.BitLength, out raw) == true)
@@ -330,8 +322,7 @@ public class FieldExtractor
                         break;
                     }
 
-                case FieldEncoding.Int16LE:
-                case FieldEncoding.Int32LE:
+                case FieldEncoding.Int:
                     {
                         ulong raw;
                         if (TryReadBitsLE(payload, definition.BitOffset, definition.BitLength, out raw) == true)
@@ -342,17 +333,11 @@ public class FieldExtractor
                         break;
                     }
 
-                case FieldEncoding.UInt16BE:
-                case FieldEncoding.Int32BE:
-                case FieldEncoding.FloatBE:
-                    ExtractBigEndianPlaceholder(payload, definition, ref slot);
+                case FieldEncoding.Float:
+                    ExtractFloatLE(payload, definition.BitOffset, definition.BitLength, ref slot);
                     break;
 
-                case FieldEncoding.FloatLE:
-                    ExtractFloatLE(payload, definition, ref slot);
-                    break;
-
-                case FieldEncoding.UIntLEMasked:
+                case FieldEncoding.UIntMasked:
                     {
                         ulong raw;
                         if (TryReadBitsLE(payload, definition.BitOffset, definition.BitLength, out raw) == true)
@@ -363,15 +348,15 @@ public class FieldExtractor
                     }
 
                 case FieldEncoding.SignExtendFixedDiv8:
-                    ExtractSignExtendedDiv8(payload, definition, ref slot);
+                    ExtractSignExtendedDiv8(payload, definition.BitOffset, definition.BitLength, ref slot);
                     break;
 
                 case FieldEncoding.StringNullTerminated:
-                    ExtractNullTerminatedString(payload, definition, ref slot);
+                    ExtractNullTerminatedString(payload, definition.BitOffset, ref slot);
                     break;
 
                 case FieldEncoding.StringLengthPrefixed:
-                    ExtractLengthPrefixedString(payload, definition, ref slot);
+                    ExtractLengthPrefixedString(payload, definition.BitOffset, ref slot);
                     break;
 
                 default:
@@ -551,7 +536,7 @@ public class FieldExtractor
     // ExtractFloatLE
     //
     // Reads a 32-bit IEEE single-precision float in little-endian bit order from the payload
-    // at the field's bit offset and stores it in the slot.  The bits are read via
+    // at the given bit offset and stores it in the slot.  The bits are read via
     // TryReadBitsLE and reinterpreted as a float without any numeric conversion — the bit
     // pattern is the float.
     //
@@ -561,16 +546,18 @@ public class FieldExtractor
     // of 32) cannot happen.
     //
     // Parameters:
-    //   payload     - The packet payload being decoded.
-    //   definition  - The field definition.  BitLength should be 32 for a standard IEEE
-    //                 single; other widths are read but the result is undefined.
-    //   slot        - The slot to fill.  Already has its name set.  Stays Empty on failure.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void ExtractFloatLE(ReadOnlySpan<byte> payload, FieldDefinition definition,
+    //   payload    - The packet payload being decoded.
+    //   bitOffset  - The bit offset to read from.  Caller-computed: definition.BitOffset
+    //                for required fields, the running offset for optional fields.
+    //   bitLength  - The number of bits to read.  Should be 32 for a standard IEEE single;
+    //                other widths are read but the result is undefined.
+    //   slot       - The slot to fill.  Already has its name set.  Stays Empty on failure.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void ExtractFloatLE(ReadOnlySpan<byte> payload, uint bitOffset, uint bitLength,
         ref FieldSlot slot)
     {
         ulong raw;
-        if (TryReadBitsLE(payload, definition.BitOffset, definition.BitLength, out raw) == false)
+        if (TryReadBitsLE(payload, bitOffset, bitLength, out raw) == false)
         {
             return;
         }
@@ -581,34 +568,9 @@ public class FieldExtractor
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // ExtractBigEndianPlaceholder
-    //
-    // Placeholder handler for the big-endian encodings (UInt16BE, Int32BE, FloatBE).  These
-    // exist in the database but their semantics for non-byte-aligned fields have not yet
-    // been verified against actual packet data — specifically, whether "BE" means byte-BE
-    // (assemble bits as a stream then byte-swap) or bit-BE (most-significant-bit first
-    // within the bit range).  Until a real BE field has been examined and the convention
-    // confirmed, this method does nothing and the slot stays in its default Empty state.
-    //
-    // When BE is implemented, this method should split into per-encoding helpers
-    // (ExtractUInt16BE, ExtractInt32BE, ExtractFloatBE) following the same pattern as the
-    // LE helpers.  The single placeholder is intentional — it makes the unimplemented
-    // status visible in one place rather than scattered across three.
-    //
-    // Parameters:
-    //   payload     - The packet payload being decoded.  Currently unused.
-    //   definition  - The field definition.  Currently unused.
-    //   slot        - The slot to fill.  Left in its default Empty state.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void ExtractBigEndianPlaceholder(ReadOnlySpan<byte> payload, FieldDefinition definition,
-        ref FieldSlot slot)
-    {
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // ExtractSignExtendedDiv8
     //
-    // Reads a sign-extended fixed-point coordinate value at the field's bit offset and bit
+    // Reads a sign-extended fixed-point coordinate value at the given bit offset and bit
     // length, then divides by 8.0 to convert to a floating-point world coordinate.  Used
     // by MobUpdate / NpcMoveUpdate position fields, which pack each coordinate as a
     // signed integer (commonly 19 bits) in units of 1/8 world unit.
@@ -616,30 +578,40 @@ public class FieldExtractor
     // On any read failure the slot is left in its default Empty state.
     //
     // Parameters:
-    //   payload     - The packet payload being decoded.
-    //   definition  - The field definition.  BitOffset and BitLength describe the packed
-    //                 signed integer; the divide by 8 is implicit in the encoding.
-    //   slot        - The slot to fill.  Already has its name set.  Stays Empty on failure.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void ExtractSignExtendedDiv8(ReadOnlySpan<byte> payload, FieldDefinition definition,
-        ref FieldSlot slot)
+    //   payload    - The packet payload being decoded.
+    //   bitOffset  - The bit offset to read from.  Caller-computed: definition.BitOffset
+    //                for required fields, the running offset for optional fields.
+    //   bitLength  - The number of bits in the packed signed integer; the divide by 8 is
+    //                implicit in the encoding.
+    //   slot       - The slot to fill.  Already has its name set.  Stays Empty on failure.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void ExtractSignExtendedDiv8(ReadOnlySpan<byte> payload, uint bitOffset,
+        uint bitLength, ref FieldSlot slot)
     {
+        DebugLog.Write(LogChannel.Opcodes, "ExtractSignExtendedDiv8, offset = " + bitOffset +
+            " length = " + bitLength);
         ulong raw;
-        if (TryReadBitsLE(payload, definition.BitOffset, definition.BitLength, out raw) == false)
+        if (TryReadBitsLE(payload, bitOffset, bitLength, out raw) == false)
         {
             return;
         }
 
-        int signedValue = SignExtend(raw, definition.BitLength);
+
+        int signedValue = SignExtend(raw, bitLength);
         float worldCoord = signedValue / 8.0f;
         slot.SetFloat(worldCoord);
+
+        DebugLog.Write(LogChannel.Opcodes, "signedValue = " + signedValue +
+             " worldCoord = " + worldCoord);
+
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ExtractNullTerminatedString
     //
-    // Reads an ASCII string starting at the field's byte offset, terminated by a null byte.
-    // BitLength is ignored for this encoding; the null byte determines the string length.
+    // Reads an ASCII string starting at the given byte offset (derived from the bit
+    // offset), terminated by a null byte.  BitLength is not used by this encoding; the
+    // null byte determines the string length.
     //
     // If no null byte is found in the payload from the byte offset onward, the slot is left
     // in its default Empty state and the event is logged.  A missing null terminator is a
@@ -652,14 +624,17 @@ public class FieldExtractor
     // the same silent-failure rule as the bounds-check helpers.
     //
     // Parameters:
-    //   payload     - The packet payload being decoded.
-    //   definition  - The field definition.  BitOffset is used; BitLength is ignored.
-    //   slot        - The slot to fill.  Already has its name set.  Stays Empty on failure.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void ExtractNullTerminatedString(ReadOnlySpan<byte> payload, FieldDefinition definition,
+    //   payload    - The packet payload being decoded.
+    //   bitOffset  - The bit offset to read from.  Caller-computed: definition.BitOffset
+    //                for required fields, the running offset for optional fields.  Divided
+    //                by 8 to produce the byte offset; non-byte-aligned strings are not
+    //                supported and would mis-locate the start of the string.
+    //   slot       - The slot to fill.  Already has its name set.  Stays Empty on failure.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void ExtractNullTerminatedString(ReadOnlySpan<byte> payload, uint bitOffset,
         ref FieldSlot slot)
     {
-        uint byteOffset = definition.BitOffset / 8u;
+        uint byteOffset = bitOffset / 8u;
         if (byteOffset >= (uint)payload.Length)
         {
             return;
@@ -670,7 +645,7 @@ public class FieldExtractor
         if (nullIndex < 0)
         {
             DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExtractNullTerminatedString: field '"
-                + definition.Name + "' at byteOffset " + byteOffset
+                + slot.GetName() + "' at byteOffset " + byteOffset
                 + " has no null terminator within remaining " + tail.Length
                 + " bytes, slot left empty");
             return;
@@ -683,9 +658,10 @@ public class FieldExtractor
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ExtractLengthPrefixedString
     //
-    // Reads a uint32 little-endian length prefix at the field's byte offset, then reads
-    // that many bytes immediately following as an ASCII string.  BitLength is ignored for
-    // this encoding; the length prefix determines the string length.
+    // Reads a uint32 little-endian length prefix at the given byte offset (derived from
+    // the bit offset), then reads that many bytes immediately following as an ASCII
+    // string.  BitLength is not used by this encoding; the length prefix determines the
+    // string length.
     //
     // On any failure the slot is left in its default Empty state.  Failures here are
     // routine during Inference (every handler reads every packet, length prefixes
@@ -698,14 +674,17 @@ public class FieldExtractor
     // distinguishable from a failure (which leaves the slot Empty).
     //
     // Parameters:
-    //   payload     - The packet payload being decoded.
-    //   definition  - The field definition.  BitOffset is used; BitLength is ignored.
-    //   slot        - The slot to fill.  Already has its name set.  Stays Empty on failure.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void ExtractLengthPrefixedString(ReadOnlySpan<byte> payload, FieldDefinition definition,
+    //   payload    - The packet payload being decoded.
+    //   bitOffset  - The bit offset to read from.  Caller-computed: definition.BitOffset
+    //                for required fields, the running offset for optional fields.  Divided
+    //                by 8 to produce the byte offset; non-byte-aligned length-prefixed
+    //                strings are not supported and would mis-locate the prefix.
+    //   slot       - The slot to fill.  Already has its name set.  Stays Empty on failure.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void ExtractLengthPrefixedString(ReadOnlySpan<byte> payload, uint bitOffset,
         ref FieldSlot slot)
     {
-        uint byteOffset = definition.BitOffset / 8u;
+        uint byteOffset = bitOffset / 8u;
         if (byteOffset + 4u > (uint)payload.Length)
         {
             return;
@@ -726,19 +705,27 @@ public class FieldExtractor
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Rent
     //
-    // Rents a FieldBag from the extractor's internal pool.  The bag is cleared before being
-    // returned so the caller always sees a fresh bag.  The caller must eventually call
-    // Release on the bag to return it to the pool.
+    // Rents a FieldBag from the extractor's internal pool, stamps it with the caller's
+    // opcode name for diagnostic logging, and returns it.  The bag is cleared by the pool
+    // before being returned, so the caller always sees a fresh bag.  The caller must
+    // eventually call Release on the bag to return it to the pool.
     //
     // Handlers use this in the hot path to get a bag for filling via Extract, reading,
     // and releasing — the pool itself is an internal detail of FieldExtractor and is not
     // exposed.
     //
+    // Parameters:
+    //   opcodeName  - The opcode name of the calling handler (e.g. "OP_NpcMoveUpdate").
+    //                 Stamped on the bag so any log lines the bag produces during use are
+    //                 attributable to a specific opcode.
+    //
     // Returns:
-    //   A bag with SlotCount == 0, ready to be filled.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public FieldBag Rent()
+    //   A bag with SlotCount == 0 and CurrentOpcodeName set, ready to be filled.
+    ///////////////////////////////////////////////////////////////////////////////////////
+    public FieldBag Rent(string opcodeName)
     {
-        return _bagPool.Rent();
+        FieldBag bag = _bagPool.Rent();
+        bag.CurrentOpcodeName = opcodeName;
+        return bag;
     }
 }

@@ -47,7 +47,8 @@ public class HandleClientUpdate : IHandleOpcodes
         PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
 
         _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
-        _fields = extractor.GetFields(patchLevel, _opcodeName);
+        OpcodeId opcodeId = new OpcodeId(_opcode);
+        _fields = extractor.GetFields(patchLevel, opcodeId);
 
         _sequenceId = _fields.IndexOfField("sequence");
         _playerId = _fields.IndexOfField("player_id");
@@ -67,7 +68,7 @@ public class HandleClientUpdate : IHandleOpcodes
     {
         if (_nullFieldsObserved)
         {
-            DebugLog.Write(LogChannel.Opcodes, "PlayerProfile had null field descriptions");
+            DebugLog.Write(LogChannel.Opcodes, "OP_ClientUpdate had null field descriptions");
         }
 
         GC.SuppressFinalize(this);
@@ -123,7 +124,7 @@ public class HandleClientUpdate : IHandleOpcodes
             return;
         }
 
-        FieldBag bag = GlassContext.FieldExtractor.Rent();
+        FieldBag bag = GlassContext.FieldExtractor.Rent(_opcodeName);
 
         try
         {
@@ -153,7 +154,6 @@ public class HandleClientUpdate : IHandleOpcodes
             DebugLog.Write(LogChannel.Opcodes, "Player " + playerId + " (" + name + ", 0x" + playerId.ToString("x4") + ") sequence " + sequence);
             DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + " ID: " + playerId.ToString("x4") + " Position:  (" + character.XPos + "," + character.YPos + "," + character.ZPos + ")");
             DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + " Heading is " + character.Heading.ToString() + " degrees");
-
         }
         finally
         {

@@ -15,8 +15,38 @@ namespace Glass.Network.Handlers;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class HandleFormattedMessage : IHandleOpcodes
 {
-    private ushort _opcode = 0x359f;
     private readonly string _opcodeName = "OP_FormattedMessage";
+
+    private ushort _opcode;
+    private readonly IReadOnlyList<FieldDefinition>? _fields;
+    private bool _nullFieldsObserved = false;
+
+    private readonly int _messageId;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // HandleFormattedMessage(constructor)
+    //
+    // Resolves the wire opcode and loads the field definitions for OP_FormattedMessage from
+    // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
+    // Caches the index of each field the handler reads so the hot path can access the bag
+    // by integer index without name lookup.
+    //
+    // If the current patch does not define OP_FormattedMessage, GetOpcodeValue returns 0 and
+    // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
+    // with a zero opcode, so this handler simply will not receive packets.  All field
+    // index lookups resolve to -1 in that case but are never consulted.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public HandleFormattedMessage()
+    {
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
+
+        _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
+        OpcodeId opcodeId = new OpcodeId(_opcode);
+        _fields = extractor.GetFields(patchLevel, opcodeId);
+
+        _messageId = _fields.IndexOfField("msg_text");
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Dispose
@@ -25,8 +55,14 @@ public class HandleFormattedMessage : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void Dispose()
     {
+        if (_nullFieldsObserved)
+        {
+            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " had null field descriptions");
+        }
+
         GC.SuppressFinalize(this);
     }
+
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Opcode
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -62,25 +98,6 @@ public class HandleFormattedMessage : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Extract
-    //
-    // Fills the supplied bag with field values decoded from data, using this handler's cached
-    // field definitions.  Called by OpcodeDispatch.Extract on the cold path (e.g. the
-    // Inference opcode log tab during refresh).  Handlers not yet refactored to use the
-    // FieldExtractor may leave this empty; callers will see an empty bag.
-    //
-    // The caller owns the bag's lifetime — must Rent it before this call and Release it after.
-    //
-    // data:  The application payload
-    // bag:   A bag rented by the caller; will be filled by this method
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    public void Extract(ReadOnlySpan<byte> data, FieldBag bag)
-    {
-
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleZoneToClient
     //
     // Processes zone-to-client traffic
@@ -90,12 +107,31 @@ public class HandleFormattedMessage : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        uint msgLength = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(13));
-        string msgText = Encoding.ASCII.GetString(data.Slice(17, (int) msgLength));
+        // Ensure that _fields exist if we process this packet
+        if (_fields == null)
+        {
+            _nullFieldsObserved = true;         // log this on exit
+            return;
+        }
+
+        string message;
+
+        FieldBag bag = GlassContext.FieldExtractor.Rent(_opcodeName);
+        try
+        {
+            GlassContext.FieldExtractor.Extract(_fields!, data, bag);
+
+            ReadOnlySpan<byte> messageBytes = bag.GetBytesAt(_messageId);
+            message = Encoding.ASCII.GetString(messageBytes);
+        }
+        finally
+        {
+            bag.Release();
+        }
 
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
             + _opcodeName + " length=" + data.Length);
-        DebugLog.Write(LogChannel.Opcodes, "Message: " + msgText);
+        DebugLog.Write(LogChannel.Opcodes, "Message: " + message);
     }
 }
 

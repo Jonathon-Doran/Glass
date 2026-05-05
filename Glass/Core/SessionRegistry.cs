@@ -468,6 +468,7 @@ public class SessionRegistry
                     pair.Value.CharacterId = character.CharacterId;
                     _characterIdBySession[connection.SessionId] = character.CharacterId;
                     connection.CharacterId = character.CharacterId;
+                    connection.Character = character;
 
                     DebugLog.Write(LogChannel.LowNetwork,
                         "SessionRegistry.IdentifyConnection: port " + localPort

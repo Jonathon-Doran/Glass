@@ -1,5 +1,6 @@
 using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Data.Models;
 using Glass.Network.Protocol;
 using System;
 using static Glass.Network.Protocol.SoeConstants;
@@ -23,6 +24,7 @@ public class Connection : IDisposable
     private bool _disposed;
     private int _sessionId = -1;
     private int _characterId = -1;
+    private Character? _character = null;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Connection (constructor)
@@ -87,6 +89,12 @@ public class Connection : IDisposable
     {
         get { return _characterId; }
         set { _characterId = value; }
+    }
+
+    public Character? Character
+    {
+        get { return _character; }
+        set { _character = value; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

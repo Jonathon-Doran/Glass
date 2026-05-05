@@ -6,6 +6,14 @@ Need to be able to edit characters
 Changes to relay groups needs to be tested (is custom control wired?)
 Glass is not capturing network traffic.
 pcap has patch level hard-coded - embed patch level and server type in pcapng metadata with libpcap.
+need to finish handler refactor
+need to finish Inference in preparation for inevitable patch
+consider adding mapping, using Brewall maps and mob data.  The Brewall maps are always loaded in the EQ folder.  
+I'm not sure how expensive it is to render the maps.
+Need to identify the current zone for characters.
+Mob repository needs to be created.
+Connection still has multiple streams that are not used.
+PacketOptionalGroup needs the name of the field for the flags word.
 
 ISXGlass:
 

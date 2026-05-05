@@ -1,5 +1,7 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Data.Models;
+using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using System;
@@ -14,8 +16,48 @@ namespace Glass.Network.Handlers;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class HandleMobUpdate : IHandleOpcodes
 {
-    private ushort _opcode = 0x73da;
     private readonly string _opcodeName = "OP_MobUpdate";
+
+    private ushort _opcode;
+    private readonly IReadOnlyList<FieldDefinition>? _fields;
+    private bool _nullFieldsObserved = false;
+
+    private readonly int _spawnId;
+    private readonly int _xPosId;
+    private readonly int _yPosId;
+    private readonly int _zPosId;
+    // private readonly int _headingId;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // HandleMobUpdate (constructor)
+    //
+    // Resolves the wire opcode and loads the field definitions for OP_MobUpdate from
+    // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
+    // Caches the index of each field the handler reads so the hot path can access the bag
+    // by integer index without name lookup.
+    //
+    // If the current patch does not define OP_MobUpdate, GetOpcodeValue returns 0 and
+    // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
+    // with a zero opcode, so this handler simply will not receive packets.  All field
+    // index lookups resolve to -1 in that case but are never consulted.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public HandleMobUpdate()
+    {
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
+
+        _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
+        OpcodeId opcodeId = new OpcodeId(_opcode);
+        _fields = extractor.GetFields(patchLevel, opcodeId);
+
+        _spawnId = _fields.IndexOfField("spawn_id");
+        _xPosId = _fields.IndexOfField("x_pos");
+        _yPosId = _fields.IndexOfField("y_pos");
+        _zPosId = _fields.IndexOfField("z_pos");
+
+        // Todo:  heading should be 16-bits at byte 12
+       // _headingId = _fields.IndexOfField("heading");
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Dispose
@@ -25,6 +67,11 @@ public class HandleMobUpdate : IHandleOpcodes
 
     public void Dispose()
     {
+        if (_nullFieldsObserved)
+        {
+            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " had null field descriptions");
+        }
+
         GC.SuppressFinalize(this);
     }
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -62,25 +109,6 @@ public class HandleMobUpdate : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Extract
-    //
-    // Fills the supplied bag with field values decoded from data, using this handler's cached
-    // field definitions.  Called by OpcodeDispatch.Extract on the cold path (e.g. the
-    // Inference opcode log tab during refresh).  Handlers not yet refactored to use the
-    // FieldExtractor may leave this empty; callers will see an empty bag.
-    //
-    // The caller owns the bag's lifetime — must Rent it before this call and Release it after.
-    //
-    // data:  The application payload
-    // bag:   A bag rented by the caller; will be filled by this method
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    public void Extract(ReadOnlySpan<byte> data, FieldBag bag)
-    {
-
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleZoneToClient
     //
     // Processes zone-to-client traffic
@@ -90,36 +118,37 @@ public class HandleMobUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        ushort spawnId = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(0));
-        ushort unknown02 = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(2));
-        ulong packed = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(4));
-        short headingRaw = BinaryPrimitives.ReadInt16LittleEndian(data.Slice(12));
+        // Ensure that _fields exist if we process this packet
+        if (_fields == null)
+        {
+            _nullFieldsObserved = true;         // log this on exit
+            return;
+        }
 
-        // -----------------------------------------------------------
-        // Extract 19-bit fixed-point coordinates (3 fractional bits)
-        // -----------------------------------------------------------
-        const ulong MASK_19BIT = 0x7FFFF;
-        const float FIXED_POINT_DIVISOR = 8.0f;
+        uint spawnId;
+        float xPos;
+        float yPos;
+        float zPos;
 
-        ulong rawX = packed & MASK_19BIT;
-        ulong rawY = (packed >> 45) & MASK_19BIT;
-        ulong rawZ = (packed >> 19) & MASK_19BIT;
+        FieldBag bag = GlassContext.FieldExtractor.Rent(_opcodeName);
+        try
+        {
+            GlassContext.FieldExtractor.Extract(_fields!, data, bag);
 
+            spawnId = bag.GetUIntAt(_spawnId);
+            xPos = bag.GetFloatAt(_xPosId);
+            yPos = bag.GetFloatAt(_yPosId);
+            zPos = bag.GetFloatAt(_zPosId);
+        }
+        finally
+        {
+            bag.Release();
+        }
 
-        // -----------------------------------------------------------
-        // Sign-extend 19-bit values to handle negative coordinates
-        // -----------------------------------------------------------
-        int signedX = (rawX & 0x40000) != 0 ? (int)(rawX | 0xFFF80000) : (int)rawX;
-        int signedZ = (rawZ & 0x40000) != 0 ? (int)(rawZ | 0xFFF80000) : (int)rawZ;
-        int signedY = (rawY & 0x40000) != 0 ? (int)(rawY | 0xFFF80000) : (int)rawY;
-
-        float x = signedX / FIXED_POINT_DIVISOR;
-        float z = signedZ / FIXED_POINT_DIVISOR;
-        float y = signedY / FIXED_POINT_DIVISOR;
-
-
+        // short headingRaw = BinaryPrimitives.ReadInt16LittleEndian(data.Slice(12));
 
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-            + _opcodeName + " spawnid: " + spawnId.ToString("x4") + " at ({x:F2},{y:F2},{z:F2}");
+            + _opcodeName + " spawnid: " + spawnId.ToString("x4") + " at ("
+            + xPos.ToString("F2") + "," + yPos.ToString("F2") + "," + zPos.ToString("F2") + ")");
     }
 }

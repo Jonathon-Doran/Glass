@@ -1,5 +1,6 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Data.Models;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using System;
@@ -14,8 +15,50 @@ namespace Glass.Network.Handlers;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class HandleMovementHistory : IHandleOpcodes
 {
-    private ushort _opcode = 0xdc5d;
     private readonly string _opcodeName = "OP_MovementHistory";
+
+    private ushort _opcode;
+    private readonly IReadOnlyList<FieldDefinition>? _fields;
+    private bool _nullFieldsObserved = false;
+    private bool _tooSmallObserved = false;
+    private bool _oddSizeObserved = false;
+    private bool _characterNotFound = false;
+
+    private readonly int _xPosId;
+    private readonly int _yPosId;
+    private readonly int _zPosId;
+    private readonly int _timestampId;
+    private readonly int _movestateId;
+
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // HandleMovementHistory (constructor)
+    //
+    // Resolves the wire opcode and loads the field definitions for OP_MovementHistory from
+    // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
+    // Caches the index of each field the handler reads so the hot path can access the bag
+    // by integer index without name lookup.
+    //
+    // If the current patch does not define OP_MovementHistory, GetOpcodeValue returns 0 and
+    // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
+    // with a zero opcode, so this handler simply will not receive packets.  All field
+    // index lookups resolve to -1 in that case but are never consulted.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public HandleMovementHistory()
+    {
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
+
+        _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
+        OpcodeId opcodeId = new OpcodeId(_opcode);
+        _fields = extractor.GetFields(patchLevel, opcodeId);
+
+        _xPosId = _fields.IndexOfField("x_pos");
+        _yPosId = _fields.IndexOfField("y_pos");
+        _zPosId = _fields.IndexOfField("z_pos");
+        _timestampId = _fields.IndexOfField("timestamp");
+        _movestateId = _fields.IndexOfField("move_state");
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Dispose
@@ -25,6 +68,22 @@ public class HandleMovementHistory : IHandleOpcodes
 
     public void Dispose()
     {
+        if (_nullFieldsObserved)
+        {
+            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " had null field descriptions");
+        }
+        if (_tooSmallObserved)
+        {
+            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " had at least one undersized packet");
+        }
+        if (_oddSizeObserved)
+        {
+            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " had at least one odd-size packet");
+        }
+        if (_characterNotFound)
+        {
+            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " could not find one character from metadata");
+        }
         GC.SuppressFinalize(this);
     }
 
@@ -62,25 +121,6 @@ public class HandleMovementHistory : IHandleOpcodes
         }
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Extract
-    //
-    // Fills the supplied bag with field values decoded from data, using this handler's cached
-    // field definitions.  Called by OpcodeDispatch.Extract on the cold path (e.g. the
-    // Inference opcode log tab during refresh).  Handlers not yet refactored to use the
-    // FieldExtractor may leave this empty; callers will see an empty bag.
-    //
-    // The caller owns the bag's lifetime — must Rent it before this call and Release it after.
-    //
-    // data:  The application payload
-    // bag:   A bag rented by the caller; will be filled by this method
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    public void Extract(ReadOnlySpan<byte> data, FieldBag bag)
-    {
-
-    }
-
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // MovementHistoryEntry
     //
@@ -105,47 +145,75 @@ public class HandleMovementHistory : IHandleOpcodes
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // HandleClientToServer
     //
-    // Processes OP_MovementHistory (0xd9d9) client-to-zone packets.
+    // Processes OP_MovementHistory client-to-zone packets.
     // The payload is an array of 17-byte MovementHistoryEntry structures followed by
     // a single trailing byte of unknown purpose.
-    //
-    // Each entry contains three little-endian floats (X, Y, Z) and 5 unknown bytes.
     //
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
+        // Ensure that _fields exist if we process this packet
+        if (_fields == null)
+        {
+            _nullFieldsObserved = true;         // log this on exit
+            return;
+        }
+
+        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+
+        if (character == null)
+        {
+            _characterNotFound = true;
+            return;
+        }
+
         if (data.Length < 18)
         {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " packet too short: length=" + data.Length + ", minimum is 18.");
+            _tooSmallObserved = true;
             return;
         }
 
         if ((data.Length - 1) % 17 != 0)
         {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " WARNING: payload length " + data.Length + " minus trailing byte is not a multiple of 17.");
+            _oddSizeObserved = true;
+            return;
         }
 
         int entryCount = (data.Length - 1) / 17;
         byte trailingByte = data[data.Length - 1];
+        FieldBag bag = GlassContext.FieldExtractor.Rent(_opcodeName);
 
-        for (int i = 0; i < entryCount; i++)
+        try
         {
-            MovementHistoryEntry entry = MemoryMarshal.Read<MovementHistoryEntry>(data.Slice(i * 17));
+            for (int i = 0; i < entryCount; i++)
+            {
+                bag.Clear();
+                ReadOnlySpan<byte> entry = data.Slice(i * 17, 17);
+                GlassContext.FieldExtractor.Extract(_fields!, entry, bag);
 
-            // unknown 2 seems 2 when standing still, 1 when moving.   And 2 appears mid-movement during duplicate position
-            DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName + " entry[" + i + "]"
-                + " X=" + entry.X.ToString("F2")
-                + " Y=" + entry.Y.ToString("F2")
-                + " Z=" + entry.Z.ToString("F2")
-                + " MoveState= " + entry.MoveState.ToString("x2")
-                + " Sequence= " + entry.Sequence.ToString("x4")
-                + " Timestamp= " + entry.Timestamp.ToString("x4")
-            );
+                float xPos = bag.GetFloatAt(_xPosId);
+                float yPos = bag.GetFloatAt(_yPosId);
+                float zPos = bag.GetFloatAt(_zPosId);
+                uint moveState = bag.GetUIntAt(_movestateId);
+                uint timestamp = bag.GetUIntAt(_timestampId);
+
+                // movementState seems 2 when standing still, 1 when moving.   And 2 appears mid-movement during duplicate position
+                DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName + " entry[" + i + "]"
+                    + " X=" + xPos.ToString("F2")
+                    + " Y=" + yPos.ToString("F2")
+                    + " Z=" + zPos.ToString("F2")
+                    + " MoveState= " + moveState.ToString("x2")
+                    + " Timestamp= " + timestamp.ToString("x4")
+                );
+            }
+        }
+        finally
+        {
+            bag.Release();
         }
     }
-
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // CheckSpawnIds

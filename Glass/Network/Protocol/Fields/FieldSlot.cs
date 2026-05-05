@@ -216,60 +216,60 @@ public struct FieldSlot
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GetInt32
+    // TryGetInt32
     //
-    // Reads the slot as a 32-bit signed integer.  Logs and returns 0 if the slot's type
-    // is not Int32.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public int GetInt32()
+    // Reads the slot as a 32-bit signed integer.  Returns SlotReadResult.Success and the
+    // value on success, SlotReadResult.TypeMismatch and zero on type mismatch.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public SlotReadResult TryGetInt32(out int value)
     {
         if (_type != FieldType.Int32)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.GetInt32: " + GetName() + " type mismatch, slot type is "
-                + _type + ", returning 0");
-            return 0;
+            value = 0;
+            return SlotReadResult.TypeMismatch;
         }
 
         ReadOnlySpan<byte> source = _payload;
-        return BinaryPrimitives.ReadInt32LittleEndian(source);
+        value = BinaryPrimitives.ReadInt32LittleEndian(source);
+        return SlotReadResult.Success;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GetUInt32
+    // TryGetUInt32
     //
-    // Reads the slot as a 32-bit unsigned integer.  Logs and returns 0 if the slot's type
-    // is not UInt32.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public uint GetUInt32()
+    // Reads the slot as a 32-bit unsigned integer.  Returns SlotReadResult.Success and the
+    // value on success, SlotReadResult.TypeMismatch and zero on type mismatch.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public SlotReadResult TryGetUInt32(out uint value)
     {
         if (_type != FieldType.UInt32)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.GetUInt32: " + GetName() + " type mismatch, slot type is "
-                + _type + ", returning 0");
-            return 0;
+            value = 0;
+            return SlotReadResult.TypeMismatch;
         }
 
         ReadOnlySpan<byte> source = _payload;
-        return BinaryPrimitives.ReadUInt32LittleEndian(source);
+        value = BinaryPrimitives.ReadUInt32LittleEndian(source);
+        return SlotReadResult.Success;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GetUInt8
+    // TryGetUInt8
     //
-    // Reads the slot as a single unsigned byte.  Logs and returns 0 if the slot's type
-    // is not UInt8.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public byte GetUInt8()
+    // Reads the slot as an 8-bit unsigned integer.  Returns SlotReadResult.Success and the
+    // value on success, SlotReadResult.TypeMismatch and zero on type mismatch.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public SlotReadResult TryGetUInt8(out int value)
     {
         if (_type != FieldType.UInt8)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.GetUInt8: " + GetName() + " type mismatch, slot type is "
-                + _type + ", returning 0");
-            return 0;
+            value = 0;
+            return SlotReadResult.TypeMismatch;
         }
 
         ReadOnlySpan<byte> source = _payload;
-        return source[0];
+        value = BinaryPrimitives.ReadInt32LittleEndian(source);
+        return SlotReadResult.Success;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -290,24 +290,23 @@ public struct FieldSlot
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GetFloat
+    // TryGetFloat
     //
-    // Reads the slot as a 32-bit IEEE float.  Logs and returns 0.0f if the slot's type is
-    // not Float32.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public float GetFloat()
+    // Reads the slot as a 32-bit IEEE float.  Returns SlotReadResult.Success and the
+    // value on success, SlotReadResult.TypeMismatch and zero on type mismatch.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public SlotReadResult TryGetFloat(out float value)
     {
         if (_type != FieldType.Float)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.GetFloat: " + GetName() + " type mismatch, slot type is "
-                + _type + ", returning 0.0f");
-            return 0.0f;
+            value = 0;
+            return SlotReadResult.TypeMismatch;
         }
 
         ReadOnlySpan<byte> source = _payload;
-        return BinaryPrimitives.ReadSingleLittleEndian(source);
+        value = BinaryPrimitives.ReadSingleLittleEndian(source);
+        return SlotReadResult.Success;
     }
-
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetAsciiBytes
     //
@@ -329,6 +328,33 @@ public struct FieldSlot
         }
 
         return ((ReadOnlySpan<byte>)_payload).Slice(0, _payloadLength);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // TryGetAsciiBytes
+    //
+    // Returns a read-only span over the slot's stored ASCII string bytes.  Logs and returns
+    // an empty span if the slot's type is not AsciiString.
+    //
+    // The returned span is valid only while the slot's storage is stable — practically, until
+    // the bag containing this slot is released.  Callers that need to keep the bytes past
+    // that point must copy them out (e.g. via Encoding.ASCII.GetString or span.CopyTo).
+    //
+    // Returns SlotReadResult.Success and the value on success,
+    // SlotReadResult.TypeMismatch and zero on type mismatch.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    [UnscopedRef]
+    public SlotReadResult TryGetAsciiBytes(out ReadOnlySpan<byte> value)
+    {
+        if (_type != FieldType.AsciiString)
+        {
+            value = ReadOnlySpan<byte>.Empty;
+            return SlotReadResult.TypeMismatch;
+        }
+
+        ReadOnlySpan<byte> source = _payload;
+        value = ((ReadOnlySpan<byte>)_payload).Slice(0, _payloadLength);
+        return SlotReadResult.Success;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

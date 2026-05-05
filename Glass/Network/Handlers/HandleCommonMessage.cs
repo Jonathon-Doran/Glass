@@ -21,6 +21,9 @@ public class HandleCommonMessage : IHandleOpcodes
     private readonly IReadOnlyList<FieldDefinition>? _fields;
     private bool _nullFieldsObserved = false;
 
+    private readonly int _senderId;
+    private readonly int _channelId;
+    private readonly int _messageId;
 
     private static readonly byte ChannelShout = 0x03;
     private static readonly byte ChannelOoc = 0x05;
@@ -45,7 +48,12 @@ public class HandleCommonMessage : IHandleOpcodes
         PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
 
         _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
-        _fields = extractor.GetFields(patchLevel, _opcodeName);
+        OpcodeId opcodeId = new OpcodeId(_opcode);
+        _fields = extractor.GetFields(patchLevel, opcodeId);
+
+        _senderId = _fields.IndexOfField("sender_name");
+        _channelId = _fields.IndexOfField("channel_id");
+        _messageId = _fields.IndexOfField("message_text");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -56,6 +64,11 @@ public class HandleCommonMessage : IHandleOpcodes
 
     public void Dispose()
     {
+        if (_nullFieldsObserved)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "OP_CommonMessage had null field descriptions");
+        }
+
         GC.SuppressFinalize(this);
     }
 
@@ -97,25 +110,6 @@ public class HandleCommonMessage : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Extract
-    //
-    // Fills the supplied bag with field values decoded from data, using this handler's cached
-    // field definitions.  Called by OpcodeDispatch.Extract on the cold path (e.g. the
-    // Inference opcode log tab during refresh).  Handlers not yet refactored to use the
-    // FieldExtractor may leave this empty; callers will see an empty bag.
-    //
-    // The caller owns the bag's lifetime — must Rent it before this call and Release it after.
-    //
-    // data:  The application payload
-    // bag:   A bag rented by the caller; will be filled by this method
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    public void Extract(ReadOnlySpan<byte> data, FieldBag bag)
-    {
-
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleZoneToClient
     //
     // Processes zone-to-client traffic
@@ -134,52 +128,42 @@ public class HandleCommonMessage : IHandleOpcodes
     //
     // Processes client-to-zone OP_CommonMessage.
     //
-    // Fixed structure:
-    //   Offset 0x00 (0):   Sender name, null-terminated, 21-byte fixed field
-    //   Offset 0x15 (21):  Channel ID byte
-    //   Offset 0x16 (22):  12 bytes unknown (zeros observed)
-    //   Offset 0x22 (34):  Message text, null-terminated
-    //
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
+        if (_fields == null)
+        {
+            _nullFieldsObserved = true;         // log this on exit
+            return;
+        }
+
+        string sender;
+        uint channel;
+        string message;
+
+        FieldBag bag = GlassContext.FieldExtractor.Rent(_opcodeName);
+        try
+        {
+            GlassContext.FieldExtractor.Extract(_fields!, data, bag);
+
+            ReadOnlySpan<byte> senderBytes = bag.GetBytesAt(_senderId);
+            sender = Encoding.ASCII.GetString(senderBytes);
+            channel = bag.GetUIntAt(_channelId);
+
+            ReadOnlySpan<byte> messageBytes = bag.GetBytesAt(_messageId);
+            message = Encoding.ASCII.GetString(messageBytes);
+        }
+        finally
+        {
+            bag.Release();
+        }
+        string channelName = GetChannelName(channel);
+
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-            + _opcodeName + " length=" + data.Length);
-
-        if (data.Length < 35)
-        {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " too short, length=" + data.Length + ", minimum is 35.");
-            return;
-        }
-
-        // Sender name: null-terminated within a 21-byte fixed field (offsets 0x00-0x14)
-        int nullIndex = data.Slice(0, 21).IndexOf((byte)0x00);
-        if (nullIndex < 0)
-        {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " no null terminator in sender name field.");
-            return;
-        }
-        string senderName = Encoding.ASCII.GetString(data.Slice(0, nullIndex));
-        DebugLog.Write(LogChannel.Opcodes, _opcodeName + " Sender=\"" + senderName + "\"");
-
-        // Channel ID at offset 0x15
-        byte channelId = data[21];
-        string channelName = GetChannelName(channelId);
-        DebugLog.Write(LogChannel.Opcodes, _opcodeName + " Channel=" + channelId
-            + " (0x" + channelId.ToString("x2") + ") " + channelName);
-
-        // Message text: null-terminated starting at offset 0x22
-        ReadOnlySpan<byte> messageSpan = data.Slice(34);
-        int messageNull = messageSpan.IndexOf((byte)0x00);
-        if (messageNull < 0)
-        {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " no null terminator in message text.");
-            return;
-        }
-        string messageText = Encoding.ASCII.GetString(messageSpan.Slice(0, messageNull));
-        DebugLog.Write(LogChannel.Opcodes, _opcodeName + " Message=\"" + messageText + "\"");
+            + _opcodeName + " sender = " + sender + ", channel = " +
+            channel + "(" + channelName + "), message = '" + message + "'");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -191,7 +175,7 @@ public class HandleCommonMessage : IHandleOpcodes
     //
     // channelId:  The channel ID byte from offset 0x15
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private string GetChannelName(byte channelId)
+    private string GetChannelName(uint channelId)
     {
         if (channelId == ChannelShout)
         {
@@ -207,7 +191,7 @@ public class HandleCommonMessage : IHandleOpcodes
         }
         if (channelId >= ChannelCustomBase)
         {
-            int customNumber = channelId - ChannelCustomBase;
+            uint customNumber = channelId - ChannelCustomBase;
             return "/" + customNumber;
         }
         return "unknown(" + channelId.ToString("x2") + ")";

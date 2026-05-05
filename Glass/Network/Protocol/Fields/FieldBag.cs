@@ -27,6 +27,7 @@ public class FieldBag
     private readonly FieldSlot[] _slots;
     private readonly FieldBagPool _pool;
     private int _slotCount;
+    private string _currentOpcodeName = string.Empty;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // FieldBag (constructor)
@@ -73,6 +74,20 @@ public class FieldBag
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // CurrentOpcodeName
+    //
+    // The opcode name of the handler currently using this bag.  Set by FieldExtractor.Rent
+    // immediately before returning the bag to the handler.  The bag's accessor methods
+    // include this name in any log lines they produce, so type mismatches and other slot
+    // read failures are attributable to a specific opcode.  Cleared on Release.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public string CurrentOpcodeName
+    {
+        get { return _currentOpcodeName; }
+        set { _currentOpcodeName = value; }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // Clear
     //
     // Resets all populated slots to the Empty state and zeroes the slot count.  Called by
@@ -116,22 +131,43 @@ public class FieldBag
     // GetIntAt
     //
     // Reads the slot at the given index as a 32-bit signed integer.  Logs and returns 0 if
-    // the index is out of range.  Used by handlers that have cached field indices at
-    // construction time.
+    // the index is out of range or the slot's type does not match.  Used by handlers that
+    // have cached field indices at construction time.
     //
     // slotIndex:  The cached index of the field, typically resolved via
     //             FieldDefinitionExtensions.IndexOfField at handler construction.  A value
     //             of -1 (the "field not found" sentinel) returns 0.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////
     public int GetIntAt(int slotIndex)
     {
         if (slotIndex < 0 || slotIndex >= _slotCount)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldBag.GetIntAt: slotIndex " + slotIndex
-                + " out of range [0, " + _slotCount + "), returning 0");
+            DebugLog.Write(LogChannel.Fields, _currentOpcodeName + " FieldBag.GetIntAt: slotIndex "
+                + slotIndex + " out of range [0, " + _slotCount + "), returning 0");
             return 0;
         }
-        return _slots[slotIndex].GetInt32();
+
+        int value;
+        SlotReadResult result = _slots[slotIndex].TryGetInt32(out value);
+        switch (result)
+        {
+            case SlotReadResult.Success:
+                return value;
+
+            case SlotReadResult.TypeMismatch:
+                DebugLog.Write(LogChannel.Fields, _currentOpcodeName
+                    + " FieldBag.GetIntAt: type mismatch reading '"
+                    + _slots[slotIndex].GetName() + "' at index " + slotIndex
+                    + ", slot type is " + _slots[slotIndex].Type + ", returning 0");
+                return 0;
+
+            default:
+                DebugLog.Write(LogChannel.Fields, _currentOpcodeName
+                    + " FieldBag.GetIntAt: unhandled SlotReadResult " + result
+                    + " for '" + _slots[slotIndex].GetName() + "' at index " + slotIndex
+                    + ", returning 0");
+                return 0;
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -149,11 +185,32 @@ public class FieldBag
     {
         if (slotIndex < 0 || slotIndex >= _slotCount)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldBag.GetUIntAt: slotIndex " + slotIndex
-                + " out of range [0, " + _slotCount + "), returning 0");
+            DebugLog.Write(LogChannel.Fields, _currentOpcodeName + " FieldBag.GetUIntAt: slotIndex "
+                + slotIndex + " out of range [0, " + _slotCount + "), returning 0");
             return 0;
         }
-        return _slots[slotIndex].GetUInt32();
+
+        uint value;
+        SlotReadResult result = _slots[slotIndex].TryGetUInt32(out value);
+        switch (result)
+        {
+            case SlotReadResult.Success:
+                return value;
+
+            case SlotReadResult.TypeMismatch:
+                DebugLog.Write(LogChannel.Fields, _currentOpcodeName
+                    + " FieldBag.GetIntAt: type mismatch reading '"
+                    + _slots[slotIndex].GetName() + "' at index " + slotIndex
+                    + ", slot type is " + _slots[slotIndex].Type + ", returning 0");
+                return 0;
+
+            default:
+                DebugLog.Write(LogChannel.Fields, _currentOpcodeName
+                    + " FieldBag.GetIntAt: unhandled SlotReadResult " + result
+                    + " for '" + _slots[slotIndex].GetName() + "' at index " + slotIndex
+                    + ", returning 0");
+                return 0;
+        }
     }
 
 
@@ -172,11 +229,32 @@ public class FieldBag
     {
         if (slotIndex < 0 || slotIndex >= _slotCount)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldBag.GetFloatAt: slotIndex " + slotIndex
-                + " out of range [0, " + _slotCount + "), returning 0.0f");
-            return 0.0f;
+            DebugLog.Write(LogChannel.Fields, _currentOpcodeName + " FieldBag.GetFloatAt: slotIndex "
+                + slotIndex + " out of range [0, " + _slotCount + "), returning 0");
+            return 0;
         }
-        return _slots[slotIndex].GetFloat();
+
+        float value;
+        SlotReadResult result = _slots[slotIndex].TryGetFloat(out value);
+        switch (result)
+        {
+            case SlotReadResult.Success:
+                return value;
+
+            case SlotReadResult.TypeMismatch:
+                DebugLog.Write(LogChannel.Fields, _currentOpcodeName
+                    + " FieldBag.GetIntAt: type mismatch reading '"
+                    + _slots[slotIndex].GetName() + "' at index " + slotIndex
+                    + ", slot type is " + _slots[slotIndex].Type + ", returning 0");
+                return 0;
+
+            default:
+                DebugLog.Write(LogChannel.Fields, _currentOpcodeName
+                    + " FieldBag.GetIntAt: unhandled SlotReadResult " + result
+                    + " for '" + _slots[slotIndex].GetName() + "' at index " + slotIndex
+                    + ", returning 0");
+                return 0;
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -194,15 +272,69 @@ public class FieldBag
     //             FieldDefinitionExtensions.IndexOfField at handler construction.  A value
     //             of -1 (the "field not found" sentinel) returns an empty span.
     ///////////////////////////////////////////////////////////////////////////////////////////////
+
     public ReadOnlySpan<byte> GetBytesAt(int slotIndex)
     {
         if (slotIndex < 0 || slotIndex >= _slotCount)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldBag.GetBytesAt: slotIndex " + slotIndex
-                + " out of range [0, " + _slotCount + "), returning empty span");
+            DebugLog.Write(LogChannel.Fields, _currentOpcodeName + " FieldBag.GetBytesAt: slotIndex "
+                + slotIndex + " out of range [0, " + _slotCount + "), returning 0");
             return ReadOnlySpan<byte>.Empty;
         }
-        return _slots[slotIndex].GetAsciiBytes();
+
+        ReadOnlySpan<byte> value;
+        SlotReadResult result = _slots[slotIndex].TryGetAsciiBytes(out value);
+        switch (result)
+        {
+            case SlotReadResult.Success:
+                return value;
+
+            case SlotReadResult.TypeMismatch:
+                DebugLog.Write(LogChannel.Fields, _currentOpcodeName
+                    + " FieldBag.GetIntAt: type mismatch reading '"
+                    + _slots[slotIndex].GetName() + "' at index " + slotIndex
+                    + ", slot type is " + _slots[slotIndex].Type + ", returning 0");
+                return ReadOnlySpan<byte>.Empty;
+
+            default:
+                DebugLog.Write(LogChannel.Fields, _currentOpcodeName
+                    + " FieldBag.GetIntAt: unhandled SlotReadResult " + result
+                    + " for '" + _slots[slotIndex].GetName() + "' at index " + slotIndex
+                    + ", returning 0");
+                return ReadOnlySpan<byte>.Empty;
+        }
+    }
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // IsPresent
+    //
+    // Returns true if the slot at the given index holds a value, false if the slot is in
+    // its default Empty state.  Used by handlers to distinguish "field was absent from the
+    // packet" from "field was present with a zero value" — a distinction the GetXxxAt
+    // accessors collapse, since they return 0 (or an empty span) for both cases.
+    //
+    // Optional fields whose flag bit was clear in the packet appear as Empty slots after
+    // extraction.  Handlers check IsPresent on the optional fields they care about and
+    // skip reads on absent ones.
+    //
+    // Returns false if the slot index is out of range, matching the GetXxxAt accessors'
+    // behavior on the same condition.
+    //
+    // Parameters:
+    //   slotIndex  - The cached index of the field, typically resolved via
+    //                FieldDefinitionExtensions.IndexOfField at handler construction.  A
+    //                value of -1 (the "field not found" sentinel) returns false.
+    //
+    // Returns:
+    //   true   - The slot holds a value.
+    //   false  - The slot is Empty, or the index is out of range.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public bool IsPresent(int slotIndex)
+    {
+        if (slotIndex < 0 || slotIndex >= _slotCount)
+        {
+            return false;
+        }
+        return _slots[slotIndex].Type != FieldType.Empty;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -212,6 +344,8 @@ public class FieldBag
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void Release()
     {
+        _currentOpcodeName = string.Empty;
+
         if (_pool == null)
         {
             DebugLog.Write(LogChannel.Fields, "FieldBag.Release: no pool to return to, dropping bag");

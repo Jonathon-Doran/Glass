@@ -4,39 +4,47 @@ using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using System;
 using System.Buffers.Binary;
-
+using System.Diagnostics;
 namespace Glass.Network.Handlers;
-
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// HandleDeath
+// HandleNpcMove
 //
-// Handles OP_NpcMove packets.  
+// Handles OP_NpcMoveUpdate packets.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleDeath : IHandleOpcodes
+public class HandleNpcMoveUpdate : IHandleOpcodes
 {
-    private readonly string _opcodeName = "OP_Death";
+    private readonly string _opcodeName = "OP_NpcMoveUpdate";
 
     private ushort _opcode;
     private readonly IReadOnlyList<FieldDefinition>? _fields;
     private bool _nullFieldsObserved = false;
 
     private readonly int _spawnId;
-    private readonly int _killerId;
+    private readonly int _xPosId;
+    private readonly int _yPosId;
+    private readonly int _zPosId;
+    private readonly int _headingId;
+    private readonly int _pitchId;
+    private readonly int _headingDeltaId;
+    private readonly int _velocityId;
+    private readonly int _dxId;
+    private readonly int _dyId;
+    private readonly int _dzId; 
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleDeath (constructor)
+    // HandleNpcMoveUpdate (constructor)
     //
-    // Resolves the wire opcode and loads the field definitions for OP_Death from
+    // Resolves the wire opcode and loads the field definitions for OP_NpcMoveUpdate from
     // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
     // Caches the index of each field the handler reads so the hot path can access the bag
     // by integer index without name lookup.
     //
-    // If the current patch does not define OP_Death, GetOpcodeValue returns 0 and
+    // If the current patch does not define OP_NpcMoveUpdate, GetOpcodeValue returns 0 and
     // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
     // with a zero opcode, so this handler simply will not receive packets.  All field
     // index lookups resolve to -1 in that case but are never consulted.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleDeath()
+    public HandleNpcMoveUpdate()
     {
         FieldExtractor extractor = GlassContext.FieldExtractor;
         PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
@@ -46,7 +54,16 @@ public class HandleDeath : IHandleOpcodes
         _fields = extractor.GetFields(patchLevel, opcodeId);
 
         _spawnId = _fields.IndexOfField("spawn_id");
-        _killerId = _fields.IndexOfField("killer_id");
+        _xPosId = _fields.IndexOfField("x_pos");
+        _yPosId = _fields.IndexOfField("y_pos");
+        _zPosId = _fields.IndexOfField("z_pos");
+        _headingId = _fields.IndexOfField("heading");
+        _pitchId = _fields.IndexOfField("pitch");
+        _headingDeltaId = _fields.IndexOfField("heading_delta");
+        _velocityId = _fields.IndexOfField("velocity");
+        _dxId = _fields.IndexOfField("dx");
+        _dyId = _fields.IndexOfField("dy");
+        _dzId = _fields.IndexOfField("dz");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -59,7 +76,7 @@ public class HandleDeath : IHandleOpcodes
     {
         if (_nullFieldsObserved)
         {
-            DebugLog.Write(LogChannel.Opcodes, "OP_Death had null field descriptions");
+            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " had null field descriptions");
         }
 
         GC.SuppressFinalize(this);
@@ -70,7 +87,10 @@ public class HandleDeath : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public ushort Opcode
     {
-        get { return _opcode; }
+        get
+        {
+            return _opcode;
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -78,7 +98,10 @@ public class HandleDeath : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public string OpcodeName
     {
-        get { return _opcodeName; }
+        get
+        {
+            return _opcodeName;
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -86,7 +109,10 @@ public class HandleDeath : IHandleOpcodes
     //
     // Dispatches to direction-specific handlers.
     //
-    // data:      The application payload
+    // data:       The application payload
+    // length:     Length of the application payload
+    // direction:  Direction byte
+    // opcode:     The application-level opcode
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
@@ -102,39 +128,76 @@ public class HandleDeath : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleZoneToClient
     //
-    // Processes zone-to-client traffic
+    // Processes zone-to-client traffic.  Decodes bit-packed position, heading, and
+    // optional motion fields from the packet.
     //
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
-    {   
-        // Ensure that _fields exist if we process this packet
+    {
         if (_fields == null)
         {
-            _nullFieldsObserved = true;         // log this on exit
+            _nullFieldsObserved = true;
             return;
         }
-
-        uint spawnId;
-        uint killerId;
 
         FieldBag bag = GlassContext.FieldExtractor.Rent(_opcodeName);
         try
         {
             GlassContext.FieldExtractor.Extract(_fields!, data, bag);
 
-            spawnId = bag.GetUIntAt(_spawnId);
-            killerId = bag.GetUIntAt(_killerId);
+            uint spawnId = bag.GetUIntAt(_spawnId);
+            float x = bag.GetFloatAt(_xPosId);
+            float y = bag.GetFloatAt(_yPosId);
+            float z = bag.GetFloatAt(_zPosId);
+            uint heading = bag.GetUIntAt(_headingId);
+
+            double headingDegrees = heading * 360.0 / 2048.0;
+
+            System.Text.StringBuilder optional = new System.Text.StringBuilder();
+
+            if (bag.IsPresent(_pitchId))
+            {
+                optional.Append(" pitch=");
+                optional.Append(bag.GetIntAt(_pitchId));
+            }
+            if (bag.IsPresent(_headingDeltaId))
+            {
+                optional.Append(" headingDelta=");
+                optional.Append(bag.GetIntAt(_headingDeltaId));
+            }
+            if (bag.IsPresent(_velocityId))
+            {
+                optional.Append(" velocity=");
+                optional.Append(bag.GetIntAt(_velocityId));
+            }
+            if (bag.IsPresent(_dxId))
+            {
+                optional.Append(" dx=");
+                optional.Append(bag.GetIntAt(_dxId));
+            }
+            if (bag.IsPresent(_dyId))
+            {
+                optional.Append(" dy=");
+                optional.Append(bag.GetIntAt(_dyId));
+            }
+            if (bag.IsPresent(_dzId))
+            {
+                optional.Append(" dz=");
+                optional.Append(bag.GetIntAt(_dzId));
+            }
+
+            string timestamp = metadata.Timestamp.ToString("HH:mm:ss.fff");
+            DebugLog.Write(LogChannel.Opcodes, "[" + timestamp + "] " + _opcodeName
+                + " SpawnId=0x" + spawnId.ToString("x4")
+                + " pos=(" + x.ToString("F2") + "," + y.ToString("F2") + "," + z.ToString("F2") + ")"
+                + " heading=" + headingDegrees.ToString("0.00")
+                + optional.ToString());
         }
         finally
         {
             bag.Release();
         }
-
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-            + _opcodeName + " length=" + data.Length);
-        DebugLog.Write(LogChannel.Opcodes, "Dead=" + spawnId + " (0x" + spawnId.ToString("x4") + ")");
-        DebugLog.Write(LogChannel.Opcodes, "Killer=" + killerId + " (0x" + killerId.ToString("x4") + ")");
     }
 }

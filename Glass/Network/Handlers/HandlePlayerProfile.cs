@@ -60,14 +60,15 @@ public class HandlePlayerProfile : IHandleOpcodes
         PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
 
         _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
-        _fields = extractor.GetFields(patchLevel, _opcodeName);
+        OpcodeId opcodeId = new OpcodeId(_opcode);
+        _fields = extractor.GetFields(patchLevel, opcodeId);
 
         _nameId = _fields.IndexOfField("name");
         _levelId = _fields.IndexOfField("level");
         _playerClassId = _fields.IndexOfField("player_class");
         _practicePointsId = _fields.IndexOfField("practice_points");
         _manaId = _fields.IndexOfField("mana");
-        _hitpointsId = _fields.IndexOfField("hitpoints");
+        _hitpointsId = _fields.IndexOfField("max_hitpoints");
         _strengthId = _fields.IndexOfField("strength");
         _staminaId = _fields.IndexOfField("stamina");
         _charismaId = _fields.IndexOfField("charisma");
@@ -95,7 +96,7 @@ public class HandlePlayerProfile : IHandleOpcodes
     {
         if (_nullFieldsObserved)
         {
-            DebugLog.Write(LogChannel.Opcodes, "PlayerProfile had null field descriptions");
+            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " had null field descriptions");
         }
         GC.SuppressFinalize(this);
     }
@@ -155,7 +156,7 @@ public class HandlePlayerProfile : IHandleOpcodes
             return;
         }
 
-        FieldBag bag = GlassContext.FieldExtractor.Rent();
+        FieldBag bag = GlassContext.FieldExtractor.Rent(_opcodeName);
         try
         {
             GlassContext.FieldExtractor.Extract(_fields!, data, bag);
@@ -170,23 +171,23 @@ public class HandlePlayerProfile : IHandleOpcodes
                 return;
             }
 
-            character.Level = (int) bag.GetUIntAt(_levelId);
-            character.PracticePoints = (int)bag.GetUIntAt(_practicePointsId);
-            character.MaxHP = bag.GetIntAt(_hitpointsId);
-            character.MaxMana = (int)bag.GetUIntAt(_manaId);
+            character.Level = bag.GetUIntAt(_levelId);
+            character.PracticePoints = bag.GetUIntAt(_practicePointsId);
+            character.MaxHP = bag.GetUIntAt(_hitpointsId);
+            character.MaxMana = bag.GetUIntAt(_manaId);
 
-            character.Strength = bag.GetIntAt(_strengthId);
-            character.Stamina = bag.GetIntAt(_staminaId);
-            character.Charisma = bag.GetIntAt(_charismaId);
-            character.Dexterity = bag.GetIntAt(_dexterityId);
-            character.Intelligence = bag.GetIntAt(_intelligenceId);
-            character.Agility = bag.GetIntAt(_agilityId);
-            character.Wisdom = bag.GetIntAt(_wisdomId);
+            character.Strength = bag.GetUIntAt(_strengthId);
+            character.Stamina = bag.GetUIntAt(_staminaId);
+            character.Charisma = bag.GetUIntAt(_charismaId);
+            character.Dexterity = bag.GetUIntAt(_dexterityId);
+            character.Intelligence = bag.GetUIntAt(_intelligenceId);
+            character.Agility = bag.GetUIntAt(_agilityId);
+            character.Wisdom = bag.GetUIntAt(_wisdomId);
 
-            character.Platinum = bag.GetIntAt(_platinumCarriedId);
-            character.Gold = bag.GetIntAt(_goldCarriedId);
-            character.Silver = bag.GetIntAt(_silverCarriedId);
-            character.Copper = bag.GetIntAt(_copperCarriedId);
+            character.Platinum = bag.GetUIntAt(_platinumCarriedId);
+            character.Gold = bag.GetUIntAt(_goldCarriedId);
+            character.Silver = bag.GetUIntAt(_silverCarriedId);
+            character.Copper = bag.GetUIntAt(_copperCarriedId);
 
             // PlayerProfile is the first time we see the character name on the network.
             if (metadata.SessionId == -1)

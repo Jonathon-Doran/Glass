@@ -1406,6 +1406,12 @@ public partial class MainWindow : Window
 
             case "session_disconnected":
                 {
+                    if (GlassContext.SessionRegistry == null)
+                    {
+                        // a bit of a hack.  I'm not sure why we sometimes get a stale session disconnect
+                        return;
+                    }
+
                     if (parts.Length < 2)
                     {
                         DebugLog.Write(LogChannel.ISXGlass, $"ISXGlass: malformed session_disconnected: {msg}");

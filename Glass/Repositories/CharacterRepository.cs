@@ -164,23 +164,23 @@ public class CharacterRepository
             Progression = reader.GetInt32(4) != 0,
             Server = reader.GetString(5),
 
-            Level = reader.IsDBNull(6) ? null : reader.GetInt32(6),
-            PracticePoints = reader.IsDBNull(7) ? null : reader.GetInt32(7),
-            MaxHP = reader.IsDBNull(8) ? null : reader.GetInt32(8),
-            MaxMana = reader.IsDBNull(9) ? null : reader.GetInt32(9),
+            Level = reader.IsDBNull(6) ? null : (uint?) reader.GetInt32(6),
+            PracticePoints = reader.IsDBNull(7) ? null : (uint?)reader.GetInt32(7),
+            MaxHP = reader.IsDBNull(8) ? null : (uint?)reader.GetInt32(8),
+            MaxMana = reader.IsDBNull(9) ? null : (uint?)reader.GetInt32(9),
 
-            Strength = reader.IsDBNull(10) ? null : reader.GetInt32(10),
-            Stamina = reader.IsDBNull(11) ? null : reader.GetInt32(11),
-            Charisma = reader.IsDBNull(12) ? null : reader.GetInt32(12),
-            Dexterity = reader.IsDBNull(13) ? null : reader.GetInt32(13),
-            Intelligence = reader.IsDBNull(14) ? null : reader.GetInt32(14),
-            Agility = reader.IsDBNull(15) ? null : reader.GetInt32(15),
-            Wisdom = reader.IsDBNull(16) ? null : reader.GetInt32(16),
+            Strength = reader.IsDBNull(10) ? null : (uint?)reader.GetInt32(10),
+            Stamina = reader.IsDBNull(11) ? null : (uint?)reader.GetInt32(11),
+            Charisma = reader.IsDBNull(12) ? null : (uint?)reader.GetInt32(12),
+            Dexterity = reader.IsDBNull(13) ? null : (uint?)reader.GetInt32(13),
+            Intelligence = reader.IsDBNull(14) ? null : (uint?)reader.GetInt32(14),
+            Agility = reader.IsDBNull(15) ? null : (uint?)reader.GetInt32(15),
+            Wisdom = reader.IsDBNull(16) ? null : (uint?)reader.GetInt32(16),
 
-            Platinum = reader.IsDBNull(17) ? null : reader.GetInt32(17),
-            Gold = reader.IsDBNull(18) ? null : reader.GetInt32(18),
-            Silver = reader.IsDBNull(19) ? null : reader.GetInt32(19),
-            Copper = reader.IsDBNull(20) ? null : reader.GetInt32(20)
+            Platinum = reader.IsDBNull(17) ? null : (uint?)reader.GetInt32(17),
+            Gold = reader.IsDBNull(18) ? null : (uint?)reader.GetInt32(18),
+            Silver = reader.IsDBNull(19) ? null : (uint?)reader.GetInt32(19),
+            Copper = reader.IsDBNull(20) ? null : (uint?)reader.GetInt32(20)
         };
 
         return character;
