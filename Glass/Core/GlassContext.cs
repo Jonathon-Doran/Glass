@@ -1,4 +1,5 @@
 ﻿using Glass.Data.Models;
+using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 
 namespace Glass.Core;
@@ -20,4 +21,5 @@ public static class GlassContext
     public static FieldExtractor FieldExtractor { get; set; } = null!;
     public static Machine? CurrentMachine { get; set; }
     public static PatchLevel CurrentPatchLevel { get; set; }
+    public static PatchRegistry PatchRegistry { get; set; } = null!;
 }

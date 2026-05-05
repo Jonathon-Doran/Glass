@@ -1,9 +1,10 @@
 ﻿using Glass.Core.Logging;
 using Glass.Data;
+using Glass.Network.Protocol.Fields;
 using Microsoft.Data.Sqlite;
 using System.Collections.Generic;
 
-namespace Glass.Network.Protocol.Fields;
+namespace Glass.Network.Protocol;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // PatchData
@@ -53,7 +54,10 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private readonly FieldDefinition[]?[] _opcodeFields;
 
-   ///////////////////////////////////////////////////////////////////////////////////////////////
+    private readonly string[] _namesByHandle;
+    private readonly Dictionary<string, OpcodeHandle> _handlesByName;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // PatchData (constructor, explicit patch)
     //
     // Loads the opcode-name-to-wire-value map and every opcode's field definitions for the
@@ -85,41 +89,37 @@ public class PatchData
     {
         _patchLevel = patchLevel;
         _encodingsByString = new Dictionary<string, FieldEncoding>();
-
         BuildEncodingMap();
-
         _opcodeValuesByName = new Dictionary<string, ushort>();
         _fieldsByOpcode = new Dictionary<PatchOpcode, FieldDefinition[]>();
 
-        LoadOpcodeMap();
-        if (_opcodeValuesByName.Count == 0)
+        int opcodeCount = CountPatchOpcodes();
+        if (opcodeCount == 0)
         {
             throw new InvalidOperationException("PatchData: no PatchOpcode rows for patchLevel="
                 + _patchLevel);
         }
-        DebugLog.Write(LogChannel.Opcodes, "PatchData ctor: loaded " +
-            _opcodeValuesByName.Count + " opcode name(s) and " + _patchOpcodes.Length + " opcode(s) for patch " + _patchLevel);
 
-        List<PatchOpcode> patchOpcodes = LoadPatchOpcodes();
+        _patchOpcodes = new PatchOpcode[opcodeCount];
+        _opcodeFields = new FieldDefinition[opcodeCount][];
+        _namesByHandle = new string[opcodeCount];
+        _handlesByName = new Dictionary<string, OpcodeHandle>(opcodeCount);
 
-        _patchOpcodes = new PatchOpcode[patchOpcodes.Count];
-        _opcodeFields = new FieldDefinition[patchOpcodes.Count][];
+        LoadOpcodeMap();
+        LoadPatchOpcodes();
 
-        for (int handleIndex = 0; handleIndex < patchOpcodes.Count; handleIndex++)
+        for (int handleIndex = 0; handleIndex < opcodeCount; handleIndex++)
         {
-            PatchOpcode patchOpcode = patchOpcodes[handleIndex];
             OpcodeHandle handle = (OpcodeHandle)handleIndex;
-            _patchOpcodes[handle] = patchOpcode;
-
+            PatchOpcode patchOpcode = _patchOpcodes[handle];
             DebugLog.Write(LogChannel.Opcodes, "PatchData ctor: loading fields for handle="
                 + handleIndex + " opcode=0x" + patchOpcode.Opcode.ToString("X4")
                 + " version=" + patchOpcode.Version);
-
             LoadFields(handle);
         }
 
-        DebugLog.Write(LogChannel.Opcodes, "PatchData ctor: complete, "
-            + _fieldsByOpcode.Count + " PatchOpcode(s) cached");
+        DebugLog.Write(LogChannel.Opcodes, "PatchData ctor: loaded " +
+            _opcodeValuesByName.Count + " opcode name(s) and " + _patchOpcodes.Length + " opcode(s) for patch " + _patchLevel);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -138,28 +138,62 @@ public class PatchData
         _encodingsByString.Add("string_length_prefixed", FieldEncoding.StringLengthPrefixed);
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // LoadPatchOpcodes
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // CountPatchOpcodes
     //
-    // Returns every PatchOpcode in the database for this patch level.  The same opcode can appear multiple
-    // times if an opcode has multiple versions (e.g. OP_Tracking has three).
+    // Returns the number of PatchOpcode rows for this patch level.  Used by the constructor
+    // to size the handle-indexed arrays before any per-opcode loading runs.
     //
-    // Called once from the constructor.  The returned list drives the per-PatchOpcode field
-    // loading loop.
+    // Throws InvalidOperationException if the count query returns null, which would
+    // indicate a database problem rather than an empty result (an empty PatchOpcode table
+    // for this patch produces a count of 0, not null).
     //
     // Returns:
-    //   The list of PatchOpcodes for this patch.  Empty if the patch has no opcodes — but the
-    //   constructor has already checked _opcodeValuesByName.Count and thrown in that case,
-    //   so in normal flow this never returns empty.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private List<PatchOpcode> LoadPatchOpcodes()
+    //   The number of PatchOpcode rows for this patch level.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private int CountPatchOpcodes()
     {
-        List<PatchOpcode> opcodeIds = new List<PatchOpcode>();
-
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT opcode_value, version"
+        cmd.CommandText = "SELECT COUNT(*)"
+            + " FROM PatchOpcode"
+            + " WHERE patch_date = @patchDate"
+            + " AND server_type = @serverType";
+        cmd.Parameters.AddWithValue("@patchDate", _patchLevel.PatchDate);
+        cmd.Parameters.AddWithValue("@serverType", _patchLevel.ServerType);
+
+        object? result = cmd.ExecuteScalar();
+        if (result == null || result == DBNull.Value)
+        {
+            throw new InvalidOperationException("PatchData.CountPatchOpcodes: count query "
+                + "returned null for patchLevel=" + _patchLevel);
+        }
+
+        int count = Convert.ToInt32(result);
+        DebugLog.Write(LogChannel.Opcodes, "PatchData.CountPatchOpcodes: " + count
+            + " PatchOpcode row(s) for patchLevel=" + _patchLevel);
+        return count;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // LoadPatchOpcodes
+    //
+    // Reads every PatchOpcode row for this patch level and populates the handle-indexed
+    // structures: _patchOpcodes, _namesByHandle, and _handlesByName.  Row order from the
+    // database determines handle assignment — the first row read becomes handle 0, the
+    // second handle 1, and so on.
+    //
+    // The arrays and dictionary must be allocated by the constructor before this method
+    // runs.  The size is determined by CountPatchOpcodes, which uses the same WHERE clause
+    // and so produces a count consistent with what this method will read.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void LoadPatchOpcodes()
+    {
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT opcode_value, version, opcode_name"
             + " FROM PatchOpcode"
             + " WHERE patch_date = @patchDate"
             + " AND server_type = @serverType";
@@ -167,16 +201,25 @@ public class PatchData
         cmd.Parameters.AddWithValue("@serverType", _patchLevel.ServerType);
 
         using SqliteDataReader reader = cmd.ExecuteReader();
+        int handleIndex = 0;
         while (reader.Read())
         {
             int opcodeValueRaw = reader.GetInt32(0);
             int version = reader.GetInt32(1);
+            string opcodeName = reader.GetString(2);
             ushort opcodeValue = (ushort)opcodeValueRaw;
-            PatchOpcode opcodeId = new PatchOpcode(_patchLevel, opcodeValue, version);
-            opcodeIds.Add(opcodeId);
+            OpcodeHandle handle = (OpcodeHandle)handleIndex;
+
+            PatchOpcode patchOpcode = new PatchOpcode(_patchLevel, opcodeValue, version);
+            _patchOpcodes[handle] = patchOpcode;
+            _namesByHandle[handle] = opcodeName;
+            _handlesByName[opcodeName] = handle;
+
+            handleIndex = handleIndex + 1;
         }
 
-        return opcodeIds;
+        DebugLog.Write(LogChannel.Opcodes, "PatchData.LoadPatchOpcodes: loaded "
+            + handleIndex + " PatchOpcode(s) for patchLevel=" + _patchLevel);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -417,6 +460,35 @@ public class PatchData
             return 0;
         }
         return opcodeValue;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetOpcodeHandle
+    //
+    // Returns the OpcodeHandle for the given opcode name in this patch.  Called by handlers
+    // at construction time, once per opcode they care about.  Cold path.
+    //
+    // Returns (OpcodeHandle)(-1) if the name is unknown to this patch.  Handlers check for
+    // this sentinel and skip their own dispatch registration if their opcode is missing —
+    // the expected case when a patch genuinely lacks an opcode the handler knows about.
+    //
+    // Parameters:
+    //   opcodeName  - The logical name (e.g. "OP_PlayerProfile").
+    //
+    // Returns:
+    //   The OpcodeHandle for the named opcode, or (OpcodeHandle)(-1) if not in this patch.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public OpcodeHandle GetOpcodeHandle(string opcodeName)
+    {
+        OpcodeHandle handle;
+        bool found = _handlesByName.TryGetValue(opcodeName, out handle);
+        if (found == false)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "PatchData.GetOpcodeHandle: unknown opcode name '"
+                + opcodeName + "' in patchLevel=" + _patchLevel + ", returning -1");
+            return (OpcodeHandle)(-1);
+        }
+        return handle;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

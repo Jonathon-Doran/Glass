@@ -18,6 +18,7 @@ public class HandleFormattedMessage : IHandleOpcodes
     private readonly string _opcodeName = "OP_FormattedMessage";
 
     private ushort _opcode;
+    private OpcodeHandle _handle;
     private readonly IReadOnlyList<FieldDefinition>? _fields;
     private bool _nullFieldsObserved = false;
 
@@ -40,6 +41,8 @@ public class HandleFormattedMessage : IHandleOpcodes
     {
         FieldExtractor extractor = GlassContext.FieldExtractor;
         PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
+
+        _handle = GlassContext.PatchRegistry.GetOpcodeHandle(patchLevel, _opcodeName);
 
         _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
         PatchOpcode opcodeId = new PatchOpcode(patchLevel, _opcode);

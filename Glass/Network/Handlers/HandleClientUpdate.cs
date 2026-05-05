@@ -19,6 +19,7 @@ public class HandleClientUpdate : IHandleOpcodes
     private readonly string _opcodeName = "OP_ClientUpdate";
 
     private ushort _opcode;
+    private OpcodeHandle _handle;
     private readonly IReadOnlyList<FieldDefinition>? _fields;
     private bool _nullFieldsObserved = false;
 
@@ -43,10 +44,13 @@ public class HandleClientUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public HandleClientUpdate()
     {
+        PatchRegistry registry = GlassContext.PatchRegistry;
         FieldExtractor extractor = GlassContext.FieldExtractor;
         PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
 
-        _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
+        _handle = GlassContext.PatchRegistry.GetOpcodeHandle(patchLevel, _opcodeName);
+
+        _opcode = registry.GetOpcodeValue(patchLevel, _opcodeName);
         PatchOpcode opcodeId = new PatchOpcode(patchLevel, _opcode);
         _fields = extractor.GetFields(patchLevel, opcodeId);
 

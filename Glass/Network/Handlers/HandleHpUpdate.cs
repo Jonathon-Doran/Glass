@@ -20,6 +20,7 @@ public class HandleHpUpdate : IHandleOpcodes
     private readonly string _opcodeName = "OP_HpUpdate";
 
     private ushort _opcode;
+    private OpcodeHandle _handle;
     private readonly IReadOnlyList<FieldDefinition>? _fields;
     private bool _nullFieldsObserved = false;
     private bool _characterNotFound = false;
@@ -48,6 +49,8 @@ public class HandleHpUpdate : IHandleOpcodes
 
         _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
         PatchOpcode opcodeId = new PatchOpcode(patchLevel, _opcode);
+        _handle = GlassContext.PatchRegistry.GetOpcodeHandle(patchLevel, _opcodeName);
+
         _fields = extractor.GetFields(patchLevel, opcodeId);
 
         _playerId = _fields.IndexOfField("player_id");

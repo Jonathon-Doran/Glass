@@ -71,10 +71,8 @@ public partial class MainWindow : Window
             SetGlassVideoStatus(false);
             DebugLog.Write(LogChannel.Sessions, "GlassVideo disconnected.");
         });
-   //     GlassContext.GlassVideoPipe.MessageReceived += msg => Dispatcher.Invoke(() => Log($"GlassVideo: {msg}"));
         GlassContext.GlassVideoPipe.Start();
         GlassContext.FocusTracker = new FocusTracker();
-
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -656,7 +654,8 @@ public partial class MainWindow : Window
             string serverType = repo.GetServerType();
 
             GlassContext.FieldExtractor = new FieldExtractor();
-            GlassContext.CurrentPatchLevel = GlassContext.FieldExtractor.LoadLatestPatchLevel(serverType);
+            GlassContext.PatchRegistry = new PatchRegistry();
+            GlassContext.CurrentPatchLevel = GlassContext.PatchRegistry.LoadLatestPatchLevel(serverType);
 
             if (GlassContext.SessionRegistry == null)
             {
@@ -781,8 +780,8 @@ public partial class MainWindow : Window
         }
 
         GlassContext.FieldExtractor = new FieldExtractor();
-        GlassContext.CurrentPatchLevel = GlassContext.FieldExtractor.LoadLatestPatchLevel("Live");
-
+        GlassContext.PatchRegistry = new PatchRegistry();
+        GlassContext.CurrentPatchLevel = GlassContext.PatchRegistry.LoadLatestPatchLevel("Live");
 
         if (GlassContext.SessionRegistry == null)
         {

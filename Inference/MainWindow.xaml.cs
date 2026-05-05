@@ -97,6 +97,7 @@ public partial class MainWindow : Window
         OpenDatabase();
         BuildRecentPatchesMenu();
         RestoreLastPatchLevel();
+        GlassContext.PatchRegistry = new PatchRegistry(_currentPatchLevel!.Value);
         UpdateControlStates();
     }
 
