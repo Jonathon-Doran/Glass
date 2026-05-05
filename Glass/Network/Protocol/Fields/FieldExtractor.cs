@@ -229,7 +229,7 @@ public class FieldExtractor
     // Returns:
     //   The field definitions for the OpcodeId, or null if absent.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public IReadOnlyList<FieldDefinition>? GetFields(PatchLevel patchLevel, OpcodeId opcodeId)
+    public IReadOnlyList<FieldDefinition>? GetFields(PatchLevel patchLevel, PatchOpcode opcodeId)
     {
         PatchData patchData;
         bool found = _patchDataByLevel.TryGetValue(patchLevel, out patchData!);

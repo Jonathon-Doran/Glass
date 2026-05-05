@@ -13,4 +13,20 @@
 // chronologically, which is why MAX(patch_date) on the database column gives the right
 // answer for "latest patch."
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public readonly record struct PatchLevel(string PatchDate, string ServerType);
+public readonly record struct PatchLevel(string PatchDate, string ServerType)
+{
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ToString
+    //
+    // Compact, log-friendly representation: "patchDate/serverType" (e.g. "2026-04-15/live").
+    // Overrides the record struct's default verbose form so that log lines and exception
+    // messages stay readable without each call site formatting the two fields by hand.
+    //
+    // Returns:
+    //   The patch level as "PatchDate/ServerType".
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public override string ToString()
+    {
+        return PatchDate + "/" + ServerType;
+    }
+}

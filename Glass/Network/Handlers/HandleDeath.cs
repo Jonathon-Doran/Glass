@@ -42,7 +42,7 @@ public class HandleDeath : IHandleOpcodes
         PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
 
         _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
-        OpcodeId opcodeId = new OpcodeId(_opcode);
+        PatchOpcode opcodeId = new PatchOpcode(patchLevel, _opcode);
         _fields = extractor.GetFields(patchLevel, opcodeId);
 
         _spawnId = _fields.IndexOfField("spawn_id");

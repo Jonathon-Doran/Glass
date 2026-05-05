@@ -27,10 +27,9 @@ namespace Glass.Network.Protocol.Fields;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class PatchData
 {
-    private readonly string _patchDate;
-    private readonly string _serverType;
+    private readonly PatchLevel _patchLevel;
     private readonly Dictionary<string, ushort> _opcodeValuesByName;
-    private readonly Dictionary<OpcodeId, FieldDefinition[]> _fieldsByOpcode;
+    private readonly Dictionary<PatchOpcode, FieldDefinition[]> _fieldsByOpcode;
     private readonly Dictionary<string, FieldEncoding> _encodingsByString;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -63,11 +62,9 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public PatchData(PatchLevel patchLevel)
     {
-        _patchDate = patchLevel.PatchDate;
-        _serverType = patchLevel.ServerType;
+        _patchLevel = patchLevel;
 
-        DebugLog.Write(LogChannel.Opcodes, "PatchData ctor: begin patchDate=" + _patchDate
-            + " serverType=" + _serverType);
+        DebugLog.Write(LogChannel.Opcodes, "PatchData ctor: PatchLevel = " + _patchLevel);
 
         _encodingsByString = new Dictionary<string, FieldEncoding>();
         _encodingsByString.Add("uint", FieldEncoding.UInt);
@@ -81,25 +78,24 @@ public class PatchData
         _encodingsByString.Add("string_length_prefixed", FieldEncoding.StringLengthPrefixed);
 
         _opcodeValuesByName = new Dictionary<string, ushort>();
-        _fieldsByOpcode = new Dictionary<OpcodeId, FieldDefinition[]>();
+        _fieldsByOpcode = new Dictionary<PatchOpcode, FieldDefinition[]>();
 
         LoadOpcodeMap();
         if (_opcodeValuesByName.Count == 0)
         {
-            throw new InvalidOperationException("PatchData: no PatchOpcode rows for patchDate='"
-                + _patchDate + "' serverType='" + _serverType + "'");
+            throw new InvalidOperationException("PatchData: no PatchOpcode rows for PatchLevel " + _patchLevel);
         }
         DebugLog.Write(LogChannel.Opcodes, "PatchData ctor: loaded "
             + _opcodeValuesByName.Count + " opcode name(s)");
 
-        List<OpcodeId> opcodeIds = LoadOpcodeIds();
+        List<PatchOpcode> opcodeIds = LoadOpcodeIds();
         DebugLog.Write(LogChannel.Opcodes, "PatchData ctor: enumerated "
             + opcodeIds.Count + " OpcodeId(s) for this patch");
 
         int opcodeIndex = 0;
         while (opcodeIndex < opcodeIds.Count)
         {
-            OpcodeId opcodeId = opcodeIds[opcodeIndex];
+            PatchOpcode opcodeId = opcodeIds[opcodeIndex];
             DebugLog.Write(LogChannel.Opcodes, "PatchData ctor: loading fields for OpcodeId opcode=0x"
                 + opcodeId.Opcode.ToString("X4") + " version=" + opcodeId.Version);
 
@@ -134,9 +130,9 @@ public class PatchData
     //   constructor has already checked _opcodeValuesByName.Count and thrown in that case,
     //   so in normal flow this never returns empty.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private List<OpcodeId> LoadOpcodeIds()
+    private List<PatchOpcode> LoadOpcodeIds()
     {
-        List<OpcodeId> opcodeIds = new List<OpcodeId>();
+        List<PatchOpcode> opcodeIds = new List<PatchOpcode>();
 
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
@@ -145,8 +141,8 @@ public class PatchData
             + " FROM PatchOpcode"
             + " WHERE patch_date = @patchDate"
             + " AND server_type = @serverType";
-        cmd.Parameters.AddWithValue("@patchDate", _patchDate);
-        cmd.Parameters.AddWithValue("@serverType", _serverType);
+        cmd.Parameters.AddWithValue("@patchDate", _patchLevel.PatchDate);
+        cmd.Parameters.AddWithValue("@serverType", _patchLevel.ServerType);
 
         using SqliteDataReader reader = cmd.ExecuteReader();
         while (reader.Read())
@@ -154,7 +150,7 @@ public class PatchData
             int opcodeValueRaw = reader.GetInt32(0);
             int version = reader.GetInt32(1);
             ushort opcodeValue = (ushort)opcodeValueRaw;
-            OpcodeId opcodeId = new OpcodeId(opcodeValue, version);
+            PatchOpcode opcodeId = new PatchOpcode(_patchLevel, opcodeValue, version);
             opcodeIds.Add(opcodeId);
         }
 
@@ -171,8 +167,8 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void LoadOpcodeMap()
     {
-        DebugLog.Write(LogChannel.Opcodes, "PatchData.LoadOpcodeMap: querying PatchOpcode for patchDate="
-            + _patchDate + " serverType=" + _serverType);
+        DebugLog.Write(LogChannel.Opcodes, "PatchData.LoadOpcodeMap: querying PatchOpcode for PatchLevel = " +
+            _patchLevel);
 
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
@@ -181,8 +177,8 @@ public class PatchData
             + " FROM PatchOpcode"
             + " WHERE patch_date = @patchDate"
             + " AND server_type = @serverType";
-        cmd.Parameters.AddWithValue("@patchDate", _patchDate);
-        cmd.Parameters.AddWithValue("@serverType", _serverType);
+        cmd.Parameters.AddWithValue("@patchDate", _patchLevel.PatchDate);
+        cmd.Parameters.AddWithValue("@serverType", _patchLevel.ServerType);
 
         using SqliteDataReader reader = cmd.ExecuteReader();
         int rowCount = 0;
@@ -219,7 +215,7 @@ public class PatchData
     // Parameters:
     //   opcodeId  - The OpcodeId whose required fields to load.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void LoadFields(OpcodeId opcodeId)
+    private void LoadFields(PatchOpcode opcodeId)
     {
         List<FieldDefinition> fields = new List<FieldDefinition>();
 
@@ -234,8 +230,8 @@ public class PatchData
             + " AND po.opcode_value = @opcodeValue"
             + " AND po.version = @version"
             + " ORDER BY pf.bit_offset";
-        cmd.Parameters.AddWithValue("@patchDate", _patchDate);
-        cmd.Parameters.AddWithValue("@serverType", _serverType);
+        cmd.Parameters.AddWithValue("@patchDate", _patchLevel.PatchDate);
+        cmd.Parameters.AddWithValue("@serverType", _patchLevel.ServerType);
         cmd.Parameters.AddWithValue("@opcodeValue", (int)opcodeId.Opcode);
         cmd.Parameters.AddWithValue("@version", opcodeId.Version);
 
@@ -292,7 +288,7 @@ public class PatchData
     //   The list of PacketOptionalGroup.id values for this OpcodeId.  Empty if there are
     //   none.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private List<int> LoadOptionalGroupIds(OpcodeId opcodeId)
+    private List<int> LoadOptionalGroupIds(PatchOpcode opcodeId)
     {
         List<int> groupIds = new List<int>();
 
@@ -307,8 +303,8 @@ public class PatchData
             + " AND po.opcode_value = @opcodeValue"
             + " AND po.version = @version"
             + " ORDER BY pog.bit_offset";
-        cmd.Parameters.AddWithValue("@patchDate", _patchDate);
-        cmd.Parameters.AddWithValue("@serverType", _serverType);
+        cmd.Parameters.AddWithValue("@patchDate", _patchLevel.PatchDate);
+        cmd.Parameters.AddWithValue("@serverType", _patchLevel.ServerType);
         cmd.Parameters.AddWithValue("@opcodeValue", (int)opcodeId.Opcode);
         cmd.Parameters.AddWithValue("@version", opcodeId.Version);
 
@@ -351,7 +347,7 @@ public class PatchData
     //   opcodeId  - The OpcodeId whose cache entry receives the appended optional fields.
     //   groupId   - The PacketOptionalGroup.id whose fields to load.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void LoadOptionalFields(OpcodeId opcodeId, int groupId)
+    private void LoadOptionalFields(PatchOpcode opcodeId, int groupId)
     {
         FieldDefinition[] existing = _fieldsByOpcode[opcodeId];
 
@@ -436,8 +432,7 @@ public class PatchData
         if (found == false)
         {
             DebugLog.Write(LogChannel.Opcodes, "PatchData.GetOpcodeValue: unknown opcode name '"
-                + opcodeName + "' in patchDate=" + _patchDate
-                + " serverType=" + _serverType + ", returning 0");
+                + opcodeName + "' in PatchLevel " + _patchLevel + ", returning 0");
             return 0;
         }
         return opcodeValue;
@@ -465,7 +460,7 @@ public class PatchData
     // Returns:
     //   The cache array of FieldDefinitions for the OpcodeId, or null if absent.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public FieldDefinition[]? GetFieldDefinitions(OpcodeId opcodeId)
+    public FieldDefinition[]? GetFieldDefinitions(PatchOpcode opcodeId)
     {
         FieldDefinition[]? definitions;
         bool found = _fieldsByOpcode.TryGetValue(opcodeId, out definitions);
