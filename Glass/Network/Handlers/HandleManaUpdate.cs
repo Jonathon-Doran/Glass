@@ -43,6 +43,7 @@ public class HandleManaUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public HandleManaUpdate()
     {
+        PatchRegistry registry = GlassContext.PatchRegistry;
         FieldExtractor extractor = GlassContext.FieldExtractor;
         PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
 
@@ -51,9 +52,9 @@ public class HandleManaUpdate : IHandleOpcodes
         PatchOpcode opcodeId = new PatchOpcode(patchLevel, _opcode);
         _fields = extractor.GetFields(patchLevel, opcodeId);
 
-        _playerId = _fields.IndexOfField("player_id");
-        _currentManaId = _fields.IndexOfField("current_mana");
-        _maxManaId = _fields.IndexOfField("max_mana");
+        _playerId = registry.IndexOfField(patchLevel, _handle, "player_id");
+        _currentManaId = registry.IndexOfField(patchLevel, _handle, "current_mana");
+        _maxManaId = registry.IndexOfField(patchLevel, _handle, "max_mana");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

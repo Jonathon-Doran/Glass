@@ -201,4 +201,36 @@ public class PatchRegistry
 
         return patchData.GetOpcodeHandle(opcodeName);
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // IndexOfField
+    //
+    // Returns the FieldIndex of the named field within the OpcodeHandle's field
+    // definitions in the given patch level.  Looks up the patch in the loaded set and
+    // delegates to the PatchData.
+    //
+    // Throws InvalidOperationException if the patch level is not loaded.
+    //
+    // Returns (FieldIndex)(-1) if the named field is not present.
+    //
+    // Parameters:
+    //   patchLevel  - The patch identifier.  Must already be loaded.
+    //   handle      - The OpcodeHandle whose field definitions to search.
+    //   fieldName   - The field_name column value to look up.
+    //
+    // Returns:
+    //   The FieldIndex of the named field, or (FieldIndex)(-1) if not found.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public FieldIndex IndexOfField(PatchLevel patchLevel, OpcodeHandle handle, string fieldName)
+    {
+        PatchData patchData;
+        bool found = _loadedPatches.TryGetValue(patchLevel, out patchData!);
+        if (found == false)
+        {
+            throw new InvalidOperationException("PatchRegistry.IndexOfField: patchLevel "
+                + patchLevel + " is not loaded");
+        }
+
+        return patchData.IndexOfField(handle, fieldName);
+    }
 }

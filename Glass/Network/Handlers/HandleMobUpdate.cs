@@ -43,6 +43,7 @@ public class HandleMobUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public HandleMobUpdate()
     {
+        PatchRegistry registry = GlassContext.PatchRegistry;
         FieldExtractor extractor = GlassContext.FieldExtractor;
         PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
 
@@ -52,10 +53,10 @@ public class HandleMobUpdate : IHandleOpcodes
         PatchOpcode opcodeId = new PatchOpcode(patchLevel, _opcode);
         _fields = extractor.GetFields(patchLevel, opcodeId);
 
-        _spawnId = _fields.IndexOfField("spawn_id");
-        _xPosId = _fields.IndexOfField("x_pos");
-        _yPosId = _fields.IndexOfField("y_pos");
-        _zPosId = _fields.IndexOfField("z_pos");
+        _spawnId = registry.IndexOfField(patchLevel, _handle, "spawn_id");
+        _xPosId = registry.IndexOfField(patchLevel, _handle, "x_pos");
+        _yPosId = registry.IndexOfField(patchLevel, _handle, "y_pos");
+        _zPosId = registry.IndexOfField(patchLevel, _handle, "z_pos");
 
         // Todo:  heading should be 16-bits at byte 12
        // _headingId = _fields.IndexOfField("heading");

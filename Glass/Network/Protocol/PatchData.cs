@@ -332,8 +332,8 @@ public class PatchData
                 if (encodingFound == false)
                 {
                     DebugLog.Write(LogChannel.Fields, "PatchData.LoadFields: unrecognized required encoding '"
-                        + encodingString + "' for handle=" + (int)handle
-                        + " opcode=0x" + patchOpcode.Opcode.ToString("X4")
+                        + encodingString + "' for opcode =" + _namesByHandle[patchOpcode.Opcode]
+                        + " 0x" + patchOpcode.Opcode.ToString("X4")
                         + " version=" + patchOpcode.Version + " fieldName='" + fieldName
                         + "', storing as Unknown");
                     encoding = FieldEncoding.Unknown;
@@ -404,8 +404,8 @@ public class PatchData
                 if (encodingFound == false)
                 {
                     DebugLog.Write(LogChannel.Fields, "PatchData.LoadFields: unrecognized optional encoding '"
-                        + encodingString + "' for handle=" + (int)handle
-                        + " opcode=0x" + patchOpcode.Opcode.ToString("X4")
+                        + encodingString + "' for opcode =" + _namesByHandle[patchOpcode.Opcode]
+                        + " 0x" + patchOpcode.Opcode.ToString("X4")
                         + " version=" + patchOpcode.Version + " groupId=" + groupId
                         + " fieldName='" + fieldName + "', storing as Unknown");
                     encoding = FieldEncoding.Unknown;
@@ -522,6 +522,47 @@ public class PatchData
             return null;
         }
         return definitions;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // IndexOfField
+    //
+    // Returns the FieldIndex of the named field within the FieldDefinition list for the
+    // given OpcodeHandle.  Called by handlers at construction time to cache field indices
+    // for hot-path reads from FieldBags.  Cold path.
+    //
+    // Returns (FieldIndex)(-1) if the opcode has no fields loaded for this patch, or if
+    // the named field is not present in the loaded definitions.
+    //
+    // Parameters:
+    //   handle    - The OpcodeHandle whose field definitions to search.
+    //   fieldName - The field_name column value to look up.
+    //
+    // Returns:
+    //   The FieldIndex of the named field, or (FieldIndex)(-1) if not found.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public FieldIndex IndexOfField(OpcodeHandle handle, string fieldName)
+    {
+        FieldDefinition[]? definitions = _opcodeFields[handle];
+        if (definitions == null)
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.IndexOfField: no field definitions for opcode '" +
+                _namesByHandle[handle] + "' in patchLevel=" + _patchLevel + "), returning -1");
+            return (FieldIndex)(-1);
+        }
+
+        for (int fieldIndex = 0; fieldIndex < definitions.Length; fieldIndex++)
+        {
+            if (definitions[fieldIndex].Name == fieldName)
+            {
+                return (FieldIndex)fieldIndex;
+            }
+        }
+
+        DebugLog.Write(LogChannel.Fields, "PatchData.IndexOfField: field '" + fieldName
+            + "' not in definitions for opcode '" + _namesByHandle[handle] + 
+            "' in patchLevel=" + _patchLevel + "), returning -1");
+        return (FieldIndex)(-1);
     }
 }
 

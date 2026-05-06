@@ -47,6 +47,7 @@ public class HandleMovementHistory : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public HandleMovementHistory()
     {
+        PatchRegistry registry = GlassContext.PatchRegistry;
         FieldExtractor extractor = GlassContext.FieldExtractor;
         PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
 
@@ -56,11 +57,11 @@ public class HandleMovementHistory : IHandleOpcodes
         PatchOpcode opcodeId = new PatchOpcode(patchLevel, _opcode);
         _fields = extractor.GetFields(patchLevel, opcodeId);
 
-        _xPosId = _fields.IndexOfField("x_pos");
-        _yPosId = _fields.IndexOfField("y_pos");
-        _zPosId = _fields.IndexOfField("z_pos");
-        _timestampId = _fields.IndexOfField("timestamp");
-        _movestateId = _fields.IndexOfField("move_state");
+        _xPosId = registry.IndexOfField(patchLevel, _handle, "x_pos");
+        _yPosId = registry.IndexOfField(patchLevel, _handle, "y_pos");
+        _zPosId = registry.IndexOfField(patchLevel, _handle, "z_pos");
+        _timestampId = registry.IndexOfField(patchLevel, _handle, "timestamp");
+        _movestateId = registry.IndexOfField(patchLevel, _handle, "move_state");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

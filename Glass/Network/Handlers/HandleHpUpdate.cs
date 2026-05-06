@@ -44,18 +44,19 @@ public class HandleHpUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public HandleHpUpdate()
     {
+        PatchRegistry registry = GlassContext.PatchRegistry;
         FieldExtractor extractor = GlassContext.FieldExtractor;
         PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
 
         _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
         PatchOpcode opcodeId = new PatchOpcode(patchLevel, _opcode);
-        _handle = GlassContext.PatchRegistry.GetOpcodeHandle(patchLevel, _opcodeName);
+        _handle = registry.GetOpcodeHandle(patchLevel, _opcodeName);
 
         _fields = extractor.GetFields(patchLevel, opcodeId);
 
-        _playerId = _fields.IndexOfField("player_id");
-        _currentHPId = _fields.IndexOfField("current_hp");
-        _maxHPId = _fields.IndexOfField("max_hp");
+        _playerId = registry.IndexOfField(patchLevel, _handle, "player_id");
+        _currentHPId = registry.IndexOfField(patchLevel, _handle, "current_hp");
+        _maxHPId = registry.IndexOfField(patchLevel, _handle, "max_hp");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

@@ -48,18 +48,18 @@ public class HandleClientUpdate : IHandleOpcodes
         FieldExtractor extractor = GlassContext.FieldExtractor;
         PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
 
-        _handle = GlassContext.PatchRegistry.GetOpcodeHandle(patchLevel, _opcodeName);
+        _handle = registry.GetOpcodeHandle(patchLevel, _opcodeName);
 
-        _opcode = registry.GetOpcodeValue(patchLevel, _opcodeName);
         PatchOpcode opcodeId = new PatchOpcode(patchLevel, _opcode);
         _fields = extractor.GetFields(patchLevel, opcodeId);
+        _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
 
-        _sequenceId = _fields.IndexOfField("sequence");
-        _playerId = _fields.IndexOfField("player_id");
-        _xPosId = _fields.IndexOfField("x_pos");
-        _yPosId = _fields.IndexOfField("y_pos");
-        _zPosId = _fields.IndexOfField("z_pos");
-        _headingId = _fields.IndexOfField("heading");
+        _sequenceId = registry.IndexOfField(patchLevel, _handle, "sequence");
+        _playerId = registry.IndexOfField(patchLevel, _handle, "player_id");
+        _xPosId = registry.IndexOfField(patchLevel, _handle, "x_pos");
+        _yPosId = registry.IndexOfField(patchLevel, _handle, "y_pos");
+        _zPosId = registry.IndexOfField(patchLevel, _handle, "z_pos");
+        _headingId = registry.IndexOfField(patchLevel, _handle, "heading");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

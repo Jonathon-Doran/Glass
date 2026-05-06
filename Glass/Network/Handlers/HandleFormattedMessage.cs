@@ -39,16 +39,17 @@ public class HandleFormattedMessage : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public HandleFormattedMessage()
     {
+        PatchRegistry registry = GlassContext.PatchRegistry;
         FieldExtractor extractor = GlassContext.FieldExtractor;
         PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
 
-        _handle = GlassContext.PatchRegistry.GetOpcodeHandle(patchLevel, _opcodeName);
+        _handle = registry.GetOpcodeHandle(patchLevel, _opcodeName);
 
         _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
         PatchOpcode opcodeId = new PatchOpcode(patchLevel, _opcode);
         _fields = extractor.GetFields(patchLevel, opcodeId);
 
-        _messageId = _fields.IndexOfField("msg_text");
+        _messageId = registry.IndexOfField(patchLevel, _handle, "msg_text");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

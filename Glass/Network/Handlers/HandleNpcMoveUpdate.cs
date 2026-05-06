@@ -47,6 +47,7 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public HandleNpcMoveUpdate()
     {
+        PatchRegistry registry = GlassContext.PatchRegistry;
         FieldExtractor extractor = GlassContext.FieldExtractor;
         PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
 
@@ -56,17 +57,17 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
         PatchOpcode opcodeId = new PatchOpcode(patchLevel, _opcode);
         _fields = extractor.GetFields(patchLevel, opcodeId);
 
-        _spawnId = _fields.IndexOfField("spawn_id");
-        _xPosId = _fields.IndexOfField("x_pos");
-        _yPosId = _fields.IndexOfField("y_pos");
-        _zPosId = _fields.IndexOfField("z_pos");
-        _headingId = _fields.IndexOfField("heading");
-        _pitchId = _fields.IndexOfField("pitch");
-        _headingDeltaId = _fields.IndexOfField("heading_delta");
-        _velocityId = _fields.IndexOfField("velocity");
-        _dxId = _fields.IndexOfField("dx");
-        _dyId = _fields.IndexOfField("dy");
-        _dzId = _fields.IndexOfField("dz");
+        _spawnId = registry.IndexOfField(patchLevel, _handle, "spawn_id");
+        _xPosId = registry.IndexOfField(patchLevel, _handle, "x_pos");
+        _yPosId = registry.IndexOfField(patchLevel, _handle, "y_pos");
+        _zPosId = registry.IndexOfField(patchLevel, _handle, "z_pos");
+        _headingId = registry.IndexOfField(patchLevel, _handle, "heading");
+        _pitchId = registry.IndexOfField(patchLevel, _handle, "pitch");
+        _headingDeltaId = registry.IndexOfField(patchLevel, _handle, "heading_delta");
+        _velocityId = registry.IndexOfField(patchLevel, _handle, "velocity");
+        _dxId = registry.IndexOfField(patchLevel, _handle, "dx");
+        _dyId = registry.IndexOfField(patchLevel, _handle, "dy");
+        _dzId = registry.IndexOfField(patchLevel, _handle, "dz");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

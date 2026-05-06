@@ -38,17 +38,18 @@ public class HandleDeath : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public HandleDeath()
     {
+        PatchRegistry registry = GlassContext.PatchRegistry;
         FieldExtractor extractor = GlassContext.FieldExtractor;
         PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
 
-        _handle = GlassContext.PatchRegistry.GetOpcodeHandle(patchLevel, _opcodeName);
+        _handle = registry.GetOpcodeHandle(patchLevel, _opcodeName);
 
         _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
         PatchOpcode opcodeId = new PatchOpcode(patchLevel, _opcode);
         _fields = extractor.GetFields(patchLevel, opcodeId);
 
-        _spawnId = _fields.IndexOfField("spawn_id");
-        _killerId = _fields.IndexOfField("killer_id");
+        _spawnId = registry.IndexOfField(patchLevel, _handle, "spawn_id");
+        _killerId = registry.IndexOfField(patchLevel, _handle, "killer_id");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

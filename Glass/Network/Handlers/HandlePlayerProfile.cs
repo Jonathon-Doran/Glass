@@ -57,6 +57,7 @@ public class HandlePlayerProfile : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public HandlePlayerProfile()
     {
+        PatchRegistry registry = GlassContext.PatchRegistry;
         FieldExtractor extractor = GlassContext.FieldExtractor;
         PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
 
@@ -66,23 +67,23 @@ public class HandlePlayerProfile : IHandleOpcodes
         PatchOpcode opcodeId = new PatchOpcode(patchLevel, _opcode);
         _fields = extractor.GetFields(patchLevel, opcodeId);
 
-        _nameId = _fields.IndexOfField("name");
-        _levelId = _fields.IndexOfField("level");
-        _playerClassId = _fields.IndexOfField("player_class");
-        _practicePointsId = _fields.IndexOfField("practice_points");
-        _manaId = _fields.IndexOfField("mana");
-        _hitpointsId = _fields.IndexOfField("max_hitpoints");
-        _strengthId = _fields.IndexOfField("strength");
-        _staminaId = _fields.IndexOfField("stamina");
-        _charismaId = _fields.IndexOfField("charisma");
-        _dexterityId = _fields.IndexOfField("dexterity");
-        _intelligenceId = _fields.IndexOfField("intelligence");
-        _agilityId = _fields.IndexOfField("agility");
-        _wisdomId = _fields.IndexOfField("wisdom");
-        _platinumCarriedId = _fields.IndexOfField("platinum_carried");
-        _goldCarriedId = _fields.IndexOfField("gold_carried");
-        _silverCarriedId = _fields.IndexOfField("silver_carried");
-        _copperCarriedId = _fields.IndexOfField("copper_carried");
+        _nameId = registry.IndexOfField(patchLevel, _handle, "name");
+        _levelId = registry.IndexOfField(patchLevel, _handle, "level");
+        _playerClassId = registry.IndexOfField(patchLevel, _handle, "player_class");
+        _practicePointsId = registry.IndexOfField(patchLevel, _handle, "practice_points");
+        _manaId = registry.IndexOfField(patchLevel, _handle, "mana");
+        _hitpointsId = registry.IndexOfField(patchLevel, _handle, "max_hitpoints");
+        _strengthId = registry.IndexOfField(patchLevel, _handle, "strength");
+        _staminaId = registry.IndexOfField(patchLevel, _handle, "stamina");
+        _charismaId = registry.IndexOfField(patchLevel, _handle, "charisma");
+        _dexterityId = registry.IndexOfField(patchLevel, _handle, "dexterity");
+        _intelligenceId = registry.IndexOfField(patchLevel, _handle, "intelligence");
+        _agilityId = registry.IndexOfField(patchLevel, _handle, "agility");
+        _wisdomId = registry.IndexOfField(patchLevel, _handle, "wisdom");
+        _platinumCarriedId = registry.IndexOfField(patchLevel, _handle, "platinum_carried");
+        _goldCarriedId = registry.IndexOfField(patchLevel, _handle, "gold_carried");
+        _silverCarriedId = registry.IndexOfField(patchLevel, _handle, "silver_carried");
+        _copperCarriedId = registry.IndexOfField(patchLevel, _handle, "copper_carried");
 
         DebugLog.Write(LogChannel.Opcodes, _opcodeName + " ctor: opcode=0x"
             + _opcode.ToString("x4") + ", " + (_fields == null ? 0 : _fields.Count)
