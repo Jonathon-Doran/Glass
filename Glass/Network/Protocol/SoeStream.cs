@@ -38,8 +38,6 @@ public class SoeStream : IDisposable
     // Delegate for dispatched application-level opcodes
     // ---------------------------------------------------------------------------
     public delegate void AppPacketHandler(ReadOnlySpan<byte> data,
-                                          int length,
-                                          byte direction,
                                           ushort opcode,
                                           PacketMetadata metadata);
 
@@ -397,7 +395,7 @@ public class SoeStream : IDisposable
 
         if (OnAppPacket != null)
         {
-            OnAppPacket(data, length, _direction, opcode, metadata);
+            OnAppPacket(data, opcode, metadata);
         }
     }
 

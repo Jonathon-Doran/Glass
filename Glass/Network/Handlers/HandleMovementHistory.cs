@@ -16,11 +16,10 @@ namespace Glass.Network.Handlers;
 public class HandleMovementHistory : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_MovementHistory";
+    private OpcodeHandle _opcode;
+    private PatchRegistry _registry;
+    private PatchLevel _patchLevel;
 
-    private OpcodeHandle _handle;
-    private ushort _opcode;
-    private readonly IReadOnlyList<FieldDefinition>? _fields;
-    private bool _nullFieldsObserved = false;
     private bool _tooSmallObserved = false;
     private bool _oddSizeObserved = false;
     private bool _characterNotFound = false;
@@ -47,21 +46,16 @@ public class HandleMovementHistory : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public HandleMovementHistory()
     {
-        PatchRegistry registry = GlassContext.PatchRegistry;
-        FieldExtractor extractor = GlassContext.FieldExtractor;
-        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
+        _registry = GlassContext.PatchRegistry;
+        _patchLevel = GlassContext.CurrentPatchLevel;
+        _opcode = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
-        _handle = GlassContext.PatchRegistry.GetOpcodeHandle(patchLevel, _opcodeName);
 
-        _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
-        PatchOpcode opcodeId = new PatchOpcode(patchLevel, _opcode);
-        _fields = extractor.GetFields(patchLevel, opcodeId);
-
-        _xPosId = registry.IndexOfField(patchLevel, _handle, "x_pos");
-        _yPosId = registry.IndexOfField(patchLevel, _handle, "y_pos");
-        _zPosId = registry.IndexOfField(patchLevel, _handle, "z_pos");
-        _timestampId = registry.IndexOfField(patchLevel, _handle, "timestamp");
-        _movestateId = registry.IndexOfField(patchLevel, _handle, "move_state");
+        _xPosId = _registry.IndexOfField(_patchLevel, _opcode, "x_pos");
+        _yPosId = _registry.IndexOfField(_patchLevel, _opcode, "y_pos");
+        _zPosId = _registry.IndexOfField(_patchLevel, _opcode, "z_pos");
+        _timestampId = _registry.IndexOfField(_patchLevel, _opcode, "timestamp");
+        _movestateId = _registry.IndexOfField(_patchLevel, _opcode, "move_state");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -72,10 +66,6 @@ public class HandleMovementHistory : IHandleOpcodes
 
     public void Dispose()
     {
-        if (_nullFieldsObserved)
-        {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " had null field descriptions");
-        }
         if (_tooSmallObserved)
         {
             DebugLog.Write(LogChannel.Opcodes, _opcodeName + " had at least one undersized packet");
@@ -89,14 +79,6 @@ public class HandleMovementHistory : IHandleOpcodes
             DebugLog.Write(LogChannel.Opcodes, _opcodeName + " could not find one character from metadata");
         }
         GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Opcode
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public ushort Opcode
-    {
-        get { return _opcode; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -158,13 +140,6 @@ public class HandleMovementHistory : IHandleOpcodes
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        // Ensure that _fields exist if we process this packet
-        if (_fields == null)
-        {
-            _nullFieldsObserved = true;         // log this on exit
-            return;
-        }
-
         Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
 
         if (character == null)
@@ -187,7 +162,7 @@ public class HandleMovementHistory : IHandleOpcodes
 
         int entryCount = (data.Length - 1) / 17;
         byte trailingByte = data[data.Length - 1];
-        FieldBag bag = GlassContext.FieldExtractor.Rent(_opcodeName);
+        FieldBag bag = _registry.Rent(_patchLevel, _opcode);
 
         try
         {
@@ -195,7 +170,7 @@ public class HandleMovementHistory : IHandleOpcodes
             {
                 bag.Clear();
                 ReadOnlySpan<byte> entry = data.Slice(i * 17, 17);
-                GlassContext.FieldExtractor.Extract(_fields!, entry, bag);
+                GlassContext.FieldExtractor.Extract(_patchLevel, _opcode, entry, bag);
 
                 float xPos = bag.GetFloatAt(_xPosId);
                 float yPos = bag.GetFloatAt(_yPosId);

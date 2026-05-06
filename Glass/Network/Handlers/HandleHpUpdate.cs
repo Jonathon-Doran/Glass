@@ -18,12 +18,10 @@ namespace Glass.Network.Handlers;
 public class HandleHpUpdate : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_HpUpdate";
-
-    private ushort _opcode;
     private OpcodeHandle _handle;
-    private readonly IReadOnlyList<FieldDefinition>? _fields;
-    private bool _nullFieldsObserved = false;
-    private bool _characterNotFound = false;
+    private PatchRegistry _registry;
+    private PatchLevel _patchLevel;
+
 
     private readonly int _playerId;
     private readonly int _currentHPId;
@@ -44,19 +42,13 @@ public class HandleHpUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public HandleHpUpdate()
     {
-        PatchRegistry registry = GlassContext.PatchRegistry;
-        FieldExtractor extractor = GlassContext.FieldExtractor;
-        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
+        _registry = GlassContext.PatchRegistry;
+        _patchLevel = GlassContext.CurrentPatchLevel;
+        _handle = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
-        _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
-        PatchOpcode opcodeId = new PatchOpcode(patchLevel, _opcode);
-        _handle = registry.GetOpcodeHandle(patchLevel, _opcodeName);
-
-        _fields = extractor.GetFields(patchLevel, opcodeId);
-
-        _playerId = registry.IndexOfField(patchLevel, _handle, "player_id");
-        _currentHPId = registry.IndexOfField(patchLevel, _handle, "current_hp");
-        _maxHPId = registry.IndexOfField(patchLevel, _handle, "max_hp");
+        _playerId = _registry.IndexOfField(_patchLevel, _handle, "player_id");
+        _currentHPId = _registry.IndexOfField(_patchLevel, _handle, "current_hp");
+        _maxHPId = _registry.IndexOfField(_patchLevel, _handle, "max_hp");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -67,24 +59,7 @@ public class HandleHpUpdate : IHandleOpcodes
 
     public void Dispose()
     {
-        if (_nullFieldsObserved)
-        {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " had null field descriptions");
-        }
-
-        if (_characterNotFound)
-        {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " could not find character");
-        }
         GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Opcode
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public ushort Opcode
-    {
-        get { return _opcode; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -123,19 +98,12 @@ public class HandleHpUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        // Ensure that _fields exist if we process this packet
-        if (_fields == null)
-        {
-            _nullFieldsObserved = true;         // log this on exit
-            return;
-        }
-
         Character? character = null;
 
-        FieldBag bag = GlassContext.FieldExtractor.Rent(_opcodeName);
+        FieldBag bag = _registry.Rent(_patchLevel, _handle);
         try
         {
-            GlassContext.FieldExtractor.Extract(_fields!, data, bag);
+            GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
 
             uint playerId = bag.GetUIntAt(_playerId);
 

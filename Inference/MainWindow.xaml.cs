@@ -1445,15 +1445,15 @@ public partial class MainWindow : Window
     // opcode:    The decoded opcode value.
     // metadata:  Wire-level metadata including timestamp, IPs, ports, session, stream.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleAppPacket(ReadOnlySpan<byte> data, int length,
-                                 byte direction, ushort opcode, PacketMetadata metadata)
+    private void HandleAppPacket(ReadOnlySpan<byte> data, ushort opcode, PacketMetadata metadata)
     {
-        byte[] copy = data.Slice(0, length).ToArray();
+        int dataLength = data.Length;
+        byte[] copy = data.Slice(0, dataLength).ToArray();
         CapturedPacket packet;
         packet.Metadata = metadata;
         packet.Payload = copy;
         packet.OpcodeValue = opcode;
-        packet.OriginalLength = length;
+        packet.OriginalLength = dataLength;
         packet.HighlightColor = 0;
 
         lock (_payloadLock)
@@ -1461,27 +1461,28 @@ public partial class MainWindow : Window
             _capturedPackets.Add(packet);
         }
 
+
+
         Dispatcher.BeginInvoke(() =>
         {
             if (_opcodeLookup.TryGetValue(opcode, out OpcodeEntry? entry))
             {
                 entry.Count = entry.Count + 1;
-                if (length < entry.MinSize)
+                if (dataLength < entry.MinSize)
                 {
-                    entry.MinSize = length;
+                    entry.MinSize = dataLength;
                 }
-                if (length > entry.MaxSize)
+                if (dataLength > entry.MaxSize)
                 {
-                    entry.MaxSize = length;
+                    entry.MaxSize = dataLength;
                 }
             }
             else
             {
                 string opcodeHex = "0x" + opcode.ToString("x4");
-                entry = new OpcodeEntry(opcodeHex, metadata.Channel, length)
+                entry = new OpcodeEntry(opcodeHex, metadata.Channel, dataLength)
                 {
                     RawOpcode = opcode,
-                    RawDirection = direction
                 };
                 if (_patchOpcodes.TryGetValue(opcode, out string? knownName))
                 {
@@ -1492,7 +1493,7 @@ public partial class MainWindow : Window
             }
         });
 
-        OpcodeDispatch.Instance.HandlePacket(data, length, direction, opcode, metadata);
+        OpcodeDispatch.Instance.HandlePacket(data, opcode, metadata);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

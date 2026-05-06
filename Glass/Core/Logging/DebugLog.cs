@@ -213,13 +213,11 @@ public static class DebugLog
     {
         if (_shutdown)
         {
-            System.Diagnostics.Debug.WriteLine("Write aborted during shutdown");
             return;
         }
 
         if ((_enabled & (1UL << (int)channel)) == 0)
         {
-            System.Diagnostics.Debug.WriteLine("Write aborted due to channel not enabled");
             return;
         }
 

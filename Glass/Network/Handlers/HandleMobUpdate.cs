@@ -17,10 +17,9 @@ namespace Glass.Network.Handlers;
 public class HandleMobUpdate : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_MobUpdate";
-    private OpcodeHandle _handle;
-    private ushort _opcode;
-    private readonly IReadOnlyList<FieldDefinition>? _fields;
-    private bool _nullFieldsObserved = false;
+    private OpcodeHandle _opcode;
+    private PatchRegistry _registry;
+    private PatchLevel _patchLevel;
 
     private readonly int _spawnId;
     private readonly int _xPosId;
@@ -43,20 +42,14 @@ public class HandleMobUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public HandleMobUpdate()
     {
-        PatchRegistry registry = GlassContext.PatchRegistry;
-        FieldExtractor extractor = GlassContext.FieldExtractor;
-        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
+        _registry = GlassContext.PatchRegistry;
+        _patchLevel = GlassContext.CurrentPatchLevel;
+        _opcode = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
-        _handle = GlassContext.PatchRegistry.GetOpcodeHandle(patchLevel, _opcodeName);
-
-        _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
-        PatchOpcode opcodeId = new PatchOpcode(patchLevel, _opcode);
-        _fields = extractor.GetFields(patchLevel, opcodeId);
-
-        _spawnId = registry.IndexOfField(patchLevel, _handle, "spawn_id");
-        _xPosId = registry.IndexOfField(patchLevel, _handle, "x_pos");
-        _yPosId = registry.IndexOfField(patchLevel, _handle, "y_pos");
-        _zPosId = registry.IndexOfField(patchLevel, _handle, "z_pos");
+        _spawnId = _registry.IndexOfField(_patchLevel, _opcode, "spawn_id");
+        _xPosId = _registry.IndexOfField(_patchLevel, _opcode, "x_pos");
+        _yPosId = _registry.IndexOfField(_patchLevel, _opcode, "y_pos");
+        _zPosId = _registry.IndexOfField(_patchLevel, _opcode, "z_pos");
 
         // Todo:  heading should be 16-bits at byte 12
        // _headingId = _fields.IndexOfField("heading");
@@ -70,19 +63,7 @@ public class HandleMobUpdate : IHandleOpcodes
 
     public void Dispose()
     {
-        if (_nullFieldsObserved)
-        {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " had null field descriptions");
-        }
-
         GC.SuppressFinalize(this);
-    }
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Opcode
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public ushort Opcode
-    {
-        get { return _opcode; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -121,22 +102,15 @@ public class HandleMobUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        // Ensure that _fields exist if we process this packet
-        if (_fields == null)
-        {
-            _nullFieldsObserved = true;         // log this on exit
-            return;
-        }
-
         uint spawnId;
         float xPos;
         float yPos;
         float zPos;
 
-        FieldBag bag = GlassContext.FieldExtractor.Rent(_opcodeName);
+        FieldBag bag = _registry.Rent(_patchLevel, _opcode);
         try
         {
-            GlassContext.FieldExtractor.Extract(_fields!, data, bag);
+            GlassContext.FieldExtractor.Extract(_patchLevel, _opcode, data, bag);
 
             spawnId = bag.GetUIntAt(_spawnId);
             xPos = bag.GetFloatAt(_xPosId);

@@ -3,6 +3,7 @@ using Glass.Data;
 using Glass.Network.Protocol.Fields;
 using Microsoft.Data.Sqlite;
 using System.Collections.Generic;
+using System.Reflection.Emit;
 
 namespace Glass.Network.Protocol;
 
@@ -54,6 +55,15 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private readonly FieldDefinition[]?[] _opcodeFields;
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // _handlesByValue
+    //
+    // Maps the wire opcode value to the OpcodeHandle assigned at load time.  Used on the
+    // hot path by the dispatcher to resolve an incoming wire opcode to the handle that
+    // indexes its handler array.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private readonly Dictionary<ushort, OpcodeHandle> _handlesByValue;
+
     private readonly string[] _namesByHandle;
     private readonly Dictionary<string, OpcodeHandle> _handlesByName;
 
@@ -104,6 +114,7 @@ public class PatchData
         _opcodeFields = new FieldDefinition[opcodeCount][];
         _namesByHandle = new string[opcodeCount];
         _handlesByName = new Dictionary<string, OpcodeHandle>(opcodeCount);
+        _handlesByValue = new Dictionary<ushort, OpcodeHandle>(opcodeCount);
 
         LoadOpcodeMap();
         LoadPatchOpcodes();
@@ -214,6 +225,7 @@ public class PatchData
             _patchOpcodes[handle] = patchOpcode;
             _namesByHandle[handle] = opcodeName;
             _handlesByName[opcodeName] = handle;
+            _handlesByValue[opcodeValue] = handle;
 
             handleIndex = handleIndex + 1;
         }
@@ -432,37 +444,6 @@ public class PatchData
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GetOpcodeValue
-    //
-    // Returns the wire opcode value for the given logical name in this patch level.  Called
-    // by handlers at construction time so they know which wire opcode to register for.
-    // Returns 0 if the name is unknown — handlers check for 0 and skip their own
-    // registration if this patch does not define their opcode.  0 is not a valid wire
-    // opcode in EQ, so it serves as an unambiguous "not found" sentinel.
-    //
-    // Cold path: handlers call this once per opcode at construction.  Not called from the
-    // hot path.
-    //
-    // Parameters:
-    //   opcodeName - The logical name (e.g. "OP_PlayerProfile").
-    //
-    // Returns:
-    //   The wire opcode value (e.g. 0x6FA1), or 0 if the name is not in this patch.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public ushort GetOpcodeValue(string opcodeName)
-    {
-        ushort opcodeValue;
-        bool found = _opcodeValuesByName.TryGetValue(opcodeName, out opcodeValue);
-        if (found == false)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "PatchData.GetOpcodeValue: unknown opcode name '"
-                + opcodeName + "' in PatchLevel " + _patchLevel + ", returning 0");
-            return 0;
-        }
-        return opcodeValue;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeHandle
     //
     // Returns the OpcodeHandle for the given opcode name in this patch.  Called by handlers
@@ -491,37 +472,98 @@ public class PatchData
         return handle;
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GetFieldDefinitions
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetOpcodeHandle
     //
-    // Returns the field definitions for the given OpcodeId in this patch level.  Called by
-    // handlers at construction time, once per OpcodeId the handler cares about.  The
-    // returned array is the live cache entry — handlers must not modify it.  Returning the
-    // cache array directly avoids per-handler allocation; FieldDefinition is a struct so
-    // element reads copy out cleanly.
+    // Returns the OpcodeHandle for the given wire opcode value in this patch.  Called on
+    // the hot path by the dispatcher to resolve an incoming wire opcode to the handle
+    // that indexes its handler array.
     //
-    // Returns null if the OpcodeId is not in the cache.  This happens when the OpcodeId
-    // has no PacketField rows for this patch — the load skipped caching it.  Handlers
-    // receive null and treat the opcode as unsupported for this patch.
-    //
-    // Cold path: handlers call this once per OpcodeId at construction.  Not called from
-    // the hot path.
+    // Returns (OpcodeHandle)(-1) if the wire value is not in this patch.
     //
     // Parameters:
-    //   opcodeId  - The OpcodeId whose field definitions to return.
+    //   opcodeValue  - The wire opcode value (e.g. 0x6FA1).
     //
     // Returns:
-    //   The cache array of FieldDefinitions for the OpcodeId, or null if absent.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public FieldDefinition[]? GetFieldDefinitions(PatchOpcode opcodeId)
+    //   The OpcodeHandle for the wire value, or (OpcodeHandle)(-1) if not in this patch.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public OpcodeHandle GetOpcodeHandle(ushort opcodeValue)
     {
-        FieldDefinition[]? definitions;
-        bool found = _fieldsByOpcode.TryGetValue(opcodeId, out definitions);
+        OpcodeHandle handle;
+        bool found = _handlesByValue.TryGetValue(opcodeValue, out handle);
         if (found == false)
         {
-            return null;
+            return (OpcodeHandle)(-1);
         }
-        return definitions;
+        return handle;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetOpcodeName
+    //
+    // Returns the opcode name for the given OpcodeHandle in this patch.
+    //
+    // Parameters:
+    //   handle  - The OpcodeHandle whose name to return.
+    //
+    // Returns:
+    //   The opcode name (e.g. "OP_PlayerProfile").
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public string GetOpcodeName(OpcodeHandle handle)
+    {
+        return _namesByHandle[handle];
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetOpcodeValue
+    //
+    // Returns the wire opcode value for the given OpcodeHandle in this patch.
+    //
+    // Parameters:
+    //   handle  - The OpcodeHandle whose wire opcode value to return.
+    //
+    // Returns:
+    //   The wire opcode value (e.g. 0x6FA1), or 0 if the handle is invalid.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public ushort GetOpcodeValue(OpcodeHandle handle)
+    {
+        if ((int)handle < 0 || (int)handle >= _patchOpcodes.Length)
+        {
+            return 0;
+        }
+
+        return _patchOpcodes[handle].Opcode;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetOpcodeCount
+    //
+    // Returns the number of opcodes loaded for this patch.  Equal to the length of the
+    // handle-indexed arrays and the count of PatchOpcode rows for this patch.
+    //
+    // Returns:
+    //   The number of opcodes in this patch.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public int GetOpcodeCount()
+    {
+        return _patchOpcodes.Length;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetFieldDefinitions
+    //
+    // Returns the FieldDefinition array for the given OpcodeHandle, or null if the opcode
+    // has no fields loaded for this patch.
+    //
+    // Parameters:
+    //   handle  - The OpcodeHandle whose field definitions to return.
+    //
+    // Returns:
+    //   The FieldDefinition array, or null if absent.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public FieldDefinition[]? GetFieldDefinitions(OpcodeHandle opcode)
+    {
+        return _opcodeFields[opcode];
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -541,13 +583,13 @@ public class PatchData
     // Returns:
     //   The FieldIndex of the named field, or (FieldIndex)(-1) if not found.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public FieldIndex IndexOfField(OpcodeHandle handle, string fieldName)
+    public FieldIndex IndexOfField(OpcodeHandle opcode, string fieldName)
     {
-        FieldDefinition[]? definitions = _opcodeFields[handle];
+        FieldDefinition[]? definitions = _opcodeFields[opcode];
         if (definitions == null)
         {
             DebugLog.Write(LogChannel.Fields, "PatchData.IndexOfField: no field definitions for opcode '" +
-                _namesByHandle[handle] + "' in patchLevel=" + _patchLevel + "), returning -1");
+                _namesByHandle[opcode] + "' in patchLevel=" + _patchLevel + "), returning -1");
             return (FieldIndex)(-1);
         }
 
@@ -560,7 +602,7 @@ public class PatchData
         }
 
         DebugLog.Write(LogChannel.Fields, "PatchData.IndexOfField: field '" + fieldName
-            + "' not in definitions for opcode '" + _namesByHandle[handle] + 
+            + "' not in definitions for opcode '" + _namesByHandle[opcode] + 
             "' in patchLevel=" + _patchLevel + "), returning -1");
         return (FieldIndex)(-1);
     }

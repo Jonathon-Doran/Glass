@@ -18,11 +18,9 @@ namespace Glass.Network.Handlers;
 public class HandlePlayerProfile : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_PlayerProfile";
-
     private OpcodeHandle _handle;
-    private ushort _opcode;
-    private readonly IReadOnlyList<FieldDefinition>? _fields;
-    private bool _nullFieldsObserved = false;
+    private PatchRegistry _registry;
+    private PatchLevel _patchLevel;
 
     private readonly int _nameId;
     private readonly int _levelId;
@@ -57,37 +55,27 @@ public class HandlePlayerProfile : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public HandlePlayerProfile()
     {
-        PatchRegistry registry = GlassContext.PatchRegistry;
-        FieldExtractor extractor = GlassContext.FieldExtractor;
-        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
+        _registry = GlassContext.PatchRegistry;
+       _patchLevel = GlassContext.CurrentPatchLevel;
+        _handle = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
-        _handle = GlassContext.PatchRegistry.GetOpcodeHandle(patchLevel, _opcodeName);
-
-        _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
-        PatchOpcode opcodeId = new PatchOpcode(patchLevel, _opcode);
-        _fields = extractor.GetFields(patchLevel, opcodeId);
-
-        _nameId = registry.IndexOfField(patchLevel, _handle, "name");
-        _levelId = registry.IndexOfField(patchLevel, _handle, "level");
-        _playerClassId = registry.IndexOfField(patchLevel, _handle, "player_class");
-        _practicePointsId = registry.IndexOfField(patchLevel, _handle, "practice_points");
-        _manaId = registry.IndexOfField(patchLevel, _handle, "mana");
-        _hitpointsId = registry.IndexOfField(patchLevel, _handle, "max_hitpoints");
-        _strengthId = registry.IndexOfField(patchLevel, _handle, "strength");
-        _staminaId = registry.IndexOfField(patchLevel, _handle, "stamina");
-        _charismaId = registry.IndexOfField(patchLevel, _handle, "charisma");
-        _dexterityId = registry.IndexOfField(patchLevel, _handle, "dexterity");
-        _intelligenceId = registry.IndexOfField(patchLevel, _handle, "intelligence");
-        _agilityId = registry.IndexOfField(patchLevel, _handle, "agility");
-        _wisdomId = registry.IndexOfField(patchLevel, _handle, "wisdom");
-        _platinumCarriedId = registry.IndexOfField(patchLevel, _handle, "platinum_carried");
-        _goldCarriedId = registry.IndexOfField(patchLevel, _handle, "gold_carried");
-        _silverCarriedId = registry.IndexOfField(patchLevel, _handle, "silver_carried");
-        _copperCarriedId = registry.IndexOfField(patchLevel, _handle, "copper_carried");
-
-        DebugLog.Write(LogChannel.Opcodes, _opcodeName + " ctor: opcode=0x"
-            + _opcode.ToString("x4") + ", " + (_fields == null ? 0 : _fields.Count)
-            + " field definition(s) loaded");
+        _nameId = _registry.IndexOfField(_patchLevel, _handle, "name");
+        _levelId = _registry.IndexOfField(_patchLevel, _handle, "level");
+        _playerClassId = _registry.IndexOfField(_patchLevel, _handle, "player_class");
+        _practicePointsId = _registry.IndexOfField(_patchLevel, _handle, "practice_points");
+        _manaId = _registry.IndexOfField(_patchLevel, _handle, "mana");
+        _hitpointsId = _registry.IndexOfField(_patchLevel, _handle, "max_hitpoints");
+        _strengthId = _registry.IndexOfField(_patchLevel, _handle, "strength");
+        _staminaId = _registry.IndexOfField(_patchLevel, _handle, "stamina");
+        _charismaId = _registry.IndexOfField(_patchLevel, _handle, "charisma");
+        _dexterityId =  _registry.IndexOfField(_patchLevel, _handle, "dexterity");
+        _intelligenceId = _registry.IndexOfField(_patchLevel, _handle, "intelligence");
+        _agilityId = _registry.IndexOfField(_patchLevel, _handle, "agility");
+        _wisdomId = _registry.IndexOfField(_patchLevel, _handle, "wisdom");
+        _platinumCarriedId = _registry.IndexOfField(_patchLevel, _handle, "platinum_carried");
+        _goldCarriedId = _registry.IndexOfField(_patchLevel, _handle, "gold_carried");
+        _silverCarriedId = _registry.IndexOfField(_patchLevel, _handle, "silver_carried");
+        _copperCarriedId = _registry.IndexOfField(_patchLevel, _handle, "copper_carried");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -98,19 +86,7 @@ public class HandlePlayerProfile : IHandleOpcodes
 
     public void Dispose()
     {
-        if (_nullFieldsObserved)
-        {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " had null field descriptions");
-        }
         GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Opcode
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public ushort Opcode
-    {
-        get { return _opcode; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -153,17 +129,10 @@ public class HandlePlayerProfile : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        // Ensure that _fields exist if we process this packet
-        if (_fields == null)
-        {
-            _nullFieldsObserved = true;         // log this on exit
-            return;
-        }
-
-        FieldBag bag = GlassContext.FieldExtractor.Rent(_opcodeName);
+        FieldBag bag = _registry.Rent(_patchLevel, _handle);
         try
         {
-            GlassContext.FieldExtractor.Extract(_fields!, data, bag);
+            GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
 
             ReadOnlySpan<byte> nameBytes = bag.GetBytesAt(_nameId);
             string name = Encoding.ASCII.GetString(nameBytes);

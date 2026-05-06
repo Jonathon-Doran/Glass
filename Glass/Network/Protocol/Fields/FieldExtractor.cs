@@ -1,4 +1,5 @@
-﻿using Glass.Core.Logging;
+﻿using Glass.Core;
+using Glass.Core.Logging;
 using Glass.Data;
 using Microsoft.Data.Sqlite;
 using System.Buffers.Binary;
@@ -49,43 +50,6 @@ public class FieldExtractor
 
         DebugLog.Write(LogChannel.Network, "FieldExtractor ctor: empty patch cache, bag pool sized "
             + FieldBag.DefaultPoolSize + " x " + FieldBag.DefaultSlotCount + " slots");
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GetOpcodeValue
-    //
-    // Returns the wire opcode value for the given logical name in the given patch.  Looks
-    // up the patch's PatchData in the cache and delegates to it.  Called by handlers at
-    // construction time, once per opcode they care about.  Cold path.
-    //
-    // Throws InvalidOperationException if the patch level has not been loaded.  Callers
-    // must invoke LoadPatchLevel (or LoadLatestPatchLevel) for the patch before any
-    // handler that needs it is constructed; a missing entry here is a programmer error,
-    // not a runtime condition to recover from.
-    //
-    // Returns 0 if the opcode name is unknown to the loaded patch.  Handlers check for 0
-    // and skip their own dispatch registration if their opcode is missing — this is the
-    // expected runtime case when a patch genuinely lacks an opcode the handler knows
-    // about.
-    //
-    // Parameters:
-    //   patchLevel  - The patch identifier.  Must already be loaded.
-    //   opcodeName  - The logical name (e.g. "OP_PlayerProfile").
-    //
-    // Returns:
-    //   The wire opcode value (e.g. 0x6FA1), or 0 if the name is not in the patch.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public ushort GetOpcodeValue(PatchLevel patchLevel, string opcodeName)
-    {
-        PatchData patchData;
-        bool found = _patchDataByLevel.TryGetValue(patchLevel, out patchData!);
-        if (found == false)
-        {
-            throw new InvalidOperationException("FieldExtractor.GetOpcodeValue: patchLevel "
-                + patchLevel + " is not loaded");
-        }
-
-        return patchData.GetOpcodeValue(opcodeName);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -201,53 +165,15 @@ public class FieldExtractor
         return latestDate;
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GetFields
-    //
-    // Returns the field definitions for the given OpcodeId in the given patch.  Looks up
-    // the patch's PatchData in the cache and delegates to it.  Called by handlers at
-    // construction time, once per OpcodeId the handler cares about, and by Inference code
-    // that views field definitions without decoding.  Cold path.
-    //
-    // The return type is IReadOnlyList rather than an array because nothing — handler or
-    // viewer — has a legitimate reason to mutate the cached definitions.  FieldDefinition
-    // is a value type, so element reads copy out cleanly; the cached data stays
-    // unmutated regardless of what callers do with the elements they read.
-    //
-    // Throws InvalidOperationException if the patch level has not been loaded.  Callers
-    // must invoke LoadPatchLevel (or LoadLatestPatchLevel) for the patch before any
-    // handler that needs it is constructed; a missing entry here is a programmer error,
-    // not a runtime condition to recover from.
-    //
-    // Returns null if the OpcodeId is not in the patch's cache.  Callers check for null
-    // and skip their own decode for that variant.
-    //
-    // Parameters:
-    //   patchLevel  - The patch identifier.  Must already be loaded.
-    //   opcodeId    - The OpcodeId whose field definitions to return.
-    //
-    // Returns:
-    //   The field definitions for the OpcodeId, or null if absent.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public IReadOnlyList<FieldDefinition>? GetFields(PatchLevel patchLevel, PatchOpcode opcodeId)
-    {
-        PatchData patchData;
-        bool found = _patchDataByLevel.TryGetValue(patchLevel, out patchData!);
-        if (found == false)
-        {
-            throw new InvalidOperationException("FieldExtractor.GetFields: patchLevel "
-                + patchLevel + " is not loaded");
-        }
-
-        return patchData.GetFieldDefinitions(opcodeId);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // Extract
     //
-    // Walks the field definition list and writes one FieldSlot per definition into the
-    // caller-provided FieldBag, preserving definition-to-slot index alignment.  Called
-    // from the hot path on every decoded packet.
+    // Walks the field definitions for the given OpcodeHandle and writes one FieldSlot per
+    // definition into the caller-provided FieldBag, preserving definition-to-slot index
+    // alignment.  Called from the hot path on every decoded packet.
+    //
+    // Resolves the field definitions from the registry by patchLevel and handle.  Returns
+    // silently if the opcode has no fields loaded for this patch.
     //
     // Every definition produces exactly one slot.  Definitions whose decode does not
     // succeed (Unknown encoding, payload too short for the bit range, unsupported bit
@@ -258,34 +184,29 @@ public class FieldExtractor
     //
     // All per-field failure paths are silent.  Failures during Inference are the expected
     // case (every handler is tried against every packet) and logging them would flood
-    // the log with non-anomalies.  Glass-runtime diagnostics belong in the handler, where
-    // the context to know whether a failure is surprising lives.
+    // the log with non-anomalies.
     //
-    // The definitions parameter is IReadOnlyList rather than an array.  Handlers cache
-    // the value returned by FieldExtractor.GetFields, which is the same reference held
-    // in PatchData's per-opcode cache.  No copy happens at the boundary.
-    //
-    // Reentrancy: this method is safe to call concurrently from multiple threads on the
-    // same FieldExtractor instance, provided each thread passes its own FieldBag.  The
-    // bag is mutated; sharing a bag across threads is not supported.
+    // Reentrancy: safe to call concurrently from multiple threads, provided each thread
+    // passes its own FieldBag.  The bag is mutated; sharing a bag across threads is not
+    // supported.
     //
     // Parameters:
-    //   definitions - The field definitions, in the order they should appear in the bag.
-    //                 Typically the same reference returned by GetFields and cached by
-    //                 the handler.  No copy is made.
+    //   patchLevel  - The patch identifier the handle belongs to.
+    //   handle      - The OpcodeHandle whose field definitions to walk.
     //   payload     - The raw packet payload bytes.  Bit offsets in definitions are
     //                 relative to the start of this span.
-    //   bag         - The bag to fill.  Must have been rented from a FieldBagPool by the
+    //   bag         - The bag to fill.  Must have been rented from the registry by the
     //                 caller and must have enough capacity to hold one slot per
     //                 definition.  The caller is responsible for releasing the bag when
     //                 done reading.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void Extract(IReadOnlyList<FieldDefinition> definitions, ReadOnlySpan<byte> payload,
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    public void Extract(PatchLevel patchLevel, OpcodeHandle opcode, ReadOnlySpan<byte> payload,
         FieldBag bag)
     {
+        FieldDefinition[]? definitions = GlassContext.PatchRegistry.GetFields(patchLevel, opcode);
         if (definitions == null)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldExtractor.Extract: null definitions, nothing to extract");
             return;
         }
 
@@ -295,7 +216,7 @@ public class FieldExtractor
             return;
         }
 
-        for (int definitionIndex = 0; definitionIndex < definitions.Count; definitionIndex++)
+        for (int definitionIndex = 0; definitionIndex < definitions.Length; definitionIndex++)
         {
             FieldDefinition definition = definitions[definitionIndex];
 
@@ -700,32 +621,5 @@ public class FieldExtractor
 
         ReadOnlySpan<byte> stringBytes = payload.Slice((int)stringStart, (int)declaredLength);
         slot.SetAsciiString(stringBytes);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Rent
-    //
-    // Rents a FieldBag from the extractor's internal pool, stamps it with the caller's
-    // opcode name for diagnostic logging, and returns it.  The bag is cleared by the pool
-    // before being returned, so the caller always sees a fresh bag.  The caller must
-    // eventually call Release on the bag to return it to the pool.
-    //
-    // Handlers use this in the hot path to get a bag for filling via Extract, reading,
-    // and releasing — the pool itself is an internal detail of FieldExtractor and is not
-    // exposed.
-    //
-    // Parameters:
-    //   opcodeName  - The opcode name of the calling handler (e.g. "OP_NpcMoveUpdate").
-    //                 Stamped on the bag so any log lines the bag produces during use are
-    //                 attributable to a specific opcode.
-    //
-    // Returns:
-    //   A bag with SlotCount == 0 and CurrentOpcodeName set, ready to be filled.
-    ///////////////////////////////////////////////////////////////////////////////////////
-    public FieldBag Rent(string opcodeName)
-    {
-        FieldBag bag = _bagPool.Rent();
-        bag.CurrentOpcodeName = opcodeName;
-        return bag;
     }
 }

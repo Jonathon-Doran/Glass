@@ -17,11 +17,9 @@ namespace Glass.Network.Handlers;
 public class HandleClientUpdate : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_ClientUpdate";
-
-    private ushort _opcode;
-    private OpcodeHandle _handle;
-    private readonly IReadOnlyList<FieldDefinition>? _fields;
-    private bool _nullFieldsObserved = false;
+    private OpcodeHandle _opcode;
+    private PatchRegistry _registry;
+    private PatchLevel _patchLevel;
 
     private readonly int _sequenceId;
     private readonly int _playerId;
@@ -44,22 +42,16 @@ public class HandleClientUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public HandleClientUpdate()
     {
-        PatchRegistry registry = GlassContext.PatchRegistry;
-        FieldExtractor extractor = GlassContext.FieldExtractor;
-        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
+        _registry = GlassContext.PatchRegistry;
+        _patchLevel = GlassContext.CurrentPatchLevel;
+        _opcode = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
-        _handle = registry.GetOpcodeHandle(patchLevel, _opcodeName);
-
-        PatchOpcode opcodeId = new PatchOpcode(patchLevel, _opcode);
-        _fields = extractor.GetFields(patchLevel, opcodeId);
-        _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
-
-        _sequenceId = registry.IndexOfField(patchLevel, _handle, "sequence");
-        _playerId = registry.IndexOfField(patchLevel, _handle, "player_id");
-        _xPosId = registry.IndexOfField(patchLevel, _handle, "x_pos");
-        _yPosId = registry.IndexOfField(patchLevel, _handle, "y_pos");
-        _zPosId = registry.IndexOfField(patchLevel, _handle, "z_pos");
-        _headingId = registry.IndexOfField(patchLevel, _handle, "heading");
+        _sequenceId = _registry.IndexOfField(_patchLevel, _opcode, "sequence");
+        _playerId = _registry.IndexOfField(_patchLevel, _opcode, "player_id");
+        _xPosId = _registry.IndexOfField(_patchLevel, _opcode, "x_pos");
+        _yPosId = _registry.IndexOfField(_patchLevel, _opcode, "y_pos");
+        _zPosId = _registry.IndexOfField(_patchLevel, _opcode, "z_pos");
+        _headingId = _registry.IndexOfField(_patchLevel, _opcode, "heading");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -70,20 +62,7 @@ public class HandleClientUpdate : IHandleOpcodes
 
     public void Dispose()
     {
-        if (_nullFieldsObserved)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "OP_ClientUpdate had null field descriptions");
-        }
-
         GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Opcode
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public ushort Opcode
-    {
-        get { return _opcode; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -122,17 +101,11 @@ public class HandleClientUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (_fields == null)
-        {
-            _nullFieldsObserved = true;         // log this on exit
-            return;
-        }
-
-        FieldBag bag = GlassContext.FieldExtractor.Rent(_opcodeName);
+        FieldBag bag = _registry.Rent(_patchLevel, _opcode);
 
         try
         {
-            GlassContext.FieldExtractor.Extract(_fields!, data, bag);
+            GlassContext.FieldExtractor.Extract(_patchLevel, _opcode, data, bag);
 
             int id = GlassContext.SessionRegistry.GetConnection(metadata).CharacterId;
             Character? character = CharacterRepository.Instance.GetById(id);

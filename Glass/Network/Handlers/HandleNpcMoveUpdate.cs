@@ -14,11 +14,9 @@ namespace Glass.Network.Handlers;
 public class HandleNpcMoveUpdate : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_NpcMoveUpdate";
-
     private OpcodeHandle _handle;
-    private ushort _opcode;
-    private readonly IReadOnlyList<FieldDefinition>? _fields;
-    private bool _nullFieldsObserved = false;
+    private PatchRegistry _registry;
+    private PatchLevel _patchLevel;
 
     private readonly int _spawnId;
     private readonly int _xPosId;
@@ -47,27 +45,21 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public HandleNpcMoveUpdate()
     {
-        PatchRegistry registry = GlassContext.PatchRegistry;
-        FieldExtractor extractor = GlassContext.FieldExtractor;
-        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
+        _registry = GlassContext.PatchRegistry;
+        _patchLevel = GlassContext.CurrentPatchLevel;
+        _handle = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
-        _handle = GlassContext.PatchRegistry.GetOpcodeHandle(patchLevel, _opcodeName);
-
-        _opcode = extractor.GetOpcodeValue(patchLevel, _opcodeName);
-        PatchOpcode opcodeId = new PatchOpcode(patchLevel, _opcode);
-        _fields = extractor.GetFields(patchLevel, opcodeId);
-
-        _spawnId = registry.IndexOfField(patchLevel, _handle, "spawn_id");
-        _xPosId = registry.IndexOfField(patchLevel, _handle, "x_pos");
-        _yPosId = registry.IndexOfField(patchLevel, _handle, "y_pos");
-        _zPosId = registry.IndexOfField(patchLevel, _handle, "z_pos");
-        _headingId = registry.IndexOfField(patchLevel, _handle, "heading");
-        _pitchId = registry.IndexOfField(patchLevel, _handle, "pitch");
-        _headingDeltaId = registry.IndexOfField(patchLevel, _handle, "heading_delta");
-        _velocityId = registry.IndexOfField(patchLevel, _handle, "velocity");
-        _dxId = registry.IndexOfField(patchLevel, _handle, "dx");
-        _dyId = registry.IndexOfField(patchLevel, _handle, "dy");
-        _dzId = registry.IndexOfField(patchLevel, _handle, "dz");
+        _spawnId = _registry.IndexOfField(_patchLevel, _handle, "spawn_id");
+        _xPosId = _registry.IndexOfField(_patchLevel, _handle, "x_pos");
+        _yPosId = _registry.IndexOfField(_patchLevel, _handle, "y_pos");
+        _zPosId = _registry.IndexOfField(_patchLevel, _handle, "z_pos");
+        _headingId = _registry.IndexOfField(_patchLevel, _handle, "heading");
+        _pitchId = _registry.IndexOfField(_patchLevel, _handle, "pitch");
+        _headingDeltaId = _registry.IndexOfField(_patchLevel, _handle, "heading_delta");
+        _velocityId = _registry.IndexOfField(_patchLevel, _handle, "velocity");
+        _dxId = _registry.IndexOfField(_patchLevel, _handle, "dx");
+        _dyId = _registry.IndexOfField(_patchLevel, _handle, "dy");
+        _dzId = _registry.IndexOfField(_patchLevel, _handle, "dz");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -78,23 +70,7 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
 
     public void Dispose()
     {
-        if (_nullFieldsObserved)
-        {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " had null field descriptions");
-        }
-
         GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Opcode
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public ushort Opcode
-    {
-        get
-        {
-            return _opcode;
-        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -140,16 +116,10 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (_fields == null)
-        {
-            _nullFieldsObserved = true;
-            return;
-        }
-
-        FieldBag bag = GlassContext.FieldExtractor.Rent(_opcodeName);
+        FieldBag bag = _registry.Rent(_patchLevel, _handle);
         try
         {
-            GlassContext.FieldExtractor.Extract(_fields!, data, bag);
+            GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
 
             uint spawnId = bag.GetUIntAt(_spawnId);
             float x = bag.GetFloatAt(_xPosId);
