@@ -28,9 +28,6 @@ namespace Glass.Network.Protocol.Fields;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class FieldExtractor
 {
-    private readonly Dictionary<PatchLevel, PatchData> _patchDataByLevel;
-    private readonly FieldBagPool _bagPool;
-
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // FieldExtractor (constructor)
     //
@@ -45,124 +42,6 @@ public class FieldExtractor
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public FieldExtractor()
     {
-        _patchDataByLevel = new Dictionary<PatchLevel, PatchData>();
-        _bagPool = new FieldBagPool(FieldBag.DefaultPoolSize, FieldBag.DefaultSlotCount);
-
-        DebugLog.Write(LogChannel.Network, "FieldExtractor ctor: empty patch cache, bag pool sized "
-            + FieldBag.DefaultPoolSize + " x " + FieldBag.DefaultSlotCount + " slots");
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // LoadPatchLevel
-    //
-    // Ensures the PatchData for the given patch level is loaded and cached.  If the patch
-    // is already in the cache, returns immediately without rebuilding.  Otherwise constructs
-    // a PatchData (which runs the database queries to populate its opcode map and field
-    // definitions) and stores it.
-    //
-    // Idempotent: calling twice for the same patch level is safe and cheap on the second
-    // call.  Callers that may run before or after others doing the same load do not need
-    // to coordinate.
-    //
-    // Parameters:
-    //   patchLevel  - The patch identifier to load.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void LoadPatchLevel(PatchLevel patchLevel)
-    {
-        if (_patchDataByLevel.ContainsKey(patchLevel) == true)
-        {
-            DebugLog.Write(LogChannel.Network, "FieldExtractor.LoadPatchLevel: patchLevel "
-                + patchLevel + " already loaded, returning");
-            return;
-        }
-
-        PatchData patchData = new PatchData(patchLevel);
-        _patchDataByLevel[patchLevel] = patchData;
-
-        DebugLog.Write(LogChannel.Network, "FieldExtractor.LoadPatchLevel: loaded patchLevel "
-            + patchLevel);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // LoadLatestPatchLevel
-    //
-    // Resolves the most recent patch_date in the database for the given server type,
-    // constructs the corresponding PatchLevel identifier, ensures its PatchData is loaded
-    // and cached, and returns the identifier.  Used by Glass at session launch when
-    // "use the latest patch for this server type" is the desired default.
-    //
-    // The cache check inside LoadPatchLevel makes this idempotent — calling twice with
-    // the same server type is safe and only does the database resolve a second time.
-    // The resolve query itself is cheap (one MAX() against an indexed column) so the
-    // duplicate cost is negligible.
-    //
-    // Throws InvalidOperationException via ResolveLatestPatchDate if no patches exist for
-    // the server type.  This means the database has no patch data for the server type at
-    // all — for example, a freshly-seeded Test server before any patches have been
-    // imported.  The caller may catch this and present a UI for selecting a different
-    // server type or for manually importing patch data.
-    //
-    // Parameters:
-    //   serverType  - The server_type column value (e.g. "live", "test").
-    //
-    // Returns:
-    //   The PatchLevel identifier for the loaded patch.  Caller typically stores this
-    //   on GlassContext.CurrentPatchLevel for handlers to read at construction time.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public PatchLevel LoadLatestPatchLevel(string serverType)
-    {
-        DebugLog.Write(LogChannel.Network, "FieldExtractor.LoadLatestPatchLevel: serverType="
-            + serverType);
-
-        string latestDate = ResolveLatestPatchDate(serverType);
-        PatchLevel patchLevel = new PatchLevel(latestDate, serverType);
-        LoadPatchLevel(patchLevel);
-
-        DebugLog.Write(LogChannel.Network, "FieldExtractor.LoadLatestPatchLevel: returning "
-            + patchLevel);
-        return patchLevel;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // ResolveLatestPatchDate
-    //
-    // Queries PatchOpcode for the maximum patch_date for the given server_type.  Used by
-    // LoadLatestPatchLevel to pick the date before constructing the PatchLevel identifier.
-    // patch_date is stored as an ISO-8601 string (yyyy-MM-dd) which sorts lexicographically
-    // and is therefore safe to use with MAX().
-    //
-    // Throws InvalidOperationException if the query returns no rows for the server type.
-    // The thrown exception propagates out of LoadLatestPatchLevel to the caller, which is
-    // the right behavior — Glass startup wants to fail visibly if the database has no
-    // patch data for the configured server type.
-    //
-    // Parameters:
-    //   serverType  - The server_type column value to filter on.
-    //
-    // Returns:
-    //   The most recent patch_date string for that server type.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private static string ResolveLatestPatchDate(string serverType)
-    {
-        using SqliteConnection conn = Database.Instance.Connect();
-        conn.Open();
-        using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT MAX(patch_date)"
-            + " FROM PatchOpcode"
-            + " WHERE server_type = @serverType";
-        cmd.Parameters.AddWithValue("@serverType", serverType);
-
-        object? result = cmd.ExecuteScalar();
-        if (result == null || result == DBNull.Value)
-        {
-            throw new InvalidOperationException("FieldExtractor.ResolveLatestPatchDate: "
-                + "no patches for serverType='" + serverType + "'");
-        }
-
-        string latestDate = (string)result;
-        DebugLog.Write(LogChannel.Network, "FieldExtractor.ResolveLatestPatchDate: latest "
-            + "patch_date for serverType=" + serverType + " is " + latestDate);
-        return latestDate;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

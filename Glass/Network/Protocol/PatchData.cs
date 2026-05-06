@@ -31,7 +31,6 @@ public class PatchData
 {
     private readonly PatchLevel _patchLevel;
     private readonly Dictionary<string, ushort> _opcodeValuesByName;
-    private readonly Dictionary<PatchOpcode, FieldDefinition[]> _fieldsByOpcode;
     private readonly Dictionary<string, FieldEncoding> _encodingsByString;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -101,7 +100,6 @@ public class PatchData
         _encodingsByString = new Dictionary<string, FieldEncoding>();
         BuildEncodingMap();
         _opcodeValuesByName = new Dictionary<string, ushort>();
-        _fieldsByOpcode = new Dictionary<PatchOpcode, FieldDefinition[]>();
 
         int opcodeCount = CountPatchOpcodes();
         if (opcodeCount == 0)
@@ -439,7 +437,6 @@ public class PatchData
         }
 
         FieldDefinition[] definitionsArray = fields.ToArray();
-        _fieldsByOpcode[patchOpcode] = definitionsArray;
         _opcodeFields[handle] = definitionsArray;
     }
 

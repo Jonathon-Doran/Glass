@@ -772,7 +772,6 @@ public partial class MainWindow : Window
         GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
 
         GlassContext.FieldExtractor = new FieldExtractor();
-        GlassContext.FieldExtractor.LoadPatchLevel(_currentPatchLevel.Value);
         GlassContext.CurrentPatchLevel = _currentPatchLevel.Value;
 
         if (dialog.ShowDialog() == true)
