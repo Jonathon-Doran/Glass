@@ -345,6 +345,10 @@ public class Database
         {
             ApplyMigration(conn, 40, Migration_040);
         }
+        if (version < 41)
+        {
+            ApplyMigration(conn, 41, Migration_041);
+        }
     }
 
     private int GetSchemaVersion()
@@ -1100,6 +1104,12 @@ public class Database
         ALTER TABLE PacketOptionalGroup ADD COLUMN flag_field_name TEXT NOT NULL DEFAULT '';
         UPDATE PacketOptionalGroup SET flag_field_name = 'flags';
     ";
+
+    private const string Migration_041 = @"
+        ALTER TABLE PacketField ADD COLUMN divisor REAL NOT NULL DEFAULT 1.0;
+        ALTER TABLE PacketOptionalField ADD COLUMN divisor REAL NOT NULL DEFAULT 1.0;
+    ";
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"

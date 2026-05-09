@@ -16,6 +16,8 @@
 // time in the handler's load routine.  Within the extractor, no defensive checks for
 // negative values are needed.
 //
+// Divisor is used to scale integer values to create sign-magnitude floats.
+//
 // This is plain data — no methods, no validation.  Validation happens at load time in the
 // handler's load routine and at the FieldExtractor's string-table lookup.
 ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -24,5 +26,6 @@ public struct FieldDefinition
     public string Name;
     public uint BitOffset;
     public uint BitLength;
+    public float Divisor;
     public FieldEncoding Encoding;
 }

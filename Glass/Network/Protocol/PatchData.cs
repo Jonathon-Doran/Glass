@@ -159,10 +159,10 @@ public class PatchData
         _encodingsByString.Add("uint", FieldEncoding.UInt);
         _encodingsByString.Add("int", FieldEncoding.Int);
         _encodingsByString.Add("float", FieldEncoding.Float);
+        _encodingsByString.Add("uint_msb", FieldEncoding.UIntMsb);
         _encodingsByString.Add("uint_masked", FieldEncoding.UIntMasked);
-        _encodingsByString.Add("sign_extend_fixed_div8", FieldEncoding.SignExtendFixedDiv8);
-        _encodingsByString.Add("signmag_msb_div8", FieldEncoding.SignMagagnitudeMsbDiv8);
         _encodingsByString.Add("signmag_msb", FieldEncoding.SignMagnitudeMsb);
+        _encodingsByString.Add("signmag_lsb", FieldEncoding.SignMagnitudeLsb);
         _encodingsByString.Add("opt_signmag_msb", FieldEncoding.OptSignMagnitudeMsb);
         _encodingsByString.Add("string_null_terminated", FieldEncoding.StringNullTerminated);
         _encodingsByString.Add("string_length_prefixed", FieldEncoding.StringLengthPrefixed);
@@ -362,7 +362,7 @@ public class PatchData
         List<FieldDefinition> fields = new List<FieldDefinition>();
 
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT pf.field_name, pf.bit_offset, pf.bit_length, pf.encoding"
+        cmd.CommandText = "SELECT pf.field_name, pf.bit_offset, pf.bit_length, pf.encoding, pf.divisor"
             + " FROM PacketField pf"
             + " JOIN PatchOpcode po ON pf.patch_opcode_id = po.id"
             + " WHERE po.patch_date = @patchDate"
@@ -382,6 +382,7 @@ public class PatchData
             uint bitOffset = (uint)reader.GetInt32(1);
             uint bitLength = (uint)reader.GetInt32(2);
             string encodingString = reader.GetString(3);
+            float divisor = (float)reader.GetFloat(4);
 
             FieldEncoding encoding;
             bool encodingFound = _encodingsByString.TryGetValue(encodingString, out encoding);
@@ -400,6 +401,7 @@ public class PatchData
             definition.BitOffset = bitOffset;
             definition.BitLength = bitLength;
             definition.Encoding = encoding;
+            definition.Divisor = divisor;
             fields.Add(definition);
         }
 
@@ -466,7 +468,7 @@ public class PatchData
             uint groupBitOffset = groupBitOffsets[groupIndex];
 
             using SqliteCommand optionalCmd = conn.CreateCommand();
-            optionalCmd.CommandText = "SELECT field_name, bit_length, encoding"
+            optionalCmd.CommandText = "SELECT field_name, bit_length, encoding, divisor"
                 + " FROM PacketOptionalField"
                 + " WHERE group_id = @groupId"
                 + " ORDER BY sequence_order";
@@ -478,6 +480,7 @@ public class PatchData
                 string fieldName = reader.GetString(0);
                 uint bitLength = (uint)reader.GetInt32(1);
                 string encodingString = reader.GetString(2);
+                float divisor = reader.GetFloat(3);
 
                 FieldEncoding encoding;
                 bool encodingFound = _encodingsByString.TryGetValue(encodingString, out encoding);
@@ -496,6 +499,7 @@ public class PatchData
                 definition.BitOffset = groupBitOffset;
                 definition.BitLength = bitLength;
                 definition.Encoding = encoding;
+                definition.Divisor = divisor;
                 fields.Add(definition);
             }
         }
@@ -568,7 +572,7 @@ public class PatchData
             List<OptionalSubField> subFields = new List<OptionalSubField>();
 
             using SqliteCommand optionalCmd = conn.CreateCommand();
-            optionalCmd.CommandText = "SELECT field_name, bit_length, encoding"
+            optionalCmd.CommandText = "SELECT field_name, bit_length, encoding, divisor"
                 + " FROM PacketOptionalField"
                 + " WHERE group_id = @groupId"
                 + " ORDER BY sequence_order";
@@ -580,6 +584,7 @@ public class PatchData
                 string fieldName = reader.GetString(0);
                 uint bitLength = (uint)reader.GetInt32(1);
                 string encodingString = reader.GetString(2);
+                float divisor = reader.GetFloat(3);
 
                 FieldEncoding encoding;
                 bool encodingFound = _encodingsByString.TryGetValue(encodingString, out encoding);
@@ -595,6 +600,7 @@ public class PatchData
                 subField.BitLength = bitLength;
                 subField.Encoding = encoding;
                 subField.Name = fieldName;
+                subField.Divisor = divisor;
                 subFields.Add(subField);
             }
 

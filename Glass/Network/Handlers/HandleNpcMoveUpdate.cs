@@ -129,7 +129,7 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
             float x = bag.GetFloatAt(_xPosId);
             float y = bag.GetFloatAt(_yPosId);
             float z = bag.GetFloatAt(_zPosId);
-            uint heading = bag.GetUIntAt(_headingId);
+            float heading = bag.GetFloatAt(_headingId);
             uint flags = bag.GetUIntAt(_flagsId);
 
             DebugLog.Write(LogChannel.Opcodes, "Flags is 0x" + flags.ToString("x2"));
@@ -141,32 +141,32 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
             if (bag.IsPresent(_pitchId))
             {
                 optional.Append(" pitch=");
-                optional.Append(bag.GetIntAt(_pitchId));
+                optional.Append(bag.GetFloatAt(_pitchId));
             }
             if (bag.IsPresent(_headingDeltaId))
             {
                 optional.Append(" headingDelta=");
-                optional.Append(bag.GetIntAt(_headingDeltaId));
+                optional.Append(bag.GetFloatAt(_headingDeltaId));
             }
             if (bag.IsPresent(_velocityId))
             {
                 optional.Append(" velocity=");
-                optional.Append(bag.GetIntAt(_velocityId));
+                optional.Append(bag.GetFloatAt(_velocityId));
             }
             if (bag.IsPresent(_dxId))
             {
                 optional.Append(" dx=");
-                optional.Append(bag.GetIntAt(_dxId));
+                optional.Append(bag.GetFloatAt(_dxId));
             }
             if (bag.IsPresent(_dyId))
             {
                 optional.Append(" dy=");
-                optional.Append(bag.GetIntAt(_dyId));
+                optional.Append(bag.GetFloatAt(_dyId));
             }
             if (bag.IsPresent(_dzId))
             {
                 optional.Append(" dz=");
-                optional.Append(bag.GetIntAt(_dzId));
+                optional.Append(bag.GetFloatAt(_dzId));
             }
 
             string timestamp = metadata.Timestamp.ToString("HH:mm:ss.fff");

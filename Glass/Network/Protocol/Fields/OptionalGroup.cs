@@ -49,11 +49,13 @@ public class OptionalGroup
 // SlotIndex is the bag slot index for this sub-field, resolved during LoadFields via
 // PatchData.IndexOfField using the sub-field's name.  Same hot-path principle as
 // OptionalGroup.FlagSlotIndex — name lookup happens at load time, not per packet.
+// Divisor is used to scale integer values to create sign-magnitude floats.
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public struct OptionalSubField
 {
     public int SlotIndex;
     public uint BitLength;
     public FieldEncoding Encoding;
+    public float Divisor;
     public string Name;
 }
