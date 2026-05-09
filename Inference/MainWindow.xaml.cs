@@ -99,6 +99,9 @@ public partial class MainWindow : Window
         RestoreLastPatchLevel();
         GlassContext.PatchRegistry = new PatchRegistry(_currentPatchLevel!.Value);
         UpdateControlStates();
+        GlassContext.AppPacketBus = new AppPacketBus();
+        GlassContext.AppPacketBus.Subscribe(HandleAppPacket);
+
     }
 
     private void InitializeLogging()
@@ -134,9 +137,9 @@ public partial class MainWindow : Window
         DebugLog.Route(LogChannel.Inference, LogSink.InferenceLogfile);
         DebugLog.Route(LogChannel.Opcodes, LogSink.InferenceLogfile);
 
-        GlassDebugLogHandler fieldsLogHandler = new GlassDebugLogHandler("fields.log");
-        DebugLog.AddHandler(LogSink.Aux1LogFile, fieldsLogHandler);
-        DebugLog.Route(LogChannel.Fields, LogSink.Aux1LogFile);
+        GlassDebugLogHandler opcodesLogHandler = new GlassDebugLogHandler("opcodes.log");
+        DebugLog.AddHandler(LogSink.Aux1LogFile, opcodesLogHandler);
+        DebugLog.Route(LogChannel.Opcodes, LogSink.Aux1LogFile);
 
         GlassDebugLogHandler lowNetLogHandler = new GlassDebugLogHandler("lowNet.log");
         DebugLog.AddHandler(LogSink.Aux2LogFile, lowNetLogHandler);
@@ -768,12 +771,12 @@ public partial class MainWindow : Window
 
         dialog.Owner = this;
 
-        GlassContext.SessionRegistry = new SessionRegistry(HandleAppPacket);
+        GlassContext.SessionRegistry = new SessionRegistry();
         GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
 
         GlassContext.FieldExtractor = new FieldExtractor();
         GlassContext.CurrentPatchLevel = _currentPatchLevel.Value;
-
+        _ = OpcodeDispatch.Instance;
         if (dialog.ShowDialog() == true)
         {
             DebugLog.Write(LogChannel.InferenceDebug, "Profile selected: " + dialog.SelectedProfileName);
@@ -790,7 +793,7 @@ public partial class MainWindow : Window
             // DebugLog.Log_Network = false;
 
 
-            _sessionDemux = new SessionDemux(localIp, HandleAppPacket);
+            _sessionDemux = new SessionDemux(localIp);
             _packetCapture = new PacketCapture(_sessionDemux);
 
             // string bpfFilter = "udp and (net 64.37.128.0/18 or net 69.174.192.0/19 or net 209.0.234.0/23)";
@@ -1122,7 +1125,7 @@ public partial class MainWindow : Window
     // Button_OpcodeTraceRefresh_Click
     //
     // Refresh button for the Opcode Trace tab.  Walks Inference's CapturedPacket array,
-    // decodes each packet via OpcodeDispatch.Extract, and rebuilds the list.
+    // decodes each packet via Extract, and rebuilds the list.
     // Stub — implementation pending the view model and refresh logic.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void Button_OpcodeTraceRefresh_Click(object sender, RoutedEventArgs e)
@@ -1491,8 +1494,6 @@ public partial class MainWindow : Window
                 _opcodeLookup[opcode] = entry;
             }
         });
-
-        OpcodeDispatch.Instance.HandlePacket(data, opcode, metadata);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

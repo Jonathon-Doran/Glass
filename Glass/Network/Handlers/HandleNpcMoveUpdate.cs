@@ -28,7 +28,9 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
     private readonly int _velocityId;
     private readonly int _dxId;
     private readonly int _dyId;
-    private readonly int _dzId; 
+    private readonly int _dzId;
+
+    private readonly int _flagsId;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleNpcMoveUpdate (constructor)
@@ -60,6 +62,8 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
         _dxId = _registry.IndexOfField(_patchLevel, _handle, "dx");
         _dyId = _registry.IndexOfField(_patchLevel, _handle, "dy");
         _dzId = _registry.IndexOfField(_patchLevel, _handle, "dz");
+
+        _flagsId = _registry.IndexOfField(_patchLevel, _handle, "flags");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -126,6 +130,9 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
             float y = bag.GetFloatAt(_yPosId);
             float z = bag.GetFloatAt(_zPosId);
             uint heading = bag.GetUIntAt(_headingId);
+            uint flags = bag.GetUIntAt(_flagsId);
+
+            DebugLog.Write(LogChannel.Opcodes, "Flags is 0x" + flags.ToString("x2"));
 
             double headingDegrees = heading * 360.0 / 2048.0;
 

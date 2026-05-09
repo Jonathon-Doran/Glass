@@ -29,7 +29,6 @@ public class SessionRegistry
     private readonly Dictionary<string, SessionEntry> _sessions = new();
     private readonly Dictionary<int, int> _characterIdBySession = new();
     private readonly Dictionary<int, Connection> _connectionsByPort = new();
-    private readonly SoeStream.AppPacketHandler _appPacketHandler;
     private readonly int _arqSeqGiveUp = 512;
     private readonly string? _localIp;
     private int _nextSessionId = 0;
@@ -100,9 +99,8 @@ public class SessionRegistry
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // SessionRegistry Constructor
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public SessionRegistry(SoeStream.AppPacketHandler _handler)
+    public SessionRegistry()
     {
-        _appPacketHandler = _handler;
         _localIp = PacketCapture.GetLocalIP();
         GlassContext.FocusTracker.SessionActivated += OnSessionActivated;
     }
@@ -299,7 +297,7 @@ public class SessionRegistry
         {
             if (!_connectionsByPort.TryGetValue(localPort, out Connection? connection))
             {
-                connection = new Connection(localPort, _arqSeqGiveUp, _appPacketHandler);
+                connection = new Connection(localPort, _arqSeqGiveUp);
                 _connectionsByPort[localPort] = connection;
 
                 DebugLog.Write(LogChannel.Sessions,

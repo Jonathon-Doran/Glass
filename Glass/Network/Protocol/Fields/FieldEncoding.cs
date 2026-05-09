@@ -24,6 +24,10 @@ public enum FieldEncoding
     Float,
     UIntMasked,
     SignExtendFixedDiv8,
+    SignMagagnitudeMsbDiv8,
+    OptSignMagnitudeMsb,
+    SignMagnitudeMsb,
     StringNullTerminated,
-    StringLengthPrefixed
+    StringLengthPrefixed,
+    OptionalGroup
 }

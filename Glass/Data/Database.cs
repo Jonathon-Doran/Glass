@@ -341,6 +341,10 @@ public class Database
         {
             ApplyMigration(conn, 39, Migration_039);
         }
+        if (version < 40)
+        {
+            ApplyMigration(conn, 40, Migration_040);
+        }
     }
 
     private int GetSchemaVersion()
@@ -1090,6 +1094,11 @@ public class Database
         ALTER TABLE Characters ADD COLUMN heading_degrees REAL;
         ALTER TABLE Characters ADD COLUMN current_mana INTEGER;
         ALTER TABLE Characters ADD COLUMN current_hp INTEGER;
+    ";
+
+    private const string Migration_040 = @"
+        ALTER TABLE PacketOptionalGroup ADD COLUMN flag_field_name TEXT NOT NULL DEFAULT '';
+        UPDATE PacketOptionalGroup SET flag_field_name = 'flags';
     ";
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

@@ -73,6 +73,8 @@ public partial class MainWindow : Window
         });
         GlassContext.GlassVideoPipe.Start();
         GlassContext.FocusTracker = new FocusTracker();
+        GlassContext.AppPacketBus = new AppPacketBus();
+
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -116,6 +118,8 @@ public partial class MainWindow : Window
         DebugLog.Route(LogChannel.Database, LogSink.GlassDebugLogfile);
         DebugLog.Route(LogChannel.LowNetwork, LogSink.GlassDebugLogfile);
         DebugLog.Route(LogChannel.Network, LogSink.GlassDebugLogfile);
+        DebugLog.Route(LogChannel.Fields, LogSink.GlassDebugLogfile);
+        DebugLog.Route(LogChannel.Opcodes, LogSink.GlassDebugLogfile);
 
         GlassConsoleLogHandler glassConsoleLogHandler = new GlassConsoleLogHandler(ConsoleOutput, ConsoleScroller);
         DebugLog.AddHandler(LogSink.GlassConsole, glassConsoleLogHandler);
@@ -534,7 +538,11 @@ public partial class MainWindow : Window
                     string sessionName = parts[1];
                     DebugLog.Write(LogChannel.Sessions, $"session_disconnected: {sessionName}");
                     GlassContext.GlassVideoPipe.Send($"unassign {sessionName}");
-                    GlassContext.SessionRegistry.OnSessionDisconnected(sessionName);
+                    if (GlassContext.SessionRegistry != null)
+                    {
+                        GlassContext.SessionRegistry.OnSessionDisconnected(sessionName);
+                    }
+
                     break;
                 }
 
@@ -656,10 +664,11 @@ public partial class MainWindow : Window
             GlassContext.FieldExtractor = new FieldExtractor();
             GlassContext.PatchRegistry = new PatchRegistry();
             GlassContext.CurrentPatchLevel = GlassContext.PatchRegistry.LoadLatestPatchLevel(serverType);
+            _ = OpcodeDispatch.Instance;
 
             if (GlassContext.SessionRegistry == null)
             {
-                GlassContext.SessionRegistry = new SessionRegistry(OpcodeDispatch.Instance.HandlePacket);
+                GlassContext.SessionRegistry = new SessionRegistry();
                 GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
             }
 
@@ -782,15 +791,11 @@ public partial class MainWindow : Window
         GlassContext.FieldExtractor = new FieldExtractor();
         GlassContext.PatchRegistry = new PatchRegistry();
         GlassContext.CurrentPatchLevel = GlassContext.PatchRegistry.LoadLatestPatchLevel("Live");
+        _ = OpcodeDispatch.Instance;
 
         if (GlassContext.SessionRegistry == null)
         {
-            GlassContext.SessionRegistry = new SessionRegistry(OpcodeDispatch.Instance.HandlePacket);
-            GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
-        }
-        if (GlassContext.SessionRegistry == null)
-        {
-            GlassContext.SessionRegistry = new SessionRegistry(OpcodeDispatch.Instance.HandlePacket);
+            GlassContext.SessionRegistry = new SessionRegistry();
             GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
         }
 
@@ -803,7 +808,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        SessionDemux router = new SessionDemux(localIp, OpcodeDispatch.Instance.HandlePacket);
+        SessionDemux router = new SessionDemux(localIp);
         PcapFileReader reader = new PcapFileReader(router);
 
         int routed = reader.ProcessFile(filePath);

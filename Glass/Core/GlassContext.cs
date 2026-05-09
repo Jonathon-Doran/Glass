@@ -22,4 +22,5 @@ public static class GlassContext
     public static Machine? CurrentMachine { get; set; }
     public static PatchLevel CurrentPatchLevel { get; set; }
     public static PatchRegistry PatchRegistry { get; set; } = null!;
+    public static AppPacketBus AppPacketBus { get; set; } = null!;
 }

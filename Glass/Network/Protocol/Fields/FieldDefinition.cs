@@ -16,13 +16,6 @@
 // time in the handler's load routine.  Within the extractor, no defensive checks for
 // negative values are needed.
 //
-// FlagMask gates optional fields.  Zero means the field is required and read unconditionally.
-// Nonzero means the field is optional: the extractor ANDs FlagMask against the value of
-// the field literally named "flags" earlier in the same packet, and reads only if the
-// result is nonzero.  Optional fields are read sequentially with a running bit offset
-// computed at extract time, so their BitOffset is meaningless and is set to zero by
-// PatchData.
-//
 // This is plain data — no methods, no validation.  Validation happens at load time in the
 // handler's load routine and at the FieldExtractor's string-table lookup.
 ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -32,5 +25,4 @@ public struct FieldDefinition
     public uint BitOffset;
     public uint BitLength;
     public FieldEncoding Encoding;
-    public uint FlagMask;
 }

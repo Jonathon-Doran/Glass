@@ -29,7 +29,7 @@ namespace Glass.Network.Protocol;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class PatchData
 {
-    private readonly PatchLevel _patchLevel;
+    public readonly PatchLevel PatchLevel;
     private readonly Dictionary<string, ushort> _opcodeValuesByName;
     private readonly Dictionary<string, FieldEncoding> _encodingsByString;
 
@@ -53,6 +53,18 @@ public class PatchData
     // LoadPatchOpcodes; never resized.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private readonly FieldDefinition[]?[] _opcodeFields;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // _opcodeOptionalGroups
+    //
+    // Parallel array to _patchOpcodes: _opcodeOptionalGroups[handle] is the OptionalGroup
+    // for the opcode at that handle, or null if the opcode has no optional block defined
+    // for this patch.  Most opcodes have no optional block; those slots stay null.
+    //
+    // Allocated once in the constructor sized to the number of rows returned by
+    // LoadPatchOpcodes; never resized.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private readonly OptionalGroup?[] _opcodeOptionalGroups;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // _handlesByValue
@@ -96,26 +108,32 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public PatchData(PatchLevel patchLevel)
     {
-        _patchLevel = patchLevel;
+        PatchLevel = patchLevel;
         _encodingsByString = new Dictionary<string, FieldEncoding>();
         BuildEncodingMap();
         _opcodeValuesByName = new Dictionary<string, ushort>();
 
-        int opcodeCount = CountPatchOpcodes();
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        int opcodeCount = CountPatchOpcodes(conn);
         if (opcodeCount == 0)
         {
             throw new InvalidOperationException("PatchData: no PatchOpcode rows for patchLevel="
-                + _patchLevel);
+                + PatchLevel);
         }
 
         _patchOpcodes = new PatchOpcode[opcodeCount];
         _opcodeFields = new FieldDefinition[opcodeCount][];
+        _opcodeOptionalGroups = new OptionalGroup?[opcodeCount];
         _namesByHandle = new string[opcodeCount];
         _handlesByName = new Dictionary<string, OpcodeHandle>(opcodeCount);
         _handlesByValue = new Dictionary<ushort, OpcodeHandle>(opcodeCount);
 
-        LoadOpcodeMap();
-        LoadPatchOpcodes();
+
+
+        LoadOpcodeMap(conn);
+        LoadPatchOpcodes(conn);
 
         for (int handleIndex = 0; handleIndex < opcodeCount; handleIndex++)
         {
@@ -124,11 +142,11 @@ public class PatchData
             DebugLog.Write(LogChannel.Opcodes, "PatchData ctor: loading fields for handle="
                 + handleIndex + " opcode=0x" + patchOpcode.Opcode.ToString("X4")
                 + " version=" + patchOpcode.Version);
-            LoadFields(handle);
+            LoadFields(handle, conn);
         }
 
         DebugLog.Write(LogChannel.Opcodes, "PatchData ctor: loaded " +
-            _opcodeValuesByName.Count + " opcode name(s) and " + _patchOpcodes.Length + " opcode(s) for patch " + _patchLevel);
+            _opcodeValuesByName.Count + " opcode name(s) and " + _patchOpcodes.Length + " opcode(s) for patch " + PatchLevel);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -143,8 +161,12 @@ public class PatchData
         _encodingsByString.Add("float", FieldEncoding.Float);
         _encodingsByString.Add("uint_masked", FieldEncoding.UIntMasked);
         _encodingsByString.Add("sign_extend_fixed_div8", FieldEncoding.SignExtendFixedDiv8);
+        _encodingsByString.Add("signmag_msb_div8", FieldEncoding.SignMagagnitudeMsbDiv8);
+        _encodingsByString.Add("signmag_msb", FieldEncoding.SignMagnitudeMsb);
+        _encodingsByString.Add("opt_signmag_msb", FieldEncoding.OptSignMagnitudeMsb);
         _encodingsByString.Add("string_null_terminated", FieldEncoding.StringNullTerminated);
         _encodingsByString.Add("string_length_prefixed", FieldEncoding.StringLengthPrefixed);
+        _encodingsByString.Add("optional_group", FieldEncoding.OptionalGroup);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -157,31 +179,32 @@ public class PatchData
     // indicate a database problem rather than an empty result (an empty PatchOpcode table
     // for this patch produces a count of 0, not null).
     //
+    // Parameters:
+    //   conn    - An open database connection, owned by the caller. 
+    //
     // Returns:
     //   The number of PatchOpcode rows for this patch level.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private int CountPatchOpcodes()
+    private int CountPatchOpcodes(SqliteConnection conn)
     {
-        using SqliteConnection conn = Database.Instance.Connect();
-        conn.Open();
         using SqliteCommand cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT COUNT(*)"
             + " FROM PatchOpcode"
             + " WHERE patch_date = @patchDate"
             + " AND server_type = @serverType";
-        cmd.Parameters.AddWithValue("@patchDate", _patchLevel.PatchDate);
-        cmd.Parameters.AddWithValue("@serverType", _patchLevel.ServerType);
+        cmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
+        cmd.Parameters.AddWithValue("@serverType", PatchLevel.ServerType);
 
         object? result = cmd.ExecuteScalar();
         if (result == null || result == DBNull.Value)
         {
             throw new InvalidOperationException("PatchData.CountPatchOpcodes: count query "
-                + "returned null for patchLevel=" + _patchLevel);
+                + "returned null for patchLevel=" + PatchLevel);
         }
 
         int count = Convert.ToInt32(result);
         DebugLog.Write(LogChannel.Opcodes, "PatchData.CountPatchOpcodes: " + count
-            + " PatchOpcode row(s) for patchLevel=" + _patchLevel);
+            + " PatchOpcode row(s) for patchLevel=" + PatchLevel);
         return count;
     }
 
@@ -196,18 +219,19 @@ public class PatchData
     // The arrays and dictionary must be allocated by the constructor before this method
     // runs.  The size is determined by CountPatchOpcodes, which uses the same WHERE clause
     // and so produces a count consistent with what this method will read.
+    //
+    // Parameters:
+    //   conn    - An open database connection, owned by the caller. 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void LoadPatchOpcodes()
+    private void LoadPatchOpcodes(SqliteConnection conn)
     {
-        using SqliteConnection conn = Database.Instance.Connect();
-        conn.Open();
         using SqliteCommand cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT opcode_value, version, opcode_name"
             + " FROM PatchOpcode"
             + " WHERE patch_date = @patchDate"
             + " AND server_type = @serverType";
-        cmd.Parameters.AddWithValue("@patchDate", _patchLevel.PatchDate);
-        cmd.Parameters.AddWithValue("@serverType", _patchLevel.ServerType);
+        cmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
+        cmd.Parameters.AddWithValue("@serverType", PatchLevel.ServerType);
 
         using SqliteDataReader reader = cmd.ExecuteReader();
         int handleIndex = 0;
@@ -219,7 +243,7 @@ public class PatchData
             ushort opcodeValue = (ushort)opcodeValueRaw;
             OpcodeHandle handle = (OpcodeHandle)handleIndex;
 
-            PatchOpcode patchOpcode = new PatchOpcode(_patchLevel, opcodeValue, version);
+            PatchOpcode patchOpcode = new PatchOpcode(PatchLevel, opcodeValue, version);
             _patchOpcodes[handle] = patchOpcode;
             _namesByHandle[handle] = opcodeName;
             _handlesByName[opcodeName] = handle;
@@ -229,7 +253,7 @@ public class PatchData
         }
 
         DebugLog.Write(LogChannel.Opcodes, "PatchData.LoadPatchOpcodes: loaded "
-            + handleIndex + " PatchOpcode(s) for patchLevel=" + _patchLevel);
+            + handleIndex + " PatchOpcode(s) for patchLevel=" + PatchLevel);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -239,21 +263,22 @@ public class PatchData
     // Multiple versions of the same opcode share the same opcode_value, so SELECT DISTINCT
     // on (opcode_name, opcode_value) yields the correct one-to-one map.  Called once from
     // the constructor.
+    //
+    // Parameters:
+    //   conn    - An open database connection, owned by the caller. 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void LoadOpcodeMap()
+    private void LoadOpcodeMap(SqliteConnection conn)
     {
         DebugLog.Write(LogChannel.Opcodes, "PatchData.LoadOpcodeMap: querying PatchOpcode for PatchLevel = " +
-            _patchLevel);
+            PatchLevel);
 
-        using SqliteConnection conn = Database.Instance.Connect();
-        conn.Open();
         using SqliteCommand cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT DISTINCT opcode_name, opcode_value"
             + " FROM PatchOpcode"
             + " WHERE patch_date = @patchDate"
             + " AND server_type = @serverType";
-        cmd.Parameters.AddWithValue("@patchDate", _patchLevel.PatchDate);
-        cmd.Parameters.AddWithValue("@serverType", _patchLevel.ServerType);
+        cmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
+        cmd.Parameters.AddWithValue("@serverType", PatchLevel.ServerType);
 
         using SqliteDataReader reader = cmd.ExecuteReader();
         int rowCount = 0;
@@ -273,95 +298,143 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // LoadFields
     //
-    // Loads every field definition — required and optional — for the PatchOpcode at the
-    // given handle, and stores the result under both the dictionary key and the handle-
-    // indexed array slot.  A single FieldDefinition[] holds the full list; callers cannot
-    // distinguish required from optional and do not need to.
+    // Builds the field metadata for one opcode and stores it in the handle-indexed arrays.
+    // Required field definitions, optional field definitions (slot allocators), and the
+    // OptionalGroup metadata are loaded by helpers that return their results; this method
+    // merges the FieldDefinitions, assigns _opcodeFields[handle], then builds the
+    // OptionalGroup once IndexOfField can resolve names against the assigned array.
     //
-    // Load order within the method:
-    //   1. Read required fields from PacketField, ordered by bit_offset.
-    //   2. Read the optional groups for this opcode from PacketOptionalGroup, ordered by
-    //      bit_offset.
-    //   3. For each group, read its optional fields from PacketOptionalField, ordered by
-    //      sequence_order, and append them to the same list.
+    // Order matters: _opcodeFields[handle] must be set before LoadOptionalGroup runs,
+    // because LoadOptionalGroup calls IndexOfField, which reads the array.
     //
-    // Required fields carry their own bit_offset.  Optional fields carry the bit_offset of
-    // their containing group (the position in the payload where the group's run starts);
-    // the extractor computes the live offset of each present optional field at decode time.
-    // FlagMask carries PacketOptionalField.flag_mask for required fields it is zero.
-    //
-    // A PatchOpcode with no fields at all (no PacketField rows and no PacketOptionalGroup
-    // rows) is not added to the dictionary and leaves the array slot null.
-    // GetFieldDefinitions returns null for those, which the extractor treats as "opcode
-    // known but unsupported."
-    //
-    // Encoding strings are resolved via _encodingsByString.  An unrecognized encoding is
-    // stored as FieldEncoding.Unknown; the extractor silently skips Unknown slots so a
-    // single misconfigured row does not block the load or spam the hot path.
-    //
-    // One database connection is opened for the lifetime of the call and reused for all
-    // three query stages.
+    // An opcode with no fields at all (no PacketField rows and no PacketOptionalGroup
+    // rows) leaves _opcodeFields[handle] and _opcodeOptionalGroups[handle] both null.
+    // The extractor treats null _opcodeFields as "opcode known but unsupported" and
+    // skips dispatch.
     //
     // Parameters:
-    //   handle  - The OpcodeHandle of the PatchOpcode whose fields to load.
+    //   handle  - The OpcodeHandle whose fields to load.
+    //   conn    - An open database connection, owned by the caller. 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void LoadFields(OpcodeHandle handle)
+    private void LoadFields(OpcodeHandle handle, SqliteConnection conn)
+    {
+        List<FieldDefinition> requiredFields = LoadRequiredFields(handle, conn);
+        List<FieldDefinition> optionalFields = LoadOptionalFields(handle, conn);
+
+        int totalCount = requiredFields.Count + optionalFields.Count;
+        if (totalCount == 0)
+        {
+            return;
+        }
+
+        List<FieldDefinition> allFields = new List<FieldDefinition>(totalCount);
+        allFields.AddRange(requiredFields);
+        allFields.AddRange(optionalFields);
+        _opcodeFields[handle] = allFields.ToArray();
+
+        OptionalGroup? group = LoadOptionalGroup(handle, conn);
+        if (group != null)
+        {
+            _opcodeOptionalGroups[handle] = group;
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // LoadRequiredFields
+    //
+    // Reads PacketField rows for the opcode at the given handle, ordered by bit_offset,
+    // and returns them as a list of FieldDefinition entries.
+    //
+    // Unrecognized encoding strings are stored as FieldEncoding.Unknown so the row still
+    // produces a slot; the extractor silently skips Unknown slots.
+    //
+    // Parameters:
+    //   handle  - The OpcodeHandle whose required fields to load.
+    //   conn    - An open database connection.
+    //
+    // Returns:
+    //   The required field definitions, possibly empty if the opcode has no PacketField
+    //   rows for this patch.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private List<FieldDefinition> LoadRequiredFields(OpcodeHandle handle, SqliteConnection conn)
     {
         PatchOpcode patchOpcode = _patchOpcodes[handle];
         List<FieldDefinition> fields = new List<FieldDefinition>();
 
-        using SqliteConnection conn = Database.Instance.Connect();
-        conn.Open();
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT pf.field_name, pf.bit_offset, pf.bit_length, pf.encoding"
+            + " FROM PacketField pf"
+            + " JOIN PatchOpcode po ON pf.patch_opcode_id = po.id"
+            + " WHERE po.patch_date = @patchDate"
+            + " AND po.server_type = @serverType"
+            + " AND po.opcode_value = @opcodeValue"
+            + " AND po.version = @version"
+            + " ORDER BY pf.bit_offset";
+        cmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
+        cmd.Parameters.AddWithValue("@serverType", PatchLevel.ServerType);
+        cmd.Parameters.AddWithValue("@opcodeValue", (int)patchOpcode.Opcode);
+        cmd.Parameters.AddWithValue("@version", patchOpcode.Version);
 
-        // Load required fields from PacketField, ordered by bit_offset.
-        using (SqliteCommand requiredCmd = conn.CreateCommand())
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
         {
-            requiredCmd.CommandText = "SELECT pf.field_name, pf.bit_offset, pf.bit_length, pf.encoding"
-                + " FROM PacketField pf"
-                + " JOIN PatchOpcode po ON pf.patch_opcode_id = po.id"
-                + " WHERE po.patch_date = @patchDate"
-                + " AND po.server_type = @serverType"
-                + " AND po.opcode_value = @opcodeValue"
-                + " AND po.version = @version"
-                + " ORDER BY pf.bit_offset";
-            requiredCmd.Parameters.AddWithValue("@patchDate", _patchLevel.PatchDate);
-            requiredCmd.Parameters.AddWithValue("@serverType", _patchLevel.ServerType);
-            requiredCmd.Parameters.AddWithValue("@opcodeValue", (int)patchOpcode.Opcode);
-            requiredCmd.Parameters.AddWithValue("@version", patchOpcode.Version);
+            string fieldName = reader.GetString(0);
+            uint bitOffset = (uint)reader.GetInt32(1);
+            uint bitLength = (uint)reader.GetInt32(2);
+            string encodingString = reader.GetString(3);
 
-            using SqliteDataReader reader = requiredCmd.ExecuteReader();
-            while (reader.Read())
+            FieldEncoding encoding;
+            bool encodingFound = _encodingsByString.TryGetValue(encodingString, out encoding);
+            if (encodingFound == false)
             {
-                string fieldName = reader.GetString(0);
-                uint bitOffset = (uint)reader.GetInt32(1);
-                uint bitLength = (uint)reader.GetInt32(2);
-                string encodingString = reader.GetString(3);
-
-                FieldEncoding encoding;
-                bool encodingFound = _encodingsByString.TryGetValue(encodingString, out encoding);
-                if (encodingFound == false)
-                {
-                    DebugLog.Write(LogChannel.Fields, "PatchData.LoadFields: unrecognized required encoding '"
-                        + encodingString + "' for opcode =" + _namesByHandle[patchOpcode.Opcode]
-                        + " 0x" + patchOpcode.Opcode.ToString("X4")
-                        + " version=" + patchOpcode.Version + " fieldName='" + fieldName
-                        + "', storing as Unknown");
-                    encoding = FieldEncoding.Unknown;
-                }
-
-                FieldDefinition definition;
-                definition.Name = fieldName;
-                definition.BitOffset = bitOffset;
-                definition.BitLength = bitLength;
-                definition.Encoding = encoding;
-                definition.FlagMask = 0u;
-                fields.Add(definition);
+                DebugLog.Write(LogChannel.Fields, "PatchData.LoadRequiredFields: unrecognized encoding '"
+                    + encodingString + "' for opcode=" + _namesByHandle[(int)handle]
+                    + " 0x" + patchOpcode.Opcode.ToString("X4")
+                    + " version=" + patchOpcode.Version + " fieldName='" + fieldName
+                    + "', storing as Unknown");
+                encoding = FieldEncoding.Unknown;
             }
+
+            FieldDefinition definition;
+            definition.Name = fieldName;
+            definition.BitOffset = bitOffset;
+            definition.BitLength = bitLength;
+            definition.Encoding = encoding;
+            fields.Add(definition);
         }
 
-        // Load optional groups for this opcode, ordered by bit_offset.
+        return fields;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // LoadOptionalFields
+    //
+    // Reads PacketOptionalGroup and PacketOptionalField rows for the opcode at the given
+    // handle and returns the FieldDefinition entries that allocate slots for each optional
+    // sub-field.  Each entry carries the group's bit_offset (which is unused at extract
+    // time for optional fields) and the row's encoding (an opt_* sentinel that Extract's
+    // main switch skips).
+    //
+    // The OptionalGroup metadata itself is built by LoadOptionalGroup, after
+    // _opcodeFields[handle] is assigned.  This method only produces the slot-allocator
+    // FieldDefinitions.
+    //
+    // Parameters:
+    //   handle  - The OpcodeHandle whose optional fields to load.
+    //   conn    - An open database connection.
+    //
+    // Returns:
+    //   The optional sub-field definitions, possibly empty if the opcode has no
+    //   PacketOptionalGroup rows for this patch.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private List<FieldDefinition> LoadOptionalFields(OpcodeHandle handle, SqliteConnection conn)
+    {
+        PatchOpcode patchOpcode = _patchOpcodes[handle];
+        List<FieldDefinition> fields = new List<FieldDefinition>();
+
         List<int> groupIds = new List<int>();
         List<uint> groupBitOffsets = new List<uint>();
+
         using (SqliteCommand groupsCmd = conn.CreateCommand())
         {
             groupsCmd.CommandText = "SELECT pog.id, pog.bit_offset"
@@ -372,8 +445,8 @@ public class PatchData
                 + " AND po.opcode_value = @opcodeValue"
                 + " AND po.version = @version"
                 + " ORDER BY pog.bit_offset";
-            groupsCmd.Parameters.AddWithValue("@patchDate", _patchLevel.PatchDate);
-            groupsCmd.Parameters.AddWithValue("@serverType", _patchLevel.ServerType);
+            groupsCmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
+            groupsCmd.Parameters.AddWithValue("@serverType", PatchLevel.ServerType);
             groupsCmd.Parameters.AddWithValue("@opcodeValue", (int)patchOpcode.Opcode);
             groupsCmd.Parameters.AddWithValue("@version", patchOpcode.Version);
 
@@ -387,15 +460,13 @@ public class PatchData
             }
         }
 
-        // Load optional fields for each group, ordered by sequence_order.  Appended to
-        // the same list as required fields.
         for (int groupIndex = 0; groupIndex < groupIds.Count; groupIndex++)
         {
             int groupId = groupIds[groupIndex];
             uint groupBitOffset = groupBitOffsets[groupIndex];
 
             using SqliteCommand optionalCmd = conn.CreateCommand();
-            optionalCmd.CommandText = "SELECT field_name, bit_length, encoding, flag_mask"
+            optionalCmd.CommandText = "SELECT field_name, bit_length, encoding"
                 + " FROM PacketOptionalField"
                 + " WHERE group_id = @groupId"
                 + " ORDER BY sequence_order";
@@ -407,14 +478,13 @@ public class PatchData
                 string fieldName = reader.GetString(0);
                 uint bitLength = (uint)reader.GetInt32(1);
                 string encodingString = reader.GetString(2);
-                uint flagMask = (uint)reader.GetInt32(3);
 
                 FieldEncoding encoding;
                 bool encodingFound = _encodingsByString.TryGetValue(encodingString, out encoding);
                 if (encodingFound == false)
                 {
-                    DebugLog.Write(LogChannel.Fields, "PatchData.LoadFields: unrecognized optional encoding '"
-                        + encodingString + "' for opcode =" + _namesByHandle[patchOpcode.Opcode]
+                    DebugLog.Write(LogChannel.Fields, "PatchData.LoadOptionalFields: unrecognized encoding '"
+                        + encodingString + "' for opcode=" + _namesByHandle[(int)handle]
                         + " 0x" + patchOpcode.Opcode.ToString("X4")
                         + " version=" + patchOpcode.Version + " groupId=" + groupId
                         + " fieldName='" + fieldName + "', storing as Unknown");
@@ -426,18 +496,112 @@ public class PatchData
                 definition.BitOffset = groupBitOffset;
                 definition.BitLength = bitLength;
                 definition.Encoding = encoding;
-                definition.FlagMask = flagMask;
                 fields.Add(definition);
             }
         }
 
-        if (fields.Count == 0)
+        return fields;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // LoadOptionalGroup
+    //
+    // Reads PacketOptionalGroup and PacketOptionalField rows for the opcode at the given
+    // handle, resolves field names to slot indices via IndexOfField, and returns the
+    // built OptionalGroup.  Must be called after _opcodeFields[handle] is assigned.
+    //
+    // Today's schema supports multiple groups per opcode but the in-memory structure
+    // holds one — if a future opcode declares more than one group, only the last one
+    // read is returned.  Refactor when that case shows up.
+    //
+    // Parameters:
+    //   handle  - The OpcodeHandle whose optional group to load.
+    //   conn    - An open database connection.
+    //
+    // Returns:
+    //   The OptionalGroup, or null if the opcode has no PacketOptionalGroup rows.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private OptionalGroup? LoadOptionalGroup(OpcodeHandle handle, SqliteConnection conn)
+    {
+        PatchOpcode patchOpcode = _patchOpcodes[handle];
+        OptionalGroup? result = null;
+
+        List<int> groupIds = new List<int>();
+        List<string> groupFlagFieldNames = new List<string>();
+
+
+        using (SqliteCommand groupsCmd = conn.CreateCommand())
         {
-            return;
+            groupsCmd.CommandText = "SELECT pog.id, pog.flag_field_name"
+                + " FROM PacketOptionalGroup pog"
+                + " JOIN PatchOpcode po ON pog.patch_opcode_id = po.id"
+                + " WHERE po.patch_date = @patchDate"
+                + " AND po.server_type = @serverType"
+                + " AND po.opcode_value = @opcodeValue"
+                + " AND po.version = @version"
+                + " ORDER BY pog.bit_offset";
+            groupsCmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
+            groupsCmd.Parameters.AddWithValue("@serverType", PatchLevel.ServerType);
+            groupsCmd.Parameters.AddWithValue("@opcodeValue", (int)patchOpcode.Opcode);
+            groupsCmd.Parameters.AddWithValue("@version", patchOpcode.Version);
+
+            using SqliteDataReader reader = groupsCmd.ExecuteReader();
+            while (reader.Read())
+            {
+                int groupId = reader.GetInt32(0);
+                string flagFieldName = reader.GetString(1);
+                groupIds.Add(groupId);
+                groupFlagFieldNames.Add(flagFieldName);
+            }
         }
 
-        FieldDefinition[] definitionsArray = fields.ToArray();
-        _opcodeFields[handle] = definitionsArray;
+        for (int groupIndex = 0; groupIndex < groupIds.Count; groupIndex++)
+        {
+            int groupId = groupIds[groupIndex];
+            string flagFieldName = groupFlagFieldNames[groupIndex];
+
+            uint flagsLength = GetFieldBitLength(handle, flagFieldName);
+
+            FieldIndex flagSlotIndex = IndexOfField(handle, flagFieldName);
+
+
+            List<OptionalSubField> subFields = new List<OptionalSubField>();
+
+            using SqliteCommand optionalCmd = conn.CreateCommand();
+            optionalCmd.CommandText = "SELECT field_name, bit_length, encoding"
+                + " FROM PacketOptionalField"
+                + " WHERE group_id = @groupId"
+                + " ORDER BY sequence_order";
+            optionalCmd.Parameters.AddWithValue("@groupId", groupId);
+
+            using SqliteDataReader reader = optionalCmd.ExecuteReader();
+            while (reader.Read())
+            {
+                string fieldName = reader.GetString(0);
+                uint bitLength = (uint)reader.GetInt32(1);
+                string encodingString = reader.GetString(2);
+
+                FieldEncoding encoding;
+                bool encodingFound = _encodingsByString.TryGetValue(encodingString, out encoding);
+                if (encodingFound == false)
+                {
+                    encoding = FieldEncoding.Unknown;
+                }
+
+                FieldIndex slotIndex = IndexOfField(handle, fieldName);
+
+                OptionalSubField subField;
+                subField.SlotIndex = (int)slotIndex;
+                subField.BitLength = bitLength;
+                subField.Encoding = encoding;
+                subField.Name = fieldName;
+                subFields.Add(subField);
+            }
+
+            result = new OptionalGroup((int)flagSlotIndex, flagsLength, subFields.ToArray());
+        }
+
+        return result;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -463,7 +627,7 @@ public class PatchData
         if (found == false)
         {
             DebugLog.Write(LogChannel.Opcodes, "PatchData.GetOpcodeHandle: unknown opcode name '"
-                + opcodeName + "' in patchLevel=" + _patchLevel + ", returning -1");
+                + opcodeName + "' in patchLevel=" + PatchLevel + ", returning -1");
             return (OpcodeHandle)(-1);
         }
         return handle;
@@ -564,6 +728,67 @@ public class PatchData
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetOptionalGroup
+    //
+    // Returns the OptionalGroup for the given OpcodeHandle, or null if the opcode has no
+    // optional block defined for this patch.  Most opcodes have no optional block; null
+    // is the common case.
+    //
+    // Called from FieldExtractor.Extract when it dispatches on the OptionalGroup encoding,
+    // to look up the metadata the optional-block helper needs to walk the sub-fields.
+    //
+    // Parameters:
+    //   handle  - The OpcodeHandle whose optional group to return.
+    //
+    // Returns:
+    //   The OptionalGroup, or null if the opcode has no optional block.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public OptionalGroup? GetOptionalGroup(OpcodeHandle handle)
+    {
+        return _opcodeOptionalGroups[handle];
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetFieldBitLength
+    //
+    // Returns the BitLength of the named field within the FieldDefinition list for the
+    // given OpcodeHandle. 
+    //
+    // Returns 0 if the opcode has no fields loaded for this patch, or if the named field
+    // is not present in the loaded definitions.
+    //
+    // Parameters:
+    //   handle    - The OpcodeHandle whose field definitions to search.
+    //   fieldName - The field_name column value to look up.
+    //
+    // Returns:
+    //   The BitLength of the named field, or 0 if not found.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public uint GetFieldBitLength(OpcodeHandle opcode, string fieldName)
+    {
+        FieldDefinition[]? definitions = _opcodeFields[opcode];
+        if (definitions == null)
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.GetFieldBitLength: no field definitions for opcode '" +
+                _namesByHandle[opcode] + "' in patchLevel=" + PatchLevel + ", returning 0");
+            return 0u;
+        }
+
+        for (int fieldIndex = 0; fieldIndex < definitions.Length; fieldIndex++)
+        {
+            if (definitions[fieldIndex].Name == fieldName)
+            {
+                return definitions[fieldIndex].BitLength;
+            }
+        }
+
+        DebugLog.Write(LogChannel.Fields, "PatchData.GetFieldBitLength: field '" + fieldName
+            + "' not in definitions for opcode '" + _namesByHandle[opcode] +
+            "' in patchLevel=" + PatchLevel + ", returning 0");
+        return 0u;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // IndexOfField
     //
     // Returns the FieldIndex of the named field within the FieldDefinition list for the
@@ -586,7 +811,7 @@ public class PatchData
         if (definitions == null)
         {
             DebugLog.Write(LogChannel.Fields, "PatchData.IndexOfField: no field definitions for opcode '" +
-                _namesByHandle[opcode] + "' in patchLevel=" + _patchLevel + "), returning -1");
+                _namesByHandle[opcode] + "' in patchLevel=" + PatchLevel + "), returning -1");
             return (FieldIndex)(-1);
         }
 
@@ -600,7 +825,7 @@ public class PatchData
 
         DebugLog.Write(LogChannel.Fields, "PatchData.IndexOfField: field '" + fieldName
             + "' not in definitions for opcode '" + _namesByHandle[opcode] + 
-            "' in patchLevel=" + _patchLevel + "), returning -1");
+            "' in patchLevel=" + PatchLevel + "), returning -1");
         return (FieldIndex)(-1);
     }
 }

@@ -14,7 +14,7 @@ public class HandleTrackingUpdate : IHandleOpcodes
     private ushort _opcode = 0x7604;
     private readonly string _opcodeName = "OP_Tracking";
 
-    private bool brief = true;
+    private bool brief = false;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Dispose
@@ -246,8 +246,7 @@ public class HandleTrackingUpdate : IHandleOpcodes
 
         string name = System.Text.Encoding.ASCII.GetString(entry.Slice(HeaderSize, terminator));
         DebugLog.Write(LogChannel.Opcodes, "spawn " + spawnId.ToString("x4") + " \"" + name + "\"");
-        DebugLog.Write(LogChannel.Opcodes, "");
-
+        DebugLog.Write(LogChannel.Opcodes, "----");
         // Total entry size = 12-byte header + name bytes + 1 null terminator
         return HeaderSize + terminator + 1;
 

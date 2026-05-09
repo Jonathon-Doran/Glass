@@ -52,6 +52,8 @@ public class OpcodeDispatch : IDisposable
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private OpcodeDispatch()
     {
+        GlassContext.AppPacketBus.Subscribe(HandlePacket);
+
         int opcodeCount = GlassContext.PatchRegistry.GetOpcodeCount(GlassContext.CurrentPatchLevel);
         _handlers = new IHandleOpcodes?[opcodeCount];
         _names = new string?[opcodeCount];
@@ -134,6 +136,7 @@ public class OpcodeDispatch : IDisposable
         }
 
         Clear();
+        GlassContext.AppPacketBus.Unsubscribe(HandlePacket);
         _instance = null;
         GC.SuppressFinalize(this);
     }

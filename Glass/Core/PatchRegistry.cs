@@ -18,7 +18,7 @@ namespace Glass.Core;
 ///////////////////////////////////////////////////////////////////////////////////////////
 public class PatchRegistry
 {
-    private readonly Dictionary<PatchLevel, PatchData> _loadedPatches;
+    private readonly List<PatchData> _loadedPatches;
     private readonly FieldBagPool _bagPool;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -29,7 +29,7 @@ public class PatchRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////
     public PatchRegistry()
     {
-        _loadedPatches = new Dictionary<PatchLevel, PatchData>();
+        _loadedPatches = new List<PatchData>();
         _bagPool = new FieldBagPool(FieldBag.DefaultPoolSize, FieldBag.DefaultSlotCount);
     }
 
@@ -55,7 +55,8 @@ public class PatchRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////
     public void LoadPatchLevel(PatchLevel patchLevel)
     {
-        if (_loadedPatches.ContainsKey(patchLevel) == true)
+        PatchData? existing = TryFindPatchData(patchLevel);
+        if (existing != null)
         {
             DebugLog.Write(LogChannel.Network, "PatchRegistry.LoadPatchLevel: patchLevel "
                 + patchLevel + " already loaded, returning");
@@ -63,7 +64,7 @@ public class PatchRegistry
         }
 
         PatchData patchData = new PatchData(patchLevel);
-        _loadedPatches[patchLevel] = patchData;
+        _loadedPatches.Add(patchData);
 
         DebugLog.Write(LogChannel.Network, "PatchRegistry.LoadPatchLevel: loaded patchLevel "
             + patchLevel);
@@ -98,7 +99,6 @@ public class PatchRegistry
             + patchLevel);
         return patchLevel;
     }
-
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // ResolveLatestPatchDate
@@ -139,6 +139,66 @@ public class PatchRegistry
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // TryFindPatchData
+    //
+    // Returns the loaded PatchData matching the given patch level, or null if no loaded
+    // patch matches.  Linear scan over _loadedPatches; the registry typically holds one
+    // or two patches at runtime, so the scan is faster than a dictionary lookup keyed by
+    // struct (which would hash the PatchLevel and compare strings on every call).
+    //
+    // Used by LoadPatchLevel to detect the already-loaded case without throwing, and by
+    // FindPatchData as the underlying scan.
+    //
+    // Parameters:
+    //   patchLevel  - The patch identifier to look up.
+    //
+    // Returns:
+    //   The loaded PatchData for the given patch level, or null if not loaded.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private PatchData? TryFindPatchData(PatchLevel patchLevel)
+    {
+        for (int patchIndex = 0; patchIndex < _loadedPatches.Count; patchIndex++)
+        {
+            PatchData candidate = _loadedPatches[patchIndex];
+            if (candidate.PatchLevel.Equals(patchLevel) == true)
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FindPatchData
+    //
+    // Returns the loaded PatchData matching the given patch level.  Wraps TryFindPatchData
+    // and throws if the lookup fails — the right shape for hot-path callers that already
+    // know the patch should be loaded by virtue of how they were constructed.
+    //
+    // Throws InvalidOperationException if no loaded PatchData has the given patch level.
+    // Callers must invoke LoadPatchLevel (or LoadLatestPatchLevel) for the patch before
+    // any code that reaches this method runs.
+    //
+    // Parameters:
+    //   patchLevel  - The patch identifier to look up.
+    //
+    // Returns:
+    //   The loaded PatchData for the given patch level.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private PatchData FindPatchData(PatchLevel patchLevel)
+    {
+        PatchData? patchData = TryFindPatchData(patchLevel);
+        if (patchData == null)
+        {
+            throw new InvalidOperationException("PatchRegistry.FindPatchData: patchLevel "
+                + patchLevel + " is not loaded");
+        }
+
+        return patchData;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeHandle
     //
     // Returns the OpcodeHandle for the given opcode name in the given patch level.  Looks
@@ -157,16 +217,10 @@ public class PatchRegistry
     // Returns:
     //   The OpcodeHandle for the named opcode, or (OpcodeHandle)(-1) if not in the patch.
     ///////////////////////////////////////////////////////////////////////////////////////////
+
     public OpcodeHandle GetOpcodeHandle(PatchLevel patchLevel, string opcodeName)
     {
-        PatchData patchData;
-        bool found = _loadedPatches.TryGetValue(patchLevel, out patchData!);
-        if (found == false)
-        {
-            throw new InvalidOperationException("PatchRegistry.GetOpcodeHandle: patchLevel "
-                + patchLevel + " is not loaded");
-        }
-
+        PatchData patchData = FindPatchData(patchLevel);
         return patchData.GetOpcodeHandle(opcodeName);
     }
 
@@ -187,16 +241,10 @@ public class PatchRegistry
     // Returns:
     //   The OpcodeHandle for the wire value, or (OpcodeHandle)(-1) if not in the patch.
     ///////////////////////////////////////////////////////////////////////////////////////////
+
     public OpcodeHandle GetOpcodeHandle(PatchLevel patchLevel, ushort opcodeValue)
     {
-        PatchData patchData;
-        bool found = _loadedPatches.TryGetValue(patchLevel, out patchData!);
-        if (found == false)
-        {
-            throw new InvalidOperationException("PatchRegistry.GetOpcodeHandle: patchLevel "
-                + patchLevel + " is not loaded");
-        }
-
+        PatchData patchData = FindPatchData(patchLevel);
         return patchData.GetOpcodeHandle(opcodeValue);
     }
 
@@ -215,16 +263,10 @@ public class PatchRegistry
     // Returns:
     //   The wire opcode value (e.g. 0x6FA1).
     ///////////////////////////////////////////////////////////////////////////////////////////
+
     public ushort GetOpcodeValue(PatchLevel patchLevel, OpcodeHandle handle)
     {
-        PatchData patchData;
-        bool found = _loadedPatches.TryGetValue(patchLevel, out patchData!);
-        if (found == false)
-        {
-            throw new InvalidOperationException("PatchRegistry.GetOpcodeValue: patchLevel "
-                + patchLevel + " is not loaded");
-        }
-
+        PatchData patchData = FindPatchData(patchLevel);
         return patchData.GetOpcodeValue(handle);
     }
 
@@ -242,16 +284,10 @@ public class PatchRegistry
     // Returns:
     //   The number of opcodes in the patch.
     ///////////////////////////////////////////////////////////////////////////////////////////
+
     public int GetOpcodeCount(PatchLevel patchLevel)
     {
-        PatchData patchData;
-        bool found = _loadedPatches.TryGetValue(patchLevel, out patchData!);
-        if (found == false)
-        {
-            throw new InvalidOperationException("PatchRegistry.GetOpcodeCount: patchLevel "
-                + patchLevel + " is not loaded");
-        }
-
+        PatchData patchData = FindPatchData(patchLevel);
         return patchData.GetOpcodeCount();
     }
 
@@ -274,13 +310,7 @@ public class PatchRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////
     public FieldBag Rent(PatchLevel patchLevel, OpcodeHandle opcode)
     {
-        PatchData patchData;
-        bool found = _loadedPatches.TryGetValue(patchLevel, out patchData!);
-        if (found == false)
-        {
-            throw new InvalidOperationException("PatchRegistry.Rent: patchLevel "
-                + patchLevel + " is not loaded");
-        }
+        PatchData patchData = FindPatchData(patchLevel);
 
         string opcodeName = patchData.GetOpcodeName(opcode);
         FieldBag bag = _bagPool.Rent();
@@ -309,14 +339,7 @@ public class PatchRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////
     public FieldIndex IndexOfField(PatchLevel patchLevel, OpcodeHandle opcode, string fieldName)
     {
-        PatchData patchData;
-        bool found = _loadedPatches.TryGetValue(patchLevel, out patchData!);
-        if (found == false)
-        {
-            throw new InvalidOperationException("PatchRegistry.IndexOfField: patchLevel "
-                + patchLevel + " is not loaded");
-        }
-
+        PatchData patchData = FindPatchData(patchLevel);
         return patchData.IndexOfField(opcode, fieldName);
     }
 
@@ -339,14 +362,31 @@ public class PatchRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////
     public FieldDefinition[]? GetFields(PatchLevel patchLevel, OpcodeHandle opcode)
     {
-        PatchData patchData;
-        bool found = _loadedPatches.TryGetValue(patchLevel, out patchData!);
-        if (found == false)
-        {
-            throw new InvalidOperationException("PatchRegistry.GetFields: patchLevel "
-                + patchLevel + " is not loaded");
-        }
-
+        PatchData patchData = FindPatchData(patchLevel);
         return patchData.GetFieldDefinitions(opcode);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetOptionalGroup
+    //
+    // Returns the OptionalGroup for the given OpcodeHandle in the given patch level, or
+    // null if the opcode has no optional block defined for this patch.  Most opcodes have
+    // no optional block; null is the common case.
+    //
+    // Looks up the patch in the loaded set and delegates to the PatchData.
+    //
+    // Throws InvalidOperationException if the patch level is not loaded.
+    //
+    // Parameters:
+    //   patchLevel  - The patch identifier.  Must already be loaded.
+    //   handle      - The OpcodeHandle whose optional group to return.
+    //
+    // Returns:
+    //   The OptionalGroup, or null if the opcode has no optional block.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public OptionalGroup? GetOptionalGroup(PatchLevel patchLevel, OpcodeHandle handle)
+    {
+        PatchData patchData = FindPatchData(patchLevel);
+        return patchData.GetOptionalGroup(handle);
     }
 }

@@ -1,6 +1,5 @@
 ﻿using Glass.Core.Logging;
-using System;
-using System.Text;
+using System.Runtime.CompilerServices;
 
 namespace Glass.Network.Protocol.Fields;
 
@@ -125,6 +124,34 @@ public class FieldBag
         ref FieldSlot slot = ref _slots[_slotCount];
         _slotCount++;
         return ref slot;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // TryGetSlotRef
+    //
+    // Returns a ref to the slot at the given index, or a null ref if the index is out of
+    // range.  Callers must check via Unsafe.IsNullRef before dereferencing.
+    //
+    // Used by extractors that write to slots allocated earlier in the same packet's
+    // extraction pass — for example, the optional-block helper, which writes to slots
+    // whose FieldDefinition entries already triggered AddSlot during the main switch.
+    //
+    // Parameters:
+    //   slotIndex  - The cached index of the slot.
+    //
+    // Returns:
+    //   A ref to the slot, or a null ref if slotIndex is out of range.  Check with
+    //   Unsafe.IsNullRef(ref result) before use.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public ref FieldSlot TryGetSlotRef(int slotIndex)
+    {
+        if (slotIndex < 0 || slotIndex >= _slotCount)
+        {
+            DebugLog.Write(LogChannel.Fields, _currentOpcodeName + " FieldBag.TryGetSlotRef: slotIndex "
+                + slotIndex + " out of range [0, " + _slotCount + "), returning null ref");
+            return ref Unsafe.NullRef<FieldSlot>();
+        }
+        return ref _slots[slotIndex];
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

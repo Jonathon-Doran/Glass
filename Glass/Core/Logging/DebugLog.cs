@@ -228,7 +228,7 @@ public static class DebugLog
             return;
         }
 
-        string timestamped = "[" + DateTime.Now.ToString("HH:mm:ss.fff") + "] " + message;
+        string timestamped = "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + "] " + message;
 
         List<IHandleLogMessages>[] snapshot = _handlers;
 

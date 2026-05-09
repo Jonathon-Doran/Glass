@@ -35,13 +35,6 @@ public class SoeStream : IDisposable
     }
 
     // ---------------------------------------------------------------------------
-    // Delegate for dispatched application-level opcodes
-    // ---------------------------------------------------------------------------
-    public delegate void AppPacketHandler(ReadOnlySpan<byte> data,
-                                          ushort opcode,
-                                          PacketMetadata metadata);
-
-    // ---------------------------------------------------------------------------
     // Delegate for session key distribution
     // ---------------------------------------------------------------------------
     public delegate void SessionKeyHandler(uint sessionId,
@@ -107,7 +100,6 @@ public class SoeStream : IDisposable
     // ---------------------------------------------------------------------------
     // Callbacks
     // ---------------------------------------------------------------------------
-    public AppPacketHandler? OnAppPacket;
     public SessionKeyHandler? OnSessionKey;
     public SessionCloseHandler? OnClosing;
     public LockOnClientHandler? OnLockOnClient;
@@ -365,12 +357,14 @@ public class SoeStream : IDisposable
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // DispatchAppPacket
     //
-    // Final delivery point for decoded application-level opcodes.
-    // Invokes the OnAppPacket callback if set.
+    // Final delivery point for decoded application-level opcodes.  Updates the
+    // per-stream opcode count and publishes the packet on the application-wide
+    // AppPacketBus.
     //
-    // data:    The application payload (after opcode bytes have been stripped)
-    // length:  Length of the application payload
-    // opcode:  The application-level opcode
+    // data:      The application payload (after opcode bytes have been stripped)
+    // length:    Length of the application payload
+    // opcode:    The application-level opcode
+    // metadata:  Source/dest IP and port, timestamp, frame number
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void DispatchAppPacket(ReadOnlySpan<byte> data, int length, ushort opcode, PacketMetadata metadata)
     {
@@ -393,10 +387,17 @@ public class SoeStream : IDisposable
             _opcodeCount[opcode] = 1;
         }
 
-        if (OnAppPacket != null)
+        AppPacketBus bus = GlassContext.AppPacketBus;
+
+        if (bus == null)
         {
-            OnAppPacket(data, opcode, metadata);
+            DebugLog.Write(LogChannel.LowNetwork,
+                "SoeStream.DispatchAppPacket: AppPacketBus is null on GlassContext, dropping opcode 0x"
+                + opcode.ToString("x4"));
+            return;
         }
+
+        bus.Publish(data, opcode, metadata);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

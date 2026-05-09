@@ -28,24 +28,20 @@ public class SessionDemux
     private readonly string _localIp;
     private readonly uint _localIpInt;
     private readonly int _arqSeqGiveUp;
-    private readonly AppPacketHandler _appPacketHandler;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // SessionDemux (constructor)
     //
     // localIp:            The IP address of the local machine running EQ clients
-    // appPacketHandler:   Delegate called for each decoded application-layer packet
     // arqSeqGiveUp:       Passed through to each stream's ARQ cache threshold
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public SessionDemux(string localIp, AppPacketHandler appPacketHandler, int arqSeqGiveUp = 512)
+    public SessionDemux(string localIp, int arqSeqGiveUp = 512)
     {
         _localIp = localIp;
         _localIpInt = IpToUInt32(localIp);
         _arqSeqGiveUp = arqSeqGiveUp;
-        _appPacketHandler = appPacketHandler;
 
-        DebugLog.Write("SessionDemux: created, localIp=" + localIp
-            + ", appPacketHandler=" + (appPacketHandler != null ? "provided" : "null"));
+        DebugLog.Write("SessionDemux: created, localIp=" + localIp);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

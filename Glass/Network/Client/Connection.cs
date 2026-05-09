@@ -34,7 +34,7 @@ public class Connection : IDisposable
     // me:      The local ephemeral port identifying this client
     // arqSeqGiveUp:   ARQ cache threshold passed through to each stream
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public Connection(int localport, int arqSeqGiveUp, SoeStream.AppPacketHandler _handler)
+    public Connection(int localport, int arqSeqGiveUp)
     {
         _localPort = localport;
         _disposed = false;
@@ -72,7 +72,6 @@ public class Connection : IDisposable
         foreach (StreamId streamId in Enum.GetValues<StreamId>())
         {
             _streams[streamId].SessionTrackingEnabled = 1;
-            _streams[streamId].OnAppPacket = _handler;
         }
 
         DebugLog.Write(LogChannel.LowNetwork, "Connection: created for local port " + _localPort);

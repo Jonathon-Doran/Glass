@@ -4,6 +4,7 @@ using Glass.Data;
 using Microsoft.Data.Sqlite;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 namespace Glass.Network.Protocol.Fields;
 
@@ -95,12 +96,21 @@ public class FieldExtractor
             return;
         }
 
+        // Allocate one slot per definition up front, in definition order.  This guarantees
+        // that any cached slot index resolved via IndexOfField at load time is valid by the
+        // time decoding runs — including indices used by ExtractOptionalGroup to write
+        // sub-fields whose definitions appear later in the array than the block field that
+        // dispatches into the helper.
+        for (int definitionIndex = 0; definitionIndex < definitions.Length; definitionIndex++)
+        {
+            ref FieldSlot newSlot = ref bag.AddSlot();
+            newSlot.SetName(definitions[definitionIndex].Name);
+        }
+
         for (int definitionIndex = 0; definitionIndex < definitions.Length; definitionIndex++)
         {
             FieldDefinition definition = definitions[definitionIndex];
-
-            ref FieldSlot slot = ref bag.AddSlot();
-            slot.SetName(definition.Name);
+            ref FieldSlot slot = ref bag.TryGetSlotRef(definitionIndex);
 
             if (HasBits(payload, definition.BitOffset, definition.BitLength) == false)
             {
@@ -150,6 +160,27 @@ public class FieldExtractor
                 case FieldEncoding.SignExtendFixedDiv8:
                     ExtractSignExtendedDiv8(payload, definition.BitOffset, definition.BitLength, ref slot);
                     break;
+
+                case FieldEncoding.SignMagagnitudeMsbDiv8:
+                    ExtractSignMagnitudeMsbDiv8(payload, definition.BitOffset, definition.BitLength, ref slot);
+                    break;
+
+                case FieldEncoding.SignMagnitudeMsb:
+                    ExtractSignMagnitudeMsb(payload, definition.BitOffset, definition.BitLength, ref slot);
+                    break;
+
+                case FieldEncoding.OptSignMagnitudeMsb:
+                    break;
+
+                case FieldEncoding.OptionalGroup:
+                    {
+                        OptionalGroup? group = GlassContext.PatchRegistry.GetOptionalGroup(patchLevel, opcode);
+                        if (group != null)
+                        {
+                            ExtractOptionalGroup(payload, definition.BitOffset, group, bag);
+                        }
+                        break;
+                    }
 
                 case FieldEncoding.StringNullTerminated:
                     ExtractNullTerminatedString(payload, definition.BitOffset, ref slot);
@@ -500,5 +531,378 @@ public class FieldExtractor
 
         ReadOnlySpan<byte> stringBytes = payload.Slice((int)stringStart, (int)declaredLength);
         slot.SetAsciiString(stringBytes);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ExtractOptionalGroup
+    //
+    // Decodes an optional block at the given bit offset.  The flag word is read from a
+    // slot already populated earlier in this packet's extraction; its name is on the
+    // OptionalGroup.  The flag word is bit-reversed across its known width before use,
+    // because the standard uint encoding decodes LSB-first while the surrounding packet
+    // is MSB-first.  Sub-fields are walked in array order; sub-field at index N is
+    // gated by flag bit N of the corrected value.  Present sub-fields are decoded at
+    // the running offset and the offset advances by the sub-field's bit length; absent
+    // sub-fields are skipped and the offset does not advance.
+    //
+    // Failures (missing flag slot, missing sub-field slot, decode error) leave the
+    // affected slot empty.  When a sub-field's slot is missing the running offset still
+    // advances, so subsequent sub-fields decode at the correct positions.
+    //
+    // Parameters:
+    //   payload    - The packet payload being decoded.
+    //   bitOffset  - The bit offset at which the optional block starts.
+    //   group      - The OptionalGroup metadata for this opcode.  Must not be null.
+    //   bag        - The bag the caller is filling.  Flag word and sub-field slots are
+    //                looked up by name.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void ExtractOptionalGroup(ReadOnlySpan<byte> payload, uint bitOffset,
+        OptionalGroup group, FieldBag bag)
+    {
+        uint rawFlags = bag.GetUIntAt(group.FlagSlotIndex);
+        uint flags = ReverseBits(rawFlags, group.FlagBitLength);
+        uint runningBitOffset = bitOffset;
+        DebugLog.Write(LogChannel.Opcodes, "optional group raw flags = 0x" + rawFlags.ToString("x2")
+            + " width = " + group.FlagBitLength
+            + " corrected flags = 0x" + flags.ToString("x2"));
+        for (int subFieldIndex = 0; subFieldIndex < group.SubFields.Length; subFieldIndex++)
+        {
+            OptionalSubField subField = group.SubFields[subFieldIndex];
+            uint flagBit = 1u << subFieldIndex;
+            bool isPresent = (flags & flagBit) != 0u;
+            DebugLog.Write(LogChannel.Opcodes, "subfield " + subFieldIndex + " (" +
+                subField.Name + ") with mask 0x" + flagBit.ToString("x2") + " is " + (isPresent ? "present" : "not present") +
+                " and has " + subField.BitLength + " bits");
+            if (isPresent == false)
+            {
+                continue;
+            }
+            ref FieldSlot slot = ref bag.TryGetSlotRef(subField.SlotIndex);
+            if (Unsafe.IsNullRef(ref slot) == true)
+            {
+                runningBitOffset = runningBitOffset + subField.BitLength;
+                continue;
+            }
+            switch (subField.Encoding)
+            {
+                case FieldEncoding.OptSignMagnitudeMsb:
+                    ExtractSignMagnitudeMsb(payload, runningBitOffset, subField.BitLength, ref slot);
+                    break;
+                default:
+                    DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExtractOptionalGroup: unhandled sub-field encoding "
+                        + subField.Encoding);
+                    break;
+            }
+            runningBitOffset = runningBitOffset + subField.BitLength;
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ReverseBits
+    //
+    // Reverses the low bitLength bits of value, returning the result right-justified with
+    // all higher bits zero.  Used by ExtractOptionalGroup to correct the LSB-first decode
+    // of a flag word whose surrounding packet is MSB-first.
+    //
+    // Parameters:
+    //   value      - The bits to reverse, right-justified in a uint with all higher bits
+    //                zero (the form returned by the standard uint encoding).
+    //   bitLength  - The width in bits over which to reverse.  A bitLength of 0 returns 0;
+    //                a bitLength of 32 reverses the full word.
+    //
+    // Returns:
+    //   The bit-reversed value, right-justified.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private uint ReverseBits(uint value, uint bitLength)
+    {
+        if (bitLength == 0u)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.ReverseBits: bitLength is 0, returning 0");
+            return 0u;
+        }
+
+        uint result = 0u;
+        for (uint bitIndex = 0u; bitIndex < bitLength; bitIndex++)
+        {
+            uint sourceBit = (value >> (int)bitIndex) & 1u;
+            result = result | (sourceBit << (int)(bitLength - 1u - bitIndex));
+        }
+        return result;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ExtractNpcMoveOptional
+    //
+    // Decodes the bit-packed tail of OP_NpcMoveUpdate starting at the given bit offset.
+    // The tail begins with a 6-bit flags field, followed by three 19-bit sign-magnitude
+    // fixed-point coordinates (divided by 8 for world units), a 12-bit signed heading, and
+    // up to six conditional fields whose presence is controlled by individual flag bits.
+    //
+    // Bit layout from bitOffset:
+    //   6 bits   flags                          (always present)
+    //   19 bits  x  (sign-magnitude, /8)        (always present)
+    //   19 bits  y  (sign-magnitude, /8)        (always present)
+    //   19 bits  z  (sign-magnitude, /8)        (always present)
+    //   12 bits  heading                        (always present)
+    //   12 bits  pitch          if flags & 0x01
+    //   10 bits  headingDelta   if flags & 0x02
+    //   10 bits  velocity       if flags & 0x04
+    //   13 bits  dy             if flags & 0x08
+    //   13 bits  dx             if flags & 0x10
+    //   13 bits  dz             if flags & 0x20
+    //
+    // Prints decoded values to the Opcodes log channel.  Does not write to the slot —
+    // proof-of-concept only.
+    //
+    // Parameters:
+    //   payload    - The packet payload being decoded.
+    //   bitOffset  - The bit offset where the flags field begins.
+    //   bitLength  - Unused.
+    //   slot       - Unused.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+
+    private void ExtractNpcMoveOptional(ReadOnlySpan<byte> payload, uint bitOffset,
+        uint bitLength, ref FieldSlot slot)
+    {
+        byte[] buffer = new byte[payload.Length];
+        payload.CopyTo(buffer);
+        BitReader reader = new BitReader(buffer);
+
+        // Skip past the leading bits (spawn_id + secondField in OP_NpcMoveUpdate).
+        reader.ReadUInt((int)bitOffset);
+
+        uint flags = reader.ReadUInt(6);
+        int rawX = reader.ReadInt(19);
+        int rawY = reader.ReadInt(19);
+        int rawZ = reader.ReadInt(19);
+        double x = rawX / 8.0;
+        double y = rawY / 8.0;
+        double z = rawZ / 8.0;
+        int heading = reader.ReadInt(12);
+
+        DebugLog.Write(LogChannel.Opcodes, "ExtractNpcMoveOptional: flags=0x"
+            + flags.ToString("x2") + " x=" + x.ToString("F2") + " y=" + y.ToString("F2")
+            + " z=" + z.ToString("F2") + " heading=" + heading);
+
+        if ((flags & 0x01) != 0)
+        {
+            if (reader.BitsRemaining < 12)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "ExtractNpcMoveOptional: underrun reading pitch");
+                return;
+            }
+            int pitch = reader.ReadInt(12);
+            DebugLog.Write(LogChannel.Opcodes, "ExtractNpcMoveOptional: pitch=" + pitch);
+        }
+
+        if ((flags & 0x02) != 0)
+        {
+            if (reader.BitsRemaining < 10)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "ExtractNpcMoveOptional: underrun reading headingDelta");
+                return;
+            }
+            int headingDelta = reader.ReadInt(10);
+            DebugLog.Write(LogChannel.Opcodes, "ExtractNpcMoveOptional: headingDelta=" + headingDelta);
+        }
+
+        if ((flags & 0x04) != 0)
+        {
+            if (reader.BitsRemaining < 10)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "ExtractNpcMoveOptional: underrun reading velocity");
+                return;
+            }
+            int velocity = reader.ReadInt(10);
+            DebugLog.Write(LogChannel.Opcodes, "ExtractNpcMoveOptional: velocity=" + velocity);
+        }
+
+        if ((flags & 0x08) != 0)
+        {
+            if (reader.BitsRemaining < 13)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "ExtractNpcMoveOptional: underrun reading dy");
+                return;
+            }
+            int dy = reader.ReadInt(13);
+            DebugLog.Write(LogChannel.Opcodes, "ExtractNpcMoveOptional: dy=" + dy);
+        }
+
+        if ((flags & 0x10) != 0)
+        {
+            if (reader.BitsRemaining < 13)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "ExtractNpcMoveOptional: underrun reading dx");
+                return;
+            }
+            int dx = reader.ReadInt(13);
+            DebugLog.Write(LogChannel.Opcodes, "ExtractNpcMoveOptional: dx=" + dx);
+        }
+
+        if ((flags & 0x20) != 0)
+        {
+            if (reader.BitsRemaining < 13)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "ExtractNpcMoveOptional: underrun reading dz");
+                return;
+            }
+            int dz = reader.ReadInt(13);
+            DebugLog.Write(LogChannel.Opcodes, "ExtractNpcMoveOptional: dz=" + dz);
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ExtractSignMagnitudeMsbDiv8
+    //
+    // Reads a signed coordinate value packed MSB-first within each byte, sign-magnitude
+    // encoded (first bit is the sign, 1 = negative; remaining bits are the unsigned
+    // magnitude), then divides by 8.0 to produce a world coordinate.
+    //
+    // This is the bit-reading convention of the EQ client (FUN_1405ac1f0 / FUN_1405ac160
+    // in eqgame.exe), shared with BitReader.  It is distinct from the LSB-first /
+    // two's-complement encoding used by ExtractSignExtendedDiv8 — they must not be
+    // confused; values decoded with the wrong convention will be wrong, sometimes
+    // wildly so.
+    //
+    // On any read failure the slot is left in its default Empty state.
+    //
+    // Parameters:
+    //   payload    - The packet payload being decoded.
+    //   bitOffset  - The bit offset to read from.
+    //   bitLength  - The total number of bits including the sign bit.  Must be at least 2
+    //                (one sign bit + one magnitude bit) and at most 32.
+    //   slot       - The slot to fill.  Already has its name set.  Stays Empty on failure.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void ExtractSignMagnitudeMsbDiv8(ReadOnlySpan<byte> payload, uint bitOffset,
+        uint bitLength, ref FieldSlot slot)
+    {
+        if (bitLength < 2u || bitLength > 32u)
+        {
+            return;
+        }
+
+        uint bitPosition = bitOffset;
+        uint bitsLeft = bitLength;
+        uint result = 0u;
+
+        while (bitsLeft > 0u)
+        {
+            uint byteIndex = bitPosition / 8u;
+            uint bitInByte = bitPosition % 8u;
+            uint bitsInThisByte = 8u - bitInByte;
+
+            uint bitsToTake;
+            if (bitsLeft < bitsInThisByte)
+            {
+                bitsToTake = bitsLeft;
+            }
+            else
+            {
+                bitsToTake = bitsInThisByte;
+            }
+
+            uint shift = bitsInThisByte - bitsToTake;
+            uint mask = (1u << (int)bitsToTake) - 1u;
+            uint chunk = ((uint)payload[(int)byteIndex] >> (int)shift) & mask;
+
+            result = (result << (int)bitsToTake) | chunk;
+            bitPosition = bitPosition + bitsToTake;
+            bitsLeft = bitsLeft - bitsToTake;
+        }
+
+        uint signBit = result >> (int)(bitLength - 1u);
+        uint magnitudeMask = (1u << (int)(bitLength - 1u)) - 1u;
+        uint magnitude = result & magnitudeMask;
+
+        int signedValue;
+        if (signBit != 0u)
+        {
+            signedValue = -(int)magnitude;
+        }
+        else
+        {
+            signedValue = (int)magnitude;
+        }
+
+        float worldCoord = signedValue / 8.0f;
+        slot.SetFloat(worldCoord);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ExtractSignMagnitudeMsb
+    //
+    // Reads a signed integer value packed MSB-first within each byte, sign-magnitude
+    // encoded (first bit is the sign, 1 = negative; remaining bits are the unsigned
+    // magnitude).  No fixed-point divisor is applied; the value is stored as a signed
+    // 32-bit integer.
+    //
+    // This is the bit-reading convention of the EQ client (FUN_1405ac1f0 / FUN_1405ac160
+    // in eqgame.exe), shared with BitReader and ExtractSignMagnitudeMsbDiv8.  It is
+    // distinct from the LSB-first / two's-complement encoding used by the Int encoding —
+    // they must not be confused; values decoded with the wrong convention will be wrong,
+    // sometimes wildly so.
+    //
+    // On any read failure the slot is left in its default Empty state.
+    //
+    // Parameters:
+    //   payload    - The packet payload being decoded.
+    //   bitOffset  - The bit offset to read from.
+    //   bitLength  - The total number of bits including the sign bit.  Must be at least 2
+    //                (one sign bit + one magnitude bit) and at most 32.
+    //   slot       - The slot to fill.  Already has its name set.  Stays Empty on failure.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void ExtractSignMagnitudeMsb(ReadOnlySpan<byte> payload, uint bitOffset,
+        uint bitLength, ref FieldSlot slot)
+    {
+        if (bitLength < 2u || bitLength > 32u)
+        {
+            return;
+        }
+
+        uint bitPosition = bitOffset;
+        uint bitsLeft = bitLength;
+        uint result = 0u;
+
+        while (bitsLeft > 0u)
+        {
+            uint byteIndex = bitPosition / 8u;
+            uint bitInByte = bitPosition % 8u;
+            uint bitsInThisByte = 8u - bitInByte;
+
+            uint bitsToTake;
+            if (bitsLeft < bitsInThisByte)
+            {
+                bitsToTake = bitsLeft;
+            }
+            else
+            {
+                bitsToTake = bitsInThisByte;
+            }
+
+            uint shift = bitsInThisByte - bitsToTake;
+            uint mask = (1u << (int)bitsToTake) - 1u;
+            uint chunk = ((uint)payload[(int)byteIndex] >> (int)shift) & mask;
+
+            result = (result << (int)bitsToTake) | chunk;
+            bitPosition = bitPosition + bitsToTake;
+            bitsLeft = bitsLeft - bitsToTake;
+        }
+
+        uint signBit = result >> (int)(bitLength - 1u);
+        uint magnitudeMask = (1u << (int)(bitLength - 1u)) - 1u;
+        uint magnitude = result & magnitudeMask;
+
+        int signedValue;
+        if (signBit != 0u)
+        {
+            signedValue = -(int)magnitude;
+        }
+        else
+        {
+            signedValue = (int)magnitude;
+        }
+
+        slot.SetInt32(signedValue);
     }
 }
