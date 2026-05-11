@@ -19,8 +19,8 @@ public class HandleDeath : IHandleOpcodes
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
 
-    private readonly int _spawnId;
-    private readonly int _killerId;
+    private readonly uint _spawnId;
+    private readonly uint _killerId;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleDeath (constructor)

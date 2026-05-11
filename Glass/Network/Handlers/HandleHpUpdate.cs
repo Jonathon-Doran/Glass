@@ -23,9 +23,9 @@ public class HandleHpUpdate : IHandleOpcodes
     private PatchLevel _patchLevel;
 
 
-    private readonly int _playerId;
-    private readonly int _currentHPId;
-    private readonly int _maxHPId;
+    private readonly uint _playerId;
+    private readonly uint _currentHPId;
+    private readonly uint _maxHPId;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleHpUpdate (constructor)

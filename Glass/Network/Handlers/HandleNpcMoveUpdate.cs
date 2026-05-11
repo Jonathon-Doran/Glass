@@ -18,19 +18,19 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
 
-    private readonly int _spawnId;
-    private readonly int _xPosId;
-    private readonly int _yPosId;
-    private readonly int _zPosId;
-    private readonly int _headingId;
-    private readonly int _pitchId;
-    private readonly int _headingDeltaId;
-    private readonly int _velocityId;
-    private readonly int _dxId;
-    private readonly int _dyId;
-    private readonly int _dzId;
+    private readonly uint _spawnId;
+    private readonly uint _xPosId;
+    private readonly uint _yPosId;
+    private readonly uint _zPosId;
+    private readonly uint _headingId;
+    private readonly uint _pitchId;
+    private readonly uint _headingDeltaId;
+    private readonly uint _velocityId;
+    private readonly uint _dxId;
+    private readonly uint _dyId;
+    private readonly uint _dzId;
 
-    private readonly int _flagsId;
+    private readonly uint _flagsId;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleNpcMoveUpdate (constructor)

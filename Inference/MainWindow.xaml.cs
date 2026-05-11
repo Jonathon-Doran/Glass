@@ -141,9 +141,9 @@ public partial class MainWindow : Window
         DebugLog.AddHandler(LogSink.Aux1LogFile, opcodesLogHandler);
         DebugLog.Route(LogChannel.Opcodes, LogSink.Aux1LogFile);
 
-        GlassDebugLogHandler lowNetLogHandler = new GlassDebugLogHandler("lowNet.log");
-        DebugLog.AddHandler(LogSink.Aux2LogFile, lowNetLogHandler);
-        DebugLog.Route(LogChannel.LowNetwork, LogSink.Aux2LogFile);
+        GlassDebugLogHandler fieldsLogHandler = new GlassDebugLogHandler("fields.log");
+        DebugLog.AddHandler(LogSink.Aux2LogFile, fieldsLogHandler);
+        DebugLog.Route(LogChannel.Fields, LogSink.Aux2LogFile);
 
         // The inference tab, just inference messages
         GlassConsoleLogHandler inferenceTabHandler = new GlassConsoleLogHandler(InferenceLogOutput, InferenceLogScroller);
@@ -191,8 +191,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        _currentPatchLevel = new PatchLevel(savedPatchDate, savedServerType);
+        GlassContext.CurrentPatchLevel = new PatchLevel(savedPatchDate, savedServerType);
         _patchOpcodes = LoadPatchOpcodes(savedPatchDate, savedServerType);
+        // TODO:  Why is _currentPatchLevel even used when we have GlassContext?
+        _currentPatchLevel = GlassContext.CurrentPatchLevel;
 
         string displayServerType = savedServerType.Substring(0, 1).ToUpper() + savedServerType.Substring(1);
         StatusPatchLevel.Text = savedPatchDate + " (" + displayServerType + ")";
@@ -870,6 +872,23 @@ public partial class MainWindow : Window
     private void MenuItem_Undo_Click(object sender, RoutedEventArgs e)
     {
         DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_Undo_Click");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // MenuItem_PatchDataEditor_Click
+    //
+    // Opens the Patch Data Editor as a modeless window owned by this MainWindow.
+    //
+    // sender:  The Tools > Patch Data Editor menu item.
+    // e:       Standard event args; not inspected.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void MenuItem_PatchDataEditor_Click(object sender, RoutedEventArgs e)
+    {
+        DebugLog.Write(LogChannel.Fields, "MainWindow.MenuItem_PatchDataEditor_Click: opening editor");
+
+        PatchDataEditor editor = new PatchDataEditor();
+        editor.Owner = this;
+        editor.Show();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

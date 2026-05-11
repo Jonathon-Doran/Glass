@@ -2,7 +2,6 @@
 using Glass.Data;
 using Glass.Network.Protocol.Fields;
 using Microsoft.Data.Sqlite;
-using System.Collections.Generic;
 using System.Reflection.Emit;
 
 namespace Glass.Network.Protocol;
@@ -159,6 +158,7 @@ public class PatchData
         _encodingsByString.Add("uint", FieldEncoding.UInt);
         _encodingsByString.Add("int", FieldEncoding.Int);
         _encodingsByString.Add("float", FieldEncoding.Float);
+        _encodingsByString.Add("csv_token", FieldEncoding.CsvToken);
         _encodingsByString.Add("uint_msb", FieldEncoding.UIntMsb);
         _encodingsByString.Add("uint_masked", FieldEncoding.UIntMasked);
         _encodingsByString.Add("signmag_msb", FieldEncoding.SignMagnitudeMsb);
@@ -596,7 +596,7 @@ public class PatchData
                 FieldIndex slotIndex = IndexOfField(handle, fieldName);
 
                 OptionalSubField subField;
-                subField.SlotIndex = (int)slotIndex;
+                subField.SlotIndex = slotIndex;
                 subField.BitLength = bitLength;
                 subField.Encoding = encoding;
                 subField.Name = fieldName;
@@ -604,7 +604,7 @@ public class PatchData
                 subFields.Add(subField);
             }
 
-            result = new OptionalGroup((int)flagSlotIndex, flagsLength, subFields.ToArray());
+            result = new OptionalGroup(flagSlotIndex, flagsLength, subFields.ToArray());
         }
 
         return result;
@@ -818,10 +818,10 @@ public class PatchData
         {
             DebugLog.Write(LogChannel.Fields, "PatchData.IndexOfField: no field definitions for opcode '" +
                 _namesByHandle[opcode] + "' in patchLevel=" + PatchLevel + "), returning -1");
-            return (FieldIndex)(-1);
+            return (FieldIndex)(10000);
         }
 
-        for (int fieldIndex = 0; fieldIndex < definitions.Length; fieldIndex++)
+        for (uint fieldIndex = 0; fieldIndex < definitions.Length; fieldIndex++)
         {
             if (definitions[fieldIndex].Name == fieldName)
             {
@@ -832,7 +832,56 @@ public class PatchData
         DebugLog.Write(LogChannel.Fields, "PatchData.IndexOfField: field '" + fieldName
             + "' not in definitions for opcode '" + _namesByHandle[opcode] + 
             "' in patchLevel=" + PatchLevel + "), returning -1");
-        return (FieldIndex)(-1);
+        return (FieldIndex)(10000);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetFieldPosition
+    //
+    // Returns the BitOffset stored on a field definition.  Used for field rows whose
+    // BitOffset carries position-like metadata that Extract does not consume — for
+    // example, csv_token rows where BitOffset is the 1-based index of the token within
+    // a comma-separated payload.
+    //
+    // handle:   The opcode handle previously obtained from GetOpcodeHandle.
+    // fieldId:  The field index previously obtained from IndexOfField.
+    //
+    // Returns the field's BitOffset.  Throws if the handle or field id cannot be
+    // resolved.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public uint GetFieldPosition(OpcodeHandle handle, uint fieldId)
+    {
+        FieldDefinition[]? definitions = _opcodeFields[handle];
+
+        if (definitions == null)
+        {
+            throw new InvalidOperationException("PatchData.GetFieldPosition: no fields for handle " + handle);
+        }
+
+        if (fieldId >= definitions.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(fieldId),
+                "PatchData.GetFieldPosition: field id " + fieldId + " out of range for handle " + handle);
+        }
+
+        FieldDefinition definition = definitions[fieldId];
+        return definition.BitOffset - 1;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetEncodingStrings
+    //
+    // Returns the encoding strings recognized by this PatchData.  Used by the patch data
+    // editor to populate encoding dropdowns.
+    //
+    // Returns:
+    //   The encoding strings, in dictionary enumeration order.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public string[] GetEncodingStrings()
+    {
+        string[] result = new string[_encodingsByString.Count];
+        _encodingsByString.Keys.CopyTo(result, 0);
+        return result;
     }
 }
 

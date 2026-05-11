@@ -292,6 +292,26 @@ public class PatchRegistry
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetEncodingStrings
+    //
+    // Returns the encoding strings recognized by the given patch level's PatchData.
+    // Used by the patch data editor to populate encoding dropdowns.
+    //
+    // Throws InvalidOperationException if the patch level is not loaded.
+    //
+    // Parameters:
+    //   patchLevel  - The patch identifier.  Must already be loaded.
+    //
+    // Returns:
+    //   The encoding strings recognized by the patch's PatchData.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public string[] GetEncodingStrings(PatchLevel patchLevel)
+    {
+        PatchData patchData = FindPatchData(patchLevel);
+        return patchData.GetEncodingStrings();
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // Rent
     //
     // Rents a FieldBag from the pool, stamps it with the opcode name for diagnostic
@@ -388,5 +408,36 @@ public class PatchRegistry
     {
         PatchData patchData = FindPatchData(patchLevel);
         return patchData.GetOptionalGroup(handle);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetFieldPosition
+    //
+    // Returns the position value stored on a field's definition (its BitOffset).  Used by
+    // handlers that need a position-like value from a field row that Extract does not
+    // process — for example, csv_token rows where BitOffset carries the 1-based index of
+    // the token within a comma-separated payload.
+    //
+    // patchLevel:  The patch level whose PatchData holds the field definitions.
+    // handle:      The opcode handle previously obtained from GetOpcodeHandle.
+    // fieldId:     The field index previously obtained from IndexOfField.
+    //
+    // Returns the field's BitOffset as an int, or -1 if the patch level, handle, or
+    // field id cannot be resolved.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public uint GetFieldPosition(PatchLevel patchLevel, OpcodeHandle handle, uint fieldId)
+    {
+        PatchData? patchData = FindPatchData(patchLevel);
+
+        if (patchData == null)
+        {
+            throw new InvalidOperationException("PatchRegistry.GetFieldPosition: patchLevel " + patchLevel +
+                     " not loaded");
+
+        }
+
+        uint position = patchData.GetFieldPosition(handle, fieldId);
+
+        return position;
     }
 }

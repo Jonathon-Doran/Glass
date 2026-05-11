@@ -22,9 +22,9 @@ public class HandleManaUpdate : IHandleOpcodes
     private PatchLevel _patchLevel;
 
 
-    private readonly int _playerId;
-    private readonly int _currentManaId;
-    private readonly int _maxManaId;
+    private readonly uint _playerId;
+    private readonly uint _currentManaId;
+    private readonly uint _maxManaId;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleManaUpdate (constructor)

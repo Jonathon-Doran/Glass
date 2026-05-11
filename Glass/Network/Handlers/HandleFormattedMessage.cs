@@ -20,7 +20,7 @@ public class HandleFormattedMessage : IHandleOpcodes
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
 
-    private readonly int _messageId;
+    private readonly uint _messageId;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleFormattedMessage(constructor)

@@ -120,6 +120,7 @@ public partial class MainWindow : Window
         DebugLog.Route(LogChannel.Network, LogSink.GlassDebugLogfile);
         DebugLog.Route(LogChannel.Fields, LogSink.GlassDebugLogfile);
         DebugLog.Route(LogChannel.Opcodes, LogSink.GlassDebugLogfile);
+        DebugLog.Route(LogChannel.Inference, LogSink.GlassDebugLogfile);
 
         GlassConsoleLogHandler glassConsoleLogHandler = new GlassConsoleLogHandler(ConsoleOutput, ConsoleScroller);
         DebugLog.AddHandler(LogSink.GlassConsole, glassConsoleLogHandler);

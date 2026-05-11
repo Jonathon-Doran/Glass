@@ -11,8 +11,8 @@
 // (FieldIndex)(-1) is the not-found sentinel returned when a field name is not present in
 // the opcode's definitions.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public readonly record struct FieldIndex(int Value)
+public readonly record struct FieldIndex(uint Value)
 {
-    public static implicit operator int(FieldIndex index) => index.Value;
-    public static explicit operator FieldIndex(int value) => new(value);
+    public static implicit operator uint(FieldIndex index) => index.Value;
+    public static explicit operator FieldIndex(uint value) => new(value);
 }

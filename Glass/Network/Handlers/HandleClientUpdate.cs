@@ -21,12 +21,12 @@ public class HandleClientUpdate : IHandleOpcodes
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
 
-    private readonly int _sequenceId;
-    private readonly int _playerId;
-    private readonly int _xPosId;
-    private readonly int _yPosId;
-    private readonly int _zPosId;
-    private readonly int _headingId;
+    private readonly uint _sequenceId;
+    private readonly uint _playerId;
+    private readonly uint _xPosId;
+    private readonly uint _yPosId;
+    private readonly uint _zPosId;
+    private readonly uint _headingId;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleClientUpdate(constructor)

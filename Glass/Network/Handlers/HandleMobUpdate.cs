@@ -21,10 +21,10 @@ public class HandleMobUpdate : IHandleOpcodes
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
 
-    private readonly int _spawnId;
-    private readonly int _xPosId;
-    private readonly int _yPosId;
-    private readonly int _zPosId;
+    private readonly uint _spawnId;
+    private readonly uint _xPosId;
+    private readonly uint _yPosId;
+    private readonly uint _zPosId;
     // private readonly int _headingId;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

@@ -24,6 +24,7 @@ public enum FieldEncoding
     UIntMsb,
     Float,
     UIntMasked,
+    CsvToken,
     SignMagnitudeLsb,
     SignMagnitudeMsb,
     OptSignMagnitudeMsb,

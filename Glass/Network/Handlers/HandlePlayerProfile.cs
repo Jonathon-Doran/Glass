@@ -22,23 +22,23 @@ public class HandlePlayerProfile : IHandleOpcodes
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
 
-    private readonly int _nameId;
-    private readonly int _levelId;
-    private readonly int _playerClassId;
-    private readonly int _practicePointsId;
-    private readonly int _manaId;
-    private readonly int _hitpointsId;
-    private readonly int _strengthId;
-    private readonly int _staminaId;
-    private readonly int _charismaId;
-    private readonly int _dexterityId;
-    private readonly int _intelligenceId;
-    private readonly int _agilityId;
-    private readonly int _wisdomId;
-    private readonly int _platinumCarriedId;
-    private readonly int _goldCarriedId;
-    private readonly int _silverCarriedId;
-    private readonly int _copperCarriedId;
+    private readonly uint _nameId;
+    private readonly uint _levelId;
+    private readonly uint _playerClassId;
+    private readonly uint _practicePointsId;
+    private readonly uint _manaId;
+    private readonly uint _hitpointsId;
+    private readonly uint _strengthId;
+    private readonly uint _staminaId;
+    private readonly uint _charismaId;
+    private readonly uint _dexterityId;
+    private readonly uint _intelligenceId;
+    private readonly uint _agilityId;
+    private readonly uint _wisdomId;
+    private readonly uint _platinumCarriedId;
+    private readonly uint _goldCarriedId;
+    private readonly uint _silverCarriedId;
+    private readonly uint _copperCarriedId;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandlePlayerProfile (constructor)

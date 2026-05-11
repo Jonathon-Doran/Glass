@@ -143,7 +143,7 @@ public class FieldBag
     //   A ref to the slot, or a null ref if slotIndex is out of range.  Check with
     //   Unsafe.IsNullRef(ref result) before use.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public ref FieldSlot TryGetSlotRef(int slotIndex)
+    public ref FieldSlot TryGetSlotRef(uint slotIndex)
     {
         if (slotIndex < 0 || slotIndex >= _slotCount)
         {
@@ -165,7 +165,7 @@ public class FieldBag
     //             FieldDefinitionExtensions.IndexOfField at handler construction.  A value
     //             of -1 (the "field not found" sentinel) returns 0.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public int GetIntAt(int slotIndex)
+    public int GetIntAt(uint slotIndex)
     {
         if (slotIndex < 0 || slotIndex >= _slotCount)
         {
@@ -208,7 +208,7 @@ public class FieldBag
     //             FieldDefinitionExtensions.IndexOfField at handler construction.  A value
     //             of -1 (the "field not found" sentinel) returns 0.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public uint GetUIntAt(int slotIndex)
+    public uint GetUIntAt(uint slotIndex)
     {
         if (slotIndex < 0 || slotIndex >= _slotCount)
         {
@@ -252,7 +252,7 @@ public class FieldBag
     //             FieldDefinitionExtensions.IndexOfField at handler construction.  A value
     //             of -1 (the "field not found" sentinel) returns 0.0f.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public float GetFloatAt(int slotIndex)
+    public float GetFloatAt(uint slotIndex)
     {
         if (slotIndex < 0 || slotIndex >= _slotCount)
         {
@@ -300,7 +300,7 @@ public class FieldBag
     //             of -1 (the "field not found" sentinel) returns an empty span.
     ///////////////////////////////////////////////////////////////////////////////////////////////
 
-    public ReadOnlySpan<byte> GetBytesAt(int slotIndex)
+    public ReadOnlySpan<byte> GetBytesAt(uint slotIndex)
     {
         if (slotIndex < 0 || slotIndex >= _slotCount)
         {
@@ -355,7 +355,7 @@ public class FieldBag
     //   true   - The slot holds a value.
     //   false  - The slot is Empty, or the index is out of range.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public bool IsPresent(int slotIndex)
+    public bool IsPresent(uint slotIndex)
     {
         if (slotIndex < 0 || slotIndex >= _slotCount)
         {

@@ -107,7 +107,7 @@ public class FieldExtractor
             newSlot.SetName(definitions[definitionIndex].Name);
         }
 
-        for (int definitionIndex = 0; definitionIndex < definitions.Length; definitionIndex++)
+        for (uint definitionIndex = 0; definitionIndex < definitions.Length; definitionIndex++)
         {
             FieldDefinition definition = definitions[definitionIndex];
             ref FieldSlot slot = ref bag.TryGetSlotRef(definitionIndex);
@@ -166,11 +166,13 @@ public class FieldExtractor
                     break;
 
                 case FieldEncoding.SignMagnitudeMsb:
-                    // add divisor
                     ExtractSignMagnitudeMsb(payload, definition.BitOffset, definition.BitLength, definition.Divisor, ref slot);
                     break;
 
+                // We have a couple of encodings that are not processed by Extract
                 case FieldEncoding.OptSignMagnitudeMsb:
+                    break;
+                case FieldEncoding.CsvToken:
                     break;
 
                 case FieldEncoding.OptionalGroup:

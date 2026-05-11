@@ -4,6 +4,7 @@ using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using System;
 using System.Buffers.Binary;
+using System.Text;
 using static Glass.Network.Protocol.SoeConstants;
 
 namespace Glass.Network.Handlers;
@@ -15,8 +16,50 @@ namespace Glass.Network.Handlers;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class HandleSetChatServer : IHandleOpcodes
 {
-    private ushort _opcode = 0x9cfc;
     private readonly string _opcodeName = "OP_SetChatServer";
+    private readonly OpcodeHandle _opcode;
+    private readonly PatchRegistry _registry;
+    private PatchLevel _patchLevel;
+
+    private readonly uint _payloadId;
+    private readonly uint _chatServerId;
+    private readonly uint _chatPortId;
+    private readonly uint _serverCharacterId;
+
+    // These are the positions of strings in the CSV text
+    // Positions are stored in the field bit_position column.
+    private readonly uint _serverCsvIndex;
+    private readonly uint _portCsvIndex;
+    private readonly uint _characterCsvIndex;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // HandleSetChatServer  (constructor)
+    //
+    // Resolves the wire opcode and loads the field definitions for OP_SetChatServer  from
+    // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
+    // Caches the index of each field the handler reads so the hot path can access the bag
+    // by integer index without name lookup.
+    //
+    // If the current patch does not define OP_SetChatServer , GetOpcodeValue returns 0 and
+    // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
+    // with a zero opcode, so this handler simply will not receive packets.  All field
+    // index lookups resolve to -1 in that case but are never consulted.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public HandleSetChatServer()
+    {
+        _registry = GlassContext.PatchRegistry;
+        _patchLevel = GlassContext.CurrentPatchLevel;
+        _opcode = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
+
+        _payloadId =         _registry.IndexOfField(_patchLevel, _opcode, "csv_payload");
+        _chatServerId =      _registry.IndexOfField(_patchLevel, _opcode, "chat_server");
+        _chatPortId =        _registry.IndexOfField(_patchLevel, _opcode, "chat_port");
+        _serverCharacterId = _registry.IndexOfField(_patchLevel, _opcode, "server_character");
+
+        _serverCsvIndex = _registry.GetFieldPosition(_patchLevel, _opcode, _chatServerId);
+        _portCsvIndex = _registry.GetFieldPosition(_patchLevel, _opcode, _chatPortId);
+        _characterCsvIndex = _registry.GetFieldPosition(_patchLevel, _opcode, _serverCharacterId);
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Dispose
@@ -27,14 +70,6 @@ public class HandleSetChatServer : IHandleOpcodes
     public void Dispose()
     {
         GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Opcode
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public ushort Opcode
-    {
-        get { return _opcode; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -64,24 +99,6 @@ public class HandleSetChatServer : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Extract
-    //
-    // Fills the supplied bag with field values decoded from data, using this handler's cached
-    // field definitions.  Called by OpcodeDispatch.Extract on the cold path (e.g. the
-    // Inference opcode log tab during refresh).  Handlers not yet refactored to use the
-    // FieldExtractor may leave this empty; callers will see an empty bag.
-    //
-    // The caller owns the bag's lifetime — must Rent it before this call and Release it after.
-    //
-    // data:  The application payload
-    // bag:   A bag rented by the caller; will be filled by this method
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    public void Extract(ReadOnlySpan<byte> data, FieldBag bag)
-    {
-
-    }
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleWorldToClient
     //
     // Processes world-to-client traffic
@@ -91,23 +108,33 @@ public class HandleSetChatServer : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleWorldToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        int nullIndex = data.Slice(0, data.Length).IndexOf((byte)0x00);
-        int stringLength = (nullIndex >= 0) ? nullIndex : data.Length;
-        string payload = System.Text.Encoding.ASCII.GetString(data.Slice(0, stringLength));
+        string payload;
 
-        string[] fields = payload.Split(',');
+        FieldBag bag = _registry.Rent(_patchLevel, _opcode);
+        try
+        {
+            GlassContext.FieldExtractor.Extract(_patchLevel, _opcode, data, bag);
 
-        if (fields.Length < 4)
+            ReadOnlySpan<byte> payloadBytes = bag.GetBytesAt(_payloadId);
+            payload = Encoding.ASCII.GetString(payloadBytes);
+        }
+        finally
+        {
+            bag.Release();
+        }
+
+        string[] csvFields = payload.Split(',');
+
+        if (csvFields.Length < 4)
         {
             DebugLog.Write(LogChannel.Inference, "HandleSetChatServer: malformed payload, field count="
-                + fields.Length + " raw='" + payload + "'");
+                + csvFields.Length + " raw='" + payload + "'");
             return;
         }
 
-        string chatServer = fields[0];
-        string chatPort = fields[1];
-        string serverDotCharacter = fields[2];
-        string authToken = fields[3];
+        string chatServer = csvFields[_serverCsvIndex];
+        string chatPort = csvFields[_portCsvIndex];
+        string serverDotCharacter = csvFields[_characterCsvIndex];
 
         int dotIndex = serverDotCharacter.IndexOf('.');
 
@@ -124,8 +151,7 @@ public class HandleSetChatServer : IHandleOpcodes
         DebugLog.Write(LogChannel.Inference, "HandleSetChatServer: server=" + serverName
             + " character=" + characterName
             + " chatServer=" + chatServer
-            + " chatPort=" + chatPort
-            + " port=" + metadata.SourcePort + "->" + metadata.DestPort);
+            + " chatPort=" + chatPort);
 
 
     }

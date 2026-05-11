@@ -1,0 +1,302 @@
+﻿<Window x:Class="Inference.Dialogs.PatchDataEditor"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.modernwpf.com/2019"
+        ui:WindowHelper.UseModernWindowStyle="True"
+        Title="Patch Data Editor"
+        Width="1100"
+        Height="1200"
+        WindowStartupLocation="CenterOwner">
+
+    <Grid Margin="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- =========================================================================== -->
+        <!-- Top:  Patch level + opcode selectors                                        -->
+        <!-- =========================================================================== -->
+        <StackPanel Grid.Row="0"
+            Orientation="Horizontal"
+            Margin="0,0,0,8">
+            <TextBlock Text="Patch:"
+               VerticalAlignment="Center"
+               Margin="0,0,8,0" />
+            <ComboBox x:Name="PatchLevelComboBox"
+              Width="240"
+              Margin="0,0,16,0"
+              SelectionChanged="PatchLevelComboBox_SelectionChanged"
+             />
+
+            <TextBlock Text="Opcode:"
+               VerticalAlignment="Center"
+               Margin="0,0,8,0" 
+             />
+            <ComboBox x:Name="OpcodeComboBox"
+              Width="280"
+              IsEditable="True"
+              Margin="0,0,16,0"
+              SelectionChanged="OpcodeComboBox_SelectionChanged"
+             />
+            <TextBlock Text="Version:"
+               VerticalAlignment="Center"
+               Margin="0,0,8,0" 
+             />
+            <ComboBox x:Name="VersionComboBox"
+                  Width="80"
+                  Margin="0,0,8,0"
+                  SelectionChanged="VersionComboBox_SelectionChanged"
+                 />
+            <Button x:Name="AddOpcodeButton"
+                Content="Add Opcode"
+                Width="110"
+                Margin="0,0,8,0"
+                Click="AddOpcodeButton_Click" />
+            <Button x:Name="DeleteOpcodeButton"
+                Content="Delete Opcode"
+                Width="110"/>
+        </StackPanel>
+
+        <!-- =========================================================================== -->
+        <!-- Row 1:  PatchOpcode editable form                                           -->
+        <!-- =========================================================================== -->
+        <GroupBox Grid.Row="1"
+          Header="Opcode"
+          Margin="0,0,0,8">
+            <Grid Margin="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="220" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="120" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="100" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="80" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="70" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0"
+                   Text="Name:"
+                   VerticalAlignment="Center"
+                   Margin="0,0,8,0" />
+                <TextBox Grid.Row="0" Grid.Column="1"
+                 x:Name="OpcodeNameTextBox"
+                 Text="OP_Name" />
+
+                <TextBlock Grid.Row="0" Grid.Column="3"
+                   Text="Hex:"
+                   VerticalAlignment="Center"
+                   Margin="0,0,8,0" />
+                <TextBox Grid.Row="0" Grid.Column="4"
+                 x:Name="OpcodeHexTextBox"
+                 Text="0x9cfc" />
+
+                <TextBlock Grid.Row="0" Grid.Column="6"
+                   Text="Byte Length:"
+                   VerticalAlignment="Center"
+                   Margin="0,0,8,0" />
+                <TextBox Grid.Row="0" Grid.Column="7"
+                 x:Name="OpcodeByteLengthTextBox"
+                 Text="4096" />
+
+                <TextBlock Grid.Row="0" Grid.Column="9"
+                   Text="Version:"
+                   VerticalAlignment="Center"
+                   Margin="0,0,8,0" />
+                <TextBox Grid.Row="0" Grid.Column="10"
+                 x:Name="OpcodeVersionTextBox"
+                 Text="1" />
+                <TextBlock Grid.Row="0" Grid.Column="12"
+                   Text="Key:"
+                   VerticalAlignment="Center"
+                   Margin="0,0,8,0" />
+                <TextBox Grid.Row="0" Grid.Column="13"
+                     x:Name="OpcodeKeyTextBox"
+                     IsReadOnly="True"
+                     Background="{x:Null}" 
+                         />
+
+            </Grid>
+        </GroupBox>
+
+        <!-- =========================================================================== -->
+        <!-- Row 2:  PacketField grid                                                    -->
+        <!-- =========================================================================== -->
+        <GroupBox Grid.Row="2"
+                  Header="Fields"
+                  Margin="0,0,0,8">
+            <DockPanel Margin="8">
+                <StackPanel DockPanel.Dock="Top"
+                            Orientation="Horizontal"
+                            Margin="0,0,0,4">
+                    <Button x:Name="AddFieldButton"
+                            Content="Add"
+                            Width="60"
+                            Margin="0,0,4,0"
+                            Click="AddFieldButton_Click"
+                            />
+                    <Button x:Name="DeleteFieldButton"
+                            Content="Delete"
+                            Width="60"
+                            Click="DeleteFieldButton_Click"
+                            />
+                </StackPanel>
+
+                <DataGrid x:Name="FieldsGrid"
+                          AutoGenerateColumns="False"
+                          CanUserAddRows="False"
+                          CanUserDeleteRows="False"
+                          HeadersVisibility="All"
+                          SelectionMode="Single">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Name"
+                        Binding="{Binding field_name}"
+                        Width="*" />
+                        <DataGridTextColumn Header="Bit Offset"
+                        Binding="{Binding bit_offset}"
+                        Width="80" />
+                        <DataGridTextColumn Header="Bit Length"
+                        Binding="{Binding bit_length}"
+                        Width="80" />
+                        <DataGridComboBoxColumn x:Name="FieldEncodingColumn"
+                            Header="Encoding"
+                            SelectedValueBinding="{Binding encoding}"
+                            Width="200" />
+                        <DataGridTextColumn Header="Divisor"
+                        Binding="{Binding divisor}"
+                        Width="80" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </GroupBox>
+
+        <!-- =========================================================================== -->
+        <!-- Row 3:  PacketOptionalGroup grid (left) + that group's PacketOptionalField  -->
+        <!-- rows (right)                                                                -->
+        <!-- =========================================================================== -->
+        <GroupBox Grid.Row="3"
+                  Header="Optional Groups"
+                  Margin="0,0,0,8">
+            <Grid Margin="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="320" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <DockPanel Grid.Column="0">
+                    <StackPanel DockPanel.Dock="Top"
+                                Orientation="Horizontal"
+                                Margin="0,0,0,4">
+                        <Button x:Name="AddOptionalGroupButton"
+                                Content="Add"
+                                Width="60"
+                                Margin="0,0,4,0"/>
+                        <Button x:Name="DeleteOptionalGroupButton"
+                                Content="Delete"
+                                Width="60"/>
+                    </StackPanel>
+
+                    <DataGrid x:Name="OptionalGroupsGrid"
+                              AutoGenerateColumns="False"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              HeadersVisibility="Column"
+                              SelectionMode="Single"
+                              SelectionChanged="OptionalGroupsGrid_SelectionChanged">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Bit Offset"
+                                Binding="{Binding bit_offset}"
+                                Width="80" />
+                             <DataGridTextColumn Header="Flag Bits"
+                                Binding="{Binding flags_bit_length}"
+                                 Width="70" />
+                            <DataGridTextColumn Header="Flag Field"
+                                Binding="{Binding flag_field_name}"
+                                Width="*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+
+                <GridSplitter Grid.Column="1"
+                              Width="4"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Stretch" />
+
+                <DockPanel Grid.Column="2"
+                           Margin="8,0,0,0">
+                    <StackPanel DockPanel.Dock="Top"
+                                Orientation="Horizontal"
+                                Margin="0,0,0,4">
+                        <Button x:Name="AddOptionalFieldButton"
+                                Content="Add"
+                                Width="60"
+                                Margin="0,0,4,0"/>
+                        <Button x:Name="DeleteOptionalFieldButton"
+                                Content="Delete"
+                                Width="60"/>
+                    </StackPanel>
+
+                    <DataGrid x:Name="OptionalFieldsGrid"
+                              AutoGenerateColumns="False"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              HeadersVisibility="Column"
+                              SelectionMode="Single">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Name"
+                                Binding="{Binding field_name}"
+                                Width="*" />
+                            <DataGridTextColumn Header="Flag Mask"
+                                Binding="{Binding flag_mask}"
+                                Width="80" />
+                            <DataGridTextColumn Header="Sequence"
+                                Binding="{Binding sequence_order}"
+                                Width="90" />
+                            <DataGridTextColumn Header="Bit Length"
+                                Binding="{Binding bit_length}"
+                                Width="80" />
+                            <DataGridComboBoxColumn x:Name="OptionalFieldEncodingColumn"
+                                Header="Encoding"
+                                SelectedValueBinding="{Binding encoding}"
+                                Width="200" />
+                            <DataGridTextColumn Header="Divisor"
+                                Binding="{Binding divisor}"
+                                Width="80" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </Grid>
+        </GroupBox>
+
+        <!-- =========================================================================== -->
+        <!-- Bottom:  Save / Close                                                       -->
+        <!-- =========================================================================== -->
+        <StackPanel Grid.Row="4"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right">
+            <Button x:Name="SaveButton"
+                    Content="Save"
+                    Width="80"
+                    Margin="0,0,8,0"
+                    Click="SaveButton_Click"/>
+            <Button x:Name="CloseButton"
+                    Content="Close"
+                    Click="CloseButton_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

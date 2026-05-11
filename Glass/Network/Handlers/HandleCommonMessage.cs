@@ -20,9 +20,9 @@ public class HandleCommonMessage : IHandleOpcodes
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
 
-    private readonly int _senderId;
-    private readonly int _channelId;
-    private readonly int _messageId;
+    private readonly uint _senderId;
+    private readonly uint _channelId;
+    private readonly uint _messageId;
 
     private static readonly byte ChannelShout = 0x03;
     private static readonly byte ChannelOoc = 0x05;

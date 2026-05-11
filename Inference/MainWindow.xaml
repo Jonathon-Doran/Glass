@@ -24,6 +24,9 @@
                 <MenuItem Header="_Launch Profile..." Click="MenuItem_LaunchProfile_Click"/>
                 <Separator/>
             </MenuItem>
+            <MenuItem Header="_Tools">
+                <MenuItem Header="_Patch Data Editor" Click="MenuItem_PatchDataEditor_Click"/>
+            </MenuItem>
         </Menu>
         <StatusBar DockPanel.Dock="Bottom">
             <StatusBarItem>
