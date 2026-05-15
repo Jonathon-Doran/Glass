@@ -314,7 +314,7 @@ public partial class PatchDataEditor : Window
 
         using SqliteCommand cmd = _connection.CreateCommand();
         cmd.CommandText = "SELECT pf.id, pf.patch_opcode_id, pf.field_name, pf.bit_offset,"
-            + " pf.bit_length, pf.encoding, pf.divisor"
+            + " pf.bit_length, pf.encoding, pf.divisor, pf.relative_to"
             + " FROM PacketField pf"
             + " JOIN PatchOpcode po ON pf.patch_opcode_id = po.id"
             + " WHERE po.patch_date = @patchDate"
@@ -360,6 +360,7 @@ public partial class PatchDataEditor : Window
         table.Columns.Add("bit_length", typeof(int));
         table.Columns.Add("encoding", typeof(string));
         table.Columns.Add("divisor", typeof(double));
+        table.Columns.Add("relative_to", typeof(string));
         return table;
     }
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -749,6 +750,7 @@ public partial class PatchDataEditor : Window
         newRow["bit_length"] = 0;
         newRow["encoding"] = string.Empty;
         newRow["divisor"] = 1.0;
+        newRow["relative_to"] = DBNull.Value;
 
         _fieldsTable.Rows.Add(newRow);
 
@@ -780,7 +782,7 @@ public partial class PatchDataEditor : Window
                 + "no row selected, ignoring");
             return;
         }
-        DataRowView selected = FieldsGrid.SelectedItem as DataRowView;
+        DataRowView? selected = FieldsGrid.SelectedItem as DataRowView;
         if (selected == null)
         {
             DebugLog.Write(LogChannel.Fields, "PatchDataEditor.DeleteFieldButton_Click: "
@@ -834,9 +836,9 @@ public partial class PatchDataEditor : Window
                 using SqliteCommand cmd = _connection.CreateCommand();
                 cmd.Transaction = tx;
                 cmd.CommandText = "INSERT INTO PacketField"
-                    + " (patch_opcode_id, field_name, bit_offset, bit_length, encoding, divisor)"
+                    + " (patch_opcode_id, field_name, bit_offset, bit_length, encoding, divisor, relative_to)"
                     + " VALUES (@patchOpcodeId, @fieldName, @bitOffset, @bitLength, @encoding,"
-                    + " @divisor);"
+                    + " @divisor, @relative_to);"
                     + " SELECT last_insert_rowid();";
                 cmd.Parameters.AddWithValue("@patchOpcodeId", _patchOpcodeKey);
                 cmd.Parameters.AddWithValue("@fieldName", row["field_name"]);
@@ -844,6 +846,17 @@ public partial class PatchDataEditor : Window
                 cmd.Parameters.AddWithValue("@bitLength", row["bit_length"]);
                 cmd.Parameters.AddWithValue("@encoding", row["encoding"]);
                 cmd.Parameters.AddWithValue("@divisor", row["divisor"]);
+                string? relativeToRaw = row["relative_to"] as string;
+                object relativeToValue;
+                if (string.IsNullOrWhiteSpace(relativeToRaw) == true)
+                {
+                    relativeToValue = DBNull.Value;
+                }
+                else
+                {
+                    relativeToValue = relativeToRaw;
+                }
+                cmd.Parameters.AddWithValue("@relative_to", relativeToValue);
 
                 object? scalar = cmd.ExecuteScalar();
 
@@ -858,7 +871,8 @@ public partial class PatchDataEditor : Window
                     + "     bit_offset = @bitOffset,"
                     + "     bit_length = @bitLength,"
                     + "     encoding = @encoding,"
-                    + "     divisor = @divisor"
+                    + "     divisor = @divisor,"
+                    + "     relative_to = @relative_to"
                     + " WHERE id = @id";
                 cmd.Parameters.AddWithValue("@id", row["id"]);
                 cmd.Parameters.AddWithValue("@fieldName", row["field_name"]);
@@ -866,6 +880,19 @@ public partial class PatchDataEditor : Window
                 cmd.Parameters.AddWithValue("@bitLength", row["bit_length"]);
                 cmd.Parameters.AddWithValue("@encoding", row["encoding"]);
                 cmd.Parameters.AddWithValue("@divisor", row["divisor"]);
+
+                string? relativeToRaw = row["relative_to"] as string;
+                object relativeToValue;
+                if (string.IsNullOrWhiteSpace(relativeToRaw) == true)
+                {
+                    relativeToValue = DBNull.Value;
+                }
+                else
+                {
+                    relativeToValue = relativeToRaw;
+                }
+                cmd.Parameters.AddWithValue("@relative_to", relativeToValue);
+
                 cmd.ExecuteNonQuery();
                 updated = updated + 1;
             }

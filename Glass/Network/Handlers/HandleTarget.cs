@@ -1,5 +1,7 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Data.Models;
+using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using System;
@@ -14,8 +16,34 @@ namespace Glass.Network.Handlers;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class HandleTarget : IHandleOpcodes
 {
-    private ushort _opcode = 0x5727;
     private readonly string _opcodeName = "OP_TargetMouse";
+    private OpcodeHandle _handle;
+    private PatchRegistry _registry;
+    private PatchLevel _patchLevel;
+
+    private readonly uint _spawnIdIndex;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // HandleTarget  (constructor)
+    //
+    // Resolves the wire opcode and loads the field definitions for OP_Target  from
+    // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
+    // Caches the index of each field the handler reads so the hot path can access the bag
+    // by integer index without name lookup.
+    //
+    // If the current patch does not define OP_Target , GetOpcodeValue returns 0 and
+    // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
+    // with a zero opcode, so this handler simply will not receive packets.  All field
+    // index lookups resolve to -1 in that case but are never consulted.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public HandleTarget()
+    {
+        _registry = GlassContext.PatchRegistry;
+        _patchLevel = GlassContext.CurrentPatchLevel;
+        _handle = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
+
+        _spawnIdIndex = _registry.IndexOfField(_patchLevel, _handle, "spawn_id");
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Dispose
@@ -26,14 +54,6 @@ public class HandleTarget : IHandleOpcodes
     public void Dispose()
     {
         GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Opcode
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public ushort Opcode
-    {
-        get { return _opcode; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -63,24 +83,6 @@ public class HandleTarget : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Extract
-    //
-    // Fills the supplied bag with field values decoded from data, using this handler's cached
-    // field definitions.  Called by OpcodeDispatch.Extract on the cold path (e.g. the
-    // Inference opcode log tab during refresh).  Handlers not yet refactored to use the
-    // FieldExtractor may leave this empty; callers will see an empty bag.
-    //
-    // The caller owns the bag's lifetime — must Rent it before this call and Release it after.
-    //
-    // data:  The application payload
-    // bag:   A bag rented by the caller; will be filled by this method
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    public void Extract(ReadOnlySpan<byte> data, FieldBag bag)
-    {
-
-    }
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleClientToZone
     //
     // Processes client-to-zone traffic
@@ -90,17 +92,24 @@ public class HandleTarget : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (data.Length != 4)
+        uint spawnId;
+
+        FieldBag bag = _registry.Rent(_patchLevel, _handle);
+        try
         {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " wrong size, should be 4, length=" + data.Length);
-            return;
+            GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
+
+            spawnId = bag.GetUIntAt(_spawnIdIndex);
+        }
+        finally
+        {
+            bag.Release();
         }
 
-        uint spawnId = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(0));
 
 
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName + " length=" + data.Length);
-        DebugLog.Write(LogChannel.Opcodes, "Target=" + spawnId + " (0x" + spawnId.ToString("x4") + ")");
+        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName);
+        DebugLog.Write(LogChannel.Opcodes, "Target = 0x" + spawnId.ToString("x4"));
     }
 
 }

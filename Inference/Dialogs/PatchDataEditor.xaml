@@ -179,6 +179,9 @@
                         <DataGridTextColumn Header="Divisor"
                         Binding="{Binding divisor}"
                         Width="80" />
+                        <DataGridTextColumn Header="Relative To"
+                            Binding="{Binding relative_to}"
+                            Width="120" />
                     </DataGrid.Columns>
                 </DataGrid>
             </DockPanel>

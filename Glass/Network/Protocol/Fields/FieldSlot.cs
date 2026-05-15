@@ -115,12 +115,13 @@ public struct FieldSlot
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // CopyAsciiBytesTo
     //
-    // Copies the slot's ASCII string bytes into the caller-provided destination buffer.
-    // The caller owns the destination; the slot holds no reference to it after the copy.
-    // Logs and returns 0 if the slot's type is not AsciiString or if the destination is
-    // too small to hold the stored bytes.
+    // Copies the slot's ASCII string bytes into the caller-provided destination buffer,
+    // with the trailing null terminator excluded.  The caller owns the destination; the
+    // slot holds no reference to it after the copy.  Logs and returns 0 if the slot's
+    // type is not AsciiString or if the destination is too small to hold the visible bytes.
     //
-    // destination:  Caller-owned buffer to receive the bytes; must be at least PayloadLength bytes.
+    // destination:  Caller-owned buffer to receive the bytes; must be at least
+    //               (PayloadLength - 1) bytes.
     //
     // Returns:      The number of bytes copied, or 0 on type mismatch or undersized destination.
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -133,17 +134,25 @@ public struct FieldSlot
             return 0;
         }
 
-        if (destination.Length < _payloadLength)
+        if (_payloadLength == 0)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.CopyAsciiBytesTo: " + GetName() + " length "
-                + destination.Length + " is smaller than payload length " + _payloadLength
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.CopyAsciiBytesTo: " + GetName()
+                + " payload length is zero, returning 0");
+            return 0;
+        }
+
+        int visibleLength = _payloadLength - 1;
+        if (destination.Length < visibleLength)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.CopyAsciiBytesTo: " + GetName() + " destination length "
+                + destination.Length + " is smaller than visible length " + visibleLength
                 + ", returning 0");
             return 0;
         }
 
         Span<byte> source = _payload;
-        source.Slice(0, _payloadLength).CopyTo(destination);
-        return _payloadLength;
+        source.Slice(0, visibleLength).CopyTo(destination);
+        return visibleLength;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -194,24 +203,34 @@ public struct FieldSlot
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // SetAsciiString
     //
-    // Stores ASCII string bytes in the payload buffer.  Source longer than PayloadCapacity
-    // is truncated and logged.
+    // Stores ASCII string bytes in the payload buffer, followed by a single null terminator.
+    // _payloadLength counts the stored bytes including the null, so it reflects the on-wire
+    // byte count for a null-terminated string field.  Consumer-facing getters slice the
+    // null off; only the extractor reads the full length (via GetLength) when computing
+    // anchor end positions for relative-anchored fields.
     //
-    // bytes:  The ASCII bytes to store; should not include a trailing null.
+    // Source longer than (PayloadCapacity - 1) are truncated and the truncation is logged.
+    //
+    // Parameters:
+    //   bytes:  The ASCII bytes to store; should not include a trailing null — this
+    //           method appends one.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void SetAsciiString(ReadOnlySpan<byte> bytes)
     {
+        int maxPayload = PayloadCapacity - 1;
         int copyCount = bytes.Length;
-        if (copyCount > PayloadCapacity)
+        if (copyCount > maxPayload)
         {
             DebugLog.Write(LogChannel.Fields, "FieldSlot.SetAsciiString: " + GetName() + " length " + copyCount
-                + " exceeds PayloadCapacity " + PayloadCapacity + ", truncating");
-            copyCount = PayloadCapacity;
+                + " exceeds max payload " + maxPayload + " (PayloadCapacity " + PayloadCapacity
+                + " minus null terminator), truncating");
+            copyCount = maxPayload;
         }
 
         Span<byte> destination = _payload;
         bytes.Slice(0, copyCount).CopyTo(destination);
-        _payloadLength = (byte)copyCount;
+        destination[copyCount] = 0;
+        _payloadLength = (byte)(copyCount + 1);
         _type = FieldType.AsciiString;
     }
 
@@ -307,11 +326,13 @@ public struct FieldSlot
         value = BinaryPrimitives.ReadSingleLittleEndian(source);
         return SlotReadResult.Success;
     }
+
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetAsciiBytes
     //
-    // Returns a read-only span over the slot's stored ASCII string bytes.  Logs and returns
-    // an empty span if the slot's type is not AsciiString.
+    // Returns a read-only span over the slot's stored ASCII string bytes, with the trailing
+    // null terminator excluded.  Logs and returns an empty span if the slot's type is not
+    // AsciiString.
     //
     // The returned span is valid only while the slot's storage is stable — practically, until
     // the bag containing this slot is released.  Callers that need to keep the bytes past
@@ -327,21 +348,31 @@ public struct FieldSlot
             return ReadOnlySpan<byte>.Empty;
         }
 
-        return ((ReadOnlySpan<byte>)_payload).Slice(0, _payloadLength);
+        if (_payloadLength == 0)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.GetAsciiBytes: " + GetName()
+                + " payload length is zero, returning empty span");
+            return ReadOnlySpan<byte>.Empty;
+        }
+
+        return ((ReadOnlySpan<byte>)_payload).Slice(0, _payloadLength - 1);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // TryGetAsciiBytes
     //
-    // Returns a read-only span over the slot's stored ASCII string bytes.  Logs and returns
-    // an empty span if the slot's type is not AsciiString.
+    // Returns a read-only span over the slot's stored ASCII string bytes, with the trailing
+    // null terminator excluded.  Logs and returns an empty span if the slot's type is not
+    // AsciiString, or if the payload is empty.
     //
     // The returned span is valid only while the slot's storage is stable — practically, until
     // the bag containing this slot is released.  Callers that need to keep the bytes past
     // that point must copy them out (e.g. via Encoding.ASCII.GetString or span.CopyTo).
     //
     // Returns SlotReadResult.Success and the value on success,
-    // SlotReadResult.TypeMismatch and zero on type mismatch.
+    // SlotReadResult.TypeMismatch and an empty span on type mismatch,
+    // SlotReadResult.EmptyPayload and an empty span when the slot is AsciiString but
+    // has no stored bytes.
     ///////////////////////////////////////////////////////////////////////////////////////////
     [UnscopedRef]
     public SlotReadResult TryGetAsciiBytes(out ReadOnlySpan<byte> value)
@@ -352,44 +383,16 @@ public struct FieldSlot
             return SlotReadResult.TypeMismatch;
         }
 
-        ReadOnlySpan<byte> source = _payload;
-        value = ((ReadOnlySpan<byte>)_payload).Slice(0, _payloadLength);
-        return SlotReadResult.Success;
-    }
+        if (_payloadLength == 0)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.TryGetAsciiBytes: " + GetName()
+                + " payload length is zero, returning empty span");
+            value = ReadOnlySpan<byte>.Empty;
+            return SlotReadResult.EmptyPayload;
+        }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // MatchesName
-    //
-    // Returns true if the slot's stored name bytes are byte-for-byte equal to the supplied
-    // query.  Comparison is performed inline; no span over the slot's name buffer is ever
-    // returned to the caller, so there is no risk of a span outliving the slot.
-    //
-    // Parameters:
-    //   query - The candidate name bytes to compare against this slot's name.  Typically
-    //           produced by ASCII-encoding a field name string into a stack buffer at the
-    //           call site.
-    //
-    // Returns:
-    //   true  - The query length matches _nameLength and every byte is equal.
-    //   false - Length differs, or any byte differs.  Also false for an empty (unused) slot
-    //           unless the query is itself zero-length, which is not a valid field name and
-    //           is logged.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public bool MatchesName(ReadOnlySpan<byte> query)
-    {
-        if (query.Length == 0)
-        {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.MatchesName: " + GetName() + " zero-length query, returning false");
-            return false;
-        }
-        if (query.Length != _nameLength)
-        {
-            return false;
-        }
-        ReadOnlySpan<byte> nameBytes = _name;
-        ReadOnlySpan<byte> activeName = nameBytes.Slice(0, _nameLength);
-        bool isEqual = activeName.SequenceEqual(query);
-        return isEqual;
+        value = ((ReadOnlySpan<byte>)_payload).Slice(0, _payloadLength - 1);
+        return SlotReadResult.Success;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -410,5 +413,19 @@ public struct FieldSlot
         ReadOnlySpan<byte> activeName = nameBytes.Slice(0, _nameLength);
         string result = Encoding.ASCII.GetString(activeName);
         return result;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetLength
+    //
+    // Returns the payload length in bytes for this slot.  For variable-length types such as
+    // null-terminated strings, this is the actual stored byte count.  For fixed-width types
+    // this is the width of the type.  Empty slots report zero.
+    //
+    // Returns: Payload length in bytes.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public uint GetLength()
+    {
+        return _payloadLength;
     }
 }

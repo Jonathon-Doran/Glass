@@ -5,16 +5,56 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////
 using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Data.Models;
+using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using System.Buffers.Binary;
+using System.Text;
 
 public class HandleTrackingUpdate : IHandleOpcodes
 {
-    private ushort _opcode = 0x7604;
     private readonly string _opcodeName = "OP_Tracking";
+    private OpcodeHandle _handle;
+    private PatchRegistry _registry;
+    private PatchLevel _patchLevel;
 
-    private bool brief = false;
+    private readonly uint _magicId;         // for v1
+
+    private readonly uint _spawnIdIndex;    // for v2
+    private readonly uint _countId;
+    private readonly uint _levelId;
+    private readonly uint _nameId;
+
+    private readonly uint TRACKING_MAGIC_NUMBER = 0x4f348bff;
+    //private readonly bool _brief = false;
+    private uint _fixedEntryLength;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // HandleTrackingUpdate (constructor)
+    //
+    // Resolves the wire opcode and loads the field definitions for OP_TrackingUpdate from
+    // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
+    // Caches the index of each field the handler reads so the hot path can access the bag
+    // by integer index without name lookup.
+    //
+    // If the current patch does not define OP_TrackingUpdate, GetOpcodeValue returns 0 and
+    // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
+    // with a zero opcode, so this handler simply will not receive packets.  All field
+    // index lookups resolve to -1 in that case but are never consulted.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public HandleTrackingUpdate()
+    {
+        _registry =   GlassContext.PatchRegistry;
+        _patchLevel = GlassContext.CurrentPatchLevel;
+        _handle =    _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
+
+        _magicId = _registry.IndexOfField(_patchLevel, _handle, "magic");
+        _spawnIdIndex = _registry.IndexOfField(_patchLevel, _handle, "spawn_id");
+        _countId = _registry.IndexOfField(_patchLevel, _handle, "count");
+        _nameId = _registry.IndexOfField(_patchLevel, _handle, "name");
+        _levelId = _registry.IndexOfField(_patchLevel, _handle, "level");
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Dispose
@@ -25,14 +65,6 @@ public class HandleTrackingUpdate : IHandleOpcodes
     public void Dispose()
     {
         GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Opcode
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public ushort Opcode
-    {
-        get { return _opcode; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -62,195 +94,142 @@ public class HandleTrackingUpdate : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Extract
-    //
-    // Fills the supplied bag with field values decoded from data, using this handler's cached
-    // field definitions.  Called by OpcodeDispatch.Extract on the cold path (e.g. the
-    // Inference opcode log tab during refresh).  Handlers not yet refactored to use the
-    // FieldExtractor may leave this empty; callers will see an empty bag.
-    //
-    // The caller owns the bag's lifetime — must Rent it before this call and Release it after.
-    //
-    // data:  The application payload
-    // bag:   A bag rented by the caller; will be filled by this method
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    public void Extract(ReadOnlySpan<byte> data, FieldBag bag)
-    {
-
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleZoneToClient
     //
-    // Processes zone-to-client traffic.  The packet is either a cooldown-control packet
-    // (identified by magic 0x4f348bff in the first 4 bytes of entry[0]) or an array of
-    // variable-length spawn records.
-    //
-    // Every entry has the same 12-byte fixed header followed by a null-terminated name:
-    //   Offset 0-1:  count (ushort LE) — only meaningful on entry[0], zero on entries 1..N-1
-    //   Offset 2-3:  spawnId (ushort BE)
-    //   Offset 4-7:  unknown2 (int BE)
-    //   Offset 8-11: unknown3 (uint BE)
-    //   Offset 12+:  name (null-terminated ASCII)
-    //
-    // The count field overlaps what EQ's client reads as a 32-bit spawnId, so the magic
-    // number 0x4f348bff (big-endian) occupies the same 4 bytes as count+spawnId and
-    // signals a cooldown control packet instead of an array.
+    // Processes zone-to-client traffic.
     //
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleZoneToClient(ReadOnlySpan<byte> data,  PacketMetadata metadata)
+    private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-            + _opcodeName + " length=" + data.Length + " zone->client");
+        uint version = GetPayloadVersion(data);
 
-        if (data.Length < 4)
+        switch (version)
         {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " too short for magic check, length=" + data.Length);
-            return;
-        }
-
-        uint magic = BinaryPrimitives.ReadUInt32BigEndian(data);
-
-        // Magic number overloads the first 4 bytes (normally count+spawnId) and signals
-        // that this packet controls the cooldown for spawn requests rather than
-        // carrying an array of spawn records.
-        if (magic == 0x4f348bff)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "magic=0x" + magic.ToString("x8"));
-
-            if (data.Length < 8)
-            {
-                DebugLog.Write(LogChannel.Opcodes, _opcodeName + " cooldown packet too short, length=" + data.Length);
-                return;
-            }
-
-            float cooldown = BinaryPrimitives.ReadSingleLittleEndian(data.Slice(4));
-            DebugLog.Write(LogChannel.Opcodes, "cooldown=" + cooldown.ToString());
-            return;
-        }
-
-        if (data.Length < 2)
-        {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " too short for count, length=" + data.Length);
-            return;
-        }
-
-        // count lives in the first 2 bytes of entry[0] — it tells us how many entries
-        // follow (including entry[0] itself).  On entries 1..N-1 these same 2 bytes
-        // are zero padding.
-        ushort count = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(0));
-
-        if (count == 0)
-        {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " count is zero, nothing to parse");
-            return;
-        }
-
-        int offset = 0;
-        int parsedCount = 0;
-
-        for (int i = 0; i < count; i++)
-        {
-            int consumed = ParseSpawnEntry(data, offset, data.Length, i);
-            if (consumed <= 0)
-            {
-                DebugLog.Write(LogChannel.Opcodes, _opcodeName + " failed to parse entry " + i
-                    + " at offset " + offset + ", stopping");
+            case 1:
                 break;
-            }
-
-            offset += consumed;
-            parsedCount++;
-
-            if (offset > data.Length)
-            {
-                DebugLog.Write(LogChannel.Opcodes, _opcodeName + " offset " + offset
-                    + " exceeds length " + data.Length + " after entry " + i);
+            case 2:
+                HandleV2Packet(data, metadata);
                 break;
-            }
+            default:
+                break;
         }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // ParseSpawnEntry
+    // HandleV2Packet
     //
-    // Parses a single variable-length spawn entry at the given offset.  Every entry has
-    // the same 12-byte fixed header followed by a null-terminated ASCII name:
+    // Handles the variable length tracking packet.  This version is an array of variable length
+    // structures.  The first entry has a count in the count field, subsequent entries in the array
+    // have a zero there.  The helper ReadEntry extracts one entry out of the payload starting at
+    // the supplied offset and reports how many bytes it consumed.
     //
-    //   Offset 0-1:  count field (ushort LE) — only valid on entry[0], zero otherwise;
-    //                read and logged but otherwise ignored here, since the outer loop
-    //                owns the count semantics
-    //   Offset 2-3:  spawnId (ushort BE)
-    //   Offset 4-7:  unknown2 (int BE)
-    //   Offset 8-11: unknown3 (uint BE)
-    //   Offset 12+:  name (null-terminated ASCII)
-    //
-    // data:        The full application payload
-    // offset:      Byte offset of this entry within data
-    // totalLength: Total length of the application payload
-    // index:       Zero-based index of this entry (for logging)
-    //
-    // Returns: Number of bytes consumed by this entry, or -1 on parse failure.
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private int ParseSpawnEntry(ReadOnlySpan<byte> data, int offset, int totalLength, int index)
+    private void HandleV2Packet(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        const int HeaderSize = 12;
-
-        if (offset + HeaderSize > totalLength)
+        FieldBag bag = _registry.Rent(_patchLevel, _handle);
+        try
         {
-            DebugLog.Write(LogChannel.Opcodes, "ParseSpawnEntry: entry " + index + " header runs past end, offset="
-                + offset + ", need " + HeaderSize + ", have " + (totalLength - offset));
-            return -1;
+            GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
+            uint recordCount = bag.GetUIntAt(_countId);
+            DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
+                + _opcodeName + ",  " + recordCount + " entries");
+            uint offset = 0;
+            uint index = 0;
+
+            // TODO:  Hard-coded fixed length for now.
+            _fixedEntryLength = bag.GetLengthAt(_countId) + bag.GetLengthAt(_spawnIdIndex) +
+                bag.GetLengthAt(_levelId);
+            _fixedEntryLength = 12;
+
+            do
+            {
+                bag.Clear();
+  
+                uint consumed = ReadEntry(data.Slice((int) offset),  bag);
+                if (consumed == 0)
+                {
+                    DebugLog.Write(LogChannel.Opcodes, _opcodeName + " failed to parse entry "
+                        + index + " at offset " + offset + ", stopping");
+                    break;
+                }
+                offset += consumed;
+                index++;
+                if (offset > data.Length)
+                {
+                    DebugLog.Write(LogChannel.Opcodes, _opcodeName + " offset " + offset
+                        + " exceeds length " + data.Length + " after entry " + (index - 1));
+                    break;
+                }
+            }
+            while (index < recordCount);
+        }
+        finally
+        {
+            bag.Release();
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetPayloadVersion
+    //
+    // Examines the payload to determine the version number of the payload.
+    //
+    // Returns: Either 1 if the magic number for v1 is found, or 2 otherwise.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private uint GetPayloadVersion(ReadOnlySpan<byte> data)
+    {
+        FieldBag bag = _registry.Rent(_patchLevel, _handle);
+
+        try
+        {
+            GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
+
+            uint magic = bag.GetUIntAt(_magicId);
+
+            if (magic == TRACKING_MAGIC_NUMBER)
+            {
+                return 1;
+            }
+        }
+        finally
+        {
+            bag.Release();
         }
 
-        ReadOnlySpan<byte> entry = data.Slice(offset);
+        return 2;
+    }
 
-        ushort countField = BinaryPrimitives.ReadUInt16LittleEndian(entry.Slice(0));
-        ushort spawnId = BinaryPrimitives.ReadUInt16LittleEndian(entry.Slice(2));
-        int unknown2 = BinaryPrimitives.ReadInt32LittleEndian(entry.Slice(4));
-        byte unknownByte8 = entry[8];
-        byte unknownByte9 = entry[9];
-        byte level = entry[10];
-        byte flag11 = entry[11];
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ReadEntry
+    //
+    // Extracts one variable-length tracking entry from the supplied slice using the
+    // data-driven FieldExtractor.  The slice must begin at the entry boundary.  The
+    // returned byte count is the precomputed fixed-portion length plus the actual
+    // length of the variable-length name string plus one byte for the null terminator.
+    //
+    // data:  Slice of the application payload starting at the entry boundary.
+    // bag:   Shared FieldBag rented by the caller and cleared before this call.
+    //
+    // Returns: Number of bytes consumed by this entry.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private uint ReadEntry(ReadOnlySpan<byte> data, FieldBag bag)
+    {
+        GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
 
-        if (!brief)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "spawn=" + spawnId + " (0x" + spawnId.ToString("x4") + ")");
-            DebugLog.Write(LogChannel.Opcodes, "countField=" + countField + " (0x" + countField.ToString("x4") + ")");
-            DebugLog.Write(LogChannel.Opcodes, "unknown2=" + unknown2 + " (0x" + unknown2.ToString("x8") + ")");
+        uint spawnId = bag.GetUIntAt(_spawnIdIndex);
+        uint level = bag.GetUIntAt(_levelId);
+        ReadOnlySpan<byte> nameBytes = bag.GetBytesAt(_nameId);
+        string name = Encoding.ASCII.GetString(nameBytes);
+        uint nameLength = bag.GetLengthAt(_nameId);
 
-            DebugLog.Write(LogChannel.Opcodes, "unknownByte8=" + unknownByte8 + " (0x" + unknownByte8.ToString("x2") + ")");
-            DebugLog.Write(LogChannel.Opcodes, "unknownByte9=" + unknownByte9 + " (0x" + unknownByte9.ToString("x2") + ")");
-            DebugLog.Write(LogChannel.Opcodes, "level=" + level + " (0x" + level.ToString("x2") + ")");
-            DebugLog.Write(LogChannel.Opcodes, "flag=" + flag11 + " (0x" + flag11.ToString("x2") + ")");
-        }
+        DebugLog.Write(LogChannel.Opcodes, _opcodeName + " entry: spawn_id=0x" + spawnId.ToString("x4")
+            + " level=" + level + " name='" + name + "'");
 
-        int nameRegionLength = totalLength - offset - HeaderSize;
-        if (nameRegionLength <= 0)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "ParseSpawnEntry: entry " + index
-                + " no bytes available for name, nameRegionLength=" + nameRegionLength);
-            return -1;
-        }
-
-        int terminator = FindNullTerminator(entry.Slice(HeaderSize), nameRegionLength);
-        if (terminator == -1)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "ParseSpawnEntry: entry " + index
-                + " no null terminator after name, nameRegionLength=" + nameRegionLength);
-            return -1;
-        }
-
-        string name = System.Text.Encoding.ASCII.GetString(entry.Slice(HeaderSize, terminator));
-        DebugLog.Write(LogChannel.Opcodes, "spawn " + spawnId.ToString("x4") + " \"" + name + "\"");
-        DebugLog.Write(LogChannel.Opcodes, "----");
-        // Total entry size = 12-byte header + name bytes + 1 null terminator
-        return HeaderSize + terminator + 1;
-
-
+        return _fixedEntryLength + nameLength + 1;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -270,7 +249,7 @@ public class HandleTrackingUpdate : IHandleOpcodes
         }
     }
 
-    private int FindNullTerminator(ReadOnlySpan<byte> data, int length)
+    private int FindNullTerminator(ReadOnlySpan<byte> data, uint length)
     {
         // Find the null terminator for the name string at offset 0
         int nullPos = -1;

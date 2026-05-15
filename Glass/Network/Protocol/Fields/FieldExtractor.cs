@@ -112,7 +112,21 @@ public class FieldExtractor
             FieldDefinition definition = definitions[definitionIndex];
             ref FieldSlot slot = ref bag.TryGetSlotRef(definitionIndex);
 
-            if (HasBits(payload, definition.BitOffset, definition.BitLength) == false)
+            uint effectiveBitOffset;
+            if (definition.RelativeToSlot == null)
+            {
+                effectiveBitOffset = definition.BitOffset;
+            }
+            else
+            {
+                uint anchorIndex = definition.RelativeToSlot.Value;
+                FieldDefinition anchorDefinition = definitions[anchorIndex];
+                ref FieldSlot anchorSlot = ref bag.TryGetSlotRef(anchorIndex);
+                uint anchorEndBit = anchorDefinition.BitOffset + anchorSlot.GetLength() * 8u;
+                effectiveBitOffset = anchorEndBit + definition.BitOffset;
+            }
+
+            if (HasBits(payload, effectiveBitOffset, definition.BitLength) == false)
             {
                 continue;
             }
@@ -125,7 +139,7 @@ public class FieldExtractor
                 case FieldEncoding.UInt:
                     {
                         ulong raw;
-                        if (TryReadBitsLE(payload, definition.BitOffset, definition.BitLength, out raw) == true)
+                        if (TryReadBitsLE(payload, effectiveBitOffset, definition.BitLength, out raw) == true)
                         {
                             slot.SetUInt32((uint)raw);
                         }
@@ -135,7 +149,7 @@ public class FieldExtractor
                 case FieldEncoding.Int:
                     {
                         ulong raw;
-                        if (TryReadBitsLE(payload, definition.BitOffset, definition.BitLength, out raw) == true)
+                        if (TryReadBitsLE(payload, effectiveBitOffset, definition.BitLength, out raw) == true)
                         {
                             int signed = SignExtend(raw, definition.BitLength);
                             slot.SetInt32(signed);
@@ -144,17 +158,17 @@ public class FieldExtractor
                     }
 
                 case FieldEncoding.UIntMsb:
-                    ExtractUIntMsb(payload,  definition.BitOffset, definition.BitLength, ref slot);
+                    ExtractUIntMsb(payload, effectiveBitOffset, definition.BitLength, ref slot);
                     break;
 
                 case FieldEncoding.Float:
-                    ExtractFloatLE(payload, definition.BitOffset, definition.BitLength, ref slot);
+                    ExtractFloatLE(payload, effectiveBitOffset, definition.BitLength, ref slot);
                     break;
 
                 case FieldEncoding.UIntMasked:
                     {
                         ulong raw;
-                        if (TryReadBitsLE(payload, definition.BitOffset, definition.BitLength, out raw) == true)
+                        if (TryReadBitsLE(payload, effectiveBitOffset, definition.BitLength, out raw) == true)
                         {
                             slot.SetUInt32((uint)raw);
                         }
@@ -162,11 +176,11 @@ public class FieldExtractor
                     }
 
                 case FieldEncoding.SignMagnitudeLsb:
-                    ExtractSignMagnitudeLsb(payload, definition.BitOffset, definition.BitLength, definition.Divisor, ref slot);
+                    ExtractSignMagnitudeLsb(payload, effectiveBitOffset, definition.BitLength, definition.Divisor, ref slot);
                     break;
 
                 case FieldEncoding.SignMagnitudeMsb:
-                    ExtractSignMagnitudeMsb(payload, definition.BitOffset, definition.BitLength, definition.Divisor, ref slot);
+                    ExtractSignMagnitudeMsb(payload, effectiveBitOffset, definition.BitLength, definition.Divisor, ref slot);
                     break;
 
                 // We have a couple of encodings that are not processed by Extract
@@ -180,17 +194,17 @@ public class FieldExtractor
                         OptionalGroup? group = GlassContext.PatchRegistry.GetOptionalGroup(patchLevel, opcode);
                         if (group != null)
                         {
-                            ExtractOptionalGroup(payload, definition.BitOffset, group, bag);
+                            ExtractOptionalGroup(payload, effectiveBitOffset, group, bag);
                         }
                         break;
                     }
 
                 case FieldEncoding.StringNullTerminated:
-                    ExtractNullTerminatedString(payload, definition.BitOffset, ref slot);
+                    ExtractNullTerminatedString(payload, effectiveBitOffset, ref slot);
                     break;
 
                 case FieldEncoding.StringLengthPrefixed:
-                    ExtractLengthPrefixedString(payload, definition.BitOffset, ref slot);
+                    ExtractLengthPrefixedString(payload, effectiveBitOffset, ref slot);
                     break;
 
                 default:

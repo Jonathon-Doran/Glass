@@ -331,6 +331,23 @@ public class FieldBag
                 return ReadOnlySpan<byte>.Empty;
         }
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetLengthAt
+    //
+    // Returns the payload length in bytes of the slot at the given index.  For variable-length
+    // types such as null-terminated strings, this is the actual stored byte count.  For
+    // fixed-width types this is the width of the type.  Empty slots report zero.
+    //
+    // slotIndex:  Index of the slot to query.
+    //
+    // Returns: Payload length in bytes of the slot.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public uint GetLengthAt(uint slotIndex)
+    {
+        return _slots[slotIndex].GetLength();
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // IsPresent
     //

@@ -74,8 +74,37 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////
     private readonly Dictionary<ushort, OpcodeHandle> _handlesByValue;
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // _namesByHandle
+    //
+    // Parallel array to _patchOpcodes: _namesByHandle[handle] is the opcode_name string
+    // for _patchOpcodes[handle].  Allocated once in the constructor sized to the number
+    // of rows returned by LoadPatchOpcodes; never resized.  Used by GetOpcodeName and by
+    // diagnostic log lines that need to render a handle as a human-readable name.
+    ///////////////////////////////////////////////////////////////////////////////////////////
     private readonly string[] _namesByHandle;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // _handlesByName
+    //
+    // Reverse map of _namesByHandle: opcode_name string to OpcodeHandle.  Used by
+    // GetOpcodeHandle(string) when handlers resolve the opcodes they care about at
+    // construction time.  Cold path — handlers call this once per opcode they register.
+    ///////////////////////////////////////////////////////////////////////////////////////////
     private readonly Dictionary<string, OpcodeHandle> _handlesByName;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // _pendingRelativeNames
+    //
+    // Scratch list used during the constructor's per-opcode field-loading loop.
+    // LoadRequiredFields appends one entry per FieldDefinition it returns, holding the raw
+    // relative_to string from the PacketField row (null when the column is NULL).
+    // ResolveRelativeAnchors consumes the list to populate FieldDefinition.RelativeToSlot
+    // on the assembled array, then clears it for reuse by the next opcode.  The constructor
+    // sets the field to null after the loop completes so the empty list is released for
+    // garbage collection — PatchData has no need to retain it after construction.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private List<string?>? _pendingRelativeNames;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // PatchData (constructor, explicit patch)
@@ -128,7 +157,7 @@ public class PatchData
         _namesByHandle = new string[opcodeCount];
         _handlesByName = new Dictionary<string, OpcodeHandle>(opcodeCount);
         _handlesByValue = new Dictionary<ushort, OpcodeHandle>(opcodeCount);
-
+        _pendingRelativeNames = new List<string?>();
 
 
         LoadOpcodeMap(conn);
@@ -143,6 +172,8 @@ public class PatchData
                 + " version=" + patchOpcode.Version);
             LoadFields(handle, conn);
         }
+
+        _pendingRelativeNames = null;
 
         DebugLog.Write(LogChannel.Opcodes, "PatchData ctor: loaded " +
             _opcodeValuesByName.Count + " opcode name(s) and " + _patchOpcodes.Length + " opcode(s) for patch " + PatchLevel);
@@ -331,6 +362,8 @@ public class PatchData
         allFields.AddRange(requiredFields);
         allFields.AddRange(optionalFields);
         _opcodeFields[handle] = allFields.ToArray();
+        ResolveRelativeAnchors(handle);
+        _pendingRelativeNames!.Clear();
 
         OptionalGroup? group = LoadOptionalGroup(handle, conn);
         if (group != null)
@@ -348,6 +381,11 @@ public class PatchData
     // Unrecognized encoding strings are stored as FieldEncoding.Unknown so the row still
     // produces a slot; the extractor silently skips Unknown slots.
     //
+    // The relative_to column is read into a transient parallel list and resolved to slot
+    // indices by ResolveRelativeAnchors after the caller has merged required and optional
+    // fields into the final array.  Resolution cannot happen here because anchors may name
+    // any sibling slot, including optional-field slots loaded by LoadOptionalFields.
+    //
     // Parameters:
     //   handle  - The OpcodeHandle whose required fields to load.
     //   conn    - An open database connection.
@@ -362,7 +400,7 @@ public class PatchData
         List<FieldDefinition> fields = new List<FieldDefinition>();
 
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT pf.field_name, pf.bit_offset, pf.bit_length, pf.encoding, pf.divisor"
+        cmd.CommandText = "SELECT pf.field_name, pf.bit_offset, pf.bit_length, pf.encoding, pf.divisor, pf.relative_to"
             + " FROM PacketField pf"
             + " JOIN PatchOpcode po ON pf.patch_opcode_id = po.id"
             + " WHERE po.patch_date = @patchDate"
@@ -383,6 +421,15 @@ public class PatchData
             uint bitLength = (uint)reader.GetInt32(2);
             string encodingString = reader.GetString(3);
             float divisor = (float)reader.GetFloat(4);
+            string? relativeToName;
+            if (reader.IsDBNull(5))
+            {
+                relativeToName = null;
+            }
+            else
+            {
+                relativeToName = reader.GetString(5);
+            }
 
             FieldEncoding encoding;
             bool encodingFound = _encodingsByString.TryGetValue(encodingString, out encoding);
@@ -402,7 +449,9 @@ public class PatchData
             definition.BitLength = bitLength;
             definition.Encoding = encoding;
             definition.Divisor = divisor;
+            definition.RelativeToSlot = null;
             fields.Add(definition);
+            _pendingRelativeNames!.Add(relativeToName);
         }
 
         return fields;
@@ -500,6 +549,7 @@ public class PatchData
                 definition.BitLength = bitLength;
                 definition.Encoding = encoding;
                 definition.Divisor = divisor;
+                definition.RelativeToSlot = null;
                 fields.Add(definition);
             }
         }
@@ -608,6 +658,130 @@ public class PatchData
         }
 
         return result;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ResolveRelativeAnchors
+    //
+    // Cold path.  Runs once per opcode during PatchData construction.
+    //
+    // Two passes over the just-assigned _opcodeFields[handle] array.
+    //
+    // Pass 1: move every entry that has a non-null anchor name in _pendingRelativeNames
+    // to the end of the working list, preserving relative order within each partition.
+    // The hot-path extractor walks definitions once and requires each anchor's runtime
+    // end-bit position to be available by the time its dependents are reached.  Placing
+    // anchored fields after their anchors guarantees this without a second pass at
+    // extract time.
+    //
+    // Pass 2: resolve each non-null anchor name to the slot index of the matching field
+    // in the now-final working list.  Resolution failures are non-fatal — an unknown
+    // anchor name leaves RelativeToSlot null and writes a diagnostic line.  The field
+    // then decodes as if anchored at packet start, which will produce wrong values, but
+    // the log line points at the cause.
+    //
+    // _pendingRelativeNames must hold exactly one entry per required field, in matching
+    // order.  This holds because LoadRequiredFields appends one entry per row it returns
+    // and nothing else writes to the list.  Optional fields are appended to _opcodeFields
+    // after required fields but never carry an anchor.
+    //
+    // Parameters:
+    //   handle  - The OpcodeHandle whose just-loaded field array to walk.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void ResolveRelativeAnchors(OpcodeHandle handle)
+    {
+        FieldDefinition[]? definitions = _opcodeFields[handle];
+        if (definitions == null)
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.ResolveRelativeAnchors: no field "
+                + "definitions for opcode='" + _namesByHandle[(int)handle]
+                + "', nothing to resolve");
+            return;
+        }
+
+        List<FieldDefinition> working = new List<FieldDefinition>(definitions);
+        List<string?> pending = _pendingRelativeNames!;
+
+        // Build the two local maps from the parallel _pendingRelativeNames list.  After
+        // this point both maps are position-free and survive the reorder unchanged.
+        Dictionary<string, string> anchorNameByFieldName = new Dictionary<string, string>();
+        Dictionary<string, FieldDefinition> entriesToMove = new Dictionary<string, FieldDefinition>();
+
+        for (int buildIndex = 0; buildIndex < pending.Count; buildIndex++)
+        {
+            string? anchorName = pending[buildIndex];
+            if (anchorName == null)
+            {
+                continue;
+            }
+            FieldDefinition entry = working[buildIndex];
+            anchorNameByFieldName[entry.Name] = anchorName;
+            entriesToMove[entry.Name] = entry;
+        }
+
+        // Pass 1: for each entry to move, find it by name in working, remove, append.
+        foreach (KeyValuePair<string, FieldDefinition> pair in entriesToMove)
+        {
+            string entryName = pair.Key;
+            FieldDefinition entryToMove = pair.Value;
+
+            int foundIndex = -1;
+            for (int searchIndex = 0; searchIndex < working.Count; searchIndex++)
+            {
+                if (working[searchIndex].Name == entryName)
+                {
+                    foundIndex = searchIndex;
+                    break;
+                }
+            }
+
+            if (foundIndex < 0)
+            {
+                DebugLog.Write(LogChannel.Fields, "PatchData.ResolveRelativeAnchors: opcode='"
+                    + _namesByHandle[(int)handle] + "' could not locate '" + entryName
+                    + "' for reordering — internal inconsistency, skipping");
+                continue;
+            }
+
+            working.RemoveAt(foundIndex);
+            working.Add(entryToMove);
+        }
+
+        // Pass 2: resolve each anchor name against the final ordering.
+        for (int resolveIndex = 0; resolveIndex < working.Count; resolveIndex++)
+        {
+            FieldDefinition entry = working[resolveIndex];
+            string anchorName;
+            bool hasAnchor = anchorNameByFieldName.TryGetValue(entry.Name, out anchorName!);
+            if (hasAnchor == false)
+            {
+                continue;
+            }
+
+            uint? resolvedIndex = null;
+            for (uint searchIndex = 0; searchIndex < working.Count; searchIndex++)
+            {
+                if (working[(int)searchIndex].Name == anchorName)
+                {
+                    resolvedIndex = searchIndex;
+                    break;
+                }
+            }
+
+            if (resolvedIndex == null)
+            {
+                DebugLog.Write(LogChannel.Fields, "PatchData.ResolveRelativeAnchors: opcode='"
+                    + _namesByHandle[(int)handle] + "' field='" + entry.Name
+                    + "' references unknown anchor '" + anchorName
+                    + "', leaving RelativeToSlot null");
+                continue;
+            }
+
+            entry.RelativeToSlot = resolvedIndex;
+            working[resolveIndex] = entry;
+        }
+
+        _opcodeFields[handle] = working.ToArray();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

@@ -18,6 +18,11 @@
 //
 // Divisor is used to scale integer values to create sign-magnitude floats.
 //
+// RelativeToSlot, when non-null, names another field's slot index.  This field's BitOffset
+// is then measured from the end of that slot's payload rather than from packet start.  Null
+// means absolute (anchored at packet start).  Resolution from the database string to the
+// slot index happens in a second pass during load.
+//
 // This is plain data — no methods, no validation.  Validation happens at load time in the
 // handler's load routine and at the FieldExtractor's string-table lookup.
 ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -27,5 +32,6 @@ public struct FieldDefinition
     public uint BitOffset;
     public uint BitLength;
     public float Divisor;
+    public uint? RelativeToSlot;
     public FieldEncoding Encoding;
 }

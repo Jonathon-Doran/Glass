@@ -10,10 +10,11 @@ need to finish handler refactor
 need to finish Inference in preparation for inevitable patch
 consider adding mapping, using Brewall maps and mob data.  The Brewall maps are always loaded in the EQ folder.  
 I'm not sure how expensive it is to render the maps.
-Need to identify the current zone for characters.
+Need to identify the current zone for characters.  (Chat server packet gets this)
 Mob repository needs to be created.
 Connection still has multiple streams that are not used.
-PacketOptionalGroup needs the name of the field for the flags word.
+Field data editor in Inference does not have modify support for optional groups. See "Fields".
+TrackingHandler's _fixedEntryLength is hardcoded to 12.
 
 ISXGlass:
 

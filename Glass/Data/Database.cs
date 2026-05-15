@@ -349,6 +349,10 @@ public class Database
         {
             ApplyMigration(conn, 41, Migration_041);
         }
+        if (version < 42)
+        {
+            ApplyMigration(conn, 42, Migration_042);
+        }
     }
 
     private int GetSchemaVersion()
@@ -1110,6 +1114,9 @@ public class Database
         ALTER TABLE PacketOptionalField ADD COLUMN divisor REAL NOT NULL DEFAULT 1.0;
     ";
 
+    private const string Migration_042 = @"
+        ALTER TABLE PacketField ADD COLUMN relative_to TEXT;
+    ";
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"

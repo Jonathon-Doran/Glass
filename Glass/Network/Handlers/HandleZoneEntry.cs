@@ -1,9 +1,12 @@
 using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Data.Models;
+using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using System;
 using System.Buffers.Binary;
+using System.Text;
 
 namespace Glass.Network.Handlers;
 
@@ -16,8 +19,38 @@ namespace Glass.Network.Handlers;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class HandleZoneEntry : IHandleOpcodes
 {
-    private ushort _opcode = 0xf19a;
     private readonly string _opcodeName = "OP_ZoneEntry";
+    private OpcodeHandle _handle;
+    private PatchRegistry _registry;
+    private PatchLevel _patchLevel;
+
+    private readonly uint _nameId;
+    private readonly uint _spawnId;
+    private readonly uint _levelId;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // HandleZoneEntry (constructor)
+    //
+    // Resolves the wire opcode and loads the field definitions for OP_ZoneEntry from
+    // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
+    // Caches the index of each field the handler reads so the hot path can access the bag
+    // by integer index without name lookup.
+    //
+    // If the current patch does not define OP_ZoneEntry, GetOpcodeValue returns 0 and
+    // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
+    // with a zero opcode, so this handler simply will not receive packets.  All field
+    // index lookups resolve to -1 in that case but are never consulted.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public HandleZoneEntry()
+    {
+        _registry = GlassContext.PatchRegistry;
+        _patchLevel = GlassContext.CurrentPatchLevel;
+        _handle = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
+
+        _nameId = _registry.IndexOfField(_patchLevel, _handle, "name");
+        _spawnId = _registry.IndexOfField(_patchLevel, _handle, "spawn_id");
+        _levelId = _registry.IndexOfField(_patchLevel, _handle, "level");
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Dispose
@@ -28,14 +61,6 @@ public class HandleZoneEntry : IHandleOpcodes
     public void Dispose()
     {
         GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Opcode
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public ushort Opcode
-    {
-        get { return _opcode; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -68,25 +93,6 @@ public class HandleZoneEntry : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Extract
-    //
-    // Fills the supplied bag with field values decoded from data, using this handler's cached
-    // field definitions.  Called by OpcodeDispatch.Extract on the cold path (e.g. the
-    // Inference opcode log tab during refresh).  Handlers not yet refactored to use the
-    // FieldExtractor may leave this empty; callers will see an empty bag.
-    //
-    // The caller owns the bag's lifetime — must Rent it before this call and Release it after.
-    //
-    // data:  The application payload
-    // bag:   A bag rented by the caller; will be filled by this method
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    public void Extract(ReadOnlySpan<byte> data, FieldBag bag)
-    {
-
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleZoneToClient
     //
     // Processes zone-to-client OP_ZoneEntry.
@@ -96,39 +102,29 @@ public class HandleZoneEntry : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (data.Length < 4)
+        string name;
+        uint spawn_id;
+        uint level;
+
+        FieldBag bag = _registry.Rent(_patchLevel, _handle);
+        try
         {
-            DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry.HandleServerToClient: "
-                + _opcodeName + " too short, length=" + data.Length);
-            return;
-        }
+            GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
 
-        // Find the null terminator for the name string at offset 0
-        int nullPos = -1;
-        for (int i = 0; i < data.Length; i++)
+            ReadOnlySpan<byte> nameBytes = bag.GetBytesAt(_nameId);
+            name = Encoding.ASCII.GetString(nameBytes);
+  
+            spawn_id = bag.GetUIntAt(_spawnId);
+            level = bag.GetUIntAt(_levelId);
+        }
+        finally
         {
-            if (data[i] == 0)
-            {
-                nullPos = i;
-                break;
-            }
+            bag.Release();
         }
-
-        if (nullPos < 0)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry.HandleZoneToClient: "
-                + _opcodeName + " no null terminator found, length=" + data.Length);
-            return;
-        }
-
-        string name = System.Text.Encoding.ASCII.GetString(data.Slice(0, nullPos));
-
-        uint spawnId = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(nullPos+1));
-        uint level = data[nullPos + 5];
 
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName + " length=" + data.Length);
-        DebugLog.Write(LogChannel.Opcodes, "name=\"" + name + "\"  id=(0x" + spawnId.ToString("x4")+")");
-        DebugLog.Write(LogChannel.Opcodes, "SpawnId=" + spawnId + " (0x" + spawnId.ToString("x4") + ")");
+        DebugLog.Write(LogChannel.Opcodes, "name=\"" + name + "\"  id=(0x" + spawn_id.ToString("x4")+")");
+        DebugLog.Write(LogChannel.Opcodes, "SpawnId= 0x" + spawn_id.ToString("x4"));
         DebugLog.Write(LogChannel.Opcodes, "Level=" + level + " (0x" + level.ToString("x4") + ")");
     }
 
