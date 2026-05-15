@@ -88,6 +88,10 @@ public static class DebugLog
     // Lock for handler registration and removal only.  Never held during dispatch.
     private static readonly object _registrationLock = new object();
 
+    // for cold-path logging, to preserve timestamps and delta-times
+    private static DateTime? _frozenTimestamp;
+    private static int _sequence;
+
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Static constructor
     //
@@ -228,7 +232,7 @@ public static class DebugLog
             return;
         }
 
-        string timestamped = "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + "] " + message;
+        string timestamped = BuildTimestampPrefix("yyyy-MM-dd HH:mm:ss.fff") + message;
 
         List<IHandleLogMessages>[] snapshot = _handlers;
 
@@ -275,7 +279,7 @@ public static class DebugLog
             return;
         }
 
-        string timestamp = "[" + DateTime.Now.ToString("HH:mm:ss.fff") + "] ";
+        string timestamp = BuildTimestampPrefix("HH:mm:ss.fff");
         string padding = new string(' ', timestamp.Length);
         string[] lines = message.Split('\n');
 
@@ -359,4 +363,98 @@ public static class DebugLog
             }
         }
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // BeginTimestampGroup
+    //
+    // Starts a new timestamp group.  All subsequent log lines share the supplied
+    // timestamp and are ordered by an incrementing sequence suffix (e.g. "+1",
+    // "+2") until the next call to BeginTimestampGroup.
+    //
+    // While a group is active, Write and WriteMultiline emit the group timestamp
+    // instead of DateTime.Now.  If BeginTimestampGroup is never called,
+    // _frozenTimestamp remains null and Write continues to use DateTime.Now
+    // exactly as before.
+    //
+    // This method is cold-path and runs under _registrationLock to make the
+    // field-update boundary explicit.
+    //
+    // timestamp:  The timestamp to apply to all log lines in this group.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public static void BeginTimestampGroup(DateTime timestamp)
+    {
+        if (_shutdown)
+        {
+            return;
+        }
+        lock (_registrationLock)
+        {
+            _frozenTimestamp = timestamp;
+            _sequence = 0;
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // EndTimestampGroup
+    //
+    // Ends the current timestamp group.  Clears the frozen timestamp so that
+    // subsequent log lines revert to using DateTime.Now.  The sequence counter
+    // is also reset so a stale value cannot leak into a future group if one
+    // is started later.
+    //
+    // Safe to call when no group is active; in that case it is a no-op
+    // beyond reacquiring the lock.
+    //
+    // This method is cold-path and runs under _registrationLock to make the
+    // field-update boundary explicit.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public static void EndTimestampGroup()
+    {
+        lock (_registrationLock)
+        {
+            _frozenTimestamp = null;
+            _sequence = 0;
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // BuildTimestampPrefix
+    //
+    // Builds the bracketed timestamp prefix (with trailing space) used by
+    // Write and WriteMultiline.
+    //
+    // If a timestamp group is active (BeginTimestampGroup was called and
+    // EndTimestampGroup has not been called since), the prefix uses the frozen
+    // timestamp followed by the current sequence value, e.g.
+    // "[2026-05-14 23:17:30.361+1] ".  The sequence is incremented before
+    // formatting, so the first prefix in a group is "+1".
+    //
+    // If no group is active, the prefix uses DateTime.Now and contains no
+    // "+N" suffix, e.g. "[2026-05-14 23:17:30.317] ".  This is the live-
+    // capture path and matches the prior behavior exactly.
+    //
+    // The live-capture path (no group active) does a single field read and
+    // a single string concatenation, matching the cost of the prior inline
+    // code.  Sequence increment and frozen-timestamp formatting occur only
+    // when a group is active, which is the replay-only cold path.
+    //
+    // No DebugLog calls are made inside this method because it is invoked
+    // from Write and WriteMultiline; any log call here would recurse.
+    //
+    // dateFormat:  The ToString format string for the timestamp portion.
+    //              Write passes "yyyy-MM-dd HH:mm:ss.fff"; WriteMultiline
+    //              passes "HH:mm:ss.fff".
+    //
+    // Returns the bracketed prefix including trailing space.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private static string BuildTimestampPrefix(string dateFormat)
+    {
+        if (_frozenTimestamp.HasValue)
+        {
+            _sequence++;
+            return "[" + _frozenTimestamp.Value.ToString(dateFormat) + "+" + _sequence + "] ";
+        }
+        return "[" + DateTime.Now.ToString(dateFormat) + "] ";
+    }
+
 }

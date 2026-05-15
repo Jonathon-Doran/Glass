@@ -25,6 +25,8 @@ public class PcapFileReader
     private int _frameCount;
     private int _routedCount;
 
+
+
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // PcapFileReader (constructor)
     //
@@ -51,7 +53,9 @@ public class PcapFileReader
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public int ProcessFile(string filePath, string? bpfFilter = null)
     {
+        DebugLog.Write("---------");
         DebugLog.Write(LogChannel.LowNetwork, "PcapFileReader.ProcessFile: opening '" + filePath + "'");
+        DebugLog.Write("---------");
 
         _frameCount = 0;
         _routedCount = 0;
@@ -111,6 +115,8 @@ public class PcapFileReader
         {
             return;
         }
+
+        DebugLog.BeginTimestampGroup(rawCapture.Timeval.Date.ToLocalTime());
 
         Packet packet = Packet.ParsePacket(rawCapture.LinkLayerType, rawCapture.Data);
 

@@ -1154,7 +1154,7 @@ public class SoeStream : IDisposable
         {
             if (payload.Length >= 5)
             {
-                uint disconnectedSessionId = SoeByteOrder.ReadUInt32(payload, 1);
+                uint disconnectedSessionId = SoeByteOrder.ReadUInt32(payload, 0);
 
                 if (_sessionId != disconnectedSessionId)
                 {
