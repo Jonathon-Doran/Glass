@@ -43,22 +43,18 @@ public class Connection : IDisposable
 
         _streams[StreamId.StreamClientToWorld] = new SoeStream(
             StreamId.StreamClientToWorld,
-            SoeConstants.DirectionClientToServer,
             arqSeqGiveUp, StreamNames[StreamId.StreamClientToWorld] + ": " + _localPort);
 
         _streams[StreamId.StreamWorldToClient] = new SoeStream(
             StreamId.StreamWorldToClient,
-            SoeConstants.DirectionServerToClient,
             arqSeqGiveUp, StreamNames[StreamId.StreamWorldToClient] + ": " + _localPort);
 
         _streams[StreamId.StreamClientToZone] = new SoeStream(
             StreamId.StreamClientToZone,
-            SoeConstants.DirectionClientToServer,
             arqSeqGiveUp, StreamNames[StreamId.StreamClientToZone] + ": " + _localPort);
 
         _streams[StreamId.StreamZoneToClient] = new SoeStream(
             StreamId.StreamZoneToClient,
-            SoeConstants.DirectionServerToClient,
             arqSeqGiveUp, StreamNames[StreamId.StreamZoneToClient] + ": " + _localPort);
 
         // Wire session key distribution
@@ -66,12 +62,6 @@ public class Connection : IDisposable
         {
             _streams[streamId].OnSessionKey = DistributeSessionKey;
             _streams[streamId].OnClosing = PropagateClose;
-        }
-
-        // Enable session tracking on all streams
-        foreach (StreamId streamId in Enum.GetValues<StreamId>())
-        {
-            _streams[streamId].SessionTrackingEnabled = 1;
         }
 
         DebugLog.Write(LogChannel.LowNetwork, "Connection: created for local port " + _localPort);
@@ -143,7 +133,7 @@ public class Connection : IDisposable
 
         foreach (StreamId streamId in Enum.GetValues<StreamId>())
         {
-            _streams[streamId].Close(sessionId, fromStream, 1);
+            _streams[streamId].Close(sessionId, fromStream);
         }
     }
 

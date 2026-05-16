@@ -57,7 +57,6 @@ public class SoeStream : IDisposable
     // Stream identity
     // ---------------------------------------------------------------------------
     private readonly StreamId _streamId;
-    private readonly byte _direction;
     private readonly string _name;
 
     // ---------------------------------------------------------------------------
@@ -81,10 +80,7 @@ public class SoeStream : IDisposable
     // ---------------------------------------------------------------------------
     private uint _sessionId;
     private uint _sessionKey;
-    private int _sessionClientPort;
-    private uint _sessionClientIP;
     private uint _maxLength;
-    private int _sessionTrackingEnabled;
 
     // ---------------------------------------------------------------------------
     // Decompression
@@ -102,20 +98,17 @@ public class SoeStream : IDisposable
     // ---------------------------------------------------------------------------
     public SessionKeyHandler? OnSessionKey;
     public SessionCloseHandler? OnClosing;
-    public LockOnClientHandler? OnLockOnClient;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // SoeStream (constructor)
     //
     // streamId:       One of SoeConstants.StreamClient2World, etc.
-    // direction:      SoeConstants.DirectionClient or DirectionServer
     // arqSeqGiveUp:   Number of cached out-of-order packets before skipping ahead
     // name:           Human-readable name for logging
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public SoeStream(StreamId streamId, byte direction, int arqSeqGiveUp, string name)
+    public SoeStream(StreamId streamId, int arqSeqGiveUp, string name)
     {
         _streamId = streamId;
-        _direction = direction;
         _arqSeqGiveUp = arqSeqGiveUp;
         _name = name;
 
@@ -130,10 +123,7 @@ public class SoeStream : IDisposable
 
         _sessionId = 0;
         _sessionKey = 0;
-        _sessionClientPort = 0;
-        _sessionClientIP = 0;
         _maxLength = 0;
-        _sessionTrackingEnabled = 0;
 
         _decompressor = new SoeDecompressor();
 
@@ -155,9 +145,6 @@ public class SoeStream : IDisposable
         _fragmentBuffer = null;
         _fragmentTotalLength = 0;
         _fragmentDataSize = 0;
-
-        _sessionClientPort = 0;
-        _sessionClientIP = 0;
         _sessionId = 0;
         _sessionKey = 0;
     }
@@ -1071,12 +1058,6 @@ public class SoeStream : IDisposable
 
         _arqSeqExpected = 0;
         _arqSeqFound = true;
-
-        if (_sessionTrackingEnabled != 0)
-        {
-            _sessionClientPort = metadata.SourcePort;
-            _sessionClientIP = SoeByteOrder.IpToUInt32(metadata.SourceIp);
-        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -1117,26 +1098,6 @@ public class SoeStream : IDisposable
 
         _arqSeqExpected = 0;
         _arqSeqFound = true;
-
-        if (_sessionTrackingEnabled != 0)
-        {
-            _sessionClientPort = metadata.DestPort;
-            _sessionClientIP = SoeByteOrder.IpToUInt32(metadata.DestIp);
-
-            if (_streamId == StreamId.StreamWorldToClient)
-            {
-                _sessionTrackingEnabled = 1;
-            }
-            else if (_streamId == StreamId.StreamZoneToClient)
-            {
-                _sessionTrackingEnabled = 2;
-
-                if (OnLockOnClient != null)
-                {
-                    OnLockOnClient(metadata.SourcePort, metadata.DestPort, _sessionClientIP);
-                }
-            }
-        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -1150,37 +1111,12 @@ public class SoeStream : IDisposable
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void ProcessSessionDisconnect(ReadOnlySpan<byte> payload)
     {
-        if (_sessionTrackingEnabled != 0)
-        {
-            if (payload.Length >= 5)
-            {
-                uint disconnectedSessionId = SoeByteOrder.ReadUInt32(payload, 0);
-
-                if (_sessionId != disconnectedSessionId)
-                {
-                    DebugLog.Write(LogChannel.LowNetwork,
-                        "EQPacket: SessionDisconnect for session "
-                        + disconnectedSessionId.ToString("x8")
-                        + " does not match our session "
-                        + _sessionId.ToString("x8") + ", ignoring");
-                    return;
-                }
-            }
-        }
-
         DebugLog.Write(LogChannel.LowNetwork,
             "EQPacket: SessionDisconnect found, stream "
             + SoeConstants.StreamNames[_streamId] + " (" + _streamId + ")");
 
         _arqSeqExpected = 0;
         _arqCache.Clear();
-
-        if (_sessionTrackingEnabled != 0)
-        {
-            _sessionTrackingEnabled = 1;
-            _sessionClientPort = 0;
-            _sessionClientIP = 0;
-        }
 
         if (OnClosing != null)
         {
@@ -1223,9 +1159,8 @@ public class SoeStream : IDisposable
     //
     // sessionId:         The session ID that disconnected
     // fromStream:        The stream ID that disconnected
-    // sessionTracking:   The session tracking state to restore
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void Close(uint sessionId, StreamId fromStream, int sessionTracking)
+    public void Close(uint sessionId, StreamId fromStream)
     {
         if (sessionId == _sessionId)
         {
@@ -1234,54 +1169,7 @@ public class SoeStream : IDisposable
                 + sessionId.ToString("x8"));
 
             Reset();
-            _sessionTrackingEnabled = sessionTracking;
         }
-    }
-
-    // ---------------------------------------------------------------------------
-    // Properties for EqClient access
-    // ---------------------------------------------------------------------------
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Channel
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public StreamId Channel
-    {
-        get { return _streamId; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // SessionId
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public uint SessionId
-    {
-        get { return _sessionId; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // SessionKey
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public uint SessionKey
-    {
-        get { return _sessionKey; }
-        set { _sessionKey = value; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // SessionTrackingEnabled
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public int SessionTrackingEnabled
-    {
-        get { return _sessionTrackingEnabled; }
-        set { _sessionTrackingEnabled = value; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // PacketCount
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public long PacketCount
-    {
-        get { return _packetCount; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
