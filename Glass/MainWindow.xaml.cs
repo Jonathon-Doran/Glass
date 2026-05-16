@@ -72,9 +72,9 @@ public partial class MainWindow : Window
             DebugLog.Write(LogChannel.Sessions, "GlassVideo disconnected.");
         });
         GlassContext.GlassVideoPipe.Start();
-        GlassContext.FocusTracker = new FocusTracker();
-        GlassContext.AppPacketBus = new AppPacketBus();
 
+        GlassContext.AppPacketBus = new AppPacketBus();
+        GcMonitor.Start(5);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -122,9 +122,14 @@ public partial class MainWindow : Window
         DebugLog.Route(LogChannel.Opcodes, LogSink.GlassDebugLogfile);
         DebugLog.Route(LogChannel.Inference, LogSink.GlassDebugLogfile);
 
+        GlassDebugLogHandler memoryLogHandler = new GlassDebugLogHandler("memory.log");
+        DebugLog.AddHandler(LogSink.Aux1LogFile, memoryLogHandler);
+        DebugLog.Route(LogChannel.Memory, LogSink.Aux1LogFile);
+
         GlassConsoleLogHandler glassConsoleLogHandler = new GlassConsoleLogHandler(ConsoleOutput, ConsoleScroller);
         DebugLog.AddHandler(LogSink.GlassConsole, glassConsoleLogHandler);
         DebugLog.Route(LogChannel.General, LogSink.GlassConsole);
+
 
 
         DebugLog.Write(LogChannel.General, "MainWindow: logging initialized");
@@ -672,6 +677,7 @@ public partial class MainWindow : Window
                 GlassContext.SessionRegistry = new SessionRegistry();
                 GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
             }
+            GlassContext.FocusTracker = new FocusTracker();
 
             await GlassContext.ProfileManager.LaunchProfile(select.SelectedProfileName);
         }
@@ -857,13 +863,13 @@ public partial class MainWindow : Window
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void MenuItem_GenerateEQUI_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.Input, "MainWindow.MenuItem_GenerateEQUI_Click: generating EQ UI files.");
+        DebugLog.Write(LogChannel.General, "MainWindow.MenuItem_GenerateEQUI_Click: generating EQ UI files.");
 
         string outputDirectory = Glass.Properties.Settings.Default.ClientFilesPath;
 
         if (string.IsNullOrWhiteSpace(outputDirectory))
         {
-            DebugLog.Write(LogChannel.Input, "MainWindow.MenuItem_GenerateEQUI_Click: ClientFilesDirectory not configured.");
+            DebugLog.Write(LogChannel.General, "MainWindow.MenuItem_GenerateEQUI_Click: ClientFilesDirectory not configured.");
             MessageBox.Show("Please configure the Client Files Directory in settings before generating.", "Not Configured", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -871,12 +877,13 @@ public partial class MainWindow : Window
         if (!Directory.Exists(outputDirectory))
         {
             Directory.CreateDirectory(outputDirectory);
-            DebugLog.Write(LogChannel.Input, $"MainWindow.MenuItem_GenerateEQUI_Click: created output directory '{outputDirectory}'.");
+            DebugLog.Write(LogChannel.General, $"MainWindow.MenuItem_GenerateEQUI_Click: created output directory '{outputDirectory}'.");
         }
 
+        CharacterRepository.Instance.Load();
         var characters = CharacterRepository.Instance.GetAll();
 
-        DebugLog.Write(LogChannel.Input, $"MainWindow.MenuItem_GenerateEQUI_Click: generating files for {characters.Count} characters.");
+        DebugLog.Write(LogChannel.General, $"MainWindow.MenuItem_GenerateEQUI_Click: generating files for {characters.Count} characters.");
 
         var eqClientGenerator = new EqClientFileGenerator(outputDirectory);
         var hotbuttonGenerator = new HotbuttonFileGenerator(outputDirectory);
@@ -884,13 +891,13 @@ public partial class MainWindow : Window
 
         foreach (var character in characters)
         {
-            DebugLog.Write(LogChannel.Input, $"MainWindow.MenuItem_GenerateEQUI_Click: generating for '{character.Name}'.");
+            DebugLog.Write(LogChannel.General, $"MainWindow.MenuItem_GenerateEQUI_Click: generating for '{character.Name}'.");
             eqClientGenerator.Generate(character);
             hotbuttonGenerator.Generate(character);
             uiGenerator.Generate(character);
         }
 
-        DebugLog.Write(LogChannel.Input, $"MainWindow.MenuItem_GenerateEQUI_Click: done. {characters.Count} characters processed.");
+        DebugLog.Write(LogChannel.General, $"MainWindow.MenuItem_GenerateEQUI_Click: done. {characters.Count} characters processed.");
     }
 
     private void UpdateToolsMenuState()

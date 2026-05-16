@@ -1,5 +1,6 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Data.Repositories;
 using Glass.Network.Capture;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
@@ -101,7 +102,8 @@ public partial class MainWindow : Window
         UpdateControlStates();
         GlassContext.AppPacketBus = new AppPacketBus();
         GlassContext.AppPacketBus.Subscribe(HandleAppPacket);
-
+        CharacterRepository.Instance.Load();
+        GcMonitor.Start(5);
     }
 
     private void InitializeLogging()
@@ -141,9 +143,9 @@ public partial class MainWindow : Window
         DebugLog.AddHandler(LogSink.Aux1LogFile, opcodesLogHandler);
         DebugLog.Route(LogChannel.Opcodes, LogSink.Aux1LogFile);
 
-        GlassDebugLogHandler fieldsLogHandler = new GlassDebugLogHandler("fields.log");
-        DebugLog.AddHandler(LogSink.Aux2LogFile, fieldsLogHandler);
-        DebugLog.Route(LogChannel.Fields, LogSink.Aux2LogFile);
+        GlassDebugLogHandler memoryLogHandler = new GlassDebugLogHandler("memory.log");
+        DebugLog.AddHandler(LogSink.Aux2LogFile, memoryLogHandler);
+        DebugLog.Route(LogChannel.Memory, LogSink.Aux2LogFile);
 
         // The inference tab, just inference messages
         GlassConsoleLogHandler inferenceTabHandler = new GlassConsoleLogHandler(InferenceLogOutput, InferenceLogScroller);

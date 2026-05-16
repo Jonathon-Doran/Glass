@@ -5,8 +5,7 @@ No way to delete a profile
 Need to be able to edit characters
 Changes to relay groups needs to be tested (is custom control wired?)
 Glass is not capturing network traffic.
-pcap has patch level hard-coded - embed patch level and server type in pcapng metadata with libpcap.
-need to finish handler refactor
+pcap has patch level hard-coded - embed patch level and server type in pcapng metadata with libpcap
 need to finish Inference in preparation for inevitable patch
 consider adding mapping, using Brewall maps and mob data.  The Brewall maps are always loaded in the EQ folder.  
 I'm not sure how expensive it is to render the maps.
@@ -14,7 +13,9 @@ Need to identify the current zone for characters.  (Chat server packet gets this
 Mob repository needs to be created.
 Connection still has multiple streams that are not used.
 Field data editor in Inference does not have modify support for optional groups. See "Fields".
-TrackingHandler's _fixedEntryLength is hardcoded to 12.
+Inference has LoadPatchOpcodes which duplicates the PatchRegistry
+PacketEnvelope should include a Connection and not the ip addresses and ports.
+SessionRegistry is not checking for an existing Connection properly
 
 ISXGlass:
 

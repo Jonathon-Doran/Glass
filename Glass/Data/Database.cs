@@ -353,6 +353,18 @@ public class Database
         {
             ApplyMigration(conn, 42, Migration_042);
         }
+        if (version < 43)
+        {
+            using SqliteCommand pragmaOff = conn.CreateCommand();
+            pragmaOff.CommandText = "PRAGMA foreign_keys = OFF";
+            pragmaOff.ExecuteNonQuery();
+
+            ApplyMigration(conn, 43, Migration_043);
+
+            using SqliteCommand pragmaOn = conn.CreateCommand();
+            pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
+            pragmaOn.ExecuteNonQuery();
+        }
     }
 
     private int GetSchemaVersion()
@@ -1117,6 +1129,61 @@ public class Database
     private const string Migration_042 = @"
         ALTER TABLE PacketField ADD COLUMN relative_to TEXT;
     ";
+
+    private const string Migration_043 = @"
+        CREATE TABLE Characters_new (
+            id              INTEGER PRIMARY KEY,
+            name            TEXT NOT NULL,
+            class           INTEGER NOT NULL,
+            account_id      INTEGER NOT NULL,
+            progression     INTEGER NOT NULL DEFAULT 0,
+            server          TEXT NOT NULL DEFAULT 'Test',
+            level           INTEGER,
+            practice_points INTEGER,
+            max_hp          INTEGER,
+            max_mana        INTEGER,
+            strength        INTEGER,
+            stamina         INTEGER,
+            charisma        INTEGER,
+            dexterity       INTEGER,
+            intelligence    INTEGER,
+            agility         INTEGER,
+            wisdom          INTEGER,
+            platinum        INTEGER,
+            gold            INTEGER,
+            silver          INTEGER,
+            copper          INTEGER,
+            x_position      REAL,
+            y_position      REAL,
+            z_position      REAL,
+            heading_degrees REAL,
+            current_mana    INTEGER,
+            current_hp      INTEGER,
+            UNIQUE (name, server)
+        );
+
+        INSERT INTO Characters_new (
+            id, name, class, account_id, progression, server,
+            level, practice_points, max_hp, max_mana,
+            strength, stamina, charisma, dexterity, intelligence, agility, wisdom,
+            platinum, gold, silver, copper,
+            x_position, y_position, z_position, heading_degrees,
+            current_mana, current_hp
+        )
+        SELECT
+            id, name, class, account_id, progression, server,
+            level, practice_points, max_hp, max_mana,
+            strength, stamina, charisma, dexterity, intelligence, agility, wisdom,
+            platinum, gold, silver, copper,
+            x_position, y_position, z_position, heading_degrees,
+            current_mana, current_hp
+        FROM Characters;
+
+        DROP TABLE Characters;
+
+        ALTER TABLE Characters_new RENAME TO Characters;
+    ";
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"

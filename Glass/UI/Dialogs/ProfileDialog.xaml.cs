@@ -65,6 +65,8 @@ public partial class ProfileDialog : Window
             ProfileName.Text = profileName;
             ProfileRepository repo = new ProfileRepository(profileName);
 
+            CharacterRepository.Instance.Load();
+
             // Initialize selected layout ID from existing assignment.
             _selectedLayoutId = repo.GetLayoutId();
             DebugLog.Write(LogChannel.Profiles, $"ProfileDialog: initialized _selectedLayoutId={_selectedLayoutId?.ToString() ?? "null"}.");
@@ -676,25 +678,52 @@ public partial class ProfileDialog : Window
         _dragStartPoint = e.GetPosition(null);
     }
 
-    // Initiates a drag operation once the mouse has moved far enough.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // CharacterSlotsListView_PreviewMouseMove
+    //
+    // Initiates a drag operation once the mouse has moved far enough from the
+    // recorded drag start point. The dragged payload is the SlotAssignmentViewModel
+    // instance bound to the row under the cursor; the Drop handler translates that
+    // back to the underlying SlotAssignment in _slotAssignments by CharacterId.
+    //
+    // sender: The ListView that raised the event.
+    // e:      Mouse event arguments.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void CharacterSlotsListView_PreviewMouseMove(object sender, MouseEventArgs e)
     {
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
         Point mousePos = e.GetPosition(null);
         Vector diff = _dragStartPoint - mousePos;
 
-        if ((e.LeftButton == MouseButtonState.Pressed) &&
-            ((Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance) ||
-             (Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance)))
+        if ((Math.Abs(diff.X) <= SystemParameters.MinimumHorizontalDragDistance) &&
+            (Math.Abs(diff.Y) <= SystemParameters.MinimumVerticalDragDistance))
         {
-            ListView listView = (ListView)sender;
-            ListViewItem? listViewItem = FindAncestor<ListViewItem>((DependencyObject)e.OriginalSource);
-            if (listViewItem != null)
-            {
-                SlotAssignment slot = (SlotAssignment)listView.ItemContainerGenerator.ItemFromContainer(listViewItem);
-                DataObject dragData = new DataObject("slotAssignment", slot);
-                DragDrop.DoDragDrop(listViewItem, dragData, DragDropEffects.Move);
-            }
+            return;
         }
+
+        ListView listView = (ListView)sender;
+        ListViewItem? listViewItem = FindAncestor<ListViewItem>((DependencyObject)e.OriginalSource);
+        if (listViewItem == null)
+        {
+            DebugLog.Write(LogChannel.Profiles, "ProfileDialog.CharacterSlotsListView_PreviewMouseMove: no ListViewItem under cursor, ignoring drag.");
+            return;
+        }
+
+        SlotAssignmentViewModel? slot = listView.ItemContainerGenerator.ItemFromContainer(listViewItem) as SlotAssignmentViewModel;
+        if (slot == null)
+        {
+            DebugLog.Write(LogChannel.Profiles, "ProfileDialog.CharacterSlotsListView_PreviewMouseMove: container did not resolve to a SlotAssignmentViewModel, ignoring drag.");
+            return;
+        }
+
+        DebugLog.Write(LogChannel.Profiles, $"ProfileDialog.CharacterSlotsListView_PreviewMouseMove: starting drag for characterId={slot.CharacterId} slot={slot.SlotNumber}.");
+
+        DataObject dragData = new DataObject("slotAssignment", slot);
+        DragDrop.DoDragDrop(listViewItem, dragData, DragDropEffects.Move);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -753,32 +782,89 @@ public partial class ProfileDialog : Window
         e.Handled = true;
     }
 
-    // Handles the drop — moves the dragged item to the drop position and renumbers.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // CharacterSlotsListView_Drop
+    //
+    // Handles the drop end of a slot row drag. The dragged payload is a SlotAssignmentViewModel
+    // produced by CharacterSlotsListView_PreviewMouseMove, and the row under the cursor at drop
+    // time is also a SlotAssignmentViewModel (the ListView is bound to view models, not models).
+    // Both must be translated back to the underlying SlotAssignment instances in _slotAssignments
+    // by matching CharacterId before any reordering is done.
+    //
+    // If no row is under the cursor at drop time, the item is moved to the end of the list.
+    //
+    // sender:  The ListView that raised the event.
+    // e:       Drag event arguments carrying the slotAssignment payload.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void CharacterSlotsListView_Drop(object sender, DragEventArgs e)
     {
         if (!e.Data.GetDataPresent("slotAssignment"))
         {
+            DebugLog.Write(LogChannel.Profiles, "ProfileDialog.CharacterSlotsListView_Drop: no slotAssignment payload, ignoring.");
             return;
         }
 
-        SlotAssignment slot = (SlotAssignment)e.Data.GetData("slotAssignment");
-        ListView listView = (ListView)sender;
-        SlotAssignment? target = GetObjectDataFromPoint(listView, e.GetPosition(listView)) as SlotAssignment;
+        SlotAssignmentViewModel? draggedView = e.Data.GetData("slotAssignment") as SlotAssignmentViewModel;
+        if (draggedView == null)
+        {
+            DebugLog.Write(LogChannel.Profiles, "ProfileDialog.CharacterSlotsListView_Drop: payload was not a SlotAssignmentViewModel, ignoring.");
+            return;
+        }
 
-        int removeIndex = _slotAssignments.IndexOf(slot);
-        int insertIndex = (target != null) ? _slotAssignments.IndexOf(target) : _slotAssignments.Count;
+        SlotAssignment? draggedSlot = _slotAssignments.FirstOrDefault(s => s.CharacterId == draggedView.CharacterId);
+        if (draggedSlot == null)
+        {
+            DebugLog.Write(LogChannel.Profiles, $"ProfileDialog.CharacterSlotsListView_Drop: no SlotAssignment found for dragged characterId={draggedView.CharacterId}, ignoring.");
+            return;
+        }
+
+        ListView listView = (ListView)sender;
+        SlotAssignmentViewModel? targetView = GetObjectDataFromPoint(listView, e.GetPosition(listView)) as SlotAssignmentViewModel;
+
+        SlotAssignment? targetSlot = null;
+        if (targetView != null)
+        {
+            targetSlot = _slotAssignments.FirstOrDefault(s => s.CharacterId == targetView.CharacterId);
+            if (targetSlot == null)
+            {
+                DebugLog.Write(LogChannel.Profiles, $"ProfileDialog.CharacterSlotsListView_Drop: no SlotAssignment found for target characterId={targetView.CharacterId}, treating as drop at end.");
+            }
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.Profiles, "ProfileDialog.CharacterSlotsListView_Drop: no row under cursor, dropping at end.");
+        }
+
+        int removeIndex = _slotAssignments.IndexOf(draggedSlot);
+        int insertIndex = (targetSlot != null) ? _slotAssignments.IndexOf(targetSlot) : _slotAssignments.Count;
 
         if (removeIndex < insertIndex)
         {
             insertIndex--;
         }
 
-        if (removeIndex != insertIndex)
+        if (removeIndex == insertIndex)
         {
-            _slotAssignments.Move(removeIndex, insertIndex);
-            ReassignSlotNumbers();
-            CharacterSlotsListView.Items.Refresh();
+            DebugLog.Write(LogChannel.Profiles, $"ProfileDialog.CharacterSlotsListView_Drop: removeIndex == insertIndex ({removeIndex}), no move needed.");
+            return;
         }
+
+        DebugLog.Write(LogChannel.Profiles, $"ProfileDialog.CharacterSlotsListView_Drop: moving characterId={draggedSlot.CharacterId} from index={removeIndex} to index={insertIndex}.");
+        _slotAssignments.Move(removeIndex, insertIndex);
+        ReassignSlotNumbers();
+
+        CharacterSlotsListView.ItemsSource = _slotAssignments.Select(s =>
+        {
+            Character? character = CharacterRepository.Instance.GetById(s.CharacterId);
+            return new SlotAssignmentViewModel
+            {
+                SlotNumber = s.SlotNumber,
+                CharacterId = s.CharacterId,
+                CharacterName = character?.Name ?? "(unknown)",
+                ClassName = character?.Class.ToString() ?? string.Empty,
+                AccountId = character?.AccountId ?? 0
+            };
+        }).ToList();
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

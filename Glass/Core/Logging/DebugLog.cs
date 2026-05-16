@@ -28,6 +28,7 @@ public enum LogChannel
     Inference,
     InferenceDebug,
     Fields,
+    Memory,
     Count
 }
 
@@ -342,6 +343,8 @@ public static class DebugLog
         }
 
         _shutdown = true;
+
+        GcMonitor.Stop();
 
         for (int i = 0; i < ChannelCount; i++)
         {
