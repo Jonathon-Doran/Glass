@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Glass.Core.Memory;
+using System;
 using static Glass.Network.Protocol.SoeConstants;
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -24,9 +25,9 @@ using static Glass.Network.Protocol.SoeConstants;
 // Channel:      SOE stream identifier; Unknown until set by SessionDemux
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-public ref struct UdpDatagram
+public struct UdpDatagram
 {
-    public ReadOnlySpan<byte> Payload;
+    public BufferLease Payload;
     public int FrameNumber;
     public DateTime Timestamp;
     public string SourceIp;

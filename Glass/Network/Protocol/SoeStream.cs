@@ -1,7 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using Glass.Core;
+﻿using Glass.Core;
 using Glass.Core.Logging;
+using SharpPcap;
+using System;
+using System.Collections.Generic;
 using static Glass.Network.Protocol.SoeConstants;
 namespace Glass.Network.Protocol;
 
@@ -173,11 +174,15 @@ public class SoeStream : IDisposable
     // handlePacket exactly: construct packet (runs _init_parse), print
     // diagnostics, call decode, call processPacket, drain cache.
     //
-    // rawData:      The complete UDP payload including the 2-byte net opcode
-    // metadata:     Packet metadata (source/dest IP and port, timestamp, framenumber)
+    // dgram:  The UDP datagram with headers removed
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> rawData, PacketMetadata metadata)
+    public void HandlePacket(UdpDatagram dgram)
     {
+        Span<byte> rawDataBuffer = stackalloc byte[(int) dgram.Payload.Length];
+        dgram.Payload.AsReadOnlySpan().CopyTo(rawDataBuffer);
+        dgram.Payload.Dispose();
+
+        ReadOnlySpan<byte> rawData = rawDataBuffer;
         _packetCount++;
 
         if (rawData.Length < 2)
@@ -194,11 +199,11 @@ public class SoeStream : IDisposable
         DebugLog.Write(LogChannel.LowNetwork,
             "========================================================================");
         DebugLog.Write(LogChannel.LowNetwork,
-            "Frame " + metadata.FrameNumber + " Packet #" + _packetCount
+            "Frame " + dgram.FrameNumber + " Packet #" + _packetCount
             + " on stream " + SoeConstants.StreamNames[_streamId]);
         DebugLog.Write(LogChannel.LowNetwork,
-            metadata.SourceIp + ":" + metadata.SourcePort + " -> "
-            + metadata.DestIp + ":" + metadata.DestPort + " len=" + rawData.Length + " bytes");
+            dgram.SourceIp + ":" + dgram.SourcePort + " -> "
+            + dgram.DestIp + ":" + dgram.DestPort + " len=" + rawData.Length + " bytes");
         DebugLog.Write(LogChannel.LowNetwork, "");
         DebugLog.WriteMultiline(LogChannel.LowNetwork,
             SoeHexDump.Format(packet.RawPacket()));
@@ -252,7 +257,7 @@ public class SoeStream : IDisposable
         ReadOnlySpan<byte> payload = packet.Payload();
         bool hasArq = packet.HasArqSeq();
 
-        ProcessPacket(packet.NetOpCode, payload, packet.ArqSeq, hasArq, false, metadata);
+        ProcessPacket(packet.NetOpCode, payload, packet.ArqSeq, hasArq, false, dgram);
 
         // processCache
         if (_arqCache.Count > 0)
@@ -272,12 +277,20 @@ public class SoeStream : IDisposable
     // arqSeq:       The ARQ sequence number (valid only if hasArq is true)
     // hasArq:       True if this packet type carries an ARQ sequence
     // isSubpacket:  True if this packet was extracted from an OP_Combined container
-    // metadata:     Packet metadata (source/dest IP and port, timestamp, framenumber)
+    // dgram:        The UDP datagram with headers removed
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void ProcessPacket(ushort netOpcode, ReadOnlySpan<byte> payload,
                                    ushort arqSeq, bool hasArq, bool isSubpacket,
-                                   PacketMetadata metadata)
+                                   UdpDatagram dgram)
     {
+        PacketMetadata metadata = new PacketMetadata();
+        metadata.FrameNumber = dgram.FrameNumber;
+        metadata.Timestamp = dgram.Timestamp;
+        metadata.SourceIp = dgram.SourceIp;
+        metadata.SourcePort = dgram.SourcePort;
+        metadata.DestIp = dgram.DestIp;
+        metadata.DestPort = dgram.DestPort;
+
         DebugLog.Write(LogChannel.LowNetwork,
             "          [processPacket] netop=0x" + netOpcode.ToString("x4")
             + " subpacket=" + isSubpacket
@@ -892,8 +905,18 @@ public class SoeStream : IDisposable
 
         SoePacket spacket = new SoePacket(data, data.Length, true);
 
+        UdpDatagram dgram = new UdpDatagram();
+        dgram.FrameNumber = metadata.FrameNumber;
+        dgram.Timestamp = metadata.Timestamp;
+        dgram.SourceIp = metadata.SourceIp;
+        dgram.SourcePort = metadata.SourcePort;
+        dgram.DestIp = metadata.DestIp;
+        dgram.DestPort = metadata.DestPort;
+        // Payload is deliberately left default.  Nothing downstream will read it as the
+        // datagram is immediately converted back to metadata.
+
         ProcessPacket(spacket.NetOpCode, spacket.Payload(), spacket.ArqSeq,
-                      spacket.HasArqSeq(), true, metadata);
+                      spacket.HasArqSeq(), true, dgram);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

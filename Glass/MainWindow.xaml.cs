@@ -1,6 +1,7 @@
 ﻿using Glass.ClientUI;
 using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Core.Memory;
 using Glass.Data;
 using Glass.Data.Models;
 using Glass.Data.Repositories;
@@ -43,8 +44,6 @@ public partial class MainWindow : Window
 
         InitializeLogging();
 
-        //DebugLog.Initialize(msg => Dispatcher.Invoke(() => Log(msg)));
-
         if (Database.IsInitialized)
         {
             MachineRepository machineRepo = new MachineRepository();
@@ -72,7 +71,11 @@ public partial class MainWindow : Window
             DebugLog.Write(LogChannel.Sessions, "GlassVideo disconnected.");
         });
         GlassContext.GlassVideoPipe.Start();
+        GlassContext.BufferPool = new BufferPool(
+            new uint[] { 64, 256, 512, 1024, 2048, 16384, 65536, 262144, 524288 },
+            new uint[] { 32, 16, 16, 16, 8, 8, 4, 2, 1 });
 
+        GlassContext.FocusTracker = new FocusTracker();
         GlassContext.AppPacketBus = new AppPacketBus();
         GcMonitor.Start(5);
     }
@@ -125,6 +128,10 @@ public partial class MainWindow : Window
         GlassDebugLogHandler memoryLogHandler = new GlassDebugLogHandler("memory.log");
         DebugLog.AddHandler(LogSink.Aux1LogFile, memoryLogHandler);
         DebugLog.Route(LogChannel.Memory, LogSink.Aux1LogFile);
+
+//        GlassDebugLogHandler lowNetLogHandler = new GlassDebugLogHandler("lowNetwork.log");
+ //       DebugLog.AddHandler(LogSink.Aux2LogFile, lowNetLogHandler);
+ //       DebugLog.Route(LogChannel.LowNetwork, LogSink.Aux2LogFile);
 
         GlassConsoleLogHandler glassConsoleLogHandler = new GlassConsoleLogHandler(ConsoleOutput, ConsoleScroller);
         DebugLog.AddHandler(LogSink.GlassConsole, glassConsoleLogHandler);

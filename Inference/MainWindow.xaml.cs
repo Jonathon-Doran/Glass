@@ -1,5 +1,6 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Core.Memory;
 using Glass.Data.Repositories;
 using Glass.Network.Capture;
 using Glass.Network.Protocol;
@@ -103,6 +104,10 @@ public partial class MainWindow : Window
         GlassContext.AppPacketBus = new AppPacketBus();
         GlassContext.AppPacketBus.Subscribe(HandleAppPacket);
         CharacterRepository.Instance.Load();
+
+        GlassContext.BufferPool = new BufferPool(
+            new uint[] { 64, 256, 512, 1024, 2048, 16384, 65536, 262144, 524288 },
+            new uint[] { 32, 16, 16, 16, 8, 8, 4, 2, 1 });
         GcMonitor.Start(5);
     }
 

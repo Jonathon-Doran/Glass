@@ -1,5 +1,6 @@
-﻿using System.Collections.Concurrent;
-using Glass.Core.Logging;
+﻿using Glass.Core.Logging;
+using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 
 namespace Glass.Core.Memory;
 
@@ -26,6 +27,13 @@ public sealed class BufferPool
     private readonly ConcurrentQueue<BufferState>[] _queues;
     private readonly SemaphoreSlim[] _waiters;
 
+    // performance counters
+    private readonly uint[] _inUse;
+    private readonly uint[] _highWater;
+    private readonly uint[] _totalRents;
+    private readonly uint[] _waitCount;
+    private readonly Timer _statsTimer;
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
     // BufferPool ctor
     //
@@ -51,19 +59,28 @@ public sealed class BufferPool
         _queues = new ConcurrentQueue<BufferState>[sizes.Length];
         _waiters = new SemaphoreSlim[sizes.Length];
 
+        _inUse = new uint[sizes.Length];
+        _highWater = new uint[sizes.Length];
+        _totalRents = new uint[sizes.Length];
+        _waitCount = new uint[sizes.Length];
+
         for (uint i = 0; i < sizes.Length; i++)
         {
             _queues[i] = new ConcurrentQueue<BufferState>();
             _waiters[i] = new SemaphoreSlim((int) depths[i], (int) depths[i]);
+
+            _inUse[i] = 0;
+            _highWater[i] = 0;
+            _totalRents[i] = 0;
+            _waitCount[i] = 0;
 
             for (uint j = 0; j < depths[i]; j++)
             {
                 BufferState state = new BufferState(this, i, sizes[i]);
                 _queues[i].Enqueue(state);
             }
-
-            DebugLog.Write(LogChannel.Memory, $"BufferPool.ctor: class={i} size={sizes[i]} depth={depths[i]}.");
         }
+       //  _statsTimer = new Timer(LogStatisticsCallback, null, 1000, 1000);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -78,7 +95,7 @@ public sealed class BufferPool
     //
     // size:  The requested minimum byte capacity.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private int ClassFor(int size)
+    private int ClassFor(uint size)
     {
         for (int i = 0; i < _sizes.Length; i++)
         {
@@ -109,11 +126,15 @@ public sealed class BufferPool
     // minimumSize:  The requested minimum byte capacity.  Throws via ClassFor
     //               if it exceeds the largest size class.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public BufferLease Rent(int minimumSize)
+    public BufferLease Rent(uint minimumSize)
     {
         int cls = ClassFor(minimumSize);
 
-        _waiters[cls].Wait();
+        if (!_waiters[cls].Wait(0))
+        {
+            Interlocked.Increment(ref _waitCount[cls]);
+            _waiters[cls].Wait();
+        }
 
         if (!_queues[cls].TryDequeue(out BufferState? state))
         {
@@ -123,7 +144,27 @@ public sealed class BufferPool
 
         state.Reset();
 
-        return new BufferLease(state, 0, state.Capacity);
+        Interlocked.Increment(ref _totalRents[cls]);
+        uint nowInUse = Interlocked.Increment(ref _inUse[cls]);
+
+        uint currentHigh = _highWater[cls];
+        while (nowInUse > currentHigh)
+        {
+            uint observed = (uint)Interlocked.CompareExchange(
+                ref Unsafe.As<uint, int>(ref _highWater[cls]),
+                (int)nowInUse,
+                (int)currentHigh);
+
+            if (observed == currentHigh)
+            {
+                break;
+            }
+            currentHigh = observed;
+        }
+
+
+        // note that the lease covers this size, but can grow up to capacity if needed
+        return new BufferLease(state, 0, minimumSize);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -142,7 +183,44 @@ public sealed class BufferPool
     {
         uint cls = state.SizeClass;
 
+        Interlocked.Decrement(ref _inUse[cls]);
+
         _queues[cls].Enqueue(state);
         _waiters[cls].Release();
     }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // LogStatisticsCallback
+    //
+    // Timer callback that invokes LogStatistics on each tick.  The Timer
+    // signature requires a TimerCallback delegate taking a state object;
+    // this method exists solely to bridge that signature to the parameterless
+    // LogStatistics call.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void LogStatisticsCallback(object? state)
+    {
+        LogStatistics();
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // LogStatistics
+    //
+    // Writes one log line per size class to the Memory channel.  Each line
+    // reports the class's size, current in-use count, peak in-use count
+    // observed, cumulative rent count, and the number of rents that had to
+    // wait on the class's semaphore.  Counters are read without locking;
+    // values may be slightly stale relative to each other on a busy thread,
+    // which is acceptable for diagnostics.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void LogStatistics()
+    {
+        for (uint i = 0; i < _sizes.Length; i++)
+        {
+            DebugLog.Write(LogChannel.Memory,
+                $"BufferPool stats: class={i} size={_sizes[i]} "
+                + $"inUse={_inUse[i]} highWater={_highWater[i]} "
+                + $"totalRents={_totalRents[i]} waits={_waitCount[i]}.");
+        }
+    }
+
 }

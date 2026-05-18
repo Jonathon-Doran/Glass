@@ -1,4 +1,5 @@
-﻿using Glass.Data.Models;
+﻿using Glass.Core.Memory;
+using Glass.Data.Models;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 
@@ -23,4 +24,5 @@ public static class GlassContext
     public static PatchLevel CurrentPatchLevel { get; set; }
     public static PatchRegistry PatchRegistry { get; set; } = null!;
     public static AppPacketBus AppPacketBus { get; set; } = null!;
+    public static BufferPool BufferPool { get; set; } = null!;
 }

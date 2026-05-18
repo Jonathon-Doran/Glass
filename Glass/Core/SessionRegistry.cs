@@ -251,12 +251,12 @@ public class SessionRegistry
     //
     // Classifies a packet into a stream type based on port ranges and direction.
     //
-    // metadata:  The packet metadata containing source/dest IP and ports.
+    // dgram:  The UDP datagram with headers removed
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public SoeConstants.StreamId GetChannel(PacketMetadata metadata)
+    public SoeConstants.StreamId GetChannel(UdpDatagram dgram)
     {
-        bool isFromClient = (metadata.SourceIp == _localIp);
-        int remotePort = isFromClient ? metadata.DestPort : metadata.SourcePort;
+        bool isFromClient = (dgram.SourceIp == _localIp);
+        int remotePort = isFromClient ? dgram.DestPort : dgram.SourcePort;
 
         if (remotePort >= SoeConstants.LoginServerMinPort &&
             remotePort <= SoeConstants.LoginServerMaxPort)
@@ -308,6 +308,36 @@ public class SessionRegistry
             return connection;
         }
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetConnection
+    //
+    // Returns the Connection for the given packet metadata.  Determines the
+    // channel, looks up or creates the Connection.  Thread-safe
+    //
+    // dgram:  The UDP datagram with headers removed
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public Connection GetConnection(UdpDatagram dgram)
+    {
+        bool isFromClient = (dgram.SourceIp == _localIp);
+        int localPort = isFromClient ? dgram.SourcePort : dgram.DestPort;
+
+        lock (_lock)
+        {
+            if (!_connectionsByPort.TryGetValue(localPort, out Connection? connection))
+            {
+                connection = new Connection(localPort, _arqSeqGiveUp);
+                _connectionsByPort[localPort] = connection;
+
+                DebugLog.Write(LogChannel.Sessions,
+                    "SessionRegistry.GetConnection: new connection on port " + localPort
+                    + ", connections=" + _connectionsByPort.Count);
+            }
+
+            return connection;
+        }
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // FindSessionByCharacter
     //

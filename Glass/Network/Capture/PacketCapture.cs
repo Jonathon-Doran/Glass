@@ -1,5 +1,6 @@
 using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Core.Memory;
 using Glass.Network.Protocol;
 using SharpPcap;
 using SharpPcap.LibPcap;
@@ -314,18 +315,18 @@ public class PacketCapture
             return;
         }
 
-        PacketMetadata metadata = new PacketMetadata();
-        metadata.FrameNumber = _frameCount;
-        metadata.Timestamp = rawCapture.Timeval.Date;
-        metadata.SourceIp = sourceIp;
-        metadata.SourcePort = sourcePort;
-        metadata.DestIp = destIp;
-        metadata.DestPort = destPort;
+        UdpDatagram dgram = new UdpDatagram();
+        dgram.FrameNumber = _frameCount;
+        dgram.Timestamp = rawCapture.Timeval.Date;
+        dgram.SourceIp = sourceIp;
+        dgram.SourcePort = sourcePort;
+        dgram.DestIp = destIp;
+        dgram.DestPort = destPort;
+        dgram.Payload = GlassContext.BufferPool.Rent((uint)udpPayloadLength);
 
-        ReadOnlySpan<byte> udpPayload = new ReadOnlySpan<byte>(
-            data, udpPayloadOffset, udpPayloadLength);
+        data.AsSpan(udpPayloadOffset, udpPayloadLength).CopyTo(dgram.Payload.AsSpan());
 
-        _router.RoutePacket(udpPayload, metadata);
+        _router.RoutePacket(dgram);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

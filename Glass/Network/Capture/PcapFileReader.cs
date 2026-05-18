@@ -146,17 +146,18 @@ public class PcapFileReader
             return;
         }
 
-        PacketMetadata metadata = new PacketMetadata();
-        metadata.FrameNumber = _frameCount;
-        metadata.Timestamp = rawCapture.Timeval.Date;
-        metadata.SourceIp = ipPacket.SourceAddress.ToString();
-        metadata.SourcePort = udpPacket.SourcePort;
-        metadata.DestIp = ipPacket.DestinationAddress.ToString();
-        metadata.DestPort = udpPacket.DestinationPort;
+        UdpDatagram dgram = new UdpDatagram();
+        dgram.FrameNumber = _frameCount;
+        dgram.Timestamp = rawCapture.Timeval.Date;
+        dgram.SourceIp = ipPacket.SourceAddress.ToString();
+        dgram.SourcePort = udpPacket.SourcePort;
+        dgram.DestIp = ipPacket.DestinationAddress.ToString();
+        dgram.DestPort = udpPacket.DestinationPort;
+        dgram.Payload = GlassContext.BufferPool.Rent((uint) payloadBytes.Length);
 
-        ReadOnlySpan<byte> payload = new ReadOnlySpan<byte>(payloadBytes);
+        payloadBytes.AsSpan(0, payloadBytes.Length).CopyTo(dgram.Payload.AsSpan());
 
-        _router.RoutePacket(payload, metadata);
+        _router.RoutePacket(dgram);
 
         _routedCount++;
     }

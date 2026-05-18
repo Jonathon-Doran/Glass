@@ -55,8 +55,6 @@ internal sealed class BufferState
         _sizeClass = sizeClass;
         _buffer = new byte[size];
         _refCount = 1;
-
-        DebugLog.Write(LogChannel.Memory, $"BufferState.ctor: sizeClass={sizeClass} size={size} refCount=1.");
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -88,8 +86,6 @@ internal sealed class BufferState
     public void Reset()
     {
         Volatile.Write(ref _refCount, 1);
-
-        DebugLog.Write(LogChannel.Memory, "BufferState.Reset: refCount=1.");
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////

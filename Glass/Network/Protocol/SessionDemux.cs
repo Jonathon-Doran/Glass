@@ -51,44 +51,42 @@ public class SessionDemux
     // unwanted traffic, identifies the client by local port, and routes
     // to the appropriate stream.
     //
-    // rawData:      The complete UDP payload
-    // sourceIp:     Source IP as a dotted-decimal string
-    // sourcePort:   Source UDP port
-    // destIp:       Destination IP as a dotted-decimal string
-    // destPort:     Destination UDP port
-    // frameNumber:  Frame number from the pcap file, or 0 for live capture
+    // dgram:  The UDP datagram with headers removed
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void RoutePacket(ReadOnlySpan<byte> rawData, PacketMetadata metadata)
+    public void RoutePacket(UdpDatagram dgram)
     {
         // Filter chat server traffic
-        if (metadata.DestPort == SoeConstants.ChatServerPort ||
-            metadata.SourcePort == SoeConstants.ChatServerPort)
+        if (dgram.DestPort == SoeConstants.ChatServerPort ||
+            dgram.SourcePort == SoeConstants.ChatServerPort)
         {
+            dgram.Payload.Dispose();
             return;
         }
 
         // Filter world chat traffic
-        if (metadata.DestPort == SoeConstants.WorldServerChatPort ||
-            metadata.SourcePort == SoeConstants.WorldServerChatPort)
+        if (dgram.DestPort == SoeConstants.WorldServerChatPort ||
+            dgram.SourcePort == SoeConstants.WorldServerChatPort)
         {
+            dgram.Payload.Dispose();
             return;
         }
 
-        if (metadata.DestPort == SoeConstants.WorldServerChat2Port ||
-            metadata.SourcePort == SoeConstants.WorldServerChat2Port)
+        if (dgram.DestPort == SoeConstants.WorldServerChat2Port ||
+            dgram.SourcePort == SoeConstants.WorldServerChat2Port)
         {
+            dgram.Payload.Dispose();
             return;
         }
 
-        metadata.Channel = GlassContext.SessionRegistry.GetChannel(metadata);
+        dgram.Channel = GlassContext.SessionRegistry.GetChannel(dgram);
 
-        Connection connection = GlassContext.SessionRegistry.GetConnection(metadata);
-        metadata.SessionId = connection.SessionId;
+        Connection connection = GlassContext.SessionRegistry.GetConnection(dgram);
+        dgram.SessionId = connection.SessionId;
 
         // Route to the stream
-        SoeStream stream = connection.GetStream(metadata.Channel);
+        SoeStream stream = connection.GetStream(dgram.Channel);
 
-        stream.HandlePacket(rawData, metadata);
+        stream.HandlePacket(dgram);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
