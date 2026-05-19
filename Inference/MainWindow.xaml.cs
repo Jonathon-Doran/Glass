@@ -16,6 +16,7 @@ using System.Text;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -55,11 +56,12 @@ public partial class MainWindow : Window
     private readonly Stack<object> _undoStack = new Stack<object>();
     private SessionDemux? _sessionDemux;
     private PacketCapture? _packetCapture;
-    private readonly ObservableCollection<OpcodeEntry> _opcodeEntries;
-    private readonly Dictionary<uint, OpcodeEntry> _opcodeLookup;
-    private Dictionary<uint, string> _patchOpcodes;
-    private readonly List<CapturedPacket> _capturedPackets = new List<CapturedPacket>();
-    private readonly object _payloadLock;
+
+    private readonly RetainedBufferPool _retainedBufferPool;
+    private readonly PacketCatalog _packetCatalog;
+    private readonly OpcodeRowPresenter _opcodeRowPresenter;
+    private readonly OpcodeTracePresenter _opcodeTracePresenter;
+    private Border? _armedColorPatch;
 
     // analysis packet filtering fields
     private SoeConstants.StreamId? _analysisFilterChannel;
@@ -82,14 +84,6 @@ public partial class MainWindow : Window
         DebugLog.Write(LogChannel.InferenceDebug, "Inference application started");
         DebugLog.Write(LogChannel.Inference, "Inference log initialized");
 
-        _opcodeEntries = new ObservableCollection<OpcodeEntry>();
-        _opcodeLookup = new Dictionary<uint, OpcodeEntry>();
-        OpcodeGrid.ItemsSource = _opcodeEntries;
-
-        DebugLog.Write(LogChannel.InferenceDebug, "MainWindow: OpcodeGrid bound to collection");
-
-        _patchOpcodes = new Dictionary<uint, string>();
-        _payloadLock = new object();
 
         InitializeAnalysisFilters();
         AddDummyCandidates();
@@ -104,6 +98,16 @@ public partial class MainWindow : Window
         GlassContext.AppPacketBus = new AppPacketBus();
         GlassContext.AppPacketBus.Subscribe(HandleAppPacket);
         CharacterRepository.Instance.Load();
+
+        GlassContext.AppPacketBus = new AppPacketBus();
+        _retainedBufferPool = new RetainedBufferPool();
+        _packetCatalog = new PacketCatalog(_retainedBufferPool);
+        _opcodeRowPresenter = new OpcodeRowPresenter(_packetCatalog);
+        OpcodeGrid.ItemsSource = _opcodeRowPresenter.Rows;
+        GlassContext.AppPacketBus.Subscribe(HandleAppPacket);
+
+        _opcodeTracePresenter = new OpcodeTracePresenter(_packetCatalog);
+        OpcodeTraceList.ItemsSource = _opcodeTracePresenter.Rows;
 
         GlassContext.BufferPool = new BufferPool(
             new uint[] { 64, 256, 512, 1024, 2048, 16384, 65536, 262144, 524288 },
@@ -199,7 +203,7 @@ public partial class MainWindow : Window
         }
 
         GlassContext.CurrentPatchLevel = new PatchLevel(savedPatchDate, savedServerType);
-        _patchOpcodes = LoadPatchOpcodes(savedPatchDate, savedServerType);
+
         // TODO:  Why is _currentPatchLevel even used when we have GlassContext?
         _currentPatchLevel = GlassContext.CurrentPatchLevel;
 
@@ -354,55 +358,6 @@ public partial class MainWindow : Window
 
         Glass.Data.Database.Open(dbPath);
         DebugLog.Write(LogChannel.InferenceDebug, "OpenDatabase: opened " + dbPath);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // LoadPatchOpcodes
-    //
-    // Loads all PatchOpcode rows for the given patch level and returns a mapping of
-    // opcode_value to opcode_name for identifying opcodes in the packet grid.
-    //
-    // When multiple versions of an opcode share an opcode_value (as variants of the
-    // same logical opcode like OP_Tracking v1/v2/v3), they collapse to a single
-    // dictionary entry with the shared opcode_name. The grid will display that name
-    // for any matching packet without distinguishing which version it is; callers
-    // needing version precision must query PatchOpcode differently.
-    //
-    // patchDate:  Patch date string, e.g. "2026-04-15".
-    // serverType: "live" or "test".
-    // Returns:    Dictionary of opcode_value to opcode_name.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private Dictionary<uint, string> LoadPatchOpcodes(string patchDate, string serverType)
-    {
-        Dictionary<uint, string> result = new Dictionary<uint, string>();
-        using (SqliteConnection connection = Glass.Data.Database.Instance.Connect())
-        {
-            connection.Open();
-            using (SqliteCommand command = connection.CreateCommand())
-            {
-                command.CommandText =
-                    "SELECT opcode_value, opcode_name, version FROM PatchOpcode "
-                    + "WHERE patch_date = @patchDate AND server_type = @serverType";
-                command.Parameters.AddWithValue("@patchDate", patchDate);
-                command.Parameters.AddWithValue("@serverType", serverType);
-                using (SqliteDataReader reader = command.ExecuteReader())
-                {
-                    while (reader.Read())
-                    {
-                        int opcodeValue = reader.GetInt32(0);
-                        string opcodeName = reader.GetString(1);
-                        int version = reader.GetInt32(2);
-                        result[(uint)opcodeValue] = opcodeName;
-                        DebugLog.Write(LogChannel.InferenceDebug, "LoadPatchOpcodes: loaded 0x"
-                            + opcodeValue.ToString("x4") + " " + opcodeName
-                            + " version=" + version);
-                    }
-                }
-            }
-        }
-        DebugLog.Write(LogChannel.InferenceDebug, "LoadPatchOpcodes: loaded "
-            + result.Count + " distinct opcodes");
-        return result;
     }
 
     private void UpdateRecentPatches(string patchDate, string serverType)
@@ -618,14 +573,15 @@ public partial class MainWindow : Window
 
         OpcodeEntry selected = (OpcodeEntry)OpcodeGrid.SelectedItem;
 
-        List<CapturedPacket> packets = GetFilteredPackets(
+        List<CatalogedPacket> packets = _packetCatalog.PacketsFor(
             selected.RawOpcode, _analysisFilterChannel, _analysisFilterSessionId,
-            _analysisMaxPackets, _analysisMaxHexBytes);
+            _analysisMaxPackets);
 
         if (packets.Count == 0)
         {
             DebugLog.Write(LogChannel.InferenceDebug, "RefreshAnalysis: no packets for "
                 + selected.Opcode + " with current filters");
+            RenderHexDump(new List<HexDumpSample>());
             return;
         }
 
@@ -1085,18 +1041,69 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeTraceList_SelectionChanged
     //
-    // Selection handler for the Opcode Trace list.  Updates enabled state of the
-    // Hide and Expand toolbar controls based on whether anything is selected.
+    // Selection handler for the Opcode Trace list.  Updates enabled state of
+    // the Hide and Expand toolbar controls based on whether anything is
+    // selected, and syncs the Expand toggle's checked state to the newly
+    // selected row's IsExpanded so the button reflects per-row state.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void OpcodeTraceList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        bool hasSelection = OpcodeTraceList.SelectedItem != null;
-
-        DebugLog.Write(LogChannel.Opcodes, "OpcodeTraceList_SelectionChanged: hasSelection=" + hasSelection);
+        OpcodeTraceRow? row = OpcodeTraceList.SelectedItem as OpcodeTraceRow;
+        bool hasSelection = row != null;
 
         ButtonOpcodeTraceHide.IsEnabled = hasSelection;
         ToggleOpcodeTraceExpand.IsEnabled = hasSelection;
+
+        if (row != null)
+        {
+            ToggleOpcodeTraceExpand.IsChecked = row.IsExpanded;
+        }
+        else
+        {
+            ToggleOpcodeTraceExpand.IsChecked = false;
+        }
+
+        DebugLog.Write(LogChannel.Opcodes,
+            "OpcodeTraceList_SelectionChanged: hasSelection=" + hasSelection
+            + " isExpanded=" + (row != null ? row.IsExpanded.ToString() : "n/a"));
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Toggle_OpcodeTraceColorPacket_Click
+    //
+    // Momentary apply-then-disarm toggle.  Applies the armed color to the
+    // selected row's per-packet color override.  No-op if no color is
+    // armed or no row is selected.
+    //
+    // sender:  The toggle button that raised the event.
+    // e:       Standard event args; not inspected.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void Toggle_OpcodeTraceColorPacket_Click(object sender, RoutedEventArgs e)
+    {
+        ApplyArmedColor(ToggleOpcodeTraceColorPacket, (uint argb, OpcodeTraceRow row) =>
+        {
+            _opcodeTracePresenter.SetPacketColor(row.PacketIndex, argb);
+        });
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Toggle_OpcodeTraceColorOpcode_Click
+    //
+    // Momentary apply-then-disarm toggle.  Applies the armed color to every
+    // row sharing the selected row's opcode.  No-op if no color is armed or
+    // no row is selected.
+    //
+    // sender:  The toggle button that raised the event.
+    // e:       Standard event args; not inspected.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void Toggle_OpcodeTraceColorOpcode_Click(object sender, RoutedEventArgs e)
+    {
+        ApplyArmedColor(ToggleOpcodeTraceColorOpcode, (uint argb, OpcodeTraceRow row) =>
+        {
+            _opcodeTracePresenter.SetOpcodeColor(row.OpcodeValue, argb);
+        });
+    }
+
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeTraceHexLength_SelectionChanged
@@ -1114,49 +1121,89 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Toggle_OpcodeTraceExpand_Click
     //
-    // Expand/Collapse toggle on the Opcode Trace toolbar.  Toggles hex dump display
-    // for the selected entry.  Stub — implementation pending expand state.
+    // Flips the selected row's IsExpanded state.  Populates the row's detail on first
+    // expand and reuses it on subsequent expands.
+    //
+    // sender:  The toggle button that raised the event.
+    // e:       Standard event args; not inspected.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void Toggle_OpcodeTraceExpand_Click(object sender, RoutedEventArgs e)
     {
-        bool isChecked = ToggleOpcodeTraceExpand.IsChecked == true;
-        DebugLog.Write(LogChannel.Opcodes, "Toggle_OpcodeTraceExpand_Click: expand=" + isChecked + " (stub, not yet implemented)");
+        OpcodeTraceRow? row = OpcodeTraceList.SelectedItem as OpcodeTraceRow;
+        if (row == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "Toggle_OpcodeTraceExpand_Click: no row selected, ignoring");
+            ToggleOpcodeTraceExpand.IsChecked = false;
+            return;
+        }
+
+        if (row.FieldText == null)
+        {
+            _opcodeTracePresenter.PopulateRowDetail(row);
+        }
+
+        row.IsExpanded = !row.IsExpanded;
+        ToggleOpcodeTraceExpand.IsChecked = row.IsExpanded;
+
+        DebugLog.Write(LogChannel.Opcodes,
+            "Toggle_OpcodeTraceExpand_Click: opcode=" + row.OpcodeHex
+            + " isExpanded=" + row.IsExpanded);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ColorPatch_MouseLeftButtonUp
     //
-    // Click handler shared by all color patches on the Opcode Trace toolbar.  Reads the
-    // patch's Tag (an ARGB hex string) and applies the color to either the selected entry
-    // or, if "Color opcode" is armed, the opcode of the selected entry.
-    // Stub — implementation pending entry view model and color state.
+    // Click handler shared by every color patch on the Opcode Trace toolbar.
+    // Clicking an unarmed patch arms it (white border).  Clicking the armed
+    // patch disarms it (gray border).  Clicking a different patch swaps the
+    // armed slot to the new one.  Only one patch is armed at a time.
+    //
+    // The armed patch's color is read by the Color packet / Color opcode
+    // toggle handlers when the user clicks one of them.
+    //
+    // sender:  The Border that raised the event.
+    // e:       Standard mouse event args; not inspected.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void ColorPatch_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         Border? patch = sender as Border;
-
         if (patch == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "ColorPatch_MouseLeftButtonUp: sender was not a Border, ignoring");
+            DebugLog.Write(LogChannel.Opcodes,
+                "ColorPatch_MouseLeftButtonUp: sender was not a Border, ignoring");
             return;
         }
 
-        string? tag = patch.Tag as string;
-        bool armed = ToggleOpcodeTraceColorOpcode.IsChecked == true;
+        if (ReferenceEquals(_armedColorPatch, patch))
+        {
+            patch.BorderBrush = Brushes.Gray;
+            _armedColorPatch = null;
+            DebugLog.Write(LogChannel.Opcodes,
+                "ColorPatch_MouseLeftButtonUp: disarmed patch tag='" + patch.Tag + "'");
+            return;
+        }
 
-        DebugLog.Write(LogChannel.Opcodes, "ColorPatch_MouseLeftButtonUp: tag='" + tag + "' armedForOpcode=" + armed + " (stub, not yet implemented)");
+        if (_armedColorPatch != null)
+        {
+            _armedColorPatch.BorderBrush = Brushes.Gray;
+        }
+        patch.BorderBrush = Brushes.White;
+        _armedColorPatch = patch;
+        DebugLog.Write(LogChannel.Opcodes,
+            "ColorPatch_MouseLeftButtonUp: armed patch tag='" + patch.Tag + "'");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Button_OpcodeTraceRefresh_Click
     //
-    // Refresh button for the Opcode Trace tab.  Walks Inference's CapturedPacket array,
-    // decodes each packet via Extract, and rebuilds the list.
-    // Stub — implementation pending the view model and refresh logic.
+    // Refresh button for the Opcode Trace tab.  Asks the presenter to
+    // rebuild the row list from the catalog's current state.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void Button_OpcodeTraceRefresh_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.Opcodes, "Button_OpcodeTraceRefresh_Click: refresh requested (stub, not yet implemented)");
+        DebugLog.Write(LogChannel.Opcodes, "Button_OpcodeTraceRefresh_Click: refresh requested");
+        _opcodeTracePresenter.Refresh();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -1181,24 +1228,81 @@ public partial class MainWindow : Window
         DebugLog.Write(LogChannel.Opcodes, "Button_OpcodeTraceManage_Click: manage requested (stub, not yet implemented)");
     }
 
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ApplyArmedColor
+    //
+    // Common logic for the Color packet and Color opcode momentary toggles.
+    // Validates that a color is armed and a row is selected, parses the
+    // armed patch's Tag to a uint ARGB value, and asks the presenter to
+    // apply it via the supplied delegate.  The toggle is returned to its
+    // unchecked state on every path so it behaves as momentary.
+    //
+    // toggle:       The toggle button that fired.  Always reset to
+    //               unchecked before this method returns.
+    // applyAction:  Presenter call that writes the color into the right
+    //               map (per-packet or per-opcode) and refreshes affected
+    //               rows.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void ApplyArmedColor(ToggleButton toggle, Action<uint, OpcodeTraceRow> applyAction)
+    {
+        toggle.IsChecked = false;
+
+        if (_armedColorPatch == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "ApplyArmedColor: no color armed, ignoring");
+            return;
+        }
+
+        OpcodeTraceRow? row = OpcodeTraceList.SelectedItem as OpcodeTraceRow;
+        if (row == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "ApplyArmedColor: no row selected, ignoring");
+            return;
+        }
+
+        string? tagText = _armedColorPatch.Tag as string;
+        if (tagText == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "ApplyArmedColor: armed patch has no Tag, ignoring");
+            return;
+        }
+
+        uint argb;
+        if (!uint.TryParse(tagText.Substring(2),
+            System.Globalization.NumberStyles.HexNumber, null, out argb))
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "ApplyArmedColor: could not parse Tag '" + tagText + "' as hex uint");
+            return;
+        }
+
+        applyAction(argb, row);
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // AnalyzeOpcode
     //
     // Computes constant-byte analysis across the given packets and builds hex dump
     // data for display. Each packet's payload is formatted as a hex dump with
     // constant bytes highlighted. Results are dispatched to the UI thread for
-    // rendering.
+    // rendering.  The hex dump is capped at _analysisMaxHexBytes per packet for
+    // display purposes only; the analysis itself runs over the full payload.
     //
-    // packets:  List of captured packets with payloads (possibly truncated by the
-    //           caller via GetFilteredPackets).
+    // packets:  List of cataloged packets to analyze.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private void AnalyzeOpcode(List<CapturedPacket> packets)
+    private void AnalyzeOpcode(List<CatalogedPacket> packets)
     {
         bool[] isConstant = ComputeConstantBytes(packets);
         List<HexDumpSample> dumpData = new List<HexDumpSample>();
         for (int packetIndex = 0; packetIndex < packets.Count; packetIndex++)
         {
-            CapturedPacket packet = packets[packetIndex];
+            CatalogedPacket packet = packets[packetIndex];
+            ReadOnlySpan<byte> payload = packet.Payload.AsReadOnlySpan();
+            int payloadLength = payload.Length;
             string name = "(unknown)";
 
             if (packet.Metadata.SessionId >= 0)
@@ -1208,12 +1312,12 @@ public partial class MainWindow : Window
             DebugLog.Write(LogChannel.Fields, "session " + packet.Metadata.SessionId + " is [" +
                 name + "] and using metadata we get " + GlassContext.SessionRegistry.CharacterNameFromMetadata(packet.Metadata));
 
-            int displayLength = Math.Min(packet.Payload.Length, _analysisMaxHexBytes);
-            bool truncated = packet.OriginalLength > _analysisMaxHexBytes;
+            int displayLength = Math.Min(payloadLength, _analysisMaxHexBytes);
+            bool truncated = payloadLength > _analysisMaxHexBytes;
             HexDumpSample dumpSample = new HexDumpSample();
             dumpSample.Header = "--- Packet " + (packetIndex + 1)
-                + "  " + packet.Metadata.Timestamp.ToString("HH:mm:ss.fff")
-                + "  (" + packet.OriginalLength + " bytes)"
+                + "  " + packet.Metadata.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")
+                + "  (" + payloadLength + " bytes)"
                 + (truncated ? "  [showing first " + _analysisMaxHexBytes + "]" : "")
                 + " ---" + Environment.NewLine;
             dumpSample.Header += packet.Metadata.SourceIp + ":" + packet.Metadata.SourcePort + " -> " +
@@ -1231,7 +1335,7 @@ public partial class MainWindow : Window
                 line.Bytes = new HexDumpByte[bytesThisRow];
                 for (int i = 0; i < bytesThisRow; i++)
                 {
-                    line.Bytes[i].Value = packet.Payload[offset + i];
+                    line.Bytes[i].Value = payload[offset + i];
                     line.Bytes[i].IsConstant = isConstant[offset + i];
                 }
                 dumpSample.Lines.Add(line);
@@ -1326,11 +1430,11 @@ public partial class MainWindow : Window
     // contain that offset has the same value. If any packet is shorter than the
     // offset, that byte is marked as not constant.
     //
-    // packets:  List of captured packets to compare.
+    // packets:  List of cataloged packets to compare.
     // Returns:  Boolean array indexed by byte offset. True if that byte position
     //           has the same value across all packets.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private bool[] ComputeConstantBytes(List<CapturedPacket> packets)
+    private bool[] ComputeConstantBytes(List<CatalogedPacket> packets)
     {
         if (packets.Count == 0)
         {
@@ -1339,9 +1443,10 @@ public partial class MainWindow : Window
         int maxLength = 0;
         for (int i = 0; i < packets.Count; i++)
         {
-            if (packets[i].Payload.Length > maxLength)
+            int payloadLength = packets[i].Payload.Length;
+            if (payloadLength > maxLength)
             {
-                maxLength = packets[i].Payload.Length;
+                maxLength = payloadLength;
             }
         }
         bool[] isConstant = new bool[maxLength];
@@ -1352,7 +1457,7 @@ public partial class MainWindow : Window
             bool hasFirst = false;
             for (int packetIndex = 0; packetIndex < packets.Count; packetIndex++)
             {
-                byte[] payload = packets[packetIndex].Payload;
+                ReadOnlySpan<byte> payload = packets[packetIndex].Payload.AsReadOnlySpan();
                 if (byteIndex >= payload.Length)
                 {
                     allSame = false;
@@ -1373,7 +1478,14 @@ public partial class MainWindow : Window
         }
         return isConstant;
     }
-
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // HandleISXGlassMessage
+    //
+    // Handle a message from the ISXGlass extension.  These are typically session management
+    // notifications that must be passed on.
+    //
+    // msg:  The text of the message to process
+    ///////////////////////////////////////////////////////////////////////////////////////////
     private void HandleISXGlassMessage(string msg)
     {
         DebugLog.Write(LogChannel.ISXGlass, $"ISXGlass: message in {msg}");
@@ -1463,124 +1575,23 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     // HandleAppPacket
     //
-    // Handles a decoded application-layer packet. Stores the full packet in the
-    // session buffer for later analysis and pcapng save. Updates the opcode grid
-    // entry on the UI thread with count, min/max size, and channel information.
+    // AppPacketBus delivery target for the Opcodes grid.  Storage is handled
+    // by PacketCatalog, which is subscribed to the same bus and runs before
+    // this handler in subscription order.  This handler dispatches to the UI
+    // thread and asks the row presenter to update the grid row for the
+    // opcode.
     //
-    // data:      Raw packet payload bytes.
-    // length:    Length of the payload in bytes.
-    // direction: Legacy direction byte (retained for compatibility until refactored).
-    // opcode:    The decoded opcode value.
-    // metadata:  Wire-level metadata including timestamp, IPs, ports, session, stream.
+    // data:      Unused by this handler.  PacketCatalog has already retained
+    //            its own copy of the bytes.
+    // opcode:    Wire opcode value.
+    // metadata:  Unused by this handler.  PacketCatalog has already recorded
+    //            the metadata alongside the retained payload.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void HandleAppPacket(ReadOnlySpan<byte> data, ushort opcode, PacketMetadata metadata)
     {
-        int dataLength = data.Length;
-        byte[] copy = data.Slice(0, dataLength).ToArray();
-        CapturedPacket packet;
-        packet.Metadata = metadata;
-        packet.Payload = copy;
-        packet.OpcodeValue = opcode;
-        packet.OriginalLength = dataLength;
-        packet.HighlightColor = 0;
-
-        lock (_payloadLock)
-        {
-            _capturedPackets.Add(packet);
-        }
-
-
-
         Dispatcher.BeginInvoke(() =>
         {
-            if (_opcodeLookup.TryGetValue(opcode, out OpcodeEntry? entry))
-            {
-                entry.Count = entry.Count + 1;
-                if (dataLength < entry.MinSize)
-                {
-                    entry.MinSize = dataLength;
-                }
-                if (dataLength > entry.MaxSize)
-                {
-                    entry.MaxSize = dataLength;
-                }
-            }
-            else
-            {
-                string opcodeHex = "0x" + opcode.ToString("x4");
-                entry = new OpcodeEntry(opcodeHex, metadata.Channel, dataLength)
-                {
-                    RawOpcode = opcode,
-                };
-                if (_patchOpcodes.TryGetValue(opcode, out string? knownName))
-                {
-                    entry.Name = knownName;
-                }
-                _opcodeEntries.Add(entry);
-                _opcodeLookup[opcode] = entry;
-            }
+            _opcodeRowPresenter.Update(opcode);
         });
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetFilteredPackets
-    //
-    // Queries the session packet buffer for packets matching the given filters.
-    // All filter parameters are optional — pass null to skip that filter.
-    // Returns up to maxResults packets with payloads truncated to maxPayloadBytes
-    // for display purposes.
-    //
-    // opcodeValue:     Optional opcode value to filter on. Null includes all opcodes.
-    // channel:         Optional channel filter (StreamId). Null includes all channels.
-    // sessionId:       Optional session filter. Null includes all sessions.
-    // maxResults:      Maximum number of packets to return.
-    // maxPayloadBytes: Maximum payload bytes to include per packet (truncation for display).
-    // Returns:         List of CapturedPacket with truncated payloads.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private List<CapturedPacket> GetFilteredPackets(uint? opcodeValue,
-        SoeConstants.StreamId? channel, int? sessionId,
-        int maxResults, int maxPayloadBytes)
-    {
-        List<CapturedPacket> results = new List<CapturedPacket>();
-        lock (_payloadLock)
-        {
-            for (int i = 0; i < _capturedPackets.Count; i++)
-            {
-                CapturedPacket packet = _capturedPackets[i];
-                if (opcodeValue != null && packet.OpcodeValue != opcodeValue.Value)
-                {
-                    continue;
-                }
-                if (channel != null && packet.Metadata.Channel != channel.Value)
-                {
-                    continue;
-                }
-                if (sessionId != null && packet.Metadata.SessionId != sessionId.Value)
-                {
-                    continue;
-                }
-                CapturedPacket truncated;
-                truncated.Metadata = packet.Metadata;
-                truncated.OpcodeValue = packet.OpcodeValue;
-                truncated.OriginalLength = packet.OriginalLength;
-                truncated.HighlightColor = 0;
-
-                if (packet.Payload.Length > maxPayloadBytes)
-                {
-                    truncated.Payload = new byte[maxPayloadBytes];
-                    Array.Copy(packet.Payload, truncated.Payload, maxPayloadBytes);
-                }
-                else
-                {
-                    truncated.Payload = packet.Payload;
-                }
-                results.Add(truncated);
-                if (results.Count >= maxResults)
-                {
-                    break;
-                }
-            }
-        }
-        return results;
     }
 }

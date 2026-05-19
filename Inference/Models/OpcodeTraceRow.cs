@@ -1,0 +1,127 @@
+﻿using Glass.Core.Logging;
+using Glass.Core.Memory;
+using System.ComponentModel;
+using static Glass.Network.Protocol.SoeConstants;
+
+namespace Inference.Models;
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+// OpcodeTraceRow
+//
+// Per-row view model for the Opcode Trace list.  One instance per visible
+// CatalogedPacket on the most recent Refresh.  Built by OpcodeTracePresenter
+// from a CatalogedPacket plus a resolved character name at render time.
+//
+// All summary columns are immutable for the lifetime of the row; a new
+// Refresh produces a new set of rows rather than mutating existing ones.
+// Color is the one mutable property and raises PropertyChanged so per-row
+// or per-opcode highlight changes repaint without rebuilding the list.
+//
+// The Payload reference is kept for expand-to-hex-dump in a later cut.
+// The first cut does not read it.
+///////////////////////////////////////////////////////////////////////////////////////////////
+public class OpcodeTraceRow : INotifyPropertyChanged
+{
+    private uint _color;
+    private bool _isExpanded;
+    private string? _fieldText;
+    private string? _hexDumpText;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeTraceRow (constructor)
+    //
+    // Captures the display values for one packet at the moment of row build.
+    // Subsequent registry updates (e.g. late character identification) are
+    // not reflected on the row; the next Refresh rebuilds the rows and
+    // picks up the current state.
+    //
+    // packetIndex:     Arrival index from the originating CatalogedPacket.
+    //                  Used by the presenter for per-entry color lookup.
+    // timestampLocal:  Pre-formatted local-time timestamp string.
+    // opcodeHex:       Hex-formatted wire opcode (e.g. "0xdb56").
+    // opcodeName:      Resolved name or "<Unknown>".
+    // channel:         Stream the packet arrived on.
+    // characterName:   Resolved character name, or empty string when
+    //                  identification has not yet associated the session
+    //                  with a character.
+    // length:          Payload length in bytes.
+    // payload:         RetainedBuffer over the long-lived payload copy.
+    //                  Kept for hex-dump expansion in a later cut.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public OpcodeTraceRow(uint packetIndex, string timestampLocal, ushort opcodeValue,
+        string opcodeName, StreamId channel, string characterName, int length,
+        RetainedBuffer payload)
+    {
+        PacketIndex = packetIndex;
+        TimestampLocal = timestampLocal;
+        OpcodeValue = opcodeValue;
+        OpcodeHex = "0x"+opcodeValue.ToString("X4");
+        OpcodeName = opcodeName;
+        Channel = channel;
+        CharacterName = characterName;
+        Length = length;
+        Payload = payload;
+        _color = 0;
+        _isExpanded = false;
+        _fieldText = null;
+        _hexDumpText = null;
+    }
+
+    public uint PacketIndex { get; }
+    public string TimestampLocal { get; }
+    public string OpcodeHex { get; }
+    public ushort OpcodeValue { get; }
+    public string OpcodeName { get; }
+    public StreamId Channel { get; }
+    public string CharacterName { get; }
+    public int Length { get; }
+    public RetainedBuffer Payload { get; }
+
+    public string ChannelAbbrev
+    {
+        get
+        {
+            return StreamAbbrev[Channel];
+        }
+    }
+    public uint Color
+    {
+        get { return _color; }
+        set
+        {
+            _color = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Color)));
+        }
+    }
+    public bool IsExpanded
+    {
+        get { return _isExpanded; }
+        set
+        {
+            _isExpanded = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsExpanded)));
+        }
+    }
+
+    public string? FieldText
+    {
+        get { return _fieldText; }
+        set
+        {
+            _fieldText = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FieldText)));
+        }
+    }
+
+    public string? HexDumpText
+    {
+        get { return _hexDumpText; }
+        set
+        {
+            _hexDumpText = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HexDumpText)));
+        }
+    }
+}

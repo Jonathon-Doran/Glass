@@ -30,6 +30,7 @@ public class PatchData
 {
     public readonly PatchLevel PatchLevel;
     private readonly Dictionary<string, ushort> _opcodeValuesByName;
+    private readonly Dictionary<ushort, string> _opcodeNamesByValue;
     private readonly Dictionary<string, FieldEncoding> _encodingsByString;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -140,6 +141,7 @@ public class PatchData
         _encodingsByString = new Dictionary<string, FieldEncoding>();
         BuildEncodingMap();
         _opcodeValuesByName = new Dictionary<string, ushort>();
+        _opcodeNamesByValue = new Dictionary<ushort, string>();
 
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
@@ -319,6 +321,7 @@ public class PatchData
             int opcodeValueRaw = reader.GetInt32(1);
             ushort opcodeValue = (ushort)opcodeValueRaw;
             _opcodeValuesByName[opcodeName] = opcodeValue;
+            _opcodeNamesByValue[opcodeValue] = opcodeName;
             rowCount++;
         }
 
@@ -853,6 +856,25 @@ public class PatchData
     public string GetOpcodeName(OpcodeHandle handle)
     {
         return _namesByHandle[handle];
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetOpcodeName
+    //
+    // Returns the opcode name for the given wire opcode value in this patch.
+    // Returns "<Unknown>" when the wire value is not present in this patch's
+    // opcode map.  Never returns null or an empty string.
+    //
+    // opcodeValue:  The wire opcode value to look up.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public string GetOpcodeName(ushort opcodeValue)
+    {
+        string name;
+        if (_opcodeNamesByValue.TryGetValue(opcodeValue, out name!))
+        {
+            return name;
+        }
+        return "<Unknown>";
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

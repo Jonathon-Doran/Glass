@@ -290,6 +290,9 @@ public class SoeStream : IDisposable
         metadata.SourcePort = dgram.SourcePort;
         metadata.DestIp = dgram.DestIp;
         metadata.DestPort = dgram.DestPort;
+        metadata.SessionId = dgram.SessionId;
+        metadata.Channel = dgram.Channel;
+
 
         DebugLog.Write(LogChannel.LowNetwork,
             "          [processPacket] netop=0x" + netOpcode.ToString("x4")
@@ -912,6 +915,9 @@ public class SoeStream : IDisposable
         dgram.SourcePort = metadata.SourcePort;
         dgram.DestIp = metadata.DestIp;
         dgram.DestPort = metadata.DestPort;
+        dgram.SessionId = metadata.SessionId;
+        dgram.Channel = metadata.Channel;
+
         // Payload is deliberately left default.  Nothing downstream will read it as the
         // datagram is immediately converted back to metadata.
 

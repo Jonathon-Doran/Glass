@@ -382,6 +382,44 @@ public class FieldBag
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Walk
+    //
+    // Returns a fresh BagWalker positioned at the start of the bag.  Multiple walkers may
+    // exist over the same bag at the same time; each carries its own position.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public BagWalker Walk()
+    {
+        return new BagWalker(this);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // NextAfter
+    //
+    // Advances the caller-owned position past any Empty slots and returns the next filled
+    // slot as a FieldBinding, or null when no more filled slots remain.  Called only by
+    // BagWalker.Next.
+    //
+    // position:  Caller-owned iteration position, advanced as slots are consumed.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    internal FieldBinding? NextAfter(ref int position)
+    {
+        while (position < _slotCount)
+        {
+            ref FieldSlot slot = ref _slots[position];
+            position++;
+
+            if (slot.Type == FieldType.Empty)
+            {
+                continue;
+            }
+
+            return new FieldBinding(slot.GetName(), slot.AsString());
+        }
+
+        return null;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // Release
     //
     // Returns the bag to its owning pool.  The bag must not be accessed after this call.

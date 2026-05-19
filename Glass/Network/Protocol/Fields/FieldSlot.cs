@@ -428,4 +428,83 @@ public struct FieldSlot
     {
         return _payloadLength;
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // AsString
+    //
+    // Returns the slot's value formatted as a string according to its current type.
+    // Integer types render in hex with a "0x" prefix and width-appropriate zero padding.
+    // Float renders as decimal with three digits after the radix.  AsciiString renders
+    // as the stored characters.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    internal string AsString()
+    {
+        switch (_type)
+        {
+            case FieldType.UInt8:
+                {
+                    int value;
+                    SlotReadResult result = TryGetUInt8(out value);
+                    if (result == SlotReadResult.Success)
+                    {
+                        return "0x" + value.ToString("X2");
+                    }
+                    DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName()
+                        + " UInt8 read failed: " + result);
+                    return string.Empty;
+                }
+
+            case FieldType.Int32:
+                {
+                    int value;
+                    SlotReadResult result = TryGetInt32(out value);
+                    if (result == SlotReadResult.Success)
+                    {
+                        return "0x" + value.ToString("X8");
+                    }
+                    DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName()
+                        + " Int32 read failed: " + result);
+                    return string.Empty;
+                }
+
+            case FieldType.UInt32:
+                {
+                    uint value;
+                    SlotReadResult result = TryGetUInt32(out value);
+                    if (result == SlotReadResult.Success)
+                    {
+                        return "0x" + value.ToString("X8");
+                    }
+                    DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName()
+                        + " UInt32 read failed: " + result);
+                    return string.Empty;
+                }
+
+            case FieldType.Float:
+                {
+                    float value;
+                    SlotReadResult result = TryGetFloat(out value);
+                    if (result == SlotReadResult.Success)
+                    {
+                        return value.ToString("F3");
+                    }
+                    DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName()
+                        + " Float read failed: " + result);
+                    return string.Empty;
+                }
+
+            case FieldType.AsciiString:
+                {
+                    ReadOnlySpan<byte> bytes = GetAsciiBytes();
+                    return Encoding.ASCII.GetString(bytes);
+                }
+
+            default:
+                {
+                    DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName()
+                        + " type " + _type + " has no string conversion");
+                    return string.Empty;
+                }
+        }
+    }
 }

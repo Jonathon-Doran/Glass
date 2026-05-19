@@ -444,8 +444,10 @@ public class SessionRegistry
     //
     // characterName:  The character name decoded from packet data.
     // metadata:       The packet metadata identifying the connection.
+    //
+    // Returns:  True if the session is identified, False otherwise
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void IdentifyConnection(string characterName, PacketMetadata metadata)
+    public bool IdentifyConnection(string characterName, PacketMetadata metadata)
     {
         bool isFromClient = (metadata.SourceIp == _localIp);
         int localPort = isFromClient ? metadata.SourcePort : metadata.DestPort;
@@ -458,7 +460,7 @@ public class SessionRegistry
                 DebugLog.Write(LogChannel.LowNetwork,
                     "SessionRegistry.IdentifyConnection: no connection for port " + localPort
                     + ", character=" + characterName);
-                return;
+                return false;
             }
 
             DebugLog.Write(LogChannel.LowNetwork, "Connection found on local port "
@@ -470,7 +472,7 @@ public class SessionRegistry
                     "SessionRegistry.IdentifyConnection: port " + localPort
                     + " already identified as connectionId=" + connection.SessionId
                     + ", character=" + characterName);
-                return;
+                return false;
             }
 
             DebugLog.Write(LogChannel.LowNetwork, "Identify:  look for port " + localPort);
@@ -486,7 +488,7 @@ public class SessionRegistry
                     if (character == null)
                     {
                         DebugLog.Write(LogChannel.LowNetwork, "No Character named " + characterName + " found in the CharacterRepository");
-                        return;
+                        return false;
                     }
 
                     connection.SessionId = _nextSessionId;
@@ -503,7 +505,7 @@ public class SessionRegistry
                         + " identified as character=" + characterName
                         + " session=" + pair.Value.SessionName
                         + " connectionId=" + connection.SessionId);
-                    return;
+                    return true;
                 }
             }
 
@@ -511,6 +513,7 @@ public class SessionRegistry
                 "SessionRegistry.IdentifyConnection: no SessionEntry for character="
                 + characterName + " on port " + localPort
                 + ", connection remains unidentified");
+            return false;
         }
     }
 }

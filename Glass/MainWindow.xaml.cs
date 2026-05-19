@@ -802,6 +802,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        CharacterRepository.Instance.Load();
         GlassContext.FieldExtractor = new FieldExtractor();
         GlassContext.PatchRegistry = new PatchRegistry();
         GlassContext.CurrentPatchLevel = GlassContext.PatchRegistry.LoadLatestPatchLevel("Live");

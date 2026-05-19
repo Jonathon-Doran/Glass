@@ -200,7 +200,7 @@ public class OpcodeDispatch : IDisposable
     {
         int length = data.Length;
 
-        DebugLog.Write(LogChannel.Opcodes, $"[SEARCH] opCode=0x{opcodeValue:X4} len={length} hex={BitConverter.ToString(data.Slice(0, length).ToArray()).Replace("-", " ").ToLowerInvariant()}");
+        //  DebugLog.Write(LogChannel.Opcodes, $"[SEARCH] opCode=0x{opcodeValue:X4} len={length} hex={BitConverter.ToString(data.Slice(0, length).ToArray()).Replace("-", " ").ToLowerInvariant()}");
 
         OpcodeHandle handle = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, opcodeValue);
         if ((handle == -1) || (_handlers[handle] == null))
