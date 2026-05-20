@@ -32,7 +32,6 @@ namespace Inference.Core;
 public class OpcodeTracePresenter
 {
     private readonly PacketCatalog _catalog;
-    private readonly PatchLevel _patchLevel;
     private readonly ObservableCollection<OpcodeTraceRow> _rows;
     private readonly HashSet<ushort> _hiddenOpcodes;
     private readonly Dictionary<ushort, uint> _colorByOpcode;
@@ -55,7 +54,6 @@ public class OpcodeTracePresenter
     public OpcodeTracePresenter(PacketCatalog catalog)
     {
         _catalog = catalog;
-        _patchLevel = GlassContext.CurrentPatchLevel;
         _rows = new ObservableCollection<OpcodeTraceRow>();
         _hiddenOpcodes = new HashSet<ushort>();
         _colorByOpcode = new Dictionary<ushort, uint>();
@@ -151,7 +149,7 @@ public class OpcodeTracePresenter
             CatalogedPacket packet = accumulated[i];
             string timestampLocal = packet.Metadata.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff");
             string opcodeHex = "0x" + packet.Opcode.ToString("x4");
-            string opcodeName = GlassContext.PatchRegistry.GetOpcodeName(_patchLevel, packet.Opcode);
+            string opcodeName = GlassContext.PatchRegistry.GetOpcodeName(GlassContext.CurrentPatchLevel, packet.Opcode);
             string characterName = ResolveCharacterName(packet.Metadata.SessionId);
             int length = packet.Payload.Length;
 
@@ -311,7 +309,7 @@ public class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////
     public void PopulateRowDetail(OpcodeTraceRow row)
     {
-        OpcodeHandle handle = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, row.OpcodeValue);
+        OpcodeHandle handle = GlassContext.PatchRegistry.GetOpcodeHandle(GlassContext.CurrentPatchLevel, row.OpcodeValue);
         if ((int)handle == -1)
         {
             DebugLog.Write(LogChannel.Opcodes,
@@ -321,11 +319,11 @@ public class OpcodeTracePresenter
             return;
         }
 
-        FieldBag bag = GlassContext.PatchRegistry.Rent(_patchLevel, handle);
+        FieldBag bag = GlassContext.PatchRegistry.Rent(GlassContext.CurrentPatchLevel, handle);
         try
         {
             ReadOnlySpan<byte> payload = row.Payload.AsReadOnlySpan();
-            GlassContext.FieldExtractor.Extract(_patchLevel, handle, payload, bag);
+            GlassContext.FieldExtractor.Extract(GlassContext.CurrentPatchLevel, handle, payload, bag);
 
             StringBuilder sb = new StringBuilder();
             BagWalker walker = bag.Walk();

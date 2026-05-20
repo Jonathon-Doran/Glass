@@ -404,7 +404,7 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void BuildRecentPatchesMenu()
     {
-        MenuItem fileMenu = (MenuItem)MenuOpenPatchLevel.Parent;
+        MenuItem fileMenu = (MenuItem)MenuDuplicatePatchLevel.Parent;
 
         // Remove previously inserted Recent items and their separator.
         // This is to handle the case where patch levels are modified during the run
@@ -491,7 +491,7 @@ public partial class MainWindow : Window
         // Insert into the menu in setting order (most-recent first).
         // Each item is inserted at an incrementing position after
         // MenuOpenPatchLevel, so the menu matches the setting order.
-        int insertIndex = fileMenu.Items.IndexOf(MenuOpenPatchLevel) + 1;
+        int insertIndex = fileMenu.Items.IndexOf(MenuDuplicatePatchLevel) + 1;
 
         Separator recentSeparator = new Separator();
         recentSeparator.Tag = "RecentPatch";
@@ -710,6 +710,89 @@ public partial class MainWindow : Window
             BuildRecentPatchesMenu();
             UpdateControlStates();
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // MenuItem_DuplicatePatchLevel_Click
+    //
+    // Handles the File > Duplicate Patch Level menu item click.  Opens the Duplicate
+    // Patch Level dialog, and on confirmation runs PatchLevelDuplicator against the
+    // database.  The duplicated patch level is then added to the recent patches list,
+    // the recent patches menu is rebuilt, and the new patch level is left for the
+    // user to open from the menu.
+    //
+    // sender:  The menu item that raised the event.
+    // e:       Event arguments.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void MenuItem_DuplicatePatchLevel_Click(object sender, RoutedEventArgs e)
+    {
+        DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_DuplicatePatchLevel_Click");
+
+        if (!Glass.Data.Database.IsInitialized)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MenuItem_DuplicatePatchLevel_Click: database not initialized, aborting");
+            MessageBox.Show("The database is not open.",
+                "Duplicate Patch Level", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        using SqliteConnection connection = Glass.Data.Database.Instance.Connect();
+        connection.Open();
+
+        DuplicatePatchLevelDialog dialog = new DuplicatePatchLevelDialog(connection);
+        dialog.Owner = this;
+
+        bool? dialogResult = dialog.ShowDialog();
+        if (dialogResult != true)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MenuItem_DuplicatePatchLevel_Click: dialog cancelled");
+            return;
+        }
+
+        string sourcePatchDate = dialog.SourcePatchDate;
+        string sourceServerType = dialog.SourceServerType;
+        string targetPatchDate = dialog.TargetPatchDate;
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "MenuItem_DuplicatePatchLevel_Click: duplicating (" + sourcePatchDate + "," + sourceServerType
+            + ") -> " + targetPatchDate);
+
+        int duplicatedCount;
+        try
+        {
+            PatchLevelDuplicator duplicator = new PatchLevelDuplicator(connection);
+            duplicatedCount = duplicator.Duplicate(sourcePatchDate, sourceServerType, targetPatchDate);
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MenuItem_DuplicatePatchLevel_Click: duplication failed: " + ex.Message);
+            MessageBox.Show("Duplication failed: " + ex.Message,
+                "Duplicate Patch Level", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        if (duplicatedCount == 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MenuItem_DuplicatePatchLevel_Click: source had no rows, nothing duplicated");
+            MessageBox.Show("The source patch level contained no opcodes.  Nothing was duplicated.",
+                "Duplicate Patch Level", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "MenuItem_DuplicatePatchLevel_Click: duplicated " + duplicatedCount
+            + " opcodes into " + targetPatchDate);
+
+        UpdateRecentPatches(targetPatchDate, sourceServerType);
+        BuildRecentPatchesMenu();
+
+        MessageBox.Show("Duplicated " + duplicatedCount + " opcodes from " + sourcePatchDate
+            + " (" + sourceServerType + ") into " + targetPatchDate + ".",
+            "Duplicate Patch Level", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

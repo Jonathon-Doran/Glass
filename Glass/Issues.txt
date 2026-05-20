@@ -13,14 +13,13 @@ Need to identify the current zone for characters.  (Chat server packet gets this
 Mob repository needs to be created.
 Connection still has multiple streams that are not used.
 Field data editor in Inference does not have modify support for optional groups. See "Fields".
-Inference has LoadPatchOpcodes which duplicates the PatchRegistry
 PacketEnvelope should include a Connection and not the ip addresses and ports.
 SessionRegistry is not checking for an existing Connection properly
 
-SessionId is not reliabily moved from UDPdatagram to packet metadata.
 CharacterId standardization would be a good thhing
 The OpcodeRowPresenter logs are very vergose.
 
+Inference/Core/InferenceDebugLog and InferenceLog need to go away 
 
 ISXGlass:
 

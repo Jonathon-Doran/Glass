@@ -1,0 +1,29 @@
+﻿<Window x:Class="Inference.Dialogs.DuplicatePatchLevelDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.modernwpf.com/2019"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        ui:WindowHelper.UseModernWindowStyle="True"
+        Title="Duplicate Patch Level" Height="260" Width="400"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+    <StackPanel Margin="16">
+        <TextBlock Text="Source Patch Level" Margin="0,0,0,4"/>
+        <ComboBox x:Name="SourceComboBox" Margin="0,0,0,12"/>
+
+        <TextBlock Text="Target Patch Date" Margin="0,0,0,4"/>
+        <DatePicker x:Name="TargetDatePicker"
+                    SelectedDate="{x:Static sys:DateTime.Today}"
+                    Margin="0,0,0,16"/>
+
+        <TextBlock x:Name="StatusText"
+                   Foreground="{DynamicResource SystemControlErrorTextForegroundBrush}"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,8"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="OK"     Click="Button_OK_Click"     Padding="16,4" Margin="0,0,8,0"/>
+            <Button Content="Cancel" Click="Button_Cancel_Click" Padding="16,4"/>
+        </StackPanel>
+    </StackPanel>
+    </Window>

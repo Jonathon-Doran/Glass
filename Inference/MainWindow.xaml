@@ -10,7 +10,8 @@
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_File">
                 <MenuItem Header="_New Patch Level" Click="MenuItem_NewPatchLevel_Click"/>
-                <MenuItem x:Name="MenuOpenPatchLevel" Header="_Open Patch Level" Click="MenuItem_OpenPatchLevel_Click"/>
+                <MenuItem Header="_Open Patch Level" Click="MenuItem_OpenPatchLevel_Click"/>
+                <MenuItem x:Name="MenuDuplicatePatchLevel" Header="_Duplicate Patch Level..." Click="MenuItem_DuplicatePatchLevel_Click"/>
                 <Separator/>
                 <MenuItem x:Name="MenuSave" Header="_Save"
              Click="MenuItem_Save_Click" IsEnabled="False"/>
