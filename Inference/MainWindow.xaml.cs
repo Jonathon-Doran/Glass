@@ -85,28 +85,27 @@ public partial class MainWindow : Window
         DebugLog.Write(LogChannel.InferenceDebug, "Inference application started");
         DebugLog.Write(LogChannel.Inference, "Inference log initialized");
 
-
         InitializeAnalysisFilters();
         AddDummyCandidates();
         InitializePipes();
-        GlassContext.FocusTracker = new FocusTracker();
 
         OpenDatabase();
         BuildRecentPatchesMenu();
         RestoreLastPatchLevel();
-        GlassContext.PatchRegistry = new PatchRegistry(_currentPatchLevel!.Value);
-        UpdateControlStates();
-        GlassContext.AppPacketBus = new AppPacketBus();
-        GlassContext.AppPacketBus.Subscribe(HandleAppPacket);
-        CharacterRepository.Instance.Load();
 
+        GlassContext.SignalBus = new SignalBus();
         GlassContext.AppPacketBus = new AppPacketBus();
+
+        ProtocolStackBootstrap.Initialize();
+        GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
+
+        UpdateControlStates();
+
         _retainedBufferPool = new RetainedBufferPool();
         _packetCatalog = new PacketCatalog(_retainedBufferPool);
         _opcodeRowPresenter = new OpcodeRowPresenter(_packetCatalog);
         OpcodeGrid.ItemsSource = _opcodeRowPresenter.Rows;
         GlassContext.AppPacketBus.Subscribe(HandleAppPacket);
-        GlassContext.SignalBus = new SignalBus();
 
         _opcodeTracePresenter = new OpcodeTracePresenter(_packetCatalog);
         OpcodeTraceList.ItemsSource = _opcodeTracePresenter.Rows;
@@ -716,10 +715,10 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     // MenuItem_LaunchProfile_Click
     //
-    // Handles the Profile > Launch Profile menu item click.
-    // Opens the Launch Profile dialog filtered by the current patch level's
-    // server type. If the user selects a profile, starts packet capture and
-    // then launches the profile.
+    // Handles the Profile > Launch Profile menu item click.  Opens the Launch
+    // Profile dialog filtered by the current patch level's server type.  If the
+    // user selects a profile, starts packet capture and then launches the
+    // profile.
     //
     // sender:  The menu item that raised the event.
     // e:       Event arguments.
@@ -734,54 +733,64 @@ public partial class MainWindow : Window
             return;
         }
 
+        GlassContext.CurrentPatchLevel = _currentPatchLevel.Value;
         string serverType = _currentPatchLevel.Value.ServerType;
+        GlassContext.PatchRegistry.LoadPatchLevel(_currentPatchLevel.Value);
+        OpcodeDispatch.RebuildForCurrentPatchLevel();
 
-        DebugLog.Write(LogChannel.Inference, "launching profile for serverType: " + 
-            serverType);
+        DebugLog.Write(LogChannel.Inference,
+            "MenuItem_LaunchProfile_Click: patch level set for serverType=" + serverType);
+
         LaunchProfileDialog dialog = new LaunchProfileDialog(serverType);
-
         dialog.Owner = this;
 
-        GlassContext.SessionRegistry = new SessionRegistry();
-        GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
-
-        GlassContext.FieldExtractor = new FieldExtractor();
-        GlassContext.CurrentPatchLevel = _currentPatchLevel.Value;
-        _ = OpcodeDispatch.Instance;
-        if (dialog.ShowDialog() == true)
+        if (dialog.ShowDialog() != true)
         {
-            DebugLog.Write(LogChannel.InferenceDebug, "Profile selected: " + dialog.SelectedProfileName);
-
-            string? localIp = PacketCapture.GetLocalIP();
-            if (localIp == null)
-            {
-                DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_LaunchProfile_Click: no capture device found");
-                MessageBox.Show("No suitable capture device found. Is Npcap installed?",
-                    "Capture Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-            // TODO:  Throttle network log
-            // DebugLog.Log_Network = false;
-
-
-            _sessionDemux = new SessionDemux(localIp);
-            _packetCapture = new PacketCapture(_sessionDemux);
-
-            // string bpfFilter = "udp and (net 64.37.128.0/18 or net 69.174.192.0/19 or net 209.0.234.0/23)";
-            string bpfFilter = "udp and (net 69.174.0.0/16 or net 64.37.0.0/16 or net 209.0.0.0/16)";
-            if (!_packetCapture.Start(bpfFilter))
-            {
-                DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_LaunchProfile_Click: capture failed to start");
-                MessageBox.Show("Failed to start packet capture.",
-                    "Capture Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-
-            DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_LaunchProfile_Click: capture started");
-            StatusCapture.Text = "Capture: Active";
-
-            await GlassContext.ProfileManager.LaunchProfile(dialog.SelectedProfileName);
+            return;
         }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "MenuItem_LaunchProfile_Click: profile selected: " + dialog.SelectedProfileName);
+
+        string? localIp = PacketCapture.GetLocalIP();
+        if (localIp == null)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MenuItem_LaunchProfile_Click: no capture device found");
+            MessageBox.Show("No suitable capture device found. Is Npcap installed?",
+                "Capture Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        _sessionDemux = new SessionDemux(localIp);
+        _packetCapture = new PacketCapture(_sessionDemux);
+
+        string bpfFilter = "udp and (net 69.174.0.0/16 or net 64.37.0.0/16 or net 209.0.0.0/16)";
+        if (!_packetCapture.Start(bpfFilter))
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MenuItem_LaunchProfile_Click: capture failed to start");
+            MessageBox.Show("Failed to start packet capture.",
+                "Capture Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "MenuItem_LaunchProfile_Click: capture started");
+        StatusCapture.Text = "Capture: Active";
+
+        await GlassContext.ProfileManager.LaunchProfile(dialog.SelectedProfileName);
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // UpdateToolsMenuState
+    //
+    // Adjust the tools menu availability based on application state.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    private void UpdateToolsMenuState()
+    {
+
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -793,11 +802,8 @@ public partial class MainWindow : Window
     private void OnAllSessionsDisconnected()
     {
         DebugLog.Write(LogChannel.Sessions, "MainWindow.OnAllSessionsDisconnected: all sessions disconnected, clearing active profile.");
-        GlassContext.ProfileManager.ClearActiveProfile();
-        GlassContext.FocusTracker.Stop();
-        GlassContext.FocusTracker.ClearActiveSession();
-        GlassContext.GlassVideoPipe.Send("clear_all");
-        OpcodeDispatch.Instance.Dispose();
+        ProtocolStackBootstrap.Teardown();
+        UpdateToolsMenuState();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

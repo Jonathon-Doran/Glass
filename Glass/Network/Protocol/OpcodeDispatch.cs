@@ -141,6 +141,26 @@ public class OpcodeDispatch : IDisposable
         GC.SuppressFinalize(this);
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // RebuildForCurrentPatchLevel
+    //
+    // Disposes any existing OpcodeDispatch instance and forces construction
+    // of a fresh one against GlassContext.CurrentPatchLevel.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public static void RebuildForCurrentPatchLevel()
+    {
+        if (_instance != null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeDispatch.RebuildForCurrentPatchLevel: disposing prior instance");
+            _instance.Dispose();
+        }
+
+        OpcodeDispatch fresh = Instance;
+        DebugLog.Write(LogChannel.Opcodes,
+            "OpcodeDispatch.RebuildForCurrentPatchLevel: fresh instance constructed");
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Clear
     //

@@ -76,9 +76,12 @@ public partial class MainWindow : Window
             new uint[] { 64, 256, 512, 1024, 2048, 16384, 65536, 262144, 524288 },
             new uint[] { 32, 16, 16, 16, 8, 8, 4, 2, 1 });
 
-        GlassContext.FocusTracker = new FocusTracker();
         GlassContext.SignalBus = new SignalBus();
         GlassContext.AppPacketBus = new AppPacketBus();
+
+        ProtocolStackBootstrap.Initialize();
+        GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
+
         GcMonitor.Start(5);
     }
 
@@ -580,13 +583,10 @@ public partial class MainWindow : Window
     private void OnAllSessionsDisconnected()
     {
         DebugLog.Write(LogChannel.Sessions, "MainWindow.OnAllSessionsDisconnected: all sessions disconnected, clearing active profile.");
-        GlassContext.ProfileManager.ClearActiveProfile();
+        ProtocolStackBootstrap.Teardown();
         UpdateToolsMenuState();
-        GlassContext.FocusTracker.Stop();
-        GlassContext.FocusTracker.ClearActiveSession();
-        GlassContext.GlassVideoPipe.Send("clear_all");
-        OpcodeDispatch.Instance.Dispose();
     }
+
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // MenuItem_NewDatabase_Click
@@ -669,31 +669,34 @@ public partial class MainWindow : Window
     }
 
     // Placeholder for settings dialog.
-    private void MenuItem_Settings_Click(object sender, RoutedEventArgs e) { }
+    private void MenuItem_Settings_Click(object sender, RoutedEventArgs e) 
+    { 
+    }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // MenuItem_Launch_Click
+    //
     // Opens the select profile dialog and launches the chosen profile.
+    // Sets the current patch level from the profile's server type before
+    // launching.
+    ///////////////////////////////////////////////////////////////////////////////////////////
     private async void MenuItem_Launch_Click(object sender, RoutedEventArgs e)
     {
-        var select = new SelectProfileDialog { Owner = this };
-        if ((select.ShowDialog() == true) && (select.SelectedProfileName != null))
+        SelectProfileDialog select = new SelectProfileDialog { Owner = this };
+        if ((select.ShowDialog() != true) || (select.SelectedProfileName == null))
         {
-            ProfileRepository repo = new ProfileRepository(select.SelectedProfileName);
-            string serverType = repo.GetServerType();
-
-            GlassContext.FieldExtractor = new FieldExtractor();
-            GlassContext.PatchRegistry = new PatchRegistry();
-            GlassContext.CurrentPatchLevel = GlassContext.PatchRegistry.LoadLatestPatchLevel(serverType);
-            _ = OpcodeDispatch.Instance;
-
-            if (GlassContext.SessionRegistry == null)
-            {
-                GlassContext.SessionRegistry = new SessionRegistry();
-                GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
-            }
-            GlassContext.FocusTracker = new FocusTracker();
-
-            await GlassContext.ProfileManager.LaunchProfile(select.SelectedProfileName);
+            return;
         }
+
+        ProfileRepository repo = new ProfileRepository(select.SelectedProfileName);
+        string serverType = repo.GetServerType();
+
+        GlassContext.CurrentPatchLevel = GlassContext.PatchRegistry.LoadLatestPatchLevel(serverType);
+        DebugLog.Write(LogChannel.General,
+            "MenuItem_Launch_Click: patch level set for serverType=" + serverType);
+        OpcodeDispatch.RebuildForCurrentPatchLevel();
+
+        await GlassContext.ProfileManager.LaunchProfile(select.SelectedProfileName);
     }
 
     // Opens the new profile dialog and rebuilds the recent profiles menu on save.
@@ -793,7 +796,13 @@ public partial class MainWindow : Window
     // Pcap_Click
     //
     // Handles the Tools > Pcap Test menu item.  Opens a file dialog to select
-    // a pcap file, creates the network pipeline, and processes the file.
+    // a pcap file, sets the current patch level to the latest Live patch as a
+    // placeholder (pcap files do not yet carry patch metadata), constructs
+    // the demux and file reader, and processes the file.  Logs an opcode
+    // summary per stream per connection after processing.
+    //
+    // sender:  The menu item that raised the event.
+    // e:       Standard event args; not inspected.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void Pcap_Click(object sender, RoutedEventArgs e)
     {
@@ -802,30 +811,22 @@ public partial class MainWindow : Window
         dialog.Title = "Select a packet capture file";
 
         bool? result = dialog.ShowDialog();
-
         if (result != true)
         {
             return;
         }
 
-        CharacterRepository.Instance.Load();
-        GlassContext.FieldExtractor = new FieldExtractor();
-        GlassContext.PatchRegistry = new PatchRegistry();
         GlassContext.CurrentPatchLevel = GlassContext.PatchRegistry.LoadLatestPatchLevel("Live");
-        _ = OpcodeDispatch.Instance;
-
-        if (GlassContext.SessionRegistry == null)
-        {
-            GlassContext.SessionRegistry = new SessionRegistry();
-            GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
-        }
+        DebugLog.Write(LogChannel.General,
+            "Pcap_Click: patch level set to latest Live (pcap metadata not yet supported)");
+        OpcodeDispatch.RebuildForCurrentPatchLevel();
 
         string filePath = dialog.FileName;
 
         string localIp = PacketCapture.GetLocalIP()!;
         if (localIp == null)
         {
-            DebugLog.Write(LogChannel.Network, "No local IP.  Aborting Pcap read");
+            DebugLog.Write(LogChannel.Network, "Pcap_Click: no local IP, aborting");
             return;
         }
 
@@ -834,7 +835,7 @@ public partial class MainWindow : Window
 
         int routed = reader.ProcessFile(filePath);
 
-        DebugLog.Write(LogChannel.Network, routed + " packets routed");
+        DebugLog.Write(LogChannel.Network, "Pcap_Click: " + routed + " packets routed");
 
         foreach (KeyValuePair<int, Connection> kvp in GlassContext.SessionRegistry.GetAllConnections())
         {
@@ -859,14 +860,14 @@ public partial class MainWindow : Window
                         }
                         string handled = OpcodeDispatch.Instance.IsOpcodeHandled(op.Key)
                             ? "+" : " ";
-                        DebugLog.Write(LogChannel.Network,"  " + handled + " 0x" + op.Key.ToString("x4") + " (" + name + ")"
+                        DebugLog.Write(LogChannel.Network, "  " + handled + " 0x" + op.Key.ToString("x4") + " (" + name + ")"
                             + ": " + op.Value + " times");
                     }
                 }
             }
         }
 
-        DebugLog.Write(LogChannel.General, "pcap playback finished");
+        DebugLog.Write(LogChannel.General, "Pcap_Click: pcap playback finished");
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
