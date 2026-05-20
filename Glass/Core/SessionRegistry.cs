@@ -520,8 +520,69 @@ public class SessionRegistry
             DebugLog.Write(LogChannel.LowNetwork,
                 "SessionRegistry.IdentifyConnection: no SessionEntry for character="
                 + characterName + " on port " + localPort
-                + ", connection remains unidentified");
-            return false;
+                + ", bootstrapping synthetic session");
+
+            Character? bootstrapCharacter = CharacterRepository.Instance.GetByName(characterName);
+            if (bootstrapCharacter == null)
+            {
+                DebugLog.Write(LogChannel.LowNetwork,
+                    "SessionRegistry.IdentifyConnection: no Character named " + characterName
+                    + " in CharacterRepository, cannot bootstrap");
+                return false;
+            }
+
+            string synthName = "pcap-" + _sessionCount;
+            SessionEntry synthEntry = EnsureSessionEntry(synthName, characterName, 0, IntPtr.Zero);
+            _sessionCount++;
+
+            connection.SessionId = _nextSessionId;
+            _nextSessionId++;
+            synthEntry.LocalPort = localPort;
+            synthEntry.SessionId = connection.SessionId;
+            synthEntry.CharacterId = bootstrapCharacter.CharacterId;
+            _characterIdBySession[connection.SessionId] = bootstrapCharacter.CharacterId;
+            connection.CharacterId = bootstrapCharacter.CharacterId;
+            connection.Character = bootstrapCharacter;
+
+            DebugLog.Write(LogChannel.LowNetwork,
+                "SessionRegistry.IdentifyConnection: port " + localPort
+                + " identified as character=" + characterName
+                + " synth session=" + synthName
+                + " connectionId=" + connection.SessionId);
+
+            GlassContext.SignalBus.Publish(
+                new SignalSessionAdded(connection.SessionId, characterName));
+
+            DebugLog.Write(LogChannel.SignalBus,
+                "SessionRegistry.IdentifyConnection: published SignalSessionAdded sessionId="
+                + connection.SessionId + " character=" + characterName);
+
+            return true;
         }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // EnsureSessionEntry
+    //
+    // Looks up or creates a SessionEntry by sessionName.  Assigns the
+    // character name, pid, and hwnd to the entry.  Caller must hold _lock.
+    //
+    // sessionName:    The session name key.
+    // characterName:  The character logged in to this session.
+    // pid:            The process ID of the EQ client, or 0 if not known.
+    // hwnd:           The main window handle of the EQ client, or IntPtr.Zero
+    //                 if not known.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private SessionEntry EnsureSessionEntry(string sessionName, string characterName, uint pid, IntPtr hwnd)
+    {
+        if (!_sessions.TryGetValue(sessionName, out SessionEntry? entry))
+        {
+            entry = new SessionEntry { SessionName = sessionName };
+            _sessions[sessionName] = entry;
+        }
+        entry.CharacterName = characterName;
+        entry.Pid = pid;
+        entry.Hwnd = hwnd;
+        return entry;
     }
 }

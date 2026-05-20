@@ -13,7 +13,8 @@
                 <MenuItem x:Name="MenuOpenPatchLevel" Header="_Open Patch Level" Click="MenuItem_OpenPatchLevel_Click"/>
                 <Separator/>
                 <MenuItem x:Name="MenuSave" Header="_Save"
-                         Click="MenuItem_Save_Click" IsEnabled="False"/>
+             Click="MenuItem_Save_Click" IsEnabled="False"/>
+                <MenuItem Header="Open _Pcap..." Click="MenuItem_OpenPcap_Click"/>
                 <Separator/>
                 <MenuItem Header="E_xit" Click="MenuItem_Exit_Click"/>
             </MenuItem>

@@ -713,6 +713,67 @@ public partial class MainWindow : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // MenuItem_OpenPcap_Click
+    //
+    // Handles the File > Open Pcap menu item.  Opens a file dialog to select
+    // a pcap file, sets the current patch level from the user's restored
+    // patch level, constructs the demux and file reader, and processes the
+    // file.  Packets flow through the AppPacketBus into the catalog and
+    // presenters in the normal way.
+    //
+    // sender:  The menu item that raised the event.
+    // e:       Event arguments.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void MenuItem_OpenPcap_Click(object sender, RoutedEventArgs e)
+    {
+        DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_OpenPcap_Click");
+
+        if (_currentPatchLevel == null)
+        {
+            DebugLog.Write(LogChannel.General, "MenuItem_OpenPcap_Click: no patch level, aborting");
+            MessageBox.Show("Select a patch level before opening a pcap.",
+                "No Patch Level", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        Microsoft.Win32.OpenFileDialog dialog = new Microsoft.Win32.OpenFileDialog();
+        dialog.Filter = "Pcap files (*.pcap;*.pcapng)|*.pcap;*.pcapng|All files (*.*)|*.*";
+        dialog.Title = "Select a packet capture file";
+
+        bool? result = dialog.ShowDialog();
+        if (result != true)
+        {
+            return;
+        }
+
+        GlassContext.PatchRegistry.LoadPatchLevel(_currentPatchLevel.Value);
+        GlassContext.CurrentPatchLevel = _currentPatchLevel.Value;
+        OpcodeDispatch.RebuildForCurrentPatchLevel();
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "MenuItem_OpenPcap_Click: patch level set, OpcodeDispatch rebuilt");
+
+        string localIp = PacketCapture.GetLocalIP()!;
+        if (localIp == null)
+        {
+            DebugLog.Write(LogChannel.Network,
+                "MenuItem_OpenPcap_Click: no local IP, aborting");
+            return;
+        }
+
+        SessionDemux router = new SessionDemux(localIp);
+        PcapFileReader reader = new PcapFileReader(router);
+
+        StatusCapture.Text = "Capture: Reading pcap";
+
+        int routed = reader.ProcessFile(dialog.FileName);
+
+        StatusCapture.Text = "Capture: Pcap complete (" + routed + " packets)";
+
+        DebugLog.Write(LogChannel.Network,
+            "MenuItem_OpenPcap_Click: " + routed + " packets routed");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // MenuItem_LaunchProfile_Click
     //
     // Handles the Profile > Launch Profile menu item click.  Opens the Launch
