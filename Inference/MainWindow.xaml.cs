@@ -1,6 +1,7 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
 using Glass.Core.Memory;
+using Glass.Core.Signals;
 using Glass.Data.Repositories;
 using Glass.Network.Capture;
 using Glass.Network.Protocol;
@@ -105,6 +106,7 @@ public partial class MainWindow : Window
         _opcodeRowPresenter = new OpcodeRowPresenter(_packetCatalog);
         OpcodeGrid.ItemsSource = _opcodeRowPresenter.Rows;
         GlassContext.AppPacketBus.Subscribe(HandleAppPacket);
+        GlassContext.SignalBus = new SignalBus();
 
         _opcodeTracePresenter = new OpcodeTracePresenter(_packetCatalog);
         OpcodeTraceList.ItemsSource = _opcodeTracePresenter.Rows;
@@ -155,6 +157,10 @@ public partial class MainWindow : Window
         GlassDebugLogHandler memoryLogHandler = new GlassDebugLogHandler("memory.log");
         DebugLog.AddHandler(LogSink.Aux2LogFile, memoryLogHandler);
         DebugLog.Route(LogChannel.Memory, LogSink.Aux2LogFile);
+
+        GlassDebugLogHandler signalLogHandler = new GlassDebugLogHandler("signal.log");
+        DebugLog.AddHandler(LogSink.Aux3LogFile, signalLogHandler);
+        DebugLog.Route(LogChannel.SignalBus, LogSink.Aux3LogFile);
 
         // The inference tab, just inference messages
         GlassConsoleLogHandler inferenceTabHandler = new GlassConsoleLogHandler(InferenceLogOutput, InferenceLogScroller);

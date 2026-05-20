@@ -1,11 +1,12 @@
-﻿using Glass.Network.Client;
-using Glass.Network.Protocol;
-using Glass.Network.Capture;
+﻿using Glass.Core.Logging;
+using Glass.Core.Signals;
 using Glass.Data.Models;
-using static Glass.Network.Protocol.SoeConstants;
-using System.Runtime.InteropServices;
-using Glass.Core.Logging;
 using Glass.Data.Repositories;
+using Glass.Network.Capture;
+using Glass.Network.Client;
+using Glass.Network.Protocol;
+using System.Runtime.InteropServices;
+using static Glass.Network.Protocol.SoeConstants;
 
 namespace Glass.Core;
 
@@ -505,6 +506,13 @@ public class SessionRegistry
                         + " identified as character=" + characterName
                         + " session=" + pair.Value.SessionName
                         + " connectionId=" + connection.SessionId);
+
+                    GlassContext.SignalBus.Publish(
+                        new SignalSessionAdded(connection.SessionId, characterName));
+
+                    DebugLog.Write(LogChannel.SignalBus,
+                        "SessionRegistry.IdentifyConnection: published SignalSessionAdded sessionId="
+                        + connection.SessionId + " character=" + characterName);
                     return true;
                 }
             }

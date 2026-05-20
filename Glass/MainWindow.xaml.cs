@@ -21,6 +21,7 @@ using System.Windows.Media;
 using System.Xml.Linq;
 using static Glass.Network.Protocol.SoeConstants;
 using static System.Reflection.Metadata.BlobBuilder;
+using Glass.Core.Signals;
 
 namespace Glass;
 
@@ -76,6 +77,7 @@ public partial class MainWindow : Window
             new uint[] { 32, 16, 16, 16, 8, 8, 4, 2, 1 });
 
         GlassContext.FocusTracker = new FocusTracker();
+        GlassContext.SignalBus = new SignalBus();
         GlassContext.AppPacketBus = new AppPacketBus();
         GcMonitor.Start(5);
     }
@@ -129,9 +131,13 @@ public partial class MainWindow : Window
         DebugLog.AddHandler(LogSink.Aux1LogFile, memoryLogHandler);
         DebugLog.Route(LogChannel.Memory, LogSink.Aux1LogFile);
 
-//        GlassDebugLogHandler lowNetLogHandler = new GlassDebugLogHandler("lowNetwork.log");
- //       DebugLog.AddHandler(LogSink.Aux2LogFile, lowNetLogHandler);
- //       DebugLog.Route(LogChannel.LowNetwork, LogSink.Aux2LogFile);
+        GlassDebugLogHandler signalLogHandler = new GlassDebugLogHandler("signal.log");
+        DebugLog.AddHandler(LogSink.Aux3LogFile, signalLogHandler);
+        DebugLog.Route(LogChannel.SignalBus, LogSink.Aux3LogFile);
+
+        //        GlassDebugLogHandler lowNetLogHandler = new GlassDebugLogHandler("lowNetwork.log");
+        //       DebugLog.AddHandler(LogSink.Aux2LogFile, lowNetLogHandler);
+        //       DebugLog.Route(LogChannel.LowNetwork, LogSink.Aux2LogFile);
 
         GlassConsoleLogHandler glassConsoleLogHandler = new GlassConsoleLogHandler(ConsoleOutput, ConsoleScroller);
         DebugLog.AddHandler(LogSink.GlassConsole, glassConsoleLogHandler);

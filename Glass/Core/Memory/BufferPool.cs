@@ -32,7 +32,7 @@ public sealed class BufferPool
     private readonly uint[] _highWater;
     private readonly uint[] _totalRents;
     private readonly uint[] _waitCount;
-    private readonly Timer _statsTimer;
+    //private readonly Timer _statsTimer;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
     // BufferPool ctor

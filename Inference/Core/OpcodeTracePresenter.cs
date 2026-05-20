@@ -1,5 +1,6 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Core.Signals;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using Inference.Models;
@@ -36,8 +37,10 @@ public class OpcodeTracePresenter
     private readonly HashSet<ushort> _hiddenOpcodes;
     private readonly Dictionary<ushort, uint> _colorByOpcode;
     private readonly Dictionary<uint, uint> _colorByPacketIndex;
-
     public ObservableCollection<OpcodeTraceRow> Rows => _rows;
+    private readonly Dictionary<int, string> _characterNameCache;
+    private readonly object _characterNameCacheLock;
+    private readonly Action<SignalSessionAdded> _sessionAddedHandler;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeTracePresenter (constructor)
@@ -57,6 +60,60 @@ public class OpcodeTracePresenter
         _hiddenOpcodes = new HashSet<ushort>();
         _colorByOpcode = new Dictionary<ushort, uint>();
         _colorByPacketIndex = new Dictionary<uint, uint>();
+        _characterNameCache = new Dictionary<int, string>();
+        _characterNameCacheLock = new object();
+
+        _sessionAddedHandler = OnSessionAdded;
+        GlassContext.SignalBus.Subscribe(_sessionAddedHandler);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Detach
+    //
+    // Removes the presenter's SignalSessionAdded subscription.  Call before
+    // discarding the presenter.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void Detach()
+    {
+        GlassContext.SignalBus.Unsubscribe(_sessionAddedHandler);
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "OpcodeTracePresenter.Detach: unsubscribed from SignalSessionAdded");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // OnSessionAdded
+    //
+    // SignalSessionAdded subscriber.  Writes the session id and character
+    // name into the presenter's name cache so future Refresh calls can
+    // resolve the name even after the session has disconnected and been
+    // removed from SessionRegistry.
+    //
+    // Published on whatever thread SessionRegistry.IdentifyConnection ran
+    // on (capture thread in live mode), not the UI thread.  The cache is
+    // also read from the UI thread inside ResolveCharacterName, so all
+    // access is serialized through _characterNameCacheLock.
+    //
+    // signal:  The SignalSessionAdded payload carrying the new session id
+    //          and character name.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void OnSessionAdded(SignalSessionAdded signal)
+    {
+        if (signal == null)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "OpcodeTracePresenter.OnSessionAdded: null signal, ignoring");
+            return;
+        }
+
+        lock (_characterNameCacheLock)
+        {
+            _characterNameCache[signal.SessionId] = signal.CharacterName;
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "OpcodeTracePresenter.OnSessionAdded: cached sessionId="
+            + signal.SessionId + " character=" + signal.CharacterName);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -113,11 +170,8 @@ public class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     // ResolveCharacterName
     //
-    // Returns the character name associated with the given session id at the
-    // moment of the call, or empty string if the session is unknown or has
-    // not yet been identified.  Reads SessionRegistry directly; result is
-    // stable for the lifetime of the row but does not update if the
-    // registry later identifies the session.  The next Refresh re-resolves.
+    // Returns the character name associated with the given session id, or
+    // empty string if no name has been cached for it.  
     //
     // sessionId:  Session id from the packet's metadata.
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -127,11 +181,17 @@ public class OpcodeTracePresenter
         {
             return string.Empty;
         }
-        if (GlassContext.SessionRegistry == null)
+
+        lock (_characterNameCacheLock)
         {
-            return string.Empty;
+            string? cached;
+            if (_characterNameCache.TryGetValue(sessionId, out cached))
+            {
+                return cached;
+            }
         }
-        return GlassContext.SessionRegistry.CharacterNameFromSession(sessionId);
+
+        return string.Empty;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

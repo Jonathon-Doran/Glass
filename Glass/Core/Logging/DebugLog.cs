@@ -29,6 +29,7 @@ public enum LogChannel
     InferenceDebug,
     Fields,
     Memory,
+    SignalBus,
     Count
 }
 
@@ -49,6 +50,8 @@ public enum LogSink
     InferenceLogfile,
     Aux1LogFile,                // spare log file
     Aux2LogFile,                // spare log file
+    Aux3LogFile,
+    Aux4LogFile,
     InferenceDebugLogfile,
     Count
 }
