@@ -1075,6 +1075,98 @@ public partial class MainWindow : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeTraceList_KeyDown
+    //
+    // Key handler for the Opcode Trace list.  Catches Ctrl-C and copies the
+    // selected rows to the clipboard.  Each row contributes one tab-separated
+    // summary line; expanded rows additionally contribute their field detail
+    // indented on following lines.  Collapsed rows contribute summary only,
+    // even if their detail has been populated by a prior expand.
+    //
+    // sender:  The ListView that raised the event.
+    // e:       Key event args; Handled is set when Ctrl-C is consumed.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void OpcodeTraceList_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.C)
+        {
+            return;
+        }
+        if ((Keyboard.Modifiers & ModifierKeys.Control) == 0)
+        {
+            return;
+        }
+
+        if (OpcodeTraceList.SelectedItems.Count == 0)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTraceList_KeyDown: Ctrl-C with no selection, ignoring");
+            return;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        int rowsCopied = 0;
+        int rowsWithDetail = 0;
+
+        List<OpcodeTraceRow> sortedRows = new List<OpcodeTraceRow>(OpcodeTraceList.SelectedItems.Count);
+      
+        for (int i = 0; i < OpcodeTraceList.SelectedItems.Count; i++)
+        {
+            OpcodeTraceRow? row = OpcodeTraceList.SelectedItems[i] as OpcodeTraceRow;
+            if (row != null)
+            {
+                sortedRows.Add(row);
+            }
+        }
+
+        sortedRows.Sort((a, b) => a.PacketIndex.CompareTo(b.PacketIndex));
+
+        for (int i = 0; i < sortedRows.Count; i++)
+        {
+            OpcodeTraceRow row = sortedRows[i];
+            sb.Append(row.TimestampLocal);
+            sb.Append('\t');
+            sb.Append(row.OpcodeHex);
+            sb.Append('\t');
+            sb.Append(row.OpcodeName);
+            sb.Append('\t');
+            sb.Append(row.ChannelAbbrev);
+            sb.Append('\t');
+            sb.Append(row.CharacterName);
+            sb.Append('\t');
+            sb.Append(row.Length);
+            sb.Append(Environment.NewLine);
+
+            if (row.IsExpanded && !string.IsNullOrEmpty(row.FieldText))
+            {
+                string[] detailLines = row.FieldText.Split('\n');
+                for (int j = 0; j < detailLines.Length; j++)
+                {
+                    string line = detailLines[j].TrimEnd('\r');
+                    if (line.Length == 0)
+                    {
+                        continue;
+                    }
+                    sb.Append("    ");
+                    sb.Append(line);
+                    sb.Append(Environment.NewLine);
+                }
+                rowsWithDetail++;
+            }
+
+            rowsCopied++;
+        }
+
+        Clipboard.SetText(sb.ToString());
+
+        DebugLog.Write(LogChannel.Opcodes,
+            "OpcodeTraceList_KeyDown: copied " + rowsCopied + " rows ("
+            + rowsWithDetail + " with detail) to clipboard");
+
+        e.Handled = true;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // Toggle_OpcodeTraceColorPacket_Click
     //
     // Momentary apply-then-disarm toggle.  Applies the armed color to the

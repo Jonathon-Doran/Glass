@@ -171,6 +171,8 @@
                               ScrollViewer.IsDeferredScrollingEnabled="True"
                               FontFamily="Consolas"
                               FontSize="12"
+                              SelectionMode="Extended"
+                              KeyDown="OpcodeTraceList_KeyDown"
                               SelectionChanged="OpcodeTraceList_SelectionChanged">
                         <ListView.Resources>
                             <inf:ColorArgbToBrushConverter x:Key="ColorArgbToBrush"/>
@@ -201,10 +203,15 @@
                                         <TextBlock Grid.Column="5" Text="{Binding Length}"/>
                                     </Grid>
 
-                                    <TextBlock Grid.Row="1"
-                                               Text="{Binding FieldText}"
-                                               Margin="16,4,0,4"
-                                               Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}"/>
+                                    <TextBox Grid.Row="1"
+                                         Text="{Binding FieldText, Mode=OneWay}"
+                                         IsReadOnly="True"
+                                         BorderThickness="0"
+                                         Background="Transparent"
+                                         Padding="0"
+                                         Margin="16,4,0,4"
+                                         TextWrapping="NoWrap"
+                                         Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}"/>
                                 </Grid>
                             </DataTemplate>
                         </ListView.ItemTemplate>
