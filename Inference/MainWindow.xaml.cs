@@ -1127,8 +1127,7 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Toggle_OpcodeTraceExpand_Click
     //
-    // Flips the selected row's IsExpanded state.  Populates the row's detail on first
-    // expand and reuses it on subsequent expands.
+    // Flips the selected row's IsExpanded state.
     //
     // sender:  The toggle button that raised the event.
     // e:       Standard event args; not inspected.
@@ -1144,6 +1143,20 @@ public partial class MainWindow : Window
             return;
         }
 
+        ToggleRowExpand(row);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ToggleRowExpand
+    //
+    // Flips the given row's IsExpanded state, populates field detail on first
+    // expand, and syncs the Expand toggle's checked state to the row.  Shared
+    // by the Expand toggle button and the row double-click handler.
+    //
+    // row:  The row to toggle.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void ToggleRowExpand(OpcodeTraceRow row)
+    {
         if (row.FieldText == null)
         {
             _opcodeTracePresenter.PopulateRowDetail(row);
@@ -1151,10 +1164,44 @@ public partial class MainWindow : Window
 
         row.IsExpanded = !row.IsExpanded;
         ToggleOpcodeTraceExpand.IsChecked = row.IsExpanded;
+    }
 
-        DebugLog.Write(LogChannel.Opcodes,
-            "Toggle_OpcodeTraceExpand_Click: opcode=" + row.OpcodeHex
-            + " isExpanded=" + row.IsExpanded);
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Row_DoubleClick
+    //
+    // Mouse-down handler for an Opcode Trace row's summary grid.  Gated on
+    // ClickCount == 2 so it acts only on double-clicks.  Resolves the row from
+    // the sender's DataContext and toggles its expand state.
+    //
+    // sender:  The summary Grid that raised the event.
+    // e:       Standard mouse event args; marked Handled on a double-click so
+    //          the ListView does not also process it for selection side effects.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void Row_DoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount != 2)
+        {
+            return;
+        }
+
+        FrameworkElement? element = sender as FrameworkElement;
+        if (element == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "Row_DoubleClick: sender was not a FrameworkElement, ignoring");
+            return;
+        }
+
+        OpcodeTraceRow? row = element.DataContext as OpcodeTraceRow;
+        if (row == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "Row_DoubleClick: DataContext was not OpcodeTraceRow, ignoring");
+            return;
+        }
+
+        ToggleRowExpand(row);
+        e.Handled = true;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
