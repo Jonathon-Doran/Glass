@@ -804,7 +804,7 @@ public partial class MainWindow : Window
     // sender:  The menu item that raised the event.
     // e:       Standard event args; not inspected.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void Pcap_Click(object sender, RoutedEventArgs e)
+    private async void Pcap_Click(object sender, RoutedEventArgs e)
     {
         Microsoft.Win32.OpenFileDialog dialog = new Microsoft.Win32.OpenFileDialog();
         dialog.Filter = "Pcap files (*.pcap;*.pcapng)|*.pcap;*.pcapng|All files (*.*)|*.*";
@@ -821,6 +821,16 @@ public partial class MainWindow : Window
             "Pcap_Click: patch level set to latest Live (pcap metadata not yet supported)");
         OpcodeDispatch.RebuildForCurrentPatchLevel();
 
+        // disable the menu item while this is running, so that we do not get concurrent reads
+        MenuItem? menuItem = sender as MenuItem;
+        if (menuItem != null)
+        {
+            menuItem.IsEnabled = false;
+        }
+        PcapProgressPanel.Visibility = Visibility.Visible;
+        PcapProgressText.Text = "Scanning...";
+        PcapProgressBar.Value = 0;
+
         string filePath = dialog.FileName;
 
         string localIp = PacketCapture.GetLocalIP()!;
@@ -833,7 +843,21 @@ public partial class MainWindow : Window
         SessionDemux router = new SessionDemux(localIp);
         PcapFileReader reader = new PcapFileReader(router);
 
-        int routed = reader.ProcessFile(filePath);
+        Progress<int> progress = new Progress<int>(percent =>
+        {
+            PcapProgressBar.Value = percent;
+            PcapProgressText.Text = "Loading " + percent + "%";
+        });
+
+        int routed = await Task.Run(() => reader.ProcessFile(filePath, null, progress));
+
+        // Re-enable the menu
+        PcapProgressPanel.Visibility = Visibility.Collapsed;
+
+        if (menuItem != null)
+        {
+            menuItem.IsEnabled = true;
+        }
 
         DebugLog.Write(LogChannel.Network, "Pcap_Click: " + routed + " packets routed");
 

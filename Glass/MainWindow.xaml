@@ -68,6 +68,15 @@
                     <TextBlock x:Name="GlassVideoStatusText" Text="GlassVideo: Not Connected"/>
                 </StackPanel>
             </StatusBarItem>
+            <StatusBarItem HorizontalAlignment="Right">
+                <StackPanel Orientation="Horizontal" x:Name="PcapProgressPanel" Visibility="Collapsed">
+                    <TextBlock x:Name="PcapProgressText" Text="" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <ProgressBar x:Name="PcapProgressBar"
+                                 Minimum="0" Maximum="100"
+                                 Width="200" Height="14"
+                                 VerticalAlignment="Center"/>
+                </StackPanel>
+            </StatusBarItem>
         </StatusBar>
 
         <DockPanel>

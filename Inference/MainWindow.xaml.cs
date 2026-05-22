@@ -15,6 +15,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -807,7 +808,7 @@ public partial class MainWindow : Window
     // sender:  The menu item that raised the event.
     // e:       Event arguments.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private void MenuItem_OpenPcap_Click(object sender, RoutedEventArgs e)
+    private async void MenuItem_OpenPcap_Click(object sender, RoutedEventArgs e)
     {
         DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_OpenPcap_Click");
 
@@ -846,11 +847,36 @@ public partial class MainWindow : Window
         SessionDemux router = new SessionDemux(localIp);
         PcapFileReader reader = new PcapFileReader(router);
 
-        StatusCapture.Text = "Capture: Reading pcap";
+        // disable the menu item while the capture file is processed
+        MenuItem? menuItem = sender as MenuItem;
+        if (menuItem != null)
+        {
+            menuItem.IsEnabled = false;
+        }
 
-        int routed = reader.ProcessFile(dialog.FileName);
+        StatusCapture.Text = "Capture: Reading pcap";
+        PcapProgressPanel.Visibility = Visibility.Visible;
+        PcapProgressText.Text = "Scanning...";
+        PcapProgressBar.Value = 0;
+
+        // initialize the progress bar on the status bar
+        Progress<int> progress = new Progress<int>(percent =>
+        {
+            PcapProgressBar.Value = percent;
+            PcapProgressText.Text = "Loading " + percent + "%";
+        });
+
+        int routed = await Task.Run(() => reader.ProcessFile(dialog.FileName, null, progress));
 
         StatusCapture.Text = "Capture: Pcap complete (" + routed + " packets)";
+
+        // restore the menu item
+        PcapProgressPanel.Visibility = Visibility.Collapsed;
+
+        if (menuItem != null)
+        {
+            menuItem.IsEnabled = true;
+        }
 
         DebugLog.Write(LogChannel.Network,
             "MenuItem_OpenPcap_Click: " + routed + " packets routed");
