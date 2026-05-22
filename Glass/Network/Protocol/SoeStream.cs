@@ -93,6 +93,7 @@ public class SoeStream : IDisposable
     // ---------------------------------------------------------------------------
     private long _packetCount;
     private readonly Dictionary<ushort, int> _opcodeCount;
+    private readonly object _opcodeCountLock = new object();
 
     // ---------------------------------------------------------------------------
     // Callbacks
@@ -183,8 +184,9 @@ public class SoeStream : IDisposable
         dgram.Payload.Dispose();
 
         ReadOnlySpan<byte> rawData = rawDataBuffer;
-        _packetCount++;
 
+        long packetCount = Interlocked.Increment(ref _packetCount);
+ 
         if (rawData.Length < 2)
         {
             DebugLog.Write(LogChannel.LowNetwork,
@@ -199,7 +201,7 @@ public class SoeStream : IDisposable
         DebugLog.Write(LogChannel.LowNetwork,
             "========================================================================");
         DebugLog.Write(LogChannel.LowNetwork,
-            "Frame " + dgram.FrameNumber + " Packet #" + _packetCount
+            "Frame " + dgram.FrameNumber + " Packet #" + packetCount
             + " on stream " + SoeConstants.StreamNames[_streamId]);
         DebugLog.Write(LogChannel.LowNetwork,
             dgram.SourceIp + ":" + dgram.SourcePort + " -> "
@@ -381,13 +383,16 @@ public class SoeStream : IDisposable
         DebugLog.WriteMultiline(LogChannel.LowNetwork,
             SoeHexDump.Format(data.Slice(0, length), "          "));
 
-        if (_opcodeCount.ContainsKey(opcode))
+        lock (_opcodeCountLock)
         {
-            _opcodeCount[opcode]++;
-        }
-        else
-        {
-            _opcodeCount[opcode] = 1;
+            if (_opcodeCount.ContainsKey(opcode))
+            {
+                _opcodeCount[opcode]++;
+            }
+            else
+            {
+                _opcodeCount[opcode] = 1;
+            }
         }
 
         AppPacketBus bus = GlassContext.AppPacketBus;
@@ -410,7 +415,13 @@ public class SoeStream : IDisposable
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public IReadOnlyDictionary<ushort, int> OpcodeCount
     {
-        get { return _opcodeCount; }
+        get
+        {
+            lock (_opcodeCountLock)
+            {
+                return new Dictionary<ushort, int>(_opcodeCount);
+            }
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

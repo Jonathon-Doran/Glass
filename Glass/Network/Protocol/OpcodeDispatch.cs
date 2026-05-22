@@ -24,6 +24,7 @@ public class OpcodeDispatch : IDisposable
     private readonly PatchLevel _patchLevel;
     private readonly IHandleOpcodes?[] _handlers;
     private readonly string?[] _names;
+    private static readonly object _instanceLock = new object();
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Instance
@@ -36,7 +37,10 @@ public class OpcodeDispatch : IDisposable
         {
             if (_instance == null)
             {
-                _instance = new OpcodeDispatch();
+                lock (_instanceLock)
+                {
+                    _instance = new OpcodeDispatch();
+                }
             }
 
             return _instance;
@@ -52,8 +56,6 @@ public class OpcodeDispatch : IDisposable
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private OpcodeDispatch()
     {
-        GlassContext.AppPacketBus.Subscribe(HandlePacket);
-
         int opcodeCount = GlassContext.PatchRegistry.GetOpcodeCount(GlassContext.CurrentPatchLevel);
         _handlers = new IHandleOpcodes?[opcodeCount];
         _names = new string?[opcodeCount];
@@ -105,6 +107,7 @@ public class OpcodeDispatch : IDisposable
                 + " for opcode 0x" + opcodeValue.ToString("x4"));
         }
 
+        GlassContext.AppPacketBus.Subscribe(HandlePacket);
         DebugLog.Write(LogChannel.Opcodes, "OpcodeDispatch: scan complete, "
             + _handlers.Length + " handlers registered");
     }
@@ -122,23 +125,26 @@ public class OpcodeDispatch : IDisposable
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void Dispose()
     {
-        foreach (IHandleOpcodes handler in _handlers!)
+        lock (_instanceLock)
         {
-            try
+            foreach (IHandleOpcodes handler in _handlers!)
             {
-                handler.Dispose();
+                try
+                {
+                    handler.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    DebugLog.Write(LogChannel.Opcodes, "OpcodeDispatch.Dispose: handler "
+                        + handler.GetType().Name + " threw during Dispose: " + ex.Message);
+                }
             }
-            catch (Exception ex)
-            {
-                DebugLog.Write(LogChannel.Opcodes, "OpcodeDispatch.Dispose: handler "
-                    + handler.GetType().Name + " threw during Dispose: " + ex.Message);
-            }
-        }
 
-        Clear();
-        GlassContext.AppPacketBus.Unsubscribe(HandlePacket);
-        _instance = null;
-        GC.SuppressFinalize(this);
+            Clear();
+            GlassContext.AppPacketBus.Unsubscribe(HandlePacket);
+            _instance = null;
+            GC.SuppressFinalize(this);
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -147,25 +153,29 @@ public class OpcodeDispatch : IDisposable
     // Disposes any existing OpcodeDispatch instance and forces construction
     // of a fresh one against GlassContext.CurrentPatchLevel.
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    private static readonly object _rebuildLock = new object();
+
     public static void RebuildForCurrentPatchLevel()
     {
-        if (_instance != null)
+        lock (_rebuildLock)
         {
-            DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeDispatch.RebuildForCurrentPatchLevel: disposing prior instance");
-            _instance.Dispose();
-        }
+            if (_instance != null)
+            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "OpcodeDispatch.RebuildForCurrentPatchLevel: disposing prior instance");
+                _instance.Dispose();
+            }
 
-        OpcodeDispatch fresh = Instance;
-        DebugLog.Write(LogChannel.Opcodes,
-            "OpcodeDispatch.RebuildForCurrentPatchLevel: fresh instance constructed");
+            OpcodeDispatch fresh = Instance;
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeDispatch.RebuildForCurrentPatchLevel: fresh instance constructed");
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Clear
     //
-    // Wipes the handler and name arrays, leaving every slot null.  Called by the
-    // dispatcher constructor before populating the arrays from the reflection scan.
+    // Wipes the handler and name arrays, leaving every slot null.  
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void Clear()
     {
@@ -218,6 +228,12 @@ public class OpcodeDispatch : IDisposable
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void HandlePacket(ReadOnlySpan<byte> data, ushort opcodeValue, PacketMetadata metadata)
     {
+        if (Volatile.Read(ref _instance) == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "packet arrived at handler during shutdown");
+            return;
+        }
+
         int length = data.Length;
 
         //  DebugLog.Write(LogChannel.Opcodes, $"[SEARCH] opCode=0x{opcodeValue:X4} len={length} hex={BitConverter.ToString(data.Slice(0, length).ToArray()).Replace("-", " ").ToLowerInvariant()}");

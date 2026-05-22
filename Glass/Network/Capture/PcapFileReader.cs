@@ -57,6 +57,14 @@ public class PcapFileReader
         DebugLog.Write(LogChannel.LowNetwork, "PcapFileReader.ProcessFile: opening '" + filePath + "'");
         DebugLog.Write("---------");
 
+        // Lock out other packet sources until we are done
+        if (!GlassContext.TryAcquirePacketSource())
+        {
+            DebugLog.Write(LogChannel.LowNetwork,
+                "PcapFileReader.ProcessFile: packet source claim rejected, aborting load of '" + filePath + "'");
+            return 0;
+        }
+
         _frameCount = 0;
         _routedCount = 0;
 
@@ -72,10 +80,9 @@ public class PcapFileReader
             }
 
             reader.OnPacketArrival += OnPacketArrival;
-            //DebugLog.SuppressUI = true;
+
             reader.Capture();
             reader.Close();
-            //DebugLog.SuppressUI = false;
         }
         catch (Exception ex)
         {
@@ -86,7 +93,7 @@ public class PcapFileReader
         }
         finally
         {
-            //DebugLog.SuppressUI = false;
+            GlassContext.ReleasePacketSource();
         }
 
         DebugLog.Write(LogChannel.LowNetwork, "PcapFileReader.ProcessFile: finished, "

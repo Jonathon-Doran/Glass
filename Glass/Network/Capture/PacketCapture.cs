@@ -68,6 +68,8 @@ public class PacketCapture
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public bool Start(string bpfFilter)
     {
+        bool started = false;
+
         if (_capturing)
         {
             DebugLog.Write(LogChannel.LowNetwork, "PacketCapture.Start: already capturing");
@@ -77,6 +79,13 @@ public class PacketCapture
         if (string.IsNullOrEmpty(bpfFilter))
         {
             DebugLog.Write(LogChannel.LowNetwork, "PacketCapture.Start: no BPF filter provided");
+            return false;
+        }
+
+        if (!GlassContext.TryAcquirePacketSource())
+        {
+            DebugLog.Write(LogChannel.LowNetwork,
+                "PacketCapture.Start: packet source claim rejected, aborting capture start");
             return false;
         }
 
@@ -123,6 +132,7 @@ public class PacketCapture
 
             _capturing = true;
             _frameCount = 0;
+            started = true;
 
             DebugLog.Write(LogChannel.LowNetwork, "PacketCapture.Start: capture started, filter='"
                 + bpfFilter + "'");
@@ -134,6 +144,15 @@ public class PacketCapture
             DebugLog.Write(LogChannel.LowNetwork, "PacketCapture.Start: failed to start capture: "
                 + ex.Message);
             return false;
+        }
+        finally
+        {
+            if (!started)
+            {
+                GlassContext.ReleasePacketSource();
+                DebugLog.Write(LogChannel.LowNetwork,
+                    "PacketCapture.Start: claim released due to failed start");
+            }
         }
     }
 
@@ -166,6 +185,8 @@ public class PacketCapture
 
         _capturing = false;
         _device = null;
+
+        GlassContext.ReleasePacketSource();
 
         DebugLog.Write(LogChannel.LowNetwork, "PacketCapture.Stop: capture stopped");
     }

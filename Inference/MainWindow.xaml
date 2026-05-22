@@ -141,7 +141,7 @@
                                           Padding="8,4" Margin="0,0,12,0" IsEnabled="False"/>
                             <TextBlock Text="Hex bytes:" VerticalAlignment="Center" Margin="0,0,4,0"/>
                             <ComboBox x:Name="OpcodeTraceHexLength" Width="70"
-                                      SelectedIndex="2"
+                                      SelectedIndex="0"
                                       SelectionChanged="OpcodeTraceHexLength_SelectionChanged">
                                 <ComboBoxItem Content="64"/>
                                 <ComboBoxItem Content="128"/>
@@ -172,7 +172,7 @@
                               VirtualizingStackPanel.VirtualizationMode="Recycling"
                               ScrollViewer.IsDeferredScrollingEnabled="True"
                               FontFamily="Consolas"
-                              FontSize="12"
+                              FontSize="14"
                               SelectionMode="Extended"
                               KeyDown="OpcodeTraceList_KeyDown"
                               SelectionChanged="OpcodeTraceList_SelectionChanged">
@@ -184,6 +184,7 @@
                             <DataTemplate>
                                 <Grid>
                                     <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
@@ -213,7 +214,25 @@
                                          Padding="0"
                                          Margin="16,4,0,4"
                                          TextWrapping="NoWrap"
+                                         MaxHeight="160"
+                                         VerticalScrollBarVisibility="Auto"
+                                         HorizontalScrollBarVisibility="Auto"
                                          Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}"/>
+
+                                    <TextBox Grid.Row="2"
+                                             Text="{Binding HexDumpText, Mode=OneWay}"
+                                             IsReadOnly="True"
+                                             BorderThickness="0"
+                                             Background="Transparent"
+                                             Padding="0"
+                                             FontFamily="Consolas"
+                                             TextWrapping="NoWrap"
+                                             MinWidth="900"
+                                             MaxHeight="160"
+                                             VerticalScrollBarVisibility="Auto"
+                                             HorizontalScrollBarVisibility="Auto"
+                                             Margin="16,0,0,4"
+                                             Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}"/>
                                 </Grid>
                             </DataTemplate>
                         </ListView.ItemTemplate>
@@ -224,6 +243,9 @@
                                 <Setter Property="BorderThickness" Value="1"/>
                                 <Setter Property="BorderBrush" Value="Transparent"/>
                                 <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+                                        <Setter Property="BorderBrush" Value="Gray"/>
+                                    </DataTrigger>
                                     <Trigger Property="IsMouseOver" Value="True">
                                         <Setter Property="Background"
                                                 Value="{Binding Color, Converter={StaticResource ColorArgbToBrush}}"/>

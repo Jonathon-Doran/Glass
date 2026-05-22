@@ -78,7 +78,7 @@ internal sealed class BufferState
     //
     // Restores the reference count to its post-construction value of one, so
     // this BufferState can be handed out by BufferPool.Rent as if freshly
-    // allocated.  Called only on the rent path, under the pool's lock and
+    // allocated.  Called only on the rent path, under the queue/semaphore protocol and
     // after the prior holder's Release has taken the count to zero.  Under
     // those preconditions there are no concurrent readers of _refCount, so
     // Volatile.Write is sufficient and Interlocked is not required.

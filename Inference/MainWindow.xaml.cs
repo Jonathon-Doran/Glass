@@ -1304,6 +1304,22 @@ public partial class MainWindow : Window
                 rowsWithDetail++;
             }
 
+            if (row.IsExpanded && !string.IsNullOrEmpty(row.HexDumpText))
+            {
+                string[] hexLines = row.HexDumpText.Split('\n');
+                for (int j = 0; j < hexLines.Length; j++)
+                {
+                    string line = hexLines[j].TrimEnd('\r');
+                    if (line.Length == 0)
+                    {
+                        continue;
+                    }
+                    sb.Append("    ");
+                    sb.Append(line);
+                    sb.Append(Environment.NewLine);
+                }
+            }
+
             rowsCopied++;
         }
 
@@ -1352,18 +1368,52 @@ public partial class MainWindow : Window
         });
     }
 
-
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeTraceHexLength_SelectionChanged
     //
-    // Hex length cap selector on the Opcode Trace toolbar.  Controls the maximum bytes
-    // shown in an expanded entry's hex dump.  Stub — implementation pending hex render.
+    // Hex length cap selector on the Opcode Trace toolbar.  Reads the selected
+    // value, converts "Full" to int.MaxValue, and passes the cap to the
+    // presenter, which re-formats any already-populated rows in place.
+    //
+    // sender:  The ComboBox that raised the event.
+    // e:       Event arguments.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void OpcodeTraceHexLength_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         ComboBoxItem? selectedItem = OpcodeTraceHexLength.SelectedItem as ComboBoxItem;
-        string selection = selectedItem?.Content?.ToString() ?? "(none)";
-        DebugLog.Write(LogChannel.Opcodes, "OpcodeTraceHexLength_SelectionChanged: selection=" + selection + " (stub, not yet implemented)");
+        if (selectedItem == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTraceHexLength_SelectionChanged: no selection");
+            return;
+        }
+
+        string value = selectedItem.Content as string ?? "";
+
+        int maxBytes;
+        if (value == "Full")
+        {
+            maxBytes = int.MaxValue;
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTraceHexLength_SelectionChanged: set to Full");
+        }
+        else if (int.TryParse(value, out int parsed))
+        {
+            maxBytes = parsed;
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTraceHexLength_SelectionChanged: set to " + parsed);
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTraceHexLength_SelectionChanged: unexpected value '" + value + "'");
+            return;
+        }
+
+        if (_opcodeTracePresenter  != null)
+        {
+            _opcodeTracePresenter.SetMaxHexBytes(maxBytes);
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

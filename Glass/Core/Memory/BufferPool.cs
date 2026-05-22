@@ -24,6 +24,7 @@ namespace Glass.Core.Memory;
 public sealed class BufferPool
 {
     private readonly uint[] _sizes;
+    private readonly uint[] _depths;
     private readonly ConcurrentQueue<BufferState>[] _queues;
     private readonly SemaphoreSlim[] _waiters;
 
@@ -55,7 +56,8 @@ public sealed class BufferPool
             throw new ArgumentException("BufferPool.ctor: sizes and depths must be the same length.");
         }
 
-        _sizes = sizes;
+        _sizes = (uint[])sizes.Clone();
+        _depths = (uint[])depths.Clone();
         _queues = new ConcurrentQueue<BufferState>[sizes.Length];
         _waiters = new SemaphoreSlim[sizes.Length];
 
@@ -67,14 +69,14 @@ public sealed class BufferPool
         for (uint i = 0; i < sizes.Length; i++)
         {
             _queues[i] = new ConcurrentQueue<BufferState>();
-            _waiters[i] = new SemaphoreSlim((int) depths[i], (int) depths[i]);
+            _waiters[i] = new SemaphoreSlim((int) depths[i], (int) _depths[i]);
 
             _inUse[i] = 0;
             _highWater[i] = 0;
             _totalRents[i] = 0;
             _waitCount[i] = 0;
 
-            for (uint j = 0; j < depths[i]; j++)
+            for (uint j = 0; j < _depths[i]; j++)
             {
                 BufferState state = new BufferState(this, i, sizes[i]);
                 _queues[i].Enqueue(state);

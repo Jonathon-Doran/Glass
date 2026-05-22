@@ -134,7 +134,7 @@ public class SessionRegistry
     {
        lock (_lock)
         {
-            if (!_sessions.TryGetValue(sessionName, out var entry))
+            if (!_sessions.TryGetValue(sessionName, out SessionEntry? entry))
             {
                 entry = new SessionEntry { SessionName = sessionName };
                 _sessions[sessionName] = entry;
@@ -142,9 +142,10 @@ public class SessionRegistry
             entry.CharacterName = characterName;
             entry.Pid = pid;
             entry.Hwnd = hwnd;
+            _sessionCount++;
         }
 
-        _sessionCount++;
+
         DebugLog.Write($"SessionRegistry.OnSessionConnected: session={sessionName} count={_sessionCount} character={characterName} pid={pid} hwnd={hwnd}");
 
     }
@@ -175,16 +176,20 @@ public class SessionRegistry
 
         CharacterRepository.Instance.Save(session.CharacterId);
 
+        bool fireAllDisconnected = false;
         lock (_lock)
         {
             _sessions.Remove(sessionName);
+            _sessionCount--;
+            if (_sessionCount <= 0)
+            {
+                _sessionCount = 0;
+                fireAllDisconnected = true;
+            }
         }
 
-        _sessionCount--;
-
-        if (_sessionCount <= 0)
+        if (fireAllDisconnected)
         {
-            _sessionCount = 0;
             DebugLog.Write(LogChannel.Sessions, "SessionRegistry.OnSessionDisconnected: all sessions disconnected.");
             AllSessionsDisconnected?.Invoke();
         }
@@ -223,15 +228,20 @@ public class SessionRegistry
     {
         lock (_lock)
         {
-            return _sessions.TryGetValue(sessionName, out var entry) ? entry : null;
+            return _sessions.TryGetValue(sessionName, out SessionEntry? entry) ? entry : null;
         }
     }
 
     public Character? CharacterFromSession(int sessionId)
     {
-        if (! _characterIdBySession.TryGetValue(sessionId, out var characterId))
+        int characterId;
+
+        lock (_lock)
         {
-            return null;
+            if (!_characterIdBySession.TryGetValue(sessionId, out characterId))
+            {
+                return null;
+            }
         }
 
         return CharacterRepository.Instance.GetById(characterId);
@@ -244,7 +254,12 @@ public class SessionRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public IReadOnlyDictionary<int, Connection> GetAllConnections()
     {
-        return _connectionsByPort;
+        Dictionary<int, Connection> snapshot;
+        lock (_lock)
+        {
+            snapshot = new Dictionary<int, Connection>(_connectionsByPort);
+        }
+        return snapshot;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -257,6 +272,7 @@ public class SessionRegistry
     public SoeConstants.StreamId GetChannel(UdpDatagram dgram)
     {
         bool isFromClient = (dgram.SourceIp == _localIp);
+
         int remotePort = isFromClient ? dgram.DestPort : dgram.SourcePort;
 
         if (remotePort >= SoeConstants.LoginServerMinPort &&

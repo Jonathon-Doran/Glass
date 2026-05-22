@@ -40,14 +40,12 @@ public class OpcodeTracePresenter
     private readonly Dictionary<int, string> _characterNameCache;
     private readonly object _characterNameCacheLock;
     private readonly Action<SignalSessionAdded> _sessionAddedHandler;
+    private int _maxHexBytes;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeTracePresenter (constructor)
     //
-    // Captures the catalog reference for snapshotting on Refresh and
-    // snapshots the active patch level for opcode name lookups via
-    // PatchRegistry.  A patch level change requires constructing a new
-    // presenter.
+    // Captures the catalog reference for snapshotting on Refresh.
     //
     // catalog:  The PacketCatalog the presenter reads on Refresh.
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -60,6 +58,7 @@ public class OpcodeTracePresenter
         _colorByPacketIndex = new Dictionary<uint, uint>();
         _characterNameCache = new Dictionary<int, string>();
         _characterNameCacheLock = new object();
+        _maxHexBytes = 64;
 
         _sessionAddedHandler = OnSessionAdded;
         GlassContext.SignalBus.Subscribe(_sessionAddedHandler);
@@ -237,14 +236,14 @@ public class OpcodeTracePresenter
         if (argb == 0)
         {
             _colorByPacketIndex.Remove(packetIndex);
-            DebugLog.Write(LogChannel.Opcodes,
+            DebugLog.Write(LogChannel.InferenceDebug,
                 "OpcodeTracePresenter.SetPacketColor: cleared override for index="
                 + packetIndex);
         }
         else
         {
             _colorByPacketIndex[packetIndex] = argb;
-            DebugLog.Write(LogChannel.Opcodes,
+            DebugLog.Write(LogChannel.InferenceDebug,
                 "OpcodeTracePresenter.SetPacketColor: set index="
                 + packetIndex + " color=0x" + argb.ToString("x8"));
         }
@@ -276,14 +275,14 @@ public class OpcodeTracePresenter
         if (argb == 0)
         {
             _colorByOpcode.Remove(opcode);
-            DebugLog.Write(LogChannel.Opcodes,
+            DebugLog.Write(LogChannel.InferenceDebug,
                 "OpcodeTracePresenter.SetOpcodeColor: cleared override for opcode=0x"
                 + opcode.ToString("x4"));
         }
         else
         {
             _colorByOpcode[opcode] = argb;
-            DebugLog.Write(LogChannel.Opcodes,
+            DebugLog.Write(LogChannel.InferenceDebug,
                 "OpcodeTracePresenter.SetOpcodeColor: set opcode=0x"
                 + opcode.ToString("x4") + " color=0x" + argb.ToString("x8"));
         }
@@ -298,23 +297,31 @@ public class OpcodeTracePresenter
         }
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////
     // PopulateRowDetail
     //
     // Runs the field extractor against the row's payload and stores the formatted
-    // field text on the row.  Rows whose opcode is not in the active patch produce
-    // an empty FieldText.
+    // field text on the row, and formats the row's payload as a hex dump into the
+    // row's HexDumpText.  The hex dump is capped at the presenter's current
+    // _maxHexBytes.
+    //
+    // Rows whose opcode is not in the active patch produce an empty FieldText but
+    // still receive a HexDumpText so the user can examine the bytes regardless of
+    // whether a field schema is available.
     //
     // row:  The row to populate.
-    ///////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////
     public void PopulateRowDetail(OpcodeTraceRow row)
     {
+        ReadOnlySpan<byte> payload = row.Payload.AsReadOnlySpan();
+        row.HexDumpText = FormatHexDump(payload, _maxHexBytes);
+
         OpcodeHandle handle = GlassContext.PatchRegistry.GetOpcodeHandle(GlassContext.CurrentPatchLevel, row.OpcodeValue);
         if ((int)handle == -1)
         {
-            DebugLog.Write(LogChannel.Opcodes,
+            DebugLog.Write(LogChannel.InferenceDebug,
                 "OpcodeTracePresenter.PopulateRowDetail: opcode=" + row.OpcodeHex
-                + " not in patch, no fields to extract");
+                + " not in patch, no fields to extract; hex dump length=" + row.HexDumpText.Length);
             row.FieldText = string.Empty;
             return;
         }
@@ -322,7 +329,6 @@ public class OpcodeTracePresenter
         FieldBag bag = GlassContext.PatchRegistry.Rent(GlassContext.CurrentPatchLevel, handle);
         try
         {
-            ReadOnlySpan<byte> payload = row.Payload.AsReadOnlySpan();
             GlassContext.FieldExtractor.Extract(GlassContext.CurrentPatchLevel, handle, payload, bag);
 
             StringBuilder sb = new StringBuilder();
@@ -338,13 +344,155 @@ public class OpcodeTracePresenter
                 binding = walker.Next();
             }
             row.FieldText = sb.ToString();
-            DebugLog.Write(LogChannel.Opcodes,
+            DebugLog.Write(LogChannel.InferenceDebug,
                 "OpcodeTracePresenter.PopulateRowDetail: opcode=" + row.OpcodeHex
-                + " extracted text length=" + row.FieldText.Length);
+                + " field text length=" + row.FieldText.Length
+                + " hex dump length=" + row.HexDumpText.Length);
         }
         finally
         {
             bag.Release();
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // SetMaxHexBytes
+    //
+    // Updates the cap on bytes shown in expanded hex dumps and re-formats every
+    // already-populated row in place.  Rows whose HexDumpText is null are left
+    // alone; they will pick up the new cap when they are first expanded.
+    //
+    // Must be called on the UI thread because it mutates rows that are bound
+    // to the list view.
+    //
+    // maxBytes:  Maximum bytes to render per row.  Pass int.MaxValue for no cap.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void SetMaxHexBytes(int maxBytes)
+    {
+        if (maxBytes <= 0 && maxBytes != int.MaxValue)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "OpcodeTracePresenter.SetMaxHexBytes: ignoring non-positive value " + maxBytes);
+            return;
+        }
+
+        if (maxBytes == _maxHexBytes)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "OpcodeTracePresenter.SetMaxHexBytes: unchanged at " + maxBytes);
+            return;
+        }
+
+        _maxHexBytes = maxBytes;
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "OpcodeTracePresenter.SetMaxHexBytes: cap set to " + maxBytes);
+
+        int repopulated = 0;
+        for (int rowIndex = 0; rowIndex < _rows.Count; rowIndex++)
+        {
+            OpcodeTraceRow row = _rows[rowIndex];
+            if (row.HexDumpText == null)
+            {
+                continue;
+            }
+
+            ReadOnlySpan<byte> payload = row.Payload.AsReadOnlySpan();
+            row.HexDumpText = FormatHexDump(payload, _maxHexBytes);
+            repopulated++;
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "OpcodeTracePresenter.SetMaxHexBytes: re-formatted " + repopulated
+            + " populated rows out of " + _rows.Count);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FormatHexDump
+    //
+    // Formats a packet payload as a hex dump string in the same layout used by
+    // the Analysis tab: an 8-hex-digit offset, two columns of 8 bytes each
+    // separated by an extra space, then an ASCII gutter showing printable bytes
+    // and '.' for everything else.  Highlighting is not applied (the opcode
+    // trace renders into a plain TextBox).
+    //
+    // The dump is capped at maxBytes.  When the payload is longer than maxBytes,
+    // the trailing line "[showing first N of M bytes]" is appended.  When
+    // maxBytes is int.MaxValue the cap is treated as effectively unlimited.
+    //
+    // payload:   The bytes to format.
+    // maxBytes:  Maximum bytes to render.  Pass int.MaxValue for no cap.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static string FormatHexDump(ReadOnlySpan<byte> payload, int maxBytes)
+    {
+        int payloadLength = payload.Length;
+        int displayLength;
+        if (maxBytes == int.MaxValue || payloadLength <= maxBytes)
+        {
+            displayLength = payloadLength;
+        }
+        else
+        {
+            displayLength = maxBytes;
+        }
+
+        StringBuilder sb = new StringBuilder(displayLength * 4 + 80);
+
+        int offset = 0;
+        while (offset < displayLength)
+        {
+            int bytesThisRow = Math.Min(16, displayLength - offset);
+
+            sb.Append(offset.ToString("x8"));
+            sb.Append("  ");
+
+            for (int i = 0; i < 16; i++)
+            {
+                if (i == 8)
+                {
+                    sb.Append(' ');
+                }
+
+                if (i < bytesThisRow)
+                {
+                    sb.Append(payload[offset + i].ToString("x2"));
+                    sb.Append(' ');
+                }
+                else
+                {
+                    sb.Append("   ");
+                }
+            }
+
+            sb.Append('|');
+            for (int i = 0; i < bytesThisRow; i++)
+            {
+                byte b = payload[offset + i];
+                char c;
+                if (b >= 0x20 && b <= 0x7e)
+                {
+                    c = (char)b;
+                }
+                else
+                {
+                    c = '.';
+                }
+                sb.Append(c);
+            }
+            sb.Append('|');
+            sb.Append('\n');
+
+            offset = offset + 16;
+        }
+
+        if (displayLength < payloadLength)
+        {
+            sb.Append("[showing first ");
+            sb.Append(displayLength);
+            sb.Append(" of ");
+            sb.Append(payloadLength);
+            sb.Append(" bytes]\n");
+        }
+
+        return sb.ToString();
     }
 }

@@ -101,7 +101,7 @@ public struct BufferLease : IDisposable
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
     public BufferLease Slice(uint offset, uint length)
     {
-        if ((offset < 0) || (length < 0) || (offset + length > _length))
+        if (offset + length > _length)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(offset),
@@ -152,8 +152,13 @@ public struct BufferLease : IDisposable
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Dispose()
     {
-        _state!.Release();
-
+        if (_state == null)
+        {
+            DebugLog.Write(LogChannel.Memory,
+                "BufferLease.Dispose: lease already disposed or transferred (double-Dispose or use-after-Transfer).");
+            return;
+        }
+        _state.Release();
         _state = null;
         _offset = 0;
         _length = 0;
