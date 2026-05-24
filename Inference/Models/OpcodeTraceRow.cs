@@ -1,5 +1,7 @@
 ﻿using Glass.Core.Logging;
 using Glass.Core.Memory;
+using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using static Glass.Network.Protocol.SoeConstants;
 
@@ -26,6 +28,11 @@ public class OpcodeTraceRow : INotifyPropertyChanged
     private bool _isExpanded;
     private string? _fieldText;
     private string? _hexDumpText;
+    private IReadOnlyList<HighlightRange> _hexHighlights;
+    private IReadOnlyList<HighlightRange> _fieldHighlights;
+    private IReadOnlyList<HighlightRange> _opcodeHexHighlights;
+    private IReadOnlyList<HighlightRange> _opcodeNameHighlights;
+    private IReadOnlyList<HighlightRange> _timestampHighlights;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -67,6 +74,12 @@ public class OpcodeTraceRow : INotifyPropertyChanged
         _isExpanded = false;
         _fieldText = null;
         _hexDumpText = null;
+
+        _hexHighlights = Array.Empty<HighlightRange>();
+        _fieldHighlights = Array.Empty<HighlightRange>();
+        _opcodeHexHighlights = Array.Empty<HighlightRange>();
+        _opcodeNameHighlights = Array.Empty<HighlightRange>();
+        _timestampHighlights = Array.Empty<HighlightRange>();
     }
 
     public uint PacketIndex { get; }
@@ -122,6 +135,56 @@ public class OpcodeTraceRow : INotifyPropertyChanged
         {
             _hexDumpText = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HexDumpText)));
+        }
+    }
+
+    public IReadOnlyList<HighlightRange> OpcodeHexHighlights
+    {
+        get { return _opcodeHexHighlights; }
+        set
+        {
+            _opcodeHexHighlights = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OpcodeHexHighlights)));
+        }
+    }
+
+    public IReadOnlyList<HighlightRange> OpcodeNameHighlights
+    {
+        get { return _opcodeNameHighlights; }
+        set
+        {
+            _opcodeNameHighlights = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OpcodeNameHighlights)));
+        }
+    }
+
+    public IReadOnlyList<HighlightRange> TimestampHighlights
+    {
+        get { return _timestampHighlights; }
+        set
+        {
+            _timestampHighlights = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TimestampHighlights)));
+        }
+    }
+
+    public IReadOnlyList<HighlightRange> HexHighlights
+    {
+        get { return _hexHighlights; }
+        set
+        {
+            _hexHighlights = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HexHighlights)));
+        }
+    }
+
+    public IReadOnlyList<HighlightRange> FieldHighlights
+    {
+        get { return _fieldHighlights; }
+        set
+        {
+            _fieldHighlights = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FieldHighlights)));
         }
     }
 }

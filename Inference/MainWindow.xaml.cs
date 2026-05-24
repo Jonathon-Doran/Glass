@@ -952,6 +952,287 @@ public partial class MainWindow : Window
         await GlassContext.ProfileManager.LaunchProfile(dialog.SelectedProfileName);
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////
+    // Window_PreviewKeyDown
+    //
+    // Window-scoped key handler.  Catches Ctrl+F to show the opcode trace find bar
+    // and Escape to hide it, but only when the Opcode Trace tab is active.  Lives at
+    // window scope rather than tab scope so Escape works regardless of where focus
+    // has drifted while the bar was open.
+    //
+    // sender:  The window.
+    // e:       Key event from WPF's preview tunnel.
+    ///////////////////////////////////////////////////////////////////////////////////////
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (MainTabs.SelectedItem != OpcodeTraceTabItem)
+        {
+            return;
+        }
+
+        if (e.Key == Key.F && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+        {
+            OpcodeTraceFindBar.Visibility = Visibility.Visible;
+            TextBoxOpcodeTraceFind.Focus();
+            Keyboard.Focus(TextBoxOpcodeTraceFind);
+            e.Handled = true;
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "Window_PreviewKeyDown: Ctrl+F — find bar shown, focus moved");
+            return;
+        }
+
+        if (e.Key == Key.Escape && OpcodeTraceFindBar.Visibility == Visibility.Visible)
+        {
+            OpcodeTraceFindBar.Visibility = Visibility.Collapsed;
+            e.Handled = true;
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "Window_PreviewKeyDown: Escape — find bar hidden");
+            return;
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////
+    // Button_OpcodeTraceFindClose_Click
+    //
+    // Hides the find bar.  Does not clear the text box — reopening the bar with
+    // Ctrl+F shows the prior query, which is useful when the user wants to resume a
+    // recent search.
+    //
+    // sender:  The close button on the find bar.
+    // e:       Routed event args.
+    ///////////////////////////////////////////////////////////////////////////////////////
+    private void Button_OpcodeTraceFindClose_Click(object sender, RoutedEventArgs e)
+    {
+        OpcodeTraceFindBar.Visibility = Visibility.Collapsed;
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "Button_OpcodeTraceFindClose_Click: find bar hidden");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////
+    // TextBoxOpcodeTraceFind_KeyDown
+    //
+    // Key handler for the find bar's text box.  Escape hides the bar.  Enter triggers
+    // a forward search; Shift+Enter triggers a backward search.  Other keys pass
+    // through normally so the user can type into the box.
+    //
+    // sender:  The find bar's text box.
+    // e:       Key event args.
+    ///////////////////////////////////////////////////////////////////////////////////////
+    private void TextBoxOpcodeTraceFind_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            OpcodeTraceFindBar.Visibility = Visibility.Collapsed;
+            e.Handled = true;
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "TextBoxOpcodeTraceFind_KeyDown: Escape — find bar hidden");
+            return;
+        }
+
+        if (e.Key == Key.Enter)
+        {
+            bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
+            e.Handled = true;
+
+            if (shift)
+            {
+                Button_OpcodeTraceFindPrevious_Click(sender, e);
+            }
+            else
+            {
+                Button_OpcodeTraceFindNext_Click(sender, e);
+            }
+            return;
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////
+    // CheckBoxOpcodeTraceFindWrap_Changed
+    //
+    // Fires on both Checked and Unchecked events of the wrap checkbox.  Propagates
+    // the new state to the presenter so subsequent FindNext/FindPrevious calls honor
+    // the user's preference.
+    //
+    // Guards against early firing during XAML load when the presenter may not yet
+    // have been constructed.
+    //
+    // sender:  The wrap checkbox.
+    // e:       Routed event args.
+    ///////////////////////////////////////////////////////////////////////////////////////
+    private void CheckBoxOpcodeTraceFindWrap_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_opcodeTracePresenter == null)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "CheckBoxOpcodeTraceFindWrap_Changed: presenter not yet constructed, ignoring");
+            return;
+        }
+
+        bool wrap = CheckBoxOpcodeTraceFindWrap.IsChecked == true;
+        _opcodeTracePresenter.SetSearchWrap(wrap);
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "CheckBoxOpcodeTraceFindWrap_Changed: wrap=" + wrap);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////
+    // Button_OpcodeTraceFindNext_Click
+    //
+    // Advances the trace selection to the next row matching the active search query.
+    // When a match is found, the row is selected, scrolled into view, and the status
+    // text reports the row index.  When no match exists, the status text reports
+    // "No match" and the selection is left alone.
+    //
+    // Guards against early firing during XAML load.
+    //
+    // sender:  The Find Next button on the find bar.
+    // e:       Routed event args.
+    ///////////////////////////////////////////////////////////////////////////////////////
+    private void Button_OpcodeTraceFindNext_Click(object sender, RoutedEventArgs e)
+    {
+        if (_opcodeTracePresenter == null)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "Button_OpcodeTraceFindNext_Click: presenter not yet constructed, ignoring");
+            return;
+        }
+
+        _opcodeTracePresenter.SetSearchQuery(TextBoxOpcodeTraceFind.Text);
+
+        OpcodeTraceRow? selectedRow = OpcodeTraceList.SelectedItem as OpcodeTraceRow;
+        OpcodeTraceRow? match = _opcodeTracePresenter.FindNext(selectedRow, SearchMode.Fast);
+
+        if (match == null)
+        {
+            StatusBarFindText.Text = "No match";
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "Button_OpcodeTraceFindNext_Click: no match");
+            return;
+        }
+
+        OpcodeTraceList.SelectedItem = match;
+        OpcodeTraceList.ScrollIntoView(match);
+        StatusBarFindText.Text = _opcodeTracePresenter.MatchCount + " matches";
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "Button_OpcodeTraceFindNext_Click: matched packetIndex=" + match.PacketIndex);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////
+    // Button_OpcodeTraceFindPrevious_Click
+    //
+    // Moves the trace selection backward to the previous row matching the active
+    // search query.  When a match is found, the row is selected, scrolled into view,
+    // and the status text reports the row index.  When no match exists, the status
+    // text reports "No match" and the selection is left alone.
+    //
+    // Guards against early firing during XAML load.
+    //
+    // sender:  The Find Previous button on the find bar.
+    // e:       Routed event args.
+    ///////////////////////////////////////////////////////////////////////////////////////
+    private void Button_OpcodeTraceFindPrevious_Click(object sender, RoutedEventArgs e)
+    {
+        if (_opcodeTracePresenter == null)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "Button_OpcodeTraceFindPrevious_Click: presenter not yet constructed, ignoring");
+            return;
+        }
+
+        _opcodeTracePresenter.SetSearchQuery(TextBoxOpcodeTraceFind.Text);
+
+        OpcodeTraceRow? selectedRow = OpcodeTraceList.SelectedItem as OpcodeTraceRow;
+        OpcodeTraceRow? match = _opcodeTracePresenter.FindPrevious(selectedRow, SearchMode.Fast);
+
+        if (match == null)
+        {
+            StatusBarFindText.Text = "No match";
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "Button_OpcodeTraceFindPrevious_Click: no match");
+            return;
+        }
+
+        OpcodeTraceList.SelectedItem = match;
+        OpcodeTraceList.ScrollIntoView(match);
+        StatusBarFindText.Text = _opcodeTracePresenter.MatchCount + " matches";
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "Button_OpcodeTraceFindPrevious_Click: matched packetIndex=" + match.PacketIndex);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////
+    // Button_OpcodeTraceFindClear_Click
+    //
+    // Clears the find bar's text box, drops the presenter's stored query, and
+    // empties every row's highlights.  Returns focus to the text box so the user
+    // can start a new search immediately.
+    //
+    // Guards against early firing during XAML load.
+    //
+    // sender:  The clear button on the find bar.
+    // e:       Routed event args.
+    ///////////////////////////////////////////////////////////////////////////////////////
+    private void Button_OpcodeTraceFindClear_Click(object sender, RoutedEventArgs e)
+    {
+        if (_opcodeTracePresenter == null)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "Button_OpcodeTraceFindClear_Click: presenter not yet constructed, ignoring");
+            return;
+        }
+
+        TextBoxOpcodeTraceFind.Clear();
+        StatusBarFindText.Text = "";
+        _opcodeTracePresenter.SetSearchQuery(null);
+        _opcodeTracePresenter.ClearHighlights();
+        TextBoxOpcodeTraceFind.Focus();
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "Button_OpcodeTraceFindClear_Click: query and highlights cleared");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////
+    // Button_OpcodeTraceFindAll_Click
+    //
+    // Reports the total number of matches in the trace for the active search query
+    // and selects the first match.  Scrolls the first match into view so the operator
+    // has a starting point for subsequent Find Next / Find Previous navigation.  When
+    // no rows match, the selection is left alone and the status reports "No matches".
+    //
+    // Guards against early firing during XAML load.
+    //
+    // sender:  The Find All button on the find bar.
+    // e:       Routed event args.
+    ///////////////////////////////////////////////////////////////////////////////////////
+    private void Button_OpcodeTraceFindAll_Click(object sender, RoutedEventArgs e)
+    {
+        if (_opcodeTracePresenter == null)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "Button_OpcodeTraceFindAll_Click: presenter not yet constructed, ignoring");
+            return;
+        }
+
+        _opcodeTracePresenter.SetSearchQuery(TextBoxOpcodeTraceFind.Text);
+        _opcodeTracePresenter.FindAll(SearchMode.Fast);
+
+        OpcodeTraceRow? firstMatch = _opcodeTracePresenter.FirstMatch;
+        int matchCount = _opcodeTracePresenter.MatchCount;
+
+        if (firstMatch == null)
+        {
+            StatusBarFindText.Text = "No matches";
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "Button_OpcodeTraceFindAll_Click: no matches");
+            return;
+        }
+
+        OpcodeTraceList.SelectedItem = firstMatch;
+        OpcodeTraceList.ScrollIntoView(firstMatch);
+        StatusBarFindText.Text = matchCount + " matches";
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "Button_OpcodeTraceFindAll_Click: " + matchCount
+            + " matches, first at packetIndex=" + firstMatch.PacketIndex);
+    }
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // UpdateToolsMenuState
     //
@@ -1220,31 +1501,34 @@ public partial class MainWindow : Window
         DebugLog.Write(LogChannel.InferenceDebug, "ToggleButton_AcceptCandidate_Click: accepted=" + isAccepted);
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////
     // OpcodeTraceList_SelectionChanged
     //
-    // Selection handler for the Opcode Trace list.  Updates enabled state of
-    // the Hide and Expand toolbar controls based on whether anything is
-    // selected, and syncs the Expand toggle's checked state to the newly
-    // selected row's IsExpanded so the button reflects per-row state.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Reflects the new selection state across the toolbar and the status bar.
+    // Enables the Hide and Expand controls when a row is selected and syncs the
+    // Expand toggle to the row's expansion state.  Updates the status bar's row
+    // text to the selected row's packet index, or clears it when no row is
+    // selected.
+    //
+    // sender:  The trace ListView.
+    // e:       Selection change event args.
+    ///////////////////////////////////////////////////////////////////////////////////////
     private void OpcodeTraceList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         OpcodeTraceRow? row = OpcodeTraceList.SelectedItem as OpcodeTraceRow;
         bool hasSelection = row != null;
-
         ButtonOpcodeTraceHide.IsEnabled = hasSelection;
         ToggleOpcodeTraceExpand.IsEnabled = hasSelection;
-
         if (row != null)
         {
             ToggleOpcodeTraceExpand.IsChecked = row.IsExpanded;
+            StatusBarRowText.Text = "Row " + row.PacketIndex;
         }
         else
         {
             ToggleOpcodeTraceExpand.IsChecked = false;
+            StatusBarRowText.Text = "";
         }
-
         DebugLog.Write(LogChannel.Opcodes,
             "OpcodeTraceList_SelectionChanged: hasSelection=" + hasSelection
             + " isExpanded=" + (row != null ? row.IsExpanded.ToString() : "n/a"));
@@ -1599,6 +1883,65 @@ public partial class MainWindow : Window
         DebugLog.Write(LogChannel.Opcodes, "Button_OpcodeTraceManage_Click: manage requested (stub, not yet implemented)");
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////
+    // RebuildHighlightedInlines
+    //
+    // Clears the target TextBlock's Inlines collection and rebuilds it as a sequence of
+    // Run elements: an unhighlighted Run for the text before each highlight range, a
+    // highlighted Run for the range itself, and an unhighlighted Run for the trailing
+    // text after the last range.  Highlighted Runs get a yellow Background.
+    //
+    // Empty text leaves the TextBlock with no inlines.  Null or empty ranges produce a
+    // single unhighlighted Run with the full text.  Ranges are assumed sorted and
+    // non-overlapping; that is the contract from LocateHexDumpHighlights and
+    // LocateFieldHighlights.
+    //
+    // textBlock:  The TextBlock whose Inlines collection is rebuilt.
+    // text:       The full text to display.  Null is treated as empty.
+    // ranges:     Highlight ranges into text.  Null or empty produces one unhighlighted
+    //             Run.
+    ///////////////////////////////////////////////////////////////////////////////////////
+    private static void RebuildHighlightedInlines(TextBlock textBlock, string? text,
+        IReadOnlyList<HighlightRange>? ranges)
+    {
+        textBlock.Inlines.Clear();
+
+        if (string.IsNullOrEmpty(text))
+        {
+            return;
+        }
+
+        if (ranges == null || ranges.Count == 0)
+        {
+            textBlock.Inlines.Add(new Run(text));
+            return;
+        }
+
+        int cursor = 0;
+        for (int i = 0; i < ranges.Count; i++)
+        {
+            HighlightRange range = ranges[i];
+
+            if (range.Start > cursor)
+            {
+                string leadingText = text.Substring(cursor, range.Start - cursor);
+                textBlock.Inlines.Add(new Run(leadingText));
+            }
+
+            string highlightedText = text.Substring(range.Start, range.Length);
+            Run highlightedRun = new Run(highlightedText);
+            highlightedRun.Background = Brushes.Yellow;
+            textBlock.Inlines.Add(highlightedRun);
+
+            cursor = range.Start + range.Length;
+        }
+
+        if (cursor < text.Length)
+        {
+            string trailingText = text.Substring(cursor);
+            textBlock.Inlines.Add(new Run(trailingText));
+        }
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ApplyArmedColor

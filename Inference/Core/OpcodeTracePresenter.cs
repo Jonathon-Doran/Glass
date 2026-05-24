@@ -41,6 +41,14 @@ public class OpcodeTracePresenter
     private readonly object _characterNameCacheLock;
     private readonly Action<SignalSessionAdded> _sessionAddedHandler;
     private int _maxHexBytes;
+    private string _searchQuery;
+    private string _lastAppliedQuery;
+    private byte[]? _searchQueryBytes;
+    private int _matchCount;
+    private OpcodeTraceRow? _firstMatch;
+    private SearchQueryType _searchQueryType;
+    private bool _searchWrap;
+
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeTracePresenter (constructor)
@@ -59,9 +67,30 @@ public class OpcodeTracePresenter
         _characterNameCache = new Dictionary<int, string>();
         _characterNameCacheLock = new object();
         _maxHexBytes = 64;
+        _searchQuery = string.Empty;
+        _lastAppliedQuery = string.Empty;
+        _searchQueryBytes = null;
+        _matchCount = 0;
+        _firstMatch = null;
+        _searchQueryType = SearchQueryType.Empty;
 
         _sessionAddedHandler = OnSessionAdded;
         GlassContext.SignalBus.Subscribe(_sessionAddedHandler);
+    }
+    public int MatchCount
+    {
+        get
+        {
+            return _matchCount;
+        }
+    }
+
+    public OpcodeTraceRow? FirstMatch
+    {
+        get
+        {
+            return _firstMatch;
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -494,5 +523,592 @@ public class OpcodeTracePresenter
         }
 
         return sb.ToString();
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // LocateHexDumpHighlights
+    //
+    // Scans the row's payload for the active query bytes and assigns the row's hex
+    // highlight property with character-offset ranges into the formatted hex dump.
+    // For each payload match, two ranges are emitted per line the match spans: one
+    // over the hex column and one over the ASCII gutter.  An empty list is assigned
+    // when the query is empty, when the mode is Fast and the row is not expanded,
+    // or when the query is longer than the payload.
+    //
+    // For Ascii queries the byte comparison is case-insensitive over the 'A'-'Z'
+    // and 'a'-'z' ranges.  For Hex queries the comparison is byte-exact.
+    //
+    // row:   The row whose payload is scanned.
+    // mode:  Search mode gating body scans for collapsed rows.
+    //
+    // Returns:  The number of payload matches found.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private int LocateHexDumpHighlights(OpcodeTraceRow row, SearchMode mode)
+    {
+        List<HighlightRange> ranges = new List<HighlightRange>();
+        int matchCount = 0;
+
+        if (mode == SearchMode.Fast && !row.IsExpanded)
+        {
+            row.HexHighlights = ranges;
+            return 0;
+        }
+
+        byte[] queryBytes = _searchQueryBytes!;
+        if (queryBytes.Length == 0)
+        {
+            row.HexHighlights = ranges;
+            return 0;
+        }
+
+        ReadOnlySpan<byte> payload = row.Payload.AsReadOnlySpan();
+        int payloadLength = payload.Length;
+
+        if (queryBytes.Length > payloadLength)
+        {
+            row.HexHighlights = ranges;
+            return 0;
+        }
+
+        bool caseInsensitive = _searchQueryType == SearchQueryType.Ascii;
+
+        // Each formatted line is a fixed width.  Compute it once.
+        // 8 chars offset + 2 spaces + (16 bytes * 3 chars per byte) + 1 extra space between
+        // bytes 7 and 8 + 1 "|" + 16 ASCII chars + 1 "|" + 1 newline.
+        int lineWidth = 8 + 2 + (16 * 3) + 1 + 1 + 16 + 1 + 1;
+
+        int hexColumnOffset = 8 + 2;
+        int asciiColumnOffset = 8 + 2 + (16 * 3) + 1 + 1;
+
+        int searchEnd = payloadLength - queryBytes.Length + 1;
+        for (int scanPos = 0; scanPos < searchEnd; scanPos++)
+        {
+            bool matched = true;
+            for (int q = 0; q < queryBytes.Length; q++)
+            {
+                byte payloadByte = payload[scanPos + q];
+                byte queryByte = queryBytes[q];
+                if (caseInsensitive)
+                {
+                    if (payloadByte >= (byte)'A' && payloadByte <= (byte)'Z')
+                    {
+                        payloadByte = (byte)(payloadByte + 32);
+                    }
+                    if (queryByte >= (byte)'A' && queryByte <= (byte)'Z')
+                    {
+                        queryByte = (byte)(queryByte + 32);
+                    }
+                }
+                if (payloadByte != queryByte)
+                {
+                    matched = false;
+                    break;
+                }
+            }
+
+            if (!matched)
+            {
+                continue;
+            }
+
+            matchCount++;
+
+            int matchStart = scanPos;
+            int matchEnd = scanPos + queryBytes.Length;
+
+            int firstLine = matchStart / 16;
+            int lastLine = (matchEnd - 1) / 16;
+
+            for (int lineIndex = firstLine; lineIndex <= lastLine; lineIndex++)
+            {
+                int lineByteStart = lineIndex * 16;
+                int lineByteEnd = lineByteStart + 16;
+
+                int sliceStart = Math.Max(matchStart, lineByteStart);
+                int sliceEnd = Math.Min(matchEnd, lineByteEnd);
+                int sliceLength = sliceEnd - sliceStart;
+
+                int withinLineByteIndex = sliceStart - lineByteStart;
+
+                int hexStartInLine = hexColumnOffset + (withinLineByteIndex * 3);
+                if (withinLineByteIndex >= 8)
+                {
+                    hexStartInLine += 1;
+                }
+
+                int hexLength = (sliceLength * 3) - 1;
+
+                int sliceLastByteIndex = withinLineByteIndex + sliceLength - 1;
+                if (withinLineByteIndex < 8 && sliceLastByteIndex >= 8)
+                {
+                    hexLength += 1;
+                }
+
+                int lineStartInString = lineIndex * lineWidth;
+
+                ranges.Add(new HighlightRange(lineStartInString + hexStartInLine, hexLength));
+
+                int asciiStartInLine = asciiColumnOffset + withinLineByteIndex;
+                ranges.Add(new HighlightRange(lineStartInString + asciiStartInLine, sliceLength));
+            }
+        }
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "OpcodeTracePresenter.LocateHexDumpHighlights: packetIndex=" + row.PacketIndex
+            + " payloadLength=" + payloadLength
+            + " queryLength=" + queryBytes.Length
+            + " matchCount=" + matchCount
+            + " ranges=" + ranges.Count);
+        row.HexHighlights = ranges;
+        return matchCount;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // LocateFieldHighlights
+    //
+    // Tests the row's field text against the active query and assigns the row's field
+    // highlight property accordingly.  Each case-insensitive occurrence of the query
+    // produces one highlight range over its character span.  An empty list is assigned
+    // when the field text is empty, when the mode is Fast and the row is not expanded,
+    // or when the query does not appear in the field text.
+    //
+    // row:   The row whose field text is scanned.
+    // mode:  Search mode gating body-text scans for collapsed rows.
+    //
+    // Returns:  The number of matches found in the field text.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private int LocateFieldHighlights(OpcodeTraceRow row, SearchMode mode)
+    {
+        List<HighlightRange> ranges = new List<HighlightRange>();
+
+        if (mode == SearchMode.Fast && !row.IsExpanded)
+        {
+            row.FieldHighlights = ranges;
+            return 0;
+        }
+
+        string? fieldText = row.FieldText;
+        if (string.IsNullOrEmpty(fieldText))
+        {
+            row.FieldHighlights = ranges;
+            return 0;
+        }
+
+        int scanPos = 0;
+        while (scanPos <= fieldText.Length - _searchQuery.Length)
+        {
+            int found = fieldText.IndexOf(_searchQuery, scanPos, StringComparison.OrdinalIgnoreCase);
+            if (found < 0)
+            {
+                break;
+            }
+            ranges.Add(new HighlightRange(found, _searchQuery.Length));
+            scanPos = found + _searchQuery.Length;
+        }
+
+        row.FieldHighlights = ranges;
+        return ranges.Count;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // LocateSummaryHighlights
+    //
+    // Tests each of the row's summary cells against the active query and assigns the
+    // row's summary highlight properties accordingly.  Each cell that contains the query
+    // (case-insensitive) gets a single full-cell highlight range; cells without a match
+    // get an empty list.
+    //
+    // row:  The row whose summary cells are checked.
+    //
+    // Returns:  The number of matches found in the summary.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private int LocateSummaryHighlights(OpcodeTraceRow row)
+    {
+        int matches = 0;
+
+        if (row.OpcodeHex.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
+        {
+            row.OpcodeHexHighlights = new HighlightRange[] { new HighlightRange(0, row.OpcodeHex.Length) };
+            matches++;
+        }
+        else
+        {
+            row.OpcodeHexHighlights = Array.Empty<HighlightRange>();
+        }
+
+        if (row.OpcodeName.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
+        {
+            row.OpcodeNameHighlights = new HighlightRange[] { new HighlightRange(0, row.OpcodeName.Length) };
+            matches++;
+        }
+        else
+        {
+            row.OpcodeNameHighlights = Array.Empty<HighlightRange>();
+        }
+
+        if (row.TimestampLocal.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
+        {
+            row.TimestampHighlights = new HighlightRange[] { new HighlightRange(0, row.TimestampLocal.Length) };
+            matches++;
+        }
+        else
+        {
+            row.TimestampHighlights = Array.Empty<HighlightRange>();
+        }
+
+        return matches;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // TryParseHexQuery
+    //
+    // Determines whether the user's query string should be interpreted as a hex byte sequence.
+    // The rule is strict: the query must contain at least two whitespace-separated tokens,
+    // and every token must be exactly two hexadecimal digits.  Single-token inputs like "BEEF"
+    // are not hex — they fall through to the caller's ASCII interpretation.  This avoids the
+    // ambiguity where a four-letter word could be a hex value or could be a real word in a
+    // packet payload.
+    //
+    // The query is normalized by splitting on whitespace and ignoring empty tokens, so
+    // multiple spaces between bytes are tolerated.
+    //
+    // query:  The raw user input from the find bar.
+    //
+    // Returns:  A byte array containing the parsed hex bytes, or null if the query is not
+    //           a valid hex sequence.  An empty or whitespace-only query returns null.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static byte[]? TryParseHexQuery(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            DebugLog.Write(LogChannel.InferenceDebug, "TryParseHexQuery: empty query");
+            return null;
+        }
+
+        string[] tokens = query.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+
+        if (tokens.Length < 2)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "TryParseHexQuery: single-token query '" + query + "' treated as ASCII");
+            return null;
+        }
+
+        byte[] result = new byte[tokens.Length];
+
+        for (int tokenIndex = 0; tokenIndex < tokens.Length; tokenIndex++)
+        {
+            string token = tokens[tokenIndex];
+
+            if (token.Length != 2)
+            {
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "TryParseHexQuery: token '" + token + "' is not 2 chars, query treated as ASCII");
+                return null;
+            }
+
+            if (!byte.TryParse(token, System.Globalization.NumberStyles.HexNumber, null, out byte parsed))
+            {
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "TryParseHexQuery: token '" + token + "' is not hex, query treated as ASCII");
+                return null;
+            }
+
+            result[tokenIndex] = parsed;
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "TryParseHexQuery: parsed " + tokens.Length + " hex bytes");
+        return result;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // RecomputeRowHighlights
+    //
+    // Computes highlight ranges for the given row across the summary cells, the field
+    // text, and the hex dump, storing the results on the row.  Setting the properties
+    // raises PropertyChanged events so the row view repaints.
+    //
+    // When the active query is empty, every highlight list on the row is cleared.
+    //
+    // row:   The row to recompute highlights for.
+    // mode:  Search mode gating body-text scans for collapsed rows.
+    //
+    // Returns:  The total match count across all tiers for this row.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private int RecomputeRowHighlights(OpcodeTraceRow row, SearchMode mode)
+    {
+        if (_searchQueryType == SearchQueryType.Empty)
+        {
+            row.OpcodeHexHighlights = Array.Empty<HighlightRange>();
+            row.OpcodeNameHighlights = Array.Empty<HighlightRange>();
+            row.TimestampHighlights = Array.Empty<HighlightRange>();
+            row.FieldHighlights = Array.Empty<HighlightRange>();
+            row.HexHighlights = Array.Empty<HighlightRange>();
+            return 0;
+        }
+
+        int totalMatches = 0;
+        totalMatches += LocateSummaryHighlights(row);
+        totalMatches += LocateFieldHighlights(row, mode);
+        totalMatches += LocateHexDumpHighlights(row, mode);
+
+        if (totalMatches > 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug, "found " + totalMatches + " matches on row " +
+                row.PacketIndex);
+        }
+
+        return totalMatches;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ClearHighlights
+    //
+    // Empties every row's HexHighlights and FieldHighlights to empty
+    // arrays.
+    //
+    // Must be called on the UI thread; mutates _rows entries that are
+    // bound to the list view.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void ClearHighlights()
+    {
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "OpcodeTracePresenter.ClearHighlights: clearing highlights on " + _rows.Count + " rows");
+
+        for (int i = 0; i < _rows.Count; i++)
+        {
+            OpcodeTraceRow row = _rows[i];
+            row.HexHighlights = Array.Empty<HighlightRange>();
+            row.FieldHighlights = Array.Empty<HighlightRange>();
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // SetSearchQuery
+    //
+    // Stores the user's search query on the presenter.  The query persists across
+    // expand/collapse and Refresh, used by FindNext, FindPrevious, FindAll, and by row
+    // population paths to apply highlights when a row is expanded under an active search.
+    //
+    // Passing null or whitespace-only clears the query.
+    //
+    // query:  The user's typed search string, or null to clear.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void SetSearchQuery(string? query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            _searchQuery = string.Empty;
+            _searchQueryType = SearchQueryType.Empty;
+            _searchQueryBytes = null;
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "OpcodeTracePresenter.SetSearchQuery: cleared");
+            return;
+        }
+        _searchQuery = query;
+        byte[]? hexBytes = TryParseHexQuery(query);
+        if (hexBytes != null)
+        {
+            _searchQueryType = SearchQueryType.Hex;
+            _searchQueryBytes = hexBytes;
+        }
+        else
+        {
+            _searchQueryType = SearchQueryType.Ascii;
+            _searchQueryBytes = Encoding.ASCII.GetBytes(query);
+        }
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "OpcodeTracePresenter.SetSearchQuery: query='" + query + "' type=" + _searchQueryType
+            + " bytes=" + _searchQueryBytes.Length);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // SetSearchWrap
+    //
+    // Sets whether FindNext and FindPrevious wrap around at the end of the list.  When
+    // true, running off the end restarts at the opposite end and continues toward the
+    // starting position.  When false, running off the end stops without finding a match.
+    //
+    // wrap:  True to enable wrap, false to disable.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void SetSearchWrap(bool wrap)
+    {
+        _searchWrap = wrap;
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "OpcodeTracePresenter.SetSearchWrap: wrap=" + wrap);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FindInDirection
+    //
+    // Shared worker for FindNext and FindPrevious.  Walks _rows in the given direction
+    // starting from the position immediately after (or before) selectedRow, returning the
+    // first row that matches the active search query.
+    //
+    // If selectedRow is null or not in _rows (e.g. stale after Refresh), the walk starts
+    // from the appropriate end of the list — index 0 for forward, _rows.Count-1 for
+    // backward.
+    //
+    // Walks until a match is found, the end of the list is reached, or the starting
+    // position is revisited.  When _searchWrap is true, hitting the end of the list
+    // restarts at the opposite end and continues toward the starting position.  When
+    // false, hitting the end stops the walk without wrapping.
+    //
+    // Each visited row has its highlights recomputed before the match test.
+    //
+    // Returns null when no match exists in the searchable range.
+    //
+    // selectedRow:  The currently selected row, or null.
+    // direction:    +1 for forward, -1 for backward.
+    // mode:         Search mode to apply at the per-row highlight recompute.
+    //
+    // Returns:      The first matching row in the walk, or null.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private OpcodeTraceRow? FindInDirection(OpcodeTraceRow? selectedRow, int direction, SearchMode mode)
+    {
+        if (_searchQueryType == SearchQueryType.Empty)
+        {
+            return null;
+        }
+        int rowCount = _rows.Count;
+        if (rowCount == 0)
+        {
+            return null;
+        }
+        int selectedIndex = -1;
+        if (selectedRow != null)
+        {
+            for (int i = 0; i < rowCount; i++)
+            {
+                if (object.ReferenceEquals(_rows[i], selectedRow))
+                {
+                    selectedIndex = i;
+                    break;
+                }
+            }
+        }
+        int startIndex;
+        if (selectedIndex >= 0)
+        {
+            startIndex = selectedIndex + direction;
+        }
+        else if (direction > 0)
+        {
+            startIndex = 0;
+        }
+        else
+        {
+            startIndex = rowCount - 1;
+        }
+        int currentIndex = startIndex;
+        int stepsTaken = 0;
+        while (stepsTaken < rowCount)
+        {
+            if (currentIndex < 0 || currentIndex >= rowCount)
+            {
+                if (!_searchWrap)
+                {
+                    return null;
+                }
+                if (direction > 0)
+                {
+                    currentIndex = 0;
+                }
+                else
+                {
+                    currentIndex = rowCount - 1;
+                }
+            }
+            OpcodeTraceRow row = _rows[currentIndex];
+            int rowMatches = RecomputeRowHighlights(row, mode);
+            if (rowMatches > 0)
+            {
+                _firstMatch = row;
+                _matchCount = rowMatches;
+                return row;
+            }
+            currentIndex = currentIndex + direction;
+            stepsTaken = stepsTaken + 1;
+        }
+        return null;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FindNext
+    //
+    // Returns the next row after selectedRow that matches the active search query, or
+    // null if none exists in the searchable range.  When selectedRow is null or stale,
+    // the walk starts at the top of the list.  Honors the wrap setting.
+    //
+    // selectedRow:  The currently selected row, or null.
+    // mode:         Search mode to apply at the per-row predicate.
+    //
+    // Returns:      The next matching row, or null.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public OpcodeTraceRow? FindNext(OpcodeTraceRow? selectedRow, SearchMode mode)
+    {
+        return FindInDirection(selectedRow, 1, mode);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FindPrevious
+    //
+    // Returns the previous row before selectedRow that matches the active search query,
+    // or null if none exists in the searchable range.  When selectedRow is null or stale,
+    // the walk starts at the bottom of the list.  Honors the wrap setting.
+    //
+    // selectedRow:  The currently selected row, or null.
+    // mode:         Search mode to apply at the per-row predicate.
+    //
+    // Returns:      The previous matching row, or null.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public OpcodeTraceRow? FindPrevious(OpcodeTraceRow? selectedRow, SearchMode mode)
+    {
+        return FindInDirection(selectedRow, -1, mode);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FindAll
+    //
+    // Walks every row, recomputing highlights and accumulating the total match count
+    // and the first matching row into _matchCount and _firstMatch.  Memoized against
+    // _lastAppliedQuery: when the active query has not changed since the previous
+    // accumulation, the walk is skipped.
+    //
+    // mode:  Search mode to apply at the per-row highlight recompute.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void FindAll(SearchMode mode)
+    {
+        if (_searchQueryType == SearchQueryType.Empty)
+        {
+            _matchCount = 0;
+            _firstMatch = null;
+            _lastAppliedQuery = _searchQuery;
+            return;
+        }
+
+        if (string.Equals(_searchQuery, _lastAppliedQuery, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _matchCount = 0;
+        _firstMatch = null;
+
+        for (int i = 0; i < _rows.Count; i++)
+        {
+            OpcodeTraceRow row = _rows[i];
+            int rowMatches = RecomputeRowHighlights(row, mode);
+            if (rowMatches > 0)
+            {
+                _matchCount += rowMatches;
+                if (_firstMatch == null)
+                {
+                    _firstMatch = row;
+                }
+            }
+        }
+
+        _lastAppliedQuery = _searchQuery;
     }
 }
