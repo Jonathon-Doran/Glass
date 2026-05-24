@@ -524,41 +524,31 @@ public class OpcodeTracePresenter
 
         return sb.ToString();
     }
-
     ///////////////////////////////////////////////////////////////////////////////////////////
     // LocateHexDumpHighlights
     //
-    // Scans the row's payload for the active query bytes and assigns the row's hex
-    // highlight property with character-offset ranges into the formatted hex dump.
-    // For each payload match, two ranges are emitted per line the match spans: one
-    // over the hex column and one over the ASCII gutter.  An empty list is assigned
-    // when the query is empty, when the mode is Fast and the row is not expanded,
-    // or when the query is longer than the payload.
-    //
-    // For Ascii queries the byte comparison is case-insensitive over the 'A'-'Z'
-    // and 'a'-'z' ranges.  For Hex queries the comparison is byte-exact.
+    // Scans the row's payload for the active query bytes and appends HighlightRanges
+    // and SearchMatches to the row's lists.  For each payload match, one SearchMatch
+    // is appended carrying the character offset of the first hex column character of
+    // the match, and two HighlightRanges are appended per line the match spans (one
+    // over the hex column, one over the ASCII gutter).  ASCII queries fold 'A'-'Z'
+    // to 'a'-'z' on both sides during comparison.  In Fast mode collapsed rows are
+    // skipped.
     //
     // row:   The row whose payload is scanned.
     // mode:  Search mode gating body scans for collapsed rows.
-    //
-    // Returns:  The number of payload matches found.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private int LocateHexDumpHighlights(OpcodeTraceRow row, SearchMode mode)
+    private void LocateHexDumpHighlights(OpcodeTraceRow row, SearchMode mode)
     {
-        List<HighlightRange> ranges = new List<HighlightRange>();
-        int matchCount = 0;
-
         if (mode == SearchMode.Fast && !row.IsExpanded)
         {
-            row.HexHighlights = ranges;
-            return 0;
+            return;
         }
 
         byte[] queryBytes = _searchQueryBytes!;
         if (queryBytes.Length == 0)
         {
-            row.HexHighlights = ranges;
-            return 0;
+            return;
         }
 
         ReadOnlySpan<byte> payload = row.Payload.AsReadOnlySpan();
@@ -566,8 +556,7 @@ public class OpcodeTracePresenter
 
         if (queryBytes.Length > payloadLength)
         {
-            row.HexHighlights = ranges;
-            return 0;
+            return;
         }
 
         bool caseInsensitive = _searchQueryType == SearchQueryType.Ascii;
@@ -611,13 +600,20 @@ public class OpcodeTracePresenter
                 continue;
             }
 
-            matchCount++;
-
             int matchStart = scanPos;
             int matchEnd = scanPos + queryBytes.Length;
 
             int firstLine = matchStart / 16;
             int lastLine = (matchEnd - 1) / 16;
+
+            int matchByteInLine = matchStart - firstLine * 16;
+            int matchHexStartInLine = hexColumnOffset + (matchByteInLine * 3);
+            if (matchByteInLine >= 8)
+            {
+                matchHexStartInLine += 1;
+            }
+            int matchCharOffset = firstLine * lineWidth + matchHexStartInLine;
+            row.Matches.Add(new SearchMatch(HighlightRegionType.Hex, matchCharOffset));
 
             for (int lineIndex = firstLine; lineIndex <= lastLine; lineIndex++)
             {
@@ -646,51 +642,36 @@ public class OpcodeTracePresenter
 
                 int lineStartInString = lineIndex * lineWidth;
 
-                ranges.Add(new HighlightRange(lineStartInString + hexStartInLine, hexLength));
+                row.Highlights.Add(new HighlightRange(HighlightRegionType.Hex, lineStartInString + hexStartInLine, hexLength));
 
                 int asciiStartInLine = asciiColumnOffset + withinLineByteIndex;
-                ranges.Add(new HighlightRange(lineStartInString + asciiStartInLine, sliceLength));
+                row.Highlights.Add(new HighlightRange(HighlightRegionType.Hex, lineStartInString + asciiStartInLine, sliceLength));
             }
         }
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "OpcodeTracePresenter.LocateHexDumpHighlights: packetIndex=" + row.PacketIndex
-            + " payloadLength=" + payloadLength
-            + " queryLength=" + queryBytes.Length
-            + " matchCount=" + matchCount
-            + " ranges=" + ranges.Count);
-        row.HexHighlights = ranges;
-        return matchCount;
     }
+
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // LocateFieldHighlights
     //
-    // Tests the row's field text against the active query and assigns the row's field
-    // highlight property accordingly.  Each case-insensitive occurrence of the query
-    // produces one highlight range over its character span.  An empty list is assigned
-    // when the field text is empty, when the mode is Fast and the row is not expanded,
-    // or when the query does not appear in the field text.
+    // Scans the row's field text for case-insensitive occurrences of the active
+    // query, appending a HighlightRange and a SearchMatch per occurrence to the
+    // row's lists.  In Fast mode collapsed rows are skipped.
     //
     // row:   The row whose field text is scanned.
-    // mode:  Search mode gating body-text scans for collapsed rows.
-    //
-    // Returns:  The number of matches found in the field text.
+    // mode:  Search mode gating body scans for collapsed rows.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private int LocateFieldHighlights(OpcodeTraceRow row, SearchMode mode)
+    private void LocateFieldHighlights(OpcodeTraceRow row, SearchMode mode)
     {
-        List<HighlightRange> ranges = new List<HighlightRange>();
-
         if (mode == SearchMode.Fast && !row.IsExpanded)
         {
-            row.FieldHighlights = ranges;
-            return 0;
+            return;
         }
 
         string? fieldText = row.FieldText;
         if (string.IsNullOrEmpty(fieldText))
         {
-            row.FieldHighlights = ranges;
-            return 0;
+            return;
         }
 
         int scanPos = 0;
@@ -701,63 +682,41 @@ public class OpcodeTracePresenter
             {
                 break;
             }
-            ranges.Add(new HighlightRange(found, _searchQuery.Length));
+            row.Highlights.Add(new HighlightRange(HighlightRegionType.Field, found, _searchQuery.Length));
+            row.Matches.Add(new SearchMatch(HighlightRegionType.Field, found));
             scanPos = found + _searchQuery.Length;
         }
-
-        row.FieldHighlights = ranges;
-        return ranges.Count;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // LocateSummaryHighlights
     //
-    // Tests each of the row's summary cells against the active query and assigns the
-    // row's summary highlight properties accordingly.  Each cell that contains the query
-    // (case-insensitive) gets a single full-cell highlight range; cells without a match
-    // get an empty list.
+    // Tests each of the row's summary cells against the active query and appends a
+    // full-cell HighlightRange and a SearchMatch to the row's lists for each cell
+    // that matches case-insensitively.
     //
     // row:  The row whose summary cells are checked.
-    //
-    // Returns:  The number of matches found in the summary.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private int LocateSummaryHighlights(OpcodeTraceRow row)
+    private void LocateSummaryHighlights(OpcodeTraceRow row)
     {
-        int matches = 0;
+        if (row.TimestampLocal.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
+        {
+            row.Highlights.Add(new HighlightRange(HighlightRegionType.SummaryTimestamp, 0, row.TimestampLocal.Length));
+            row.Matches.Add(new SearchMatch(HighlightRegionType.SummaryTimestamp, 0));
+        }
 
         if (row.OpcodeHex.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
         {
-            row.OpcodeHexHighlights = new HighlightRange[] { new HighlightRange(0, row.OpcodeHex.Length) };
-            matches++;
-        }
-        else
-        {
-            row.OpcodeHexHighlights = Array.Empty<HighlightRange>();
+            row.Highlights.Add(new HighlightRange(HighlightRegionType.SummaryOpcodeHex, 0, row.OpcodeHex.Length));
+            row.Matches.Add(new SearchMatch(HighlightRegionType.SummaryOpcodeHex, 0));
         }
 
         if (row.OpcodeName.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
         {
-            row.OpcodeNameHighlights = new HighlightRange[] { new HighlightRange(0, row.OpcodeName.Length) };
-            matches++;
+            row.Highlights.Add(new HighlightRange(HighlightRegionType.SummaryOpcodeName, 0, row.OpcodeName.Length));
+            row.Matches.Add(new SearchMatch(HighlightRegionType.SummaryOpcodeName, 0));
         }
-        else
-        {
-            row.OpcodeNameHighlights = Array.Empty<HighlightRange>();
-        }
-
-        if (row.TimestampLocal.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
-        {
-            row.TimestampHighlights = new HighlightRange[] { new HighlightRange(0, row.TimestampLocal.Length) };
-            matches++;
-        }
-        else
-        {
-            row.TimestampHighlights = Array.Empty<HighlightRange>();
-        }
-
-        return matches;
     }
-
     ///////////////////////////////////////////////////////////////////////////////////////////
     // TryParseHexQuery
     //
@@ -824,48 +783,69 @@ public class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     // RecomputeRowHighlights
     //
-    // Computes highlight ranges for the given row across the summary cells, the field
-    // text, and the hex dump, storing the results on the row.  Setting the properties
-    // raises PropertyChanged events so the row view repaints.
+    // Recomputes the highlight ranges and match positions for a single row
+    // against the active search query.  After the Locate helpers populate
+    // the row's existing Highlights and Matches lists in place, the populated
+    // lists are copied into fresh List instances and assigned through the
+    // row's setters.  The setter assignment raises PropertyChanged with a
+    // reference that differs from the prior dependency property value, so
+    // the bound attached HighlightTextBehavior.Ranges property sees a value
+    // change and its OnRangesChanged callback rebuilds the TextBlock's
+    // inlines.
     //
-    // When the active query is empty, every highlight list on the row is cleared.
+    // Mutating the existing Highlights list in place and only raising
+    // PropertyChanged is not sufficient.  WPF compares the new and old
+    // values of a dependency property by reference for reference types;
+    // when the reference is unchanged the change callback does not run, and
+    // the rebuild is deferred until container recycling sets the DP back
+    // from its default value.  A fresh List reference defeats that check.
     //
-    // row:   The row to recompute highlights for.
-    // mode:  Search mode gating body-text scans for collapsed rows.
+    // row:    The row to recompute against the active query.
+    // mode:   Search mode passed through to the Locate helpers.
     //
-    // Returns:  The total match count across all tiers for this row.
+    // returns: The number of matches located on the row.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private int RecomputeRowHighlights(OpcodeTraceRow row, SearchMode mode)
     {
+        row.Highlights.Clear();
+        row.Matches.Clear();
+
         if (_searchQueryType == SearchQueryType.Empty)
         {
-            row.OpcodeHexHighlights = Array.Empty<HighlightRange>();
-            row.OpcodeNameHighlights = Array.Empty<HighlightRange>();
-            row.TimestampHighlights = Array.Empty<HighlightRange>();
-            row.FieldHighlights = Array.Empty<HighlightRange>();
-            row.HexHighlights = Array.Empty<HighlightRange>();
+            row.Highlights = new List<HighlightRange>();
+            row.Matches = new List<SearchMatch>();
             return 0;
         }
 
-        int totalMatches = 0;
-        totalMatches += LocateSummaryHighlights(row);
-        totalMatches += LocateFieldHighlights(row, mode);
-        totalMatches += LocateHexDumpHighlights(row, mode);
+        LocateSummaryHighlights(row);
+        LocateFieldHighlights(row, mode);
+        LocateHexDumpHighlights(row, mode);
 
-        if (totalMatches > 0)
-        {
-            DebugLog.Write(LogChannel.InferenceDebug, "found " + totalMatches + " matches on row " +
-                row.PacketIndex);
-        }
+        List<HighlightRange> rebuiltHighlights = new List<HighlightRange>(row.Highlights);
+        List<SearchMatch> rebuiltMatches = new List<SearchMatch>(row.Matches);
+        row.Highlights = rebuiltHighlights;
+        row.Matches = rebuiltMatches;
 
-        return totalMatches;
+        return row.Matches.Count;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // ClearHighlights
     //
-    // Empties every row's HexHighlights and FieldHighlights to empty
-    // arrays.
+    // Clears every row's highlight ranges and match positions by assigning
+    // fresh empty List instances through the row's setters.  The setter
+    // assignment raises PropertyChanged with a reference that differs from
+    // the prior dependency property value, so the bound attached
+    // HighlightTextBehavior.Ranges property sees a value change and its
+    // OnRangesChanged callback rebuilds the TextBlock's inlines as a single
+    // unhighlighted run.
+    //
+    // Calling Clear() on the existing Highlights and Matches lists is not
+    // sufficient.  WPF compares the new and old values of a dependency
+    // property by reference for reference types; when the reference is
+    // unchanged the change callback does not run, and the visible
+    // highlights persist until container recycling sets the DP back from
+    // its default value.  A fresh List reference defeats that check.
     //
     // Must be called on the UI thread; mutates _rows entries that are
     // bound to the list view.
@@ -874,12 +854,11 @@ public class OpcodeTracePresenter
     {
         DebugLog.Write(LogChannel.InferenceDebug,
             "OpcodeTracePresenter.ClearHighlights: clearing highlights on " + _rows.Count + " rows");
-
         for (int i = 0; i < _rows.Count; i++)
         {
             OpcodeTraceRow row = _rows[i];
-            row.HexHighlights = Array.Empty<HighlightRange>();
-            row.FieldHighlights = Array.Empty<HighlightRange>();
+            row.Highlights = new List<HighlightRange>();
+            row.Matches = new List<SearchMatch>();
         }
     }
 

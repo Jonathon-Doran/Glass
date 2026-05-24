@@ -1522,7 +1522,7 @@ public partial class MainWindow : Window
         if (row != null)
         {
             ToggleOpcodeTraceExpand.IsChecked = row.IsExpanded;
-            StatusBarRowText.Text = "Row " + row.PacketIndex;
+            StatusBarRowText.Text = "Message " + row.PacketIndex;
         }
         else
         {

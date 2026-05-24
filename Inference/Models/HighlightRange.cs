@@ -8,13 +8,17 @@
 // Start:  Zero-based character offset into the formatted string.
 // Length: Number of characters covered by the highlight.
 ///////////////////////////////////////////////////////////////////////////////////////////
+using Inference.Core;
+
 public readonly struct HighlightRange
 {
+    public HighlightRegionType Region { get; }
     public int Start { get; }
     public int Length { get; }
 
-    public HighlightRange(int start, int length)
+    public HighlightRange(HighlightRegionType region, int start, int length)
     {
+        Region = region;
         Start = start;
         Length = length;
     }

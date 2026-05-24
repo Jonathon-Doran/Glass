@@ -281,13 +281,19 @@
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Grid.Column="0"
                                                infui:HighlightTextBehavior.Text="{Binding TimestampLocal}"
-                                               infui:HighlightTextBehavior.Ranges="{Binding TimestampHighlights}"/>
+                                               infui:HighlightTextBehavior.Ranges="{Binding Highlights}"
+                                               infui:HighlightTextBehavior.Region="SummaryTimestamp"/>
+
                                         <TextBlock Grid.Column="1"
                                                infui:HighlightTextBehavior.Text="{Binding OpcodeHex}"
-                                               infui:HighlightTextBehavior.Ranges="{Binding OpcodeHexHighlights}"/>
+                                               infui:HighlightTextBehavior.Ranges="{Binding Highlights}"
+                                               infui:HighlightTextBehavior.Region="SummaryOpcodeHex"/>
+
                                         <TextBlock Grid.Column="2"
                                                infui:HighlightTextBehavior.Text="{Binding OpcodeName}"
-                                               infui:HighlightTextBehavior.Ranges="{Binding OpcodeNameHighlights}"/>
+                                               infui:HighlightTextBehavior.Ranges="{Binding Highlights}"
+                                               infui:HighlightTextBehavior.Region="SummaryOpcodeName"/>
+
                                         <TextBlock Grid.Column="3" Text="{Binding ChannelAbbrev}"/>
                                         <TextBlock Grid.Column="4" Text="{Binding CharacterName}"/>
                                         <TextBlock Grid.Column="5" Text="{Binding Length}"/>
@@ -299,11 +305,12 @@
                                             HorizontalScrollBarVisibility="Auto"
                                             Margin="16,4,0,4"
                                             Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
-                                           <TextBlock infui:HighlightTextBehavior.Text="{Binding FieldText}"
-                                                  infui:HighlightTextBehavior.Ranges="{Binding FieldHighlights}"
-                                                  Background="Transparent"
-                                                  Padding="0"
-                                                  TextWrapping="NoWrap"/>
+                                        <TextBlock infui:HighlightTextBehavior.Text="{Binding FieldText}"
+                                               infui:HighlightTextBehavior.Ranges="{Binding Highlights}"
+                                               infui:HighlightTextBehavior.Region="Field"
+                                               Background="Transparent"
+                                               Padding="0"
+                                               TextWrapping="NoWrap"/>
                                     </ScrollViewer>
 
                                     <ScrollViewer Grid.Row="2"
@@ -312,13 +319,14 @@
                                             HorizontalScrollBarVisibility="Auto"
                                             Margin="16,0,0,4"
                                             Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
-                                           <TextBlock infui:HighlightTextBehavior.Text="{Binding HexDumpText}"
-                                                 infui:HighlightTextBehavior.Ranges="{Binding HexHighlights}"
-                                                 Background="Transparent"
-                                                 Padding="0"
-                                                 FontFamily="Consolas"
-                                                 TextWrapping="NoWrap"
-                                                 MinWidth="900"/>
+                                        <TextBlock infui:HighlightTextBehavior.Text="{Binding HexDumpText}"
+                                               infui:HighlightTextBehavior.Ranges="{Binding Highlights}"
+                                               infui:HighlightTextBehavior.Region="Hex"
+                                               Background="Transparent"
+                                               Padding="0"
+                                               FontFamily="Consolas"
+                                               TextWrapping="NoWrap"
+                                               MinWidth="900"/>
                                     </ScrollViewer>
                                 </Grid>
                             </DataTemplate>

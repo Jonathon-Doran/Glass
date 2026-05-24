@@ -1,4 +1,5 @@
 using Glass.Core.Logging;
+using Inference.Core;
 using Inference.Models;
 using System.Collections.Generic;
 using System.Windows;
@@ -54,6 +55,13 @@ public static class HighlightTextBehavior
         DefaultMatchBrush = brush;
     }
 
+    public static readonly DependencyProperty RegionProperty =
+        DependencyProperty.RegisterAttached(
+            "Region",
+            typeof(HighlightRegionType),
+            typeof(HighlightTextBehavior),
+            new PropertyMetadata(HighlightRegionType.Field, OnRegionChanged));
+
     public static readonly DependencyProperty TextProperty =
         DependencyProperty.RegisterAttached(
             "Text",
@@ -64,7 +72,7 @@ public static class HighlightTextBehavior
     public static readonly DependencyProperty RangesProperty =
         DependencyProperty.RegisterAttached(
             "Ranges",
-            typeof(IReadOnlyList<HighlightRange>),
+            typeof(List<HighlightRange>),
             typeof(HighlightTextBehavior),
             new PropertyMetadata(null, OnRangesChanged));
 
@@ -74,6 +82,22 @@ public static class HighlightTextBehavior
             typeof(Brush),
             typeof(HighlightTextBehavior),
             new PropertyMetadata(null, OnMatchBrushChanged));
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetRegion / SetRegion
+    //
+    // Accessors for the attached Region property.  Identifies which subset of the
+    // bound Ranges list applies to this TextBlock.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public static HighlightRegionType GetRegion(DependencyObject target)
+    {
+        return (HighlightRegionType)target.GetValue(RegionProperty);
+    }
+
+    public static void SetRegion(DependencyObject target, HighlightRegionType value)
+    {
+        target.SetValue(RegionProperty, value);
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetText / SetText
@@ -123,6 +147,25 @@ public static class HighlightTextBehavior
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // OnRegionChanged
+    //
+    // Attached property changed callback for Region.  Triggers a rebuild of the
+    // target TextBlock's Inlines so the new region's ranges are applied.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static void OnRegionChanged(DependencyObject target, DependencyPropertyChangedEventArgs e)
+    {
+        TextBlock? block = target as TextBlock;
+        if (block == null)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "HighlightTextBehavior.OnRegionChanged: target is not a TextBlock, ignoring");
+            return;
+        }
+
+        Rebuild(block);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // OnTextChanged
     //
     // Attached property changed callback for Text.  Triggers a rebuild of
@@ -152,6 +195,7 @@ public static class HighlightTextBehavior
     private static void OnRangesChanged(DependencyObject target, DependencyPropertyChangedEventArgs e)
     {
         TextBlock? block = target as TextBlock;
+
         if (block == null)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
@@ -188,14 +232,15 @@ public static class HighlightTextBehavior
     //
     // Clears and rebuilds the target TextBlock's Inlines as an alternating
     // sequence of plain Runs and highlighted Runs based on the current
-    // Text, Ranges, and MatchBrush attached property values.
+    // Text, Ranges, Region, and MatchBrush attached property values.
     //
-    // Empty or null Text clears Inlines and returns.  Null or empty Ranges
-    // emits a single plain Run.  Otherwise ranges are copied to a local
-    // array, sorted by Start, and walked left-to-right; any range whose
-    // Start lies before the previous emitted range's end (overlap) or
-    // whose bounds fall outside the text is clamped or skipped with a
-    // log message.
+    // Ranges are filtered to those whose Region matches the target's Region
+    // before sorting and walking.  Empty or null Text clears Inlines and
+    // returns.  Null or empty Ranges (or zero entries matching Region)
+    // emits a single plain Run.  Otherwise filtered ranges are sorted by
+    // Start and walked left-to-right; any range whose Start lies before
+    // the previous emitted range's end (overlap) or whose bounds fall
+    // outside the text is clamped or skipped with a log message.
     //
     // Runs on the UI thread; WPF attached property callbacks are
     // UI-thread by contract.
@@ -204,8 +249,13 @@ public static class HighlightTextBehavior
     ///////////////////////////////////////////////////////////////////////////////////////////
     private static void Rebuild(TextBlock block)
     {
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "HighlightTextBehavior.Rebuild: region=" + GetRegion(block)
+            + " textLength=" + (GetText(block)?.Length ?? -1));
+
         string? text = GetText(block);
         IReadOnlyList<HighlightRange>? ranges = GetRanges(block);
+        HighlightRegionType region = GetRegion(block);
         Brush brush = GetMatchBrush(block) ?? DefaultMatchBrush;
 
         block.Inlines.Clear();
@@ -221,12 +271,23 @@ public static class HighlightTextBehavior
             return;
         }
 
-        int rangeCount = ranges.Count;
-        HighlightRange[] sorted = new HighlightRange[rangeCount];
-        for (int i = 0; i < rangeCount; i++)
+        List<HighlightRange> filtered = new List<HighlightRange>();
+        for (int i = 0; i < ranges.Count; i++)
         {
-            sorted[i] = ranges[i];
+            HighlightRange r = ranges[i];
+            if (r.Region == region)
+            {
+                filtered.Add(r);
+            }
         }
+
+        if (filtered.Count == 0)
+        {
+            block.Inlines.Add(new Run(text));
+            return;
+        }
+
+        HighlightRange[] sorted = filtered.ToArray();
         System.Array.Sort(sorted, (a, b) => a.Start.CompareTo(b.Start));
 
         int textLength = text.Length;
@@ -309,9 +370,9 @@ public static class HighlightTextBehavior
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "HighlightTextBehavior.Rebuild: textLength=" + textLength
-            + " inputRanges=" + rangeCount
+            + " inputRanges=" + ranges.Count
+            + " filteredRanges=" + filtered.Count
             + " skipped=" + skippedRanges
             + " emittedRuns=" + emittedRuns);
     }
-
 }
