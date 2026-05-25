@@ -45,10 +45,11 @@ public class OpcodeTracePresenter
     private string _lastAppliedQuery;
     private byte[]? _searchQueryBytes;
     private int _matchCount;
-    private OpcodeTraceRow? _firstMatch;
     private SearchQueryType _searchQueryType;
+    private OpcodeTraceRow? _cursorRow;
+    private int _cursorMatchIndex;
+    private int _cursorOrdinal;
     private bool _searchWrap;
-
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeTracePresenter (constructor)
@@ -71,8 +72,10 @@ public class OpcodeTracePresenter
         _lastAppliedQuery = string.Empty;
         _searchQueryBytes = null;
         _matchCount = 0;
-        _firstMatch = null;
         _searchQueryType = SearchQueryType.Empty;
+        _cursorRow = null;
+        _cursorOrdinal = 0;
+        _cursorMatchIndex = -1;
 
         _sessionAddedHandler = OnSessionAdded;
         GlassContext.SignalBus.Subscribe(_sessionAddedHandler);
@@ -84,13 +87,22 @@ public class OpcodeTracePresenter
             return _matchCount;
         }
     }
-
-    public OpcodeTraceRow? FirstMatch
+    public OpcodeTraceRow? CursorRow
     {
-        get
-        {
-            return _firstMatch;
-        }
+        get { return _cursorRow; }
+    }
+    public int CursorMatchIndex
+    {
+        get { return _cursorMatchIndex; }
+    }
+    public int CursorOrdinal
+    {
+        get { return _cursorOrdinal; }
+    }
+
+    public string SearchQuery
+    {
+        get { return _searchQuery; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -524,6 +536,7 @@ public class OpcodeTracePresenter
 
         return sb.ToString();
     }
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // LocateHexDumpHighlights
     //
@@ -531,7 +544,9 @@ public class OpcodeTracePresenter
     // and SearchMatches to the row's lists.  For each payload match, one SearchMatch
     // is appended carrying the character offset of the first hex column character of
     // the match, and two HighlightRanges are appended per line the match spans (one
-    // over the hex column, one over the ASCII gutter).  ASCII queries fold 'A'-'Z'
+    // over the hex column, one over the ASCII gutter).  Every HighlightRange emitted
+    // for a single match carries the same MatchIndex, which is the index that
+    // SearchMatch occupies in the row's Matches list.  ASCII queries fold 'A'-'Z'
     // to 'a'-'z' on both sides during comparison.  In Fast mode collapsed rows are
     // skipped.
     //
@@ -561,11 +576,7 @@ public class OpcodeTracePresenter
 
         bool caseInsensitive = _searchQueryType == SearchQueryType.Ascii;
 
-        // Each formatted line is a fixed width.  Compute it once.
-        // 8 chars offset + 2 spaces + (16 bytes * 3 chars per byte) + 1 extra space between
-        // bytes 7 and 8 + 1 "|" + 16 ASCII chars + 1 "|" + 1 newline.
         int lineWidth = 8 + 2 + (16 * 3) + 1 + 1 + 16 + 1 + 1;
-
         int hexColumnOffset = 8 + 2;
         int asciiColumnOffset = 8 + 2 + (16 * 3) + 1 + 1;
 
@@ -613,6 +624,8 @@ public class OpcodeTracePresenter
                 matchHexStartInLine += 1;
             }
             int matchCharOffset = firstLine * lineWidth + matchHexStartInLine;
+
+            int matchIndex = row.Matches.Count;
             row.Matches.Add(new SearchMatch(HighlightRegionType.Hex, matchCharOffset));
 
             for (int lineIndex = firstLine; lineIndex <= lastLine; lineIndex++)
@@ -642,21 +655,24 @@ public class OpcodeTracePresenter
 
                 int lineStartInString = lineIndex * lineWidth;
 
-                row.Highlights.Add(new HighlightRange(HighlightRegionType.Hex, lineStartInString + hexStartInLine, hexLength));
+                row.Highlights.Add(new HighlightRange(HighlightRegionType.Hex,
+                    lineStartInString + hexStartInLine, hexLength, matchIndex, null));
 
                 int asciiStartInLine = asciiColumnOffset + withinLineByteIndex;
-                row.Highlights.Add(new HighlightRange(HighlightRegionType.Hex, lineStartInString + asciiStartInLine, sliceLength));
+                row.Highlights.Add(new HighlightRange(HighlightRegionType.Hex,
+                    lineStartInString + asciiStartInLine, sliceLength, matchIndex, null));
             }
         }
     }
-
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // LocateFieldHighlights
     //
     // Scans the row's field text for case-insensitive occurrences of the active
     // query, appending a HighlightRange and a SearchMatch per occurrence to the
-    // row's lists.  In Fast mode collapsed rows are skipped.
+    // row's lists.  Each emitted HighlightRange carries the index it occupies in
+    // the row's Matches list so the view can later identify which range belongs
+    // to which SearchMatch.  In Fast mode collapsed rows are skipped.
     //
     // row:   The row whose field text is scanned.
     // mode:  Search mode gating body scans for collapsed rows.
@@ -682,7 +698,9 @@ public class OpcodeTracePresenter
             {
                 break;
             }
-            row.Highlights.Add(new HighlightRange(HighlightRegionType.Field, found, _searchQuery.Length));
+            int matchIndex = row.Matches.Count;
+            row.Highlights.Add(new HighlightRange(HighlightRegionType.Field, found,
+                _searchQuery.Length, matchIndex, null));
             row.Matches.Add(new SearchMatch(HighlightRegionType.Field, found));
             scanPos = found + _searchQuery.Length;
         }
@@ -693,7 +711,9 @@ public class OpcodeTracePresenter
     //
     // Tests each of the row's summary cells against the active query and appends a
     // full-cell HighlightRange and a SearchMatch to the row's lists for each cell
-    // that matches case-insensitively.
+    // that matches case-insensitively.  Each emitted HighlightRange carries the
+    // index it occupies in the row's Matches list so the view can later identify
+    // which range belongs to which SearchMatch.
     //
     // row:  The row whose summary cells are checked.
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -701,22 +721,112 @@ public class OpcodeTracePresenter
     {
         if (row.TimestampLocal.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
         {
-            row.Highlights.Add(new HighlightRange(HighlightRegionType.SummaryTimestamp, 0, row.TimestampLocal.Length));
+            int matchIndex = row.Matches.Count;
+            row.Highlights.Add(new HighlightRange(HighlightRegionType.SummaryTimestamp, 0,
+                row.TimestampLocal.Length, matchIndex, null));
             row.Matches.Add(new SearchMatch(HighlightRegionType.SummaryTimestamp, 0));
         }
 
         if (row.OpcodeHex.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
         {
-            row.Highlights.Add(new HighlightRange(HighlightRegionType.SummaryOpcodeHex, 0, row.OpcodeHex.Length));
+            int matchIndex = row.Matches.Count;
+            row.Highlights.Add(new HighlightRange(HighlightRegionType.SummaryOpcodeHex, 0,
+                row.OpcodeHex.Length, matchIndex, null));
             row.Matches.Add(new SearchMatch(HighlightRegionType.SummaryOpcodeHex, 0));
         }
 
         if (row.OpcodeName.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
         {
-            row.Highlights.Add(new HighlightRange(HighlightRegionType.SummaryOpcodeName, 0, row.OpcodeName.Length));
+            int matchIndex = row.Matches.Count;
+            row.Highlights.Add(new HighlightRange(HighlightRegionType.SummaryOpcodeName, 0,
+                row.OpcodeName.Length, matchIndex, null));
             row.Matches.Add(new SearchMatch(HighlightRegionType.SummaryOpcodeName, 0));
         }
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ApplyCursorHighlightColor
+    //
+    // Visually distinguishes the cursor's match from the rest by giving the
+    // HighlightRange that belongs to the cursor's match a per-range color
+    // override, and clearing any override on the row the cursor previously
+    // occupied.
+    //
+    // When previousCursorRow is non-null and is the same row as the new
+    // cursor row, the row is touched once: every range with an override is
+    // rebuilt to clear it, then the first range whose MatchIndex equals
+    // _cursorMatchIndex is rebuilt with the cursor color.  Otherwise the
+    // previous row has its overrides cleared in one pass and the new row
+    // has the cursor color applied in a second pass.
+    //
+    // In both passes the row's Highlights list is reassigned through the
+    // row's setter so the bound HighlightTextBehavior.Ranges dependency
+    // property sees a value change and rebuilds the TextBlock inlines.
+    //
+    // previousCursorRow:  The row the cursor was on before the current
+    //                     advance, or null when no prior cursor existed.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void ApplyCursorHighlightColor(OpcodeTraceRow? previousCursorRow)
+    {
+        const uint cursorColor = 0x800000FF;
+
+        OpcodeTraceRow? newCursorRow = _cursorRow;
+
+        if (previousCursorRow != null
+            && !object.ReferenceEquals(previousCursorRow, newCursorRow))
+        {
+            List<HighlightRange> cleared = new List<HighlightRange>(previousCursorRow.Highlights.Count);
+            for (int i = 0; i < previousCursorRow.Highlights.Count; i++)
+            {
+                HighlightRange r = previousCursorRow.Highlights[i];
+                if (r.OverrideColor.HasValue)
+                {
+                    cleared.Add(new HighlightRange(r.Region, r.Start, r.Length, r.MatchIndex, null));
+                }
+                else
+                {
+                    cleared.Add(r);
+                }
+            }
+            previousCursorRow.Highlights = cleared;
+        }
+
+        if (newCursorRow == null || _cursorMatchIndex < 0)
+        {
+            return;
+        }
+
+        List<HighlightRange> rebuilt = new List<HighlightRange>(newCursorRow.Highlights.Count);
+        bool colorApplied = false;
+        for (int i = 0; i < newCursorRow.Highlights.Count; i++)
+        {
+            HighlightRange r = newCursorRow.Highlights[i];
+
+            if (object.ReferenceEquals(previousCursorRow, newCursorRow) && r.OverrideColor.HasValue)
+            {
+                r = new HighlightRange(r.Region, r.Start, r.Length, r.MatchIndex, null);
+            }
+
+            if (!colorApplied && r.MatchIndex == _cursorMatchIndex)
+            {
+                rebuilt.Add(new HighlightRange(r.Region, r.Start, r.Length, r.MatchIndex, cursorColor));
+                colorApplied = true;
+            }
+            else
+            {
+                rebuilt.Add(r);
+            }
+        }
+        newCursorRow.Highlights = rebuilt;
+
+        if (!colorApplied)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "OpcodeTracePresenter.ApplyCursorHighlightColor: no range matched cursor matchIndex="
+                + _cursorMatchIndex);
+        }
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // TryParseHexQuery
     //
@@ -865,25 +975,33 @@ public class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     // SetSearchQuery
     //
-    // Stores the user's search query on the presenter.  The query persists across
-    // expand/collapse and Refresh, used by FindNext, FindPrevious, FindAll, and by row
-    // population paths to apply highlights when a row is expanded under an active search.
+    // Assigns the active search query and clears the cursor match index.
     //
-    // Passing null or whitespace-only clears the query.
+    // An empty or whitespace-only query resets the query state to Empty,
+    // discards the byte form, and clears every row's highlights and
+    // matches.  A non-empty query is classified as Hex or Ascii and the
+    // byte form is set accordingly; row highlights and matches are left in
+    // place to be overwritten by the next recompute.
     //
-    // query:  The user's typed search string, or null to clear.
+    // query:  The new search query, or null/whitespace to clear.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public void SetSearchQuery(string? query)
     {
+        _cursorMatchIndex = -1;
+        _matchCount = 0;
+        _cursorOrdinal = 0;
+
         if (string.IsNullOrWhiteSpace(query))
         {
             _searchQuery = string.Empty;
             _searchQueryType = SearchQueryType.Empty;
             _searchQueryBytes = null;
+            ClearHighlights();
             DebugLog.Write(LogChannel.InferenceDebug,
                 "OpcodeTracePresenter.SetSearchQuery: cleared");
             return;
         }
+
         _searchQuery = query;
         byte[]? hexBytes = TryParseHexQuery(query);
         if (hexBytes != null)
@@ -918,132 +1036,297 @@ public class OpcodeTracePresenter
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // FindInDirection
+    // FindNext
     //
-    // Shared worker for FindNext and FindPrevious.  Walks _rows in the given direction
-    // starting from the position immediately after (or before) selectedRow, returning the
-    // first row that matches the active search query.
+    // Advances the search cursor forward by one match and returns the
+    // SearchMatch at the new cursor position, or null when no further
+    // match exists.
     //
-    // If selectedRow is null or not in _rows (e.g. stale after Refresh), the walk starts
-    // from the appropriate end of the list — index 0 for forward, _rows.Count-1 for
-    // backward.
+    // A search is active when _cursorMatchIndex is non-negative.  When
+    // active, iteration starts at the match immediately after the cursor,
+    // on the cursor's row when _cursorRow is non-null and present in
+    // _rows, otherwise on row 0.  When not active, every row's Matches
+    // list is recomputed against the current query using mode, and
+    // iteration starts at the first match on selectedRow when non-null
+    // and present in _rows, otherwise on row 0.
     //
-    // Walks until a match is found, the end of the list is reached, or the starting
-    // position is revisited.  When _searchWrap is true, hitting the end of the list
-    // restarts at the opposite end and continues toward the starting position.  When
-    // false, hitting the end stops the walk without wrapping.
+    // Iteration walks rows forward.  With _searchWrap true, iteration
+    // continues from row 0 after reaching the end and stops once every
+    // row has been visited.  With _searchWrap false, iteration stops at
+    // the end of _rows.
     //
-    // Each visited row has its highlights recomputed before the match test.
+    // On a non-null return the cursor is updated.  On a null return the
+    // cursor is left unchanged.  Does not modify the list view's
+    // selection.
     //
-    // Returns null when no match exists in the searchable range.
+    // selectedRow:  Row to seed iteration when no search is active.  May
+    //               be null.  Ignored when a search is active.
+    // mode:         Search mode passed to RecomputeRowHighlights when
+    //               this call triggers the initial search.
     //
-    // selectedRow:  The currently selected row, or null.
-    // direction:    +1 for forward, -1 for backward.
-    // mode:         Search mode to apply at the per-row highlight recompute.
-    //
-    // Returns:      The first matching row in the walk, or null.
+    // returns:      The SearchMatch at the new cursor position, or null.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private OpcodeTraceRow? FindInDirection(OpcodeTraceRow? selectedRow, int direction, SearchMode mode)
+    public SearchMatch? FindNext(OpcodeTraceRow? selectedRow, SearchMode mode)
     {
-        if (_searchQueryType == SearchQueryType.Empty)
-        {
-            return null;
-        }
         int rowCount = _rows.Count;
         if (rowCount == 0)
         {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "OpcodeTracePresenter.FindNext: no rows");
             return null;
         }
-        int selectedIndex = -1;
-        if (selectedRow != null)
+
+        int startRowIndex;
+        int startMatchIndex;
+
+        // Pick the starting position for iteration.
+        if (_cursorMatchIndex >= 0)
         {
-            for (int i = 0; i < rowCount; i++)
+            // Search is active.  Resume from the row and match after the cursor.
+            startRowIndex = 0;
+            if (_cursorRow != null)
             {
-                if (object.ReferenceEquals(_rows[i], selectedRow))
+                int found = _rows.IndexOf(_cursorRow);
+                if (found >= 0)
                 {
-                    selectedIndex = i;
-                    break;
+                    startRowIndex = found;
                 }
             }
-        }
-        int startIndex;
-        if (selectedIndex >= 0)
-        {
-            startIndex = selectedIndex + direction;
-        }
-        else if (direction > 0)
-        {
-            startIndex = 0;
+            startMatchIndex = _cursorMatchIndex + 1;
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "OpcodeTracePresenter.FindNext: active search, resuming at rowIndex="
+                + startRowIndex + " matchIndex=" + startMatchIndex);
         }
         else
         {
-            startIndex = rowCount - 1;
-        }
-        int currentIndex = startIndex;
-        int stepsTaken = 0;
-        while (stepsTaken < rowCount)
-        {
-            if (currentIndex < 0 || currentIndex >= rowCount)
+            // No search is active.  Recompute every row's matches against
+            // the current query, then seed iteration at the selected row.
+            int totalMatches = 0;
+            for (int i = 0; i < rowCount; i++)
             {
-                if (!_searchWrap)
-                {
-                    return null;
-                }
-                if (direction > 0)
-                {
-                    currentIndex = 0;
-                }
-                else
-                {
-                    currentIndex = rowCount - 1;
-                }
+                totalMatches += RecomputeRowHighlights(_rows[i], mode);
             }
-            OpcodeTraceRow row = _rows[currentIndex];
-            int rowMatches = RecomputeRowHighlights(row, mode);
-            if (rowMatches > 0)
-            {
-                _firstMatch = row;
-                _matchCount = rowMatches;
-                return row;
-            }
-            currentIndex = currentIndex + direction;
-            stepsTaken = stepsTaken + 1;
-        }
-        return null;
-    }
+            _matchCount = totalMatches;
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "OpcodeTracePresenter.FindNext: recompute located " + totalMatches
+                + " matches across " + rowCount + " rows");
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // FindNext
-    //
-    // Returns the next row after selectedRow that matches the active search query, or
-    // null if none exists in the searchable range.  When selectedRow is null or stale,
-    // the walk starts at the top of the list.  Honors the wrap setting.
-    //
-    // selectedRow:  The currently selected row, or null.
-    // mode:         Search mode to apply at the per-row predicate.
-    //
-    // Returns:      The next matching row, or null.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public OpcodeTraceRow? FindNext(OpcodeTraceRow? selectedRow, SearchMode mode)
-    {
-        return FindInDirection(selectedRow, 1, mode);
+            startRowIndex = 0;
+            if (selectedRow != null)
+            {
+                int found = _rows.IndexOf(selectedRow);
+                if (found >= 0)
+                {
+                    startRowIndex = found;
+                }
+            }
+            startMatchIndex = 0;
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "OpcodeTracePresenter.FindNext: no active search, starting at rowIndex="
+                + startRowIndex + " matchIndex=" + startMatchIndex);
+        }
+
+        // With wrap on, visit every row in turn starting from startRowIndex.
+        // Without wrap, visit only from startRowIndex to the end of _rows.
+        int rowsToVisit;
+        if (_searchWrap == true)
+        {
+            rowsToVisit = rowCount + 1;
+        }
+        else
+        {
+            rowsToVisit = rowCount - startRowIndex;
+        }
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "OpcodeTracePresenter.FindNext: wrap=" + _searchWrap
+            + " rowsToVisit=" + rowsToVisit);
+
+        // Walk rows forward, returning the first match found.  The very
+        // first row's first candidate is startMatchIndex; on every later
+        // row the first candidate is index 0.
+        for (int step = 0; step < rowsToVisit; step++)
+        {
+            int rowIndex = (startRowIndex + step) % rowCount;
+            OpcodeTraceRow row = _rows[rowIndex];
+
+            int firstCandidate;
+            if (step == 0)
+            {
+                firstCandidate = startMatchIndex;
+            }
+            else
+            {
+                firstCandidate = 0;
+            }
+
+            // increment with wrap
+            if (firstCandidate < row.Matches.Count)
+            {
+                OpcodeTraceRow? previousCursorRow = _cursorRow;
+                _cursorRow = row;
+                _cursorMatchIndex = firstCandidate;
+                _cursorOrdinal = _cursorOrdinal + 1;
+                if (_cursorOrdinal > _matchCount)
+                {
+                    _cursorOrdinal = 1;
+                }
+                ApplyCursorHighlightColor(previousCursorRow);
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "OpcodeTracePresenter.FindNext: cursor at rowIndex=" + rowIndex
+                    + " matchIndex=" + firstCandidate
+                    + " ordinal=" + _cursorOrdinal);
+                return row.Matches[firstCandidate];
+            }
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "OpcodeTracePresenter.FindNext: no match, cursor unchanged");
+        return null;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // FindPrevious
     //
-    // Returns the previous row before selectedRow that matches the active search query,
-    // or null if none exists in the searchable range.  When selectedRow is null or stale,
-    // the walk starts at the bottom of the list.  Honors the wrap setting.
+    // Advances the search cursor backward by one match and returns the
+    // SearchMatch at the new cursor position, or null when no further
+    // match exists.
     //
-    // selectedRow:  The currently selected row, or null.
-    // mode:         Search mode to apply at the per-row predicate.
+    // A search is active when _cursorMatchIndex is non-negative.  When
+    // active, iteration starts at the match immediately before the cursor,
+    // on the cursor's row when _cursorRow is non-null and present in
+    // _rows, otherwise on the last row.  When not active, every row's
+    // Matches list is recomputed against the current query using mode,
+    // and iteration starts at the last match on the last row of _rows.
+    // The selectedRow parameter is ignored.
     //
-    // Returns:      The previous matching row, or null.
+    // Iteration walks rows backward.  With _searchWrap true, iteration
+    // continues from the last row after reaching row 0 and stops once
+    // every row has been visited.  With _searchWrap false, iteration
+    // stops at row 0.
+    //
+    // On a non-null return the cursor is updated.  On a null return the
+    // cursor is left unchanged.  Does not modify the list view's
+    // selection.
+    //
+    // selectedRow:  Ignored.  Present for symmetry with FindNext.
+    // mode:         Search mode passed to RecomputeRowHighlights when
+    //               this call triggers the initial search.
+    //
+    // returns:      The SearchMatch at the new cursor position, or null.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public OpcodeTraceRow? FindPrevious(OpcodeTraceRow? selectedRow, SearchMode mode)
+    public SearchMatch? FindPrevious(OpcodeTraceRow? selectedRow, SearchMode mode)
     {
-        return FindInDirection(selectedRow, -1, mode);
+        int rowCount = _rows.Count;
+        if (rowCount == 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "OpcodeTracePresenter.FindPrevious: no rows");
+            return null;
+        }
+
+        int startRowIndex;
+        int startMatchIndex;
+
+        // Pick the starting position for iteration.
+        if (_cursorMatchIndex >= 0)
+        {
+            // Search is active.  Resume from the row and match before the cursor.
+            startRowIndex = rowCount - 1;
+            if (_cursorRow != null)
+            {
+                int found = _rows.IndexOf(_cursorRow);
+                if (found >= 0)
+                {
+                    startRowIndex = found;
+                }
+            }
+            startMatchIndex = _cursorMatchIndex - 1;
+        }
+        else
+        {
+            // No search is active.  Recompute every row's matches against
+            // the current query, then seed iteration at the last row.
+            int totalMatches = 0;
+            for (int i = 0; i < rowCount; i++)
+            {
+                totalMatches += RecomputeRowHighlights(_rows[i], mode);
+            }
+            _matchCount = totalMatches;
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "OpcodeTracePresenter.FindPrevious: recompute located " + totalMatches
+                + " matches across " + rowCount + " rows");
+
+            startRowIndex = rowCount - 1;
+            startMatchIndex = int.MaxValue;
+        }
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "OpcodeTracePresenter.FindPrevious: starting at rowIndex=" + startRowIndex
+            + " matchIndex=" + startMatchIndex);
+
+        // With wrap on, visit every row in turn starting from startRowIndex
+        // going backward, plus one extra to revisit the start row.  Without
+        // wrap, visit only from startRowIndex down to row 0.
+        int rowsToVisit;
+        if (_searchWrap == true)
+        {
+            rowsToVisit = rowCount + 1;
+        }
+        else
+        {
+            rowsToVisit = startRowIndex + 1;
+        }
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "OpcodeTracePresenter.FindPrevious: wrap=" + _searchWrap
+            + " rowsToVisit=" + rowsToVisit);
+
+        // Walk rows backward, returning the first match found.  On the
+        // first row the candidate is min(startMatchIndex, Matches.Count - 1);
+        // on every later row the candidate is Matches.Count - 1.  When the
+        // resulting candidate is negative the row has nothing to offer in
+        // the backward direction and we move on.
+        for (int step = 0; step < rowsToVisit; step++)
+        {
+            int rowIndex = ((startRowIndex - step) % rowCount + rowCount) % rowCount;
+            OpcodeTraceRow row = _rows[rowIndex];
+            int matchCount = row.Matches.Count;
+
+            int candidate;
+            if (step == 0)
+            {
+                candidate = startMatchIndex;
+                if (candidate > matchCount - 1)
+                {
+                    candidate = matchCount - 1;
+                }
+            }
+            else
+            {
+                candidate = matchCount - 1;
+            }
+
+            // decrement with wrap
+            if (candidate >= 0)
+            {
+                OpcodeTraceRow? previousCursorRow = _cursorRow;
+                _cursorRow = row;
+                _cursorMatchIndex = candidate;
+                _cursorOrdinal = _cursorOrdinal - 1;
+                if (_cursorOrdinal < 1)
+                {
+                    _cursorOrdinal = _matchCount;
+                }
+                ApplyCursorHighlightColor(previousCursorRow);
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "OpcodeTracePresenter.FindPrevious: cursor at rowIndex=" + rowIndex
+                    + " matchIndex=" + candidate
+                    + " ordinal=" + _cursorOrdinal);
+                return row.Matches[candidate];
+            }
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "OpcodeTracePresenter.FindPrevious: no match, cursor unchanged");
+        return null;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1061,7 +1344,7 @@ public class OpcodeTracePresenter
         if (_searchQueryType == SearchQueryType.Empty)
         {
             _matchCount = 0;
-            _firstMatch = null;
+            //_firstMatch = null;
             _lastAppliedQuery = _searchQuery;
             return;
         }
@@ -1072,7 +1355,7 @@ public class OpcodeTracePresenter
         }
 
         _matchCount = 0;
-        _firstMatch = null;
+       // _firstMatch = null;
 
         for (int i = 0; i < _rows.Count; i++)
         {
@@ -1081,10 +1364,10 @@ public class OpcodeTracePresenter
             if (rowMatches > 0)
             {
                 _matchCount += rowMatches;
-                if (_firstMatch == null)
+/*                if (_firstMatch == null)
                 {
                     _firstMatch = row;
-                }
+                }*/
             }
         }
 

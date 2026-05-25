@@ -60,7 +60,7 @@ public static class HighlightTextBehavior
             "Region",
             typeof(HighlightRegionType),
             typeof(HighlightTextBehavior),
-            new PropertyMetadata(HighlightRegionType.Field, OnRegionChanged));
+            new PropertyMetadata(HighlightRegionType.None, OnRegionChanged));
 
     public static readonly DependencyProperty TextProperty =
         DependencyProperty.RegisterAttached(
@@ -249,10 +249,6 @@ public static class HighlightTextBehavior
     ///////////////////////////////////////////////////////////////////////////////////////////
     private static void Rebuild(TextBlock block)
     {
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "HighlightTextBehavior.Rebuild: region=" + GetRegion(block)
-            + " textLength=" + (GetText(block)?.Length ?? -1));
-
         string? text = GetText(block);
         IReadOnlyList<HighlightRange>? ranges = GetRanges(block);
         HighlightRegionType region = GetRegion(block);
@@ -354,7 +350,21 @@ public static class HighlightTextBehavior
 
             string match = text.Substring(rangeStart, rangeEnd - rangeStart);
             Run highlighted = new Run(match);
-            highlighted.Background = brush;
+            if (range.OverrideColor.HasValue)
+            {
+                uint argb = range.OverrideColor.Value;
+                SolidColorBrush overrideBrush = new SolidColorBrush(Color.FromArgb(
+                    (byte)((argb >> 24) & 0xFF),
+                    (byte)((argb >> 16) & 0xFF),
+                    (byte)((argb >> 8) & 0xFF),
+                    (byte)(argb & 0xFF)));
+                overrideBrush.Freeze();
+                highlighted.Background = overrideBrush;
+            }
+            else
+            {
+                highlighted.Background = brush;
+            }
             block.Inlines.Add(highlighted);
             emittedRuns++;
 

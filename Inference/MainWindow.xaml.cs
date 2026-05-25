@@ -9,6 +9,7 @@ using Glass.Network.Protocol.Fields;
 using Inference.Core;
 using Inference.Dialogs;
 using Inference.Models;
+using Inference.UI;
 using Microsoft.Data.Sqlite;
 using System;
 using System.Collections.Generic;
@@ -23,6 +24,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using static Glass.Network.Protocol.SoeConstants;
 
 namespace Inference;
@@ -1074,19 +1076,22 @@ public partial class MainWindow : Window
             "CheckBoxOpcodeTraceFindWrap_Changed: wrap=" + wrap);
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // Button_OpcodeTraceFindNext_Click
     //
-    // Advances the trace selection to the next row matching the active search query.
-    // When a match is found, the row is selected, scrolled into view, and the status
-    // text reports the row index.  When no match exists, the status text reports
-    // "No match" and the selection is left alone.
+    // Pushes the find text box's current text into the presenter only when
+    // it differs from the presenter's existing search query, then advances
+    // the presenter's search cursor forward by one match.  On success the
+    // cursor row and the matched character offset are scrolled into view
+    // and the status text reports the total match count; on failure the
+    // status text reports "No match" and the viewport is not changed.
+    // Does not modify the list view's selection.
     //
     // Guards against early firing during XAML load.
     //
     // sender:  The Find Next button on the find bar.
     // e:       Routed event args.
-    ///////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////
     private void Button_OpcodeTraceFindNext_Click(object sender, RoutedEventArgs e)
     {
         if (_opcodeTracePresenter == null)
@@ -1096,11 +1101,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        _opcodeTracePresenter.SetSearchQuery(TextBoxOpcodeTraceFind.Text);
+        string typedText = TextBoxOpcodeTraceFind.Text ?? string.Empty;
+        if (typedText != _opcodeTracePresenter.SearchQuery)
+        {
+            _opcodeTracePresenter.SetSearchQuery(typedText);
+        }
 
         OpcodeTraceRow? selectedRow = OpcodeTraceList.SelectedItem as OpcodeTraceRow;
-        OpcodeTraceRow? match = _opcodeTracePresenter.FindNext(selectedRow, SearchMode.Fast);
-
+        SearchMatch? match = _opcodeTracePresenter.FindNext(selectedRow, SearchMode.Fast);
         if (match == null)
         {
             StatusBarFindText.Text = "No match";
@@ -1108,27 +1116,34 @@ public partial class MainWindow : Window
                 "Button_OpcodeTraceFindNext_Click: no match");
             return;
         }
-
-        OpcodeTraceList.SelectedItem = match;
-        OpcodeTraceList.ScrollIntoView(match);
-        StatusBarFindText.Text = _opcodeTracePresenter.MatchCount + " matches";
+        OpcodeTraceRow? cursorRow = _opcodeTracePresenter.CursorRow;
+        if (cursorRow != null)
+        {
+            ScrollMatchIntoView(cursorRow, match.Value);
+            StatusBarRowText.Text = "Message " + cursorRow.PacketIndex;
+        }
+        StatusBarFindText.Text = _opcodeTracePresenter.CursorOrdinal
+            + "/" + _opcodeTracePresenter.MatchCount + " matches";
         DebugLog.Write(LogChannel.InferenceDebug,
-            "Button_OpcodeTraceFindNext_Click: matched packetIndex=" + match.PacketIndex);
+            "Button_OpcodeTraceFindNext_Click: match found");
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // Button_OpcodeTraceFindPrevious_Click
     //
-    // Moves the trace selection backward to the previous row matching the active
-    // search query.  When a match is found, the row is selected, scrolled into view,
-    // and the status text reports the row index.  When no match exists, the status
-    // text reports "No match" and the selection is left alone.
+    // Pushes the find text box's current text into the presenter only when
+    // it differs from the presenter's existing search query, then advances
+    // the presenter's search cursor backward by one match.  On success the
+    // cursor row and the matched character offset are scrolled into view
+    // and the status text reports the total match count; on failure the
+    // status text reports "No match" and the viewport is not changed.
+    // Does not modify the list view's selection.
     //
     // Guards against early firing during XAML load.
     //
     // sender:  The Find Previous button on the find bar.
     // e:       Routed event args.
-    ///////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////
     private void Button_OpcodeTraceFindPrevious_Click(object sender, RoutedEventArgs e)
     {
         if (_opcodeTracePresenter == null)
@@ -1138,11 +1153,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        _opcodeTracePresenter.SetSearchQuery(TextBoxOpcodeTraceFind.Text);
+        string typedText = TextBoxOpcodeTraceFind.Text ?? string.Empty;
+        if (typedText != _opcodeTracePresenter.SearchQuery)
+        {
+            _opcodeTracePresenter.SetSearchQuery(typedText);
+        }
 
         OpcodeTraceRow? selectedRow = OpcodeTraceList.SelectedItem as OpcodeTraceRow;
-        OpcodeTraceRow? match = _opcodeTracePresenter.FindPrevious(selectedRow, SearchMode.Fast);
-
+        SearchMatch? match = _opcodeTracePresenter.FindPrevious(selectedRow, SearchMode.Fast);
         if (match == null)
         {
             StatusBarFindText.Text = "No match";
@@ -1150,12 +1168,341 @@ public partial class MainWindow : Window
                 "Button_OpcodeTraceFindPrevious_Click: no match");
             return;
         }
-
-        OpcodeTraceList.SelectedItem = match;
-        OpcodeTraceList.ScrollIntoView(match);
-        StatusBarFindText.Text = _opcodeTracePresenter.MatchCount + " matches";
+        OpcodeTraceRow? cursorRow = _opcodeTracePresenter.CursorRow;
+        if (cursorRow != null)
+        {
+            ScrollMatchIntoView(cursorRow, match.Value);
+            StatusBarRowText.Text = "Message " + cursorRow.PacketIndex;
+        }
+        StatusBarFindText.Text = _opcodeTracePresenter.CursorOrdinal
+            + "/" + _opcodeTracePresenter.MatchCount + " matches";
         DebugLog.Write(LogChannel.InferenceDebug,
-            "Button_OpcodeTraceFindPrevious_Click: matched packetIndex=" + match.PacketIndex);
+            "Button_OpcodeTraceFindPrevious_Click: match found");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FindRegionTextBlock
+    //
+    // Walks the visual tree under a ListViewItem container and returns the
+    // first TextBlock whose HighlightTextBehavior.Region attached property
+    // equals the requested region.  Returns null when no such TextBlock is
+    // realized under the container, which happens when the container has
+    // not yet been laid out or when the region belongs to a collapsed
+    // section of the row template.
+    //
+    // container:  The realized ListViewItem for the row of interest, as
+    //             returned by ItemContainerGenerator.ContainerFromItem.
+    // region:     The HighlightRegionType identifying which TextBlock to
+    //             locate.
+    //
+    // returns:    The matching TextBlock, or null when none is found.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static TextBlock? FindRegionTextBlock(DependencyObject container, HighlightRegionType region)
+    {
+        int childCount = VisualTreeHelper.GetChildrenCount(container);
+        for (int i = 0; i < childCount; i++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(container, i);
+
+            TextBlock? asTextBlock = child as TextBlock;
+            if (asTextBlock != null)
+            {
+                HighlightRegionType childRegion = HighlightTextBehavior.GetRegion(asTextBlock);
+                if (childRegion == region)
+                {
+                    DebugLog.Write(LogChannel.InferenceDebug,
+                        "MainWindow.FindRegionTextBlock: found TextBlock for region=" + region);
+                    return asTextBlock;
+                }
+            }
+
+            TextBlock? found = FindRegionTextBlock(child, region);
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ScrollOffsetIntoView
+    //
+    // Scrolls the ScrollViewer ancestor of a TextBlock so the character at
+    // the given offset is inside the viewport with a 20-pixel margin.  The
+    // character rectangle is obtained by resolving the character offset to
+    // a TextPointer through the TextBlock's Inlines, then asking that
+    // TextPointer for its forward character rect and transforming the rect
+    // into the ScrollViewer's coordinate space.  Both vertical and
+    // horizontal offsets are adjusted so the rectangle is visible.
+    //
+    // Returns silently with a log entry when the TextBlock has no
+    // ScrollViewer ancestor, when the offset is outside the TextBlock's
+    // rendered text, or when the resulting character rectangle is empty.
+    //
+    // text:    The TextBlock containing the match.
+    // offset:  Zero-based character offset within the TextBlock's rendered
+    //          text.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static void ScrollOffsetIntoView(TextBlock text, int offset)
+    {
+        const double margin = 20.0;
+
+        ScrollViewer? scroller = FindAncestorScrollViewer(text);
+        if (scroller == null)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MainWindow.ScrollOffsetIntoView: no ScrollViewer ancestor, ignoring");
+            return;
+        }
+
+        TextPointer? pointer = GetTextPointerAtCharacterOffset(text, offset);
+        if (pointer == null)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MainWindow.ScrollOffsetIntoView: offset " + offset + " could not be resolved to a TextPointer");
+            return;
+        }
+
+        Rect charRect = pointer.GetCharacterRect(LogicalDirection.Forward);
+        if (charRect.IsEmpty || double.IsInfinity(charRect.Top) || double.IsInfinity(charRect.Left))
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MainWindow.ScrollOffsetIntoView: empty character rect at offset " + offset);
+            return;
+        }
+
+        GeneralTransform toScroller = text.TransformToAncestor(scroller);
+        Rect rectInScroller = toScroller.TransformBounds(charRect);
+
+        double currentVertical = scroller.VerticalOffset;
+        double viewportHeight = scroller.ViewportHeight;
+        double rectTop = rectInScroller.Top + currentVertical;
+        double rectBottom = rectInScroller.Bottom + currentVertical;
+        double newVertical = currentVertical;
+
+        if (rectTop - margin < currentVertical)
+        {
+            newVertical = rectTop - margin;
+            if (newVertical < 0)
+            {
+                newVertical = 0;
+            }
+        }
+        else if (rectBottom + margin > currentVertical + viewportHeight)
+        {
+            newVertical = rectBottom + margin - viewportHeight;
+        }
+
+        double currentHorizontal = scroller.HorizontalOffset;
+        double viewportWidth = scroller.ViewportWidth;
+        double rectLeft = rectInScroller.Left + currentHorizontal;
+        double rectRight = rectInScroller.Right + currentHorizontal;
+        double newHorizontal = currentHorizontal;
+
+        if (rectLeft - margin < currentHorizontal)
+        {
+            newHorizontal = rectLeft - margin;
+            if (newHorizontal < 0)
+            {
+                newHorizontal = 0;
+            }
+        }
+        else if (rectRight + margin > currentHorizontal + viewportWidth)
+        {
+            newHorizontal = rectRight + margin - viewportWidth;
+        }
+
+        if (newVertical != currentVertical)
+        {
+            scroller.ScrollToVerticalOffset(newVertical);
+        }
+        if (newHorizontal != currentHorizontal)
+        {
+            scroller.ScrollToHorizontalOffset(newHorizontal);
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "MainWindow.ScrollOffsetIntoView: offset=" + offset
+            + " rectInScroller=(" + rectInScroller.Left + "," + rectInScroller.Top + ")"
+            + " newV=" + newVertical + " newH=" + newHorizontal);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ScrollMatchIntoView
+    //
+    // Brings a SearchMatch on a given row into the visible area of the
+    // trace list.  The outer ListView's ScrollViewer scrolls by item,
+    // not by pixel, so the row is brought into the outer viewport with
+    // ScrollIntoView and no pixel-offset math is applied to the outer
+    // scroller.  For matches in the expanded Field or Hex sections, the
+    // inner per-row ScrollViewer scrolls by pixel; the matched character
+    // offset is brought into that inner viewport through the dispatcher
+    // after the container has laid out.  Summary-region matches need no
+    // inner scroll because the summary TextBlock has no enclosing
+    // per-row ScrollViewer.
+    //
+    // Returns silently with a log entry when the row has no realized
+    // container or when the region's TextBlock is not found under the
+    // container.  Does not modify the list view's selection.
+    //
+    // row:    The row containing the match.
+    // match:  The SearchMatch identifying the region and character offset
+    //         to scroll into view.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void ScrollMatchIntoView(OpcodeTraceRow row, SearchMatch match)
+    {
+        OpcodeTraceList.ScrollIntoView(row);
+
+        HighlightRegionType region = match.Region;
+        if (region != HighlightRegionType.Field && region != HighlightRegionType.Hex)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MainWindow.ScrollMatchIntoView: summary region=" + region
+                + " row brought into view, no inner scroll needed");
+            return;
+        }
+
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new System.Action(() =>
+        {
+            DependencyObject? container = OpcodeTraceList.ItemContainerGenerator.ContainerFromItem(row);
+            if (container == null)
+            {
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "MainWindow.ScrollMatchIntoView: container not realized for row, ignoring");
+                return;
+            }
+
+            TextBlock? regionBlock = FindRegionTextBlock(container, region);
+            if (regionBlock == null)
+            {
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "MainWindow.ScrollMatchIntoView: no TextBlock for region=" + region
+                    + " under container");
+                return;
+            }
+
+            ScrollOffsetIntoView(regionBlock, match.Start);
+
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MainWindow.ScrollMatchIntoView: scrolled region=" + region
+                + " offset=" + match.Start + " for row packetIndex=" + row.PacketIndex);
+        }));
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FindAncestorScrollViewer
+    //
+    // Walks up the visual tree from a starting element and returns the
+    // nearest ScrollViewer ancestor.  Returns null when no ScrollViewer is
+    // found above the starting element.
+    //
+    // start:    The element from which to begin the upward walk.  May be
+    //           null, in which case null is returned.
+    //
+    // returns:  The nearest enclosing ScrollViewer, or null when none
+    //           exists above start.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static ScrollViewer? FindAncestorScrollViewer(DependencyObject? start)
+    {
+        if (start == null)
+        {
+            return null;
+        }
+
+        DependencyObject? current = VisualTreeHelper.GetParent(start);
+        while (current != null)
+        {
+            ScrollViewer? asScroller = current as ScrollViewer;
+            if (asScroller != null)
+            {
+                return asScroller;
+            }
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetTextPointerAtCharacterOffset
+    //
+    // Returns a TextPointer at the given character offset into a TextBlock's
+    // rendered text.  The TextBlock's text may be composed of multiple Run
+    // inlines (as produced by HighlightTextBehavior); the offset is into
+    // the concatenated visible text, not into the TextBlock's element-symbol
+    // space.
+    //
+    // Walks the TextBlock's Inlines, accumulating text length per Run.
+    // When the cumulative length reaches the requested offset, returns a
+    // TextPointer at the position inside that Run.  Returns null when the
+    // offset is past the end of the rendered text or when the TextBlock
+    // contains inline types other than Run that this helper does not know
+    // how to traverse.
+    //
+    // text:    The TextBlock whose rendered text is being indexed.
+    // offset:  Zero-based character offset into the concatenated rendered
+    //          text.
+    //
+    // returns: A TextPointer at the requested character position, or null
+    //          when the offset is out of range.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static TextPointer? GetTextPointerAtCharacterOffset(TextBlock text, int offset)
+    {
+        if (offset < 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MainWindow.GetTextPointerAtCharacterOffset: negative offset " + offset);
+            return null;
+        }
+
+        int totalRunLength = 0;
+        foreach (Inline countInline in text.Inlines)
+        {
+            Run? countRun = countInline as Run;
+            if (countRun != null)
+            {
+                totalRunLength += countRun.Text.Length;
+            }
+        }
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "MainWindow.GetTextPointerAtCharacterOffset: offset=" + offset
+            + " text.Text.Length=" + (text.Text?.Length ?? -1)
+            + " totalRunLength=" + totalRunLength
+            + " inlineCount=" + text.Inlines.Count);
+
+        int remaining = offset;
+        foreach (Inline inline in text.Inlines)
+        {
+            Run? run = inline as Run;
+            if (run == null)
+            {
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "MainWindow.GetTextPointerAtCharacterOffset: non-Run inline encountered, cannot traverse");
+                return null;
+            }
+
+            int runLength = run.Text.Length;
+            if (remaining <= runLength)
+            {
+                TextPointer? pointer = run.ContentStart.GetPositionAtOffset(remaining, LogicalDirection.Forward);
+                if (pointer == null)
+                {
+                    DebugLog.Write(LogChannel.InferenceDebug,
+                        "MainWindow.GetTextPointerAtCharacterOffset: Run.ContentStart returned null for offset "
+                        + remaining + " within run of length " + runLength);
+                }
+                return pointer;
+            }
+
+            remaining = remaining - runLength;
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "MainWindow.GetTextPointerAtCharacterOffset: offset " + offset
+            + " past end of rendered text");
+        return null;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////
@@ -1214,7 +1561,7 @@ public partial class MainWindow : Window
         _opcodeTracePresenter.SetSearchQuery(TextBoxOpcodeTraceFind.Text);
         _opcodeTracePresenter.FindAll(SearchMode.Fast);
 
-        OpcodeTraceRow? firstMatch = _opcodeTracePresenter.FirstMatch;
+        OpcodeTraceRow? firstMatch = null;
         int matchCount = _opcodeTracePresenter.MatchCount;
 
         if (firstMatch == null)
@@ -1881,66 +2228,6 @@ public partial class MainWindow : Window
     private void Button_OpcodeTraceManage_Click(object sender, RoutedEventArgs e)
     {
         DebugLog.Write(LogChannel.Opcodes, "Button_OpcodeTraceManage_Click: manage requested (stub, not yet implemented)");
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////
-    // RebuildHighlightedInlines
-    //
-    // Clears the target TextBlock's Inlines collection and rebuilds it as a sequence of
-    // Run elements: an unhighlighted Run for the text before each highlight range, a
-    // highlighted Run for the range itself, and an unhighlighted Run for the trailing
-    // text after the last range.  Highlighted Runs get a yellow Background.
-    //
-    // Empty text leaves the TextBlock with no inlines.  Null or empty ranges produce a
-    // single unhighlighted Run with the full text.  Ranges are assumed sorted and
-    // non-overlapping; that is the contract from LocateHexDumpHighlights and
-    // LocateFieldHighlights.
-    //
-    // textBlock:  The TextBlock whose Inlines collection is rebuilt.
-    // text:       The full text to display.  Null is treated as empty.
-    // ranges:     Highlight ranges into text.  Null or empty produces one unhighlighted
-    //             Run.
-    ///////////////////////////////////////////////////////////////////////////////////////
-    private static void RebuildHighlightedInlines(TextBlock textBlock, string? text,
-        IReadOnlyList<HighlightRange>? ranges)
-    {
-        textBlock.Inlines.Clear();
-
-        if (string.IsNullOrEmpty(text))
-        {
-            return;
-        }
-
-        if (ranges == null || ranges.Count == 0)
-        {
-            textBlock.Inlines.Add(new Run(text));
-            return;
-        }
-
-        int cursor = 0;
-        for (int i = 0; i < ranges.Count; i++)
-        {
-            HighlightRange range = ranges[i];
-
-            if (range.Start > cursor)
-            {
-                string leadingText = text.Substring(cursor, range.Start - cursor);
-                textBlock.Inlines.Add(new Run(leadingText));
-            }
-
-            string highlightedText = text.Substring(range.Start, range.Length);
-            Run highlightedRun = new Run(highlightedText);
-            highlightedRun.Background = Brushes.Yellow;
-            textBlock.Inlines.Add(highlightedRun);
-
-            cursor = range.Start + range.Length;
-        }
-
-        if (cursor < text.Length)
-        {
-            string trailingText = text.Substring(cursor);
-            textBlock.Inlines.Add(new Run(trailingText));
-        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
