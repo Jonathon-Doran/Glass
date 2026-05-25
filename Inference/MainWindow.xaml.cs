@@ -1081,11 +1081,17 @@ public partial class MainWindow : Window
     //
     // Pushes the find text box's current text into the presenter only when
     // it differs from the presenter's existing search query, then advances
-    // the presenter's search cursor forward by one match.  On success the
-    // cursor row and the matched character offset are scrolled into view
-    // and the status text reports the total match count; on failure the
-    // status text reports "No match" and the viewport is not changed.
-    // Does not modify the list view's selection.
+    // the presenter's search cursor forward by one match.  The Deep
+    // checkbox selects the search mode: when checked and the call
+    // triggers an initial scan, every row's body is scanned and rows that
+    // produced matches are force-expanded, and the Hex bytes dropdown is
+    // forced to Full so the hex dump display covers the range that the
+    // scan covered; when unchecked, body scans are skipped on collapsed
+    // rows and the dropdown is left alone.  On success the cursor row and
+    // the matched character offset are scrolled into view and the status
+    // text reports the total match count; on failure the status text
+    // reports "No match" and the viewport is not changed.  Does not
+    // modify the list view's selection.
     //
     // Guards against early firing during XAML load.
     //
@@ -1107,13 +1113,24 @@ public partial class MainWindow : Window
             _opcodeTracePresenter.SetSearchQuery(typedText);
         }
 
+        SearchMode mode;
+        if (CheckBoxOpcodeTraceFindDeep.IsChecked == true)
+        {
+            mode = SearchMode.Deep;
+            SetHexLengthFull();
+        }
+        else
+        {
+            mode = SearchMode.Fast;
+        }
+
         OpcodeTraceRow? selectedRow = OpcodeTraceList.SelectedItem as OpcodeTraceRow;
-        SearchMatch? match = _opcodeTracePresenter.FindNext(selectedRow, SearchMode.Fast);
+        SearchMatch? match = _opcodeTracePresenter.FindNext(selectedRow, mode);
         if (match == null)
         {
             StatusBarFindText.Text = "No match";
             DebugLog.Write(LogChannel.InferenceDebug,
-                "Button_OpcodeTraceFindNext_Click: no match");
+                "Button_OpcodeTraceFindNext_Click: no match (mode=" + mode + ")");
             return;
         }
         OpcodeTraceRow? cursorRow = _opcodeTracePresenter.CursorRow;
@@ -1125,7 +1142,7 @@ public partial class MainWindow : Window
         StatusBarFindText.Text = _opcodeTracePresenter.CursorOrdinal
             + "/" + _opcodeTracePresenter.MatchCount + " matches";
         DebugLog.Write(LogChannel.InferenceDebug,
-            "Button_OpcodeTraceFindNext_Click: match found");
+            "Button_OpcodeTraceFindNext_Click: match found (mode=" + mode + ")");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1133,11 +1150,17 @@ public partial class MainWindow : Window
     //
     // Pushes the find text box's current text into the presenter only when
     // it differs from the presenter's existing search query, then advances
-    // the presenter's search cursor backward by one match.  On success the
-    // cursor row and the matched character offset are scrolled into view
-    // and the status text reports the total match count; on failure the
-    // status text reports "No match" and the viewport is not changed.
-    // Does not modify the list view's selection.
+    // the presenter's search cursor backward by one match.  The Deep
+    // checkbox selects the search mode: when checked and the call
+    // triggers an initial scan, every row's body is scanned and rows that
+    // produced matches are force-expanded, and the Hex bytes dropdown is
+    // forced to Full so the hex dump display covers the range that the
+    // scan covered; when unchecked, body scans are skipped on collapsed
+    // rows and the dropdown is left alone.  On success the cursor row and
+    // the matched character offset are scrolled into view and the status
+    // text reports the total match count; on failure the status text
+    // reports "No match" and the viewport is not changed.  Does not
+    // modify the list view's selection.
     //
     // Guards against early firing during XAML load.
     //
@@ -1159,13 +1182,24 @@ public partial class MainWindow : Window
             _opcodeTracePresenter.SetSearchQuery(typedText);
         }
 
+        SearchMode mode;
+        if (CheckBoxOpcodeTraceFindDeep.IsChecked == true)
+        {
+            mode = SearchMode.Deep;
+            SetHexLengthFull();
+        }
+        else
+        {
+            mode = SearchMode.Fast;
+        }
+
         OpcodeTraceRow? selectedRow = OpcodeTraceList.SelectedItem as OpcodeTraceRow;
-        SearchMatch? match = _opcodeTracePresenter.FindPrevious(selectedRow, SearchMode.Fast);
+        SearchMatch? match = _opcodeTracePresenter.FindPrevious(selectedRow, mode);
         if (match == null)
         {
             StatusBarFindText.Text = "No match";
             DebugLog.Write(LogChannel.InferenceDebug,
-                "Button_OpcodeTraceFindPrevious_Click: no match");
+                "Button_OpcodeTraceFindPrevious_Click: no match (mode=" + mode + ")");
             return;
         }
         OpcodeTraceRow? cursorRow = _opcodeTracePresenter.CursorRow;
@@ -1177,7 +1211,7 @@ public partial class MainWindow : Window
         StatusBarFindText.Text = _opcodeTracePresenter.CursorOrdinal
             + "/" + _opcodeTracePresenter.MatchCount + " matches";
         DebugLog.Write(LogChannel.InferenceDebug,
-            "Button_OpcodeTraceFindPrevious_Click: match found");
+            "Button_OpcodeTraceFindPrevious_Click: match found (mode=" + mode + ")");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1338,10 +1372,14 @@ public partial class MainWindow : Window
     // ScrollIntoView and no pixel-offset math is applied to the outer
     // scroller.  For matches in the expanded Field or Hex sections, the
     // inner per-row ScrollViewer scrolls by pixel; the matched character
-    // offset is brought into that inner viewport through the dispatcher
-    // after the container has laid out.  Summary-region matches need no
-    // inner scroll because the summary TextBlock has no enclosing
-    // per-row ScrollViewer.
+    // offset is brought into that inner viewport through two nested
+    // dispatcher callbacks at Loaded priority.  The outer callback waits
+    // for the layout pass triggered by ScrollIntoView; the inner waits
+    // for the second layout pass triggered by the row's expanded
+    // ScrollViewers becoming Visible when the row was force-expanded
+    // during a Deep search.  Summary-region matches need no inner scroll
+    // because the summary TextBlock has no enclosing per-row
+    // ScrollViewer.
     //
     // Returns silently with a log entry when the row has no realized
     // container or when the region's TextBlock is not found under the
@@ -1366,28 +1404,31 @@ public partial class MainWindow : Window
 
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new System.Action(() =>
         {
-            DependencyObject? container = OpcodeTraceList.ItemContainerGenerator.ContainerFromItem(row);
-            if (container == null)
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new System.Action(() =>
             {
+                DependencyObject? container = OpcodeTraceList.ItemContainerGenerator.ContainerFromItem(row);
+                if (container == null)
+                {
+                    DebugLog.Write(LogChannel.InferenceDebug,
+                        "MainWindow.ScrollMatchIntoView: container not realized for row, ignoring");
+                    return;
+                }
+
+                TextBlock? regionBlock = FindRegionTextBlock(container, region);
+                if (regionBlock == null)
+                {
+                    DebugLog.Write(LogChannel.InferenceDebug,
+                        "MainWindow.ScrollMatchIntoView: no TextBlock for region=" + region
+                        + " under container");
+                    return;
+                }
+
+                ScrollOffsetIntoView(regionBlock, match.Start);
+
                 DebugLog.Write(LogChannel.InferenceDebug,
-                    "MainWindow.ScrollMatchIntoView: container not realized for row, ignoring");
-                return;
-            }
-
-            TextBlock? regionBlock = FindRegionTextBlock(container, region);
-            if (regionBlock == null)
-            {
-                DebugLog.Write(LogChannel.InferenceDebug,
-                    "MainWindow.ScrollMatchIntoView: no TextBlock for region=" + region
-                    + " under container");
-                return;
-            }
-
-            ScrollOffsetIntoView(regionBlock, match.Start);
-
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "MainWindow.ScrollMatchIntoView: scrolled region=" + region
-                + " offset=" + match.Start + " for row packetIndex=" + row.PacketIndex);
+                    "MainWindow.ScrollMatchIntoView: scrolled region=" + region
+                    + " offset=" + match.Start + " for row packetIndex=" + row.PacketIndex);
+            }));
         }));
     }
 
@@ -1542,11 +1583,16 @@ public partial class MainWindow : Window
     // Pushes the find text box's current text into the presenter only when
     // it differs from the presenter's existing search query, then asks the
     // presenter to recompute matches across every row and park the cursor
-    // at the first match at or after the list's selected row.  On success
-    // the cursor row and the matched character offset are scrolled into
-    // view and the status text reports the total match count; on failure
-    // the status text reports "No matches" and the viewport is not
-    // changed.  Does not modify the list view's selection.
+    // at the first match at or after the list's selected row.  The Deep
+    // checkbox selects the search mode: when checked, every row's body is
+    // scanned and rows that produced matches are force-expanded, and the
+    // Hex bytes dropdown is forced to Full so the hex dump display covers
+    // the range that the scan covered; when unchecked, body scans are
+    // skipped on collapsed rows and the dropdown is left alone.  On
+    // success the cursor row and the matched character offset are
+    // scrolled into view and the status text reports the total match
+    // count; on failure the status text reports "No matches" and the
+    // viewport is not changed.  Does not modify the list view's selection.
     //
     // Guards against early firing during XAML load.
     //
@@ -1568,13 +1614,24 @@ public partial class MainWindow : Window
             _opcodeTracePresenter.SetSearchQuery(typedText);
         }
 
+        SearchMode mode;
+        if (CheckBoxOpcodeTraceFindDeep.IsChecked == true)
+        {
+            mode = SearchMode.Deep;
+            SetHexLengthFull();
+        }
+        else
+        {
+            mode = SearchMode.Fast;
+        }
+
         OpcodeTraceRow? selectedRow = OpcodeTraceList.SelectedItem as OpcodeTraceRow;
-        SearchMatch? match = _opcodeTracePresenter.FindAll(selectedRow, SearchMode.Fast);
+        SearchMatch? match = _opcodeTracePresenter.FindAll(selectedRow, mode);
         if (match == null)
         {
             StatusBarFindText.Text = "No matches";
             DebugLog.Write(LogChannel.InferenceDebug,
-                "Button_OpcodeTraceFindAll_Click: no matches");
+                "Button_OpcodeTraceFindAll_Click: no matches (mode=" + mode + ")");
             return;
         }
 
@@ -1588,7 +1645,7 @@ public partial class MainWindow : Window
             + "/" + _opcodeTracePresenter.MatchCount + " matches";
         DebugLog.Write(LogChannel.InferenceDebug,
             "Button_OpcodeTraceFindAll_Click: " + _opcodeTracePresenter.MatchCount
-            + " matches, cursor positioned");
+            + " matches (mode=" + mode + "), cursor positioned");
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2082,6 +2139,49 @@ public partial class MainWindow : Window
         {
             _opcodeTracePresenter.SetMaxHexBytes(maxBytes);
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////
+    // SetHexLengthFull
+    //
+    // Finds the ComboBoxItem in OpcodeTraceHexLength whose Content is the
+    // string "Full" and assigns it as the SelectedItem.  Triggers
+    // OpcodeTraceHexLength_SelectionChanged, which pushes int.MaxValue
+    // into the presenter's _maxHexBytes and re-formats already-populated
+    // rows to the new cap.  No-ops when the dropdown already has Full
+    // selected or when no such item exists.
+    ///////////////////////////////////////////////////////////////////////////////////////
+    private void SetHexLengthFull()
+    {
+        for (int i = 0; i < OpcodeTraceHexLength.Items.Count; i++)
+        {
+            ComboBoxItem? item = OpcodeTraceHexLength.Items[i] as ComboBoxItem;
+            if (item == null)
+            {
+                continue;
+            }
+
+            string content = item.Content as string ?? string.Empty;
+            if (content != "Full")
+            {
+                continue;
+            }
+
+            if (ReferenceEquals(OpcodeTraceHexLength.SelectedItem, item))
+            {
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "MainWindow.SetHexLengthFull: dropdown already on Full, no change");
+                return;
+            }
+
+            OpcodeTraceHexLength.SelectedItem = item;
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MainWindow.SetHexLengthFull: dropdown set to Full");
+            return;
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "MainWindow.SetHexLengthFull: Full entry not found in dropdown");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

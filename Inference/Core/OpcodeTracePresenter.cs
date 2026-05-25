@@ -358,9 +358,6 @@ public class OpcodeTracePresenter
         OpcodeHandle handle = GlassContext.PatchRegistry.GetOpcodeHandle(GlassContext.CurrentPatchLevel, row.OpcodeValue);
         if ((int)handle == -1)
         {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "OpcodeTracePresenter.PopulateRowDetail: opcode=" + row.OpcodeHex
-                + " not in patch, no fields to extract; hex dump length=" + row.HexDumpText.Length);
             row.FieldText = string.Empty;
             return;
         }
@@ -383,10 +380,6 @@ public class OpcodeTracePresenter
                 binding = walker.Next();
             }
             row.FieldText = sb.ToString();
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "OpcodeTracePresenter.PopulateRowDetail: opcode=" + row.OpcodeHex
-                + " field text length=" + row.FieldText.Length
-                + " hex dump length=" + row.HexDumpText.Length);
         }
         finally
         {
@@ -908,6 +901,11 @@ public class OpcodeTracePresenter
     // the rebuild is deferred until container recycling sets the DP back
     // from its default value.  A fresh List reference defeats that check.
     //
+    // In Deep mode the row's FieldText and HexDumpText are populated when
+    // missing so the body-scan helpers have content to scan, and a row
+    // that produced matches is forced into the expanded state so the
+    // matches are visible without further user action.
+    //
     // row:    The row to recompute against the active query.
     // mode:   Search mode passed through to the Locate helpers.
     //
@@ -925,6 +923,11 @@ public class OpcodeTracePresenter
             return 0;
         }
 
+        if (mode == SearchMode.Deep && row.FieldText == null)
+        {
+            PopulateRowDetail(row);
+        }
+
         LocateSummaryHighlights(row);
         LocateFieldHighlights(row, mode);
         LocateHexDumpHighlights(row, mode);
@@ -934,7 +937,13 @@ public class OpcodeTracePresenter
         row.Highlights = rebuiltHighlights;
         row.Matches = rebuiltMatches;
 
-        return row.Matches.Count;
+        int matchCount = row.Matches.Count;
+        if (mode == SearchMode.Deep && matchCount > 0 && !row.IsExpanded)
+        {
+            row.IsExpanded = true;
+        }
+
+        return matchCount;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1194,8 +1203,8 @@ public class OpcodeTracePresenter
     // on the cursor's row when _cursorRow is non-null and present in
     // _rows, otherwise on the last row.  When not active, every row's
     // Matches list is recomputed against the current query using mode,
-    // and iteration starts at the last match on the last row of _rows.
-    // The selectedRow parameter is ignored.
+    // and iteration starts at the last match on selectedRow when non-null
+    // and present in _rows, otherwise on the last row.
     //
     // Iteration walks rows backward.  With _searchWrap true, iteration
     // continues from the last row after reaching row 0 and stops once
@@ -1206,7 +1215,8 @@ public class OpcodeTracePresenter
     // cursor is left unchanged.  Does not modify the list view's
     // selection.
     //
-    // selectedRow:  Ignored.  Present for symmetry with FindNext.
+    // selectedRow:  Row to seed iteration when no search is active.  May
+    //               be null.  Ignored when a search is active.
     // mode:         Search mode passed to RecomputeRowHighlights when
     //               this call triggers the initial search.
     //
@@ -1243,7 +1253,7 @@ public class OpcodeTracePresenter
         else
         {
             // No search is active.  Recompute every row's matches against
-            // the current query, then seed iteration at the last row.
+            // the current query, then seed iteration at selectedRow.
             int totalMatches = 0;
             for (int i = 0; i < rowCount; i++)
             {
@@ -1255,6 +1265,14 @@ public class OpcodeTracePresenter
                 + " matches across " + rowCount + " rows");
 
             startRowIndex = rowCount - 1;
+            if (selectedRow != null)
+            {
+                int found = _rows.IndexOf(selectedRow);
+                if (found >= 0)
+                {
+                    startRowIndex = found;
+                }
+            }
             startMatchIndex = int.MaxValue;
         }
         DebugLog.Write(LogChannel.InferenceDebug,
@@ -1343,9 +1361,8 @@ public class OpcodeTracePresenter
     //
     // selectedRow:  Row to seed the cursor walk.  May be null, in which
     //               case iteration starts at row 0.
-    // mode:         Search mode passed to RecomputeRowHighlights for the
-    //               per-row recompute.  Fast skips body scans on
-    //               collapsed rows.
+    // mode:         Search mode for the per-row recompute.  Fast skips body
+    //               scans on collapsed rows.
     //
     // returns:      The SearchMatch at the new cursor position, or null
     //               when the trace contains no matches.

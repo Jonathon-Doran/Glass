@@ -181,6 +181,7 @@
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <TextBox Grid.Column="1"
                                  x:Name="TextBoxOpcodeTraceFind"
@@ -223,7 +224,16 @@
                                   Unchecked="CheckBoxOpcodeTraceFindWrap_Changed"
                                   Margin="8,0,0,0"
                                   ToolTip="Wrap around at end of list"/>
-                        <Button Grid.Column="7"
+                        <CheckBox Grid.Column="7"
+                                  x:Name="CheckBoxOpcodeTraceFindDeep"
+                                  Content="Deep"
+                                  Width="70"
+                                  MinWidth="0"
+                                  VerticalAlignment="Center"
+                                  HorizontalAlignment="Right"
+                                  Margin="4,0,0,0"
+                                  ToolTip="Search all rows; auto-expand rows with matches"/>
+                        <Button Grid.Column="8"
                                 x:Name="ButtonOpcodeTraceFindClose"
                                 Content="✕"
                                 Click="Button_OpcodeTraceFindClose_Click"
