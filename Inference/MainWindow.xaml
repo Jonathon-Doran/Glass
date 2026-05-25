@@ -266,7 +266,15 @@
                               FontSize="14"
                               SelectionMode="Extended"
                               KeyDown="OpcodeTraceList_KeyDown"
+                              ContextMenuOpening="OpcodeTraceList_ContextMenuOpening"
                               SelectionChanged="OpcodeTraceList_SelectionChanged">
+                        <ListView.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem x:Name="MenuItem_OpcodeTraceOpenDetail"
+                                          Header="Open in window"
+                                          Click="MenuItem_OpcodeTraceOpenDetail_Click"/>
+                            </ContextMenu>
+                        </ListView.ContextMenu>
                         <ListView.Resources>
                             <infui:ColorArgbToBrushConverter x:Key="ColorArgbToBrush"/>
                             <BooleanToVisibilityConverter x:Key="BoolToVis"/>

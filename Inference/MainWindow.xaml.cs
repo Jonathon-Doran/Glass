@@ -66,6 +66,7 @@ public partial class MainWindow : Window
     private readonly OpcodeRowPresenter _opcodeRowPresenter;
     private readonly OpcodeTracePresenter _opcodeTracePresenter;
     private Border? _armedColorPatch;
+    private OpcodeTraceRow? _contextMenuRow;
 
     // analysis packet filtering fields
     private SoeConstants.StreamId? _analysisFilterChannel;
@@ -2339,6 +2340,108 @@ public partial class MainWindow : Window
     private void Button_OpcodeTraceManage_Click(object sender, RoutedEventArgs e)
     {
         DebugLog.Write(LogChannel.Opcodes, "Button_OpcodeTraceManage_Click: manage requested (stub, not yet implemented)");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeTraceList_ContextMenuOpening
+    //
+    // Hit-tests the mouse position against the list to find the row under
+    // the cursor and stashes it in _contextMenuRow for the menu's Click
+    // handlers to read.  When the cursor is not over a row (empty space
+    // below the last item, header area, etc.) _contextMenuRow is set to
+    // null and the event is marked Handled so the menu does not open at
+    // all.
+    //
+    // sender:  The trace ListView.
+    // e:       Context menu opening event args.
+    ///////////////////////////////////////////////////////////////////////////////////////
+    private void OpcodeTraceList_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        Point mousePosition = Mouse.GetPosition(OpcodeTraceList);
+        HitTestResult hitResult = VisualTreeHelper.HitTest(OpcodeTraceList, mousePosition);
+        if (hitResult == null)
+        {
+            _contextMenuRow = null;
+            e.Handled = true;
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "OpcodeTraceList_ContextMenuOpening: no hit, menu suppressed");
+            return;
+        }
+
+        DependencyObject? current = hitResult.VisualHit;
+        ListViewItem? container = null;
+        while (current != null)
+        {
+            container = current as ListViewItem;
+            if (container != null)
+            {
+                break;
+            }
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        if (container == null)
+        {
+            _contextMenuRow = null;
+            e.Handled = true;
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "OpcodeTraceList_ContextMenuOpening: hit was not under a ListViewItem, menu suppressed");
+            return;
+        }
+
+        OpcodeTraceRow? row = container.DataContext as OpcodeTraceRow;
+        if (row == null)
+        {
+            _contextMenuRow = null;
+            e.Handled = true;
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "OpcodeTraceList_ContextMenuOpening: container DataContext was not OpcodeTraceRow, menu suppressed");
+            return;
+        }
+
+        _contextMenuRow = row;
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "OpcodeTraceList_ContextMenuOpening: menu opening for packetIndex="
+            + row.PacketIndex);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////
+    // MenuItem_OpcodeTraceOpenDetail_Click
+    //
+    // Opens a modeless PacketDetailWindow for the row that was under the
+    // cursor when the context menu opened.  Looks up the CatalogedPacket
+    // by the row's PacketIndex and passes it to the window.  No-ops on
+    // any miss (no stashed row, catalog returned null) with a log line.
+    //
+    // sender:  The menu item.
+    // e:       Routed event args.
+    ///////////////////////////////////////////////////////////////////////////////////////
+    private void MenuItem_OpcodeTraceOpenDetail_Click(object sender, RoutedEventArgs e)
+    {
+        if (_contextMenuRow == null)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MenuItem_OpcodeTraceOpenDetail_Click: no stashed row, ignoring");
+            return;
+        }
+
+        OpcodeTraceRow row = _contextMenuRow;
+        CatalogedPacket? packet = _packetCatalog.PacketAt(row.PacketIndex);
+        if (packet == null)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MenuItem_OpcodeTraceOpenDetail_Click: catalog has no packet at index "
+                + row.PacketIndex);
+            return;
+        }
+
+        PacketDetailWindow window = new PacketDetailWindow(packet.Value);
+        window.Owner = this;
+        window.Show();
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "MenuItem_OpcodeTraceOpenDetail_Click: opened detail window for packetIndex="
+            + row.PacketIndex);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

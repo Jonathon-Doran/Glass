@@ -262,4 +262,30 @@ public class PacketCatalog
             return snapshot;
         }
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // PacketAt
+    //
+    // Returns the CatalogedPacket recorded at the given arrival index, or
+    // null when the index is out of range.  Arrival indices are assigned
+    // in HandleAppPacket as the value of _packets.Count at insertion;
+    // nothing ever removes from _packets, so the index is a direct
+    // position in the arrival-order list.
+    //
+    // packetIndex:  Arrival index to retrieve.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public CatalogedPacket? PacketAt(uint packetIndex)
+    {
+        lock (_lock)
+        {
+            if (packetIndex >= _packets.Count)
+            {
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "PacketCatalog.PacketAt: index " + packetIndex
+                    + " out of range (count=" + _packets.Count + ")");
+                return null;
+            }
+            return _packets[(int)packetIndex];
+        }
+    }
 }

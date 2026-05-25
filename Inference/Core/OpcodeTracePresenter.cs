@@ -4,6 +4,7 @@ using Glass.Core.Signals;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using Inference.Models;
+using Inference.UI;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -353,7 +354,7 @@ public class OpcodeTracePresenter
     public void PopulateRowDetail(OpcodeTraceRow row)
     {
         ReadOnlySpan<byte> payload = row.Payload.AsReadOnlySpan();
-        row.HexDumpText = FormatHexDump(payload, _maxHexBytes);
+        row.HexDumpText = HexDumpFormatter.Format(payload, _maxHexBytes);
 
         OpcodeHandle handle = GlassContext.PatchRegistry.GetOpcodeHandle(GlassContext.CurrentPatchLevel, row.OpcodeValue);
         if ((int)handle == -1)
@@ -429,103 +430,13 @@ public class OpcodeTracePresenter
             }
 
             ReadOnlySpan<byte> payload = row.Payload.AsReadOnlySpan();
-            row.HexDumpText = FormatHexDump(payload, _maxHexBytes);
+            row.HexDumpText = HexDumpFormatter.Format(payload, _maxHexBytes);
             repopulated++;
         }
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "OpcodeTracePresenter.SetMaxHexBytes: re-formatted " + repopulated
             + " populated rows out of " + _rows.Count);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // FormatHexDump
-    //
-    // Formats a packet payload as a hex dump string in the same layout used by
-    // the Analysis tab: an 8-hex-digit offset, two columns of 8 bytes each
-    // separated by an extra space, then an ASCII gutter showing printable bytes
-    // and '.' for everything else.  Highlighting is not applied (the opcode
-    // trace renders into a plain TextBox).
-    //
-    // The dump is capped at maxBytes.  When the payload is longer than maxBytes,
-    // the trailing line "[showing first N of M bytes]" is appended.  When
-    // maxBytes is int.MaxValue the cap is treated as effectively unlimited.
-    //
-    // payload:   The bytes to format.
-    // maxBytes:  Maximum bytes to render.  Pass int.MaxValue for no cap.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private static string FormatHexDump(ReadOnlySpan<byte> payload, int maxBytes)
-    {
-        int payloadLength = payload.Length;
-        int displayLength;
-        if (maxBytes == int.MaxValue || payloadLength <= maxBytes)
-        {
-            displayLength = payloadLength;
-        }
-        else
-        {
-            displayLength = maxBytes;
-        }
-
-        StringBuilder sb = new StringBuilder(displayLength * 4 + 80);
-
-        int offset = 0;
-        while (offset < displayLength)
-        {
-            int bytesThisRow = Math.Min(16, displayLength - offset);
-
-            sb.Append(offset.ToString("x8"));
-            sb.Append("  ");
-
-            for (int i = 0; i < 16; i++)
-            {
-                if (i == 8)
-                {
-                    sb.Append(' ');
-                }
-
-                if (i < bytesThisRow)
-                {
-                    sb.Append(payload[offset + i].ToString("x2"));
-                    sb.Append(' ');
-                }
-                else
-                {
-                    sb.Append("   ");
-                }
-            }
-
-            sb.Append('|');
-            for (int i = 0; i < bytesThisRow; i++)
-            {
-                byte b = payload[offset + i];
-                char c;
-                if (b >= 0x20 && b <= 0x7e)
-                {
-                    c = (char)b;
-                }
-                else
-                {
-                    c = '.';
-                }
-                sb.Append(c);
-            }
-            sb.Append('|');
-            sb.Append('\n');
-
-            offset = offset + 16;
-        }
-
-        if (displayLength < payloadLength)
-        {
-            sb.Append("[showing first ");
-            sb.Append(displayLength);
-            sb.Append(" of ");
-            sb.Append(payloadLength);
-            sb.Append(" bytes]\n");
-        }
-
-        return sb.ToString();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
