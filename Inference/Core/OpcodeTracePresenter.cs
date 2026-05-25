@@ -42,7 +42,6 @@ public class OpcodeTracePresenter
     private readonly Action<SignalSessionAdded> _sessionAddedHandler;
     private int _maxHexBytes;
     private string _searchQuery;
-    private string _lastAppliedQuery;
     private byte[]? _searchQueryBytes;
     private int _matchCount;
     private SearchQueryType _searchQueryType;
@@ -69,7 +68,6 @@ public class OpcodeTracePresenter
         _characterNameCacheLock = new object();
         _maxHexBytes = 64;
         _searchQuery = string.Empty;
-        _lastAppliedQuery = string.Empty;
         _searchQueryBytes = null;
         _matchCount = 0;
         _searchQueryType = SearchQueryType.Empty;
@@ -1332,45 +1330,92 @@ public class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     // FindAll
     //
-    // Walks every row, recomputing highlights and accumulating the total match count
-    // and the first matching row into _matchCount and _firstMatch.  Memoized against
-    // _lastAppliedQuery: when the active query has not changed since the previous
-    // accumulation, the walk is skipped.
+    // Recomputes match highlights across every row in _rows, sums the total
+    // match count into _matchCount, then walks the rows forward from
+    // selectedRow looking for the first row with matches.  When one is
+    // found the cursor is parked at its first match (match index 0,
+    // ordinal 1) and the SearchMatch at that position is returned;
+    // otherwise null is returned and the cursor is left at -1.
     //
-    // mode:  Search mode to apply at the per-row highlight recompute.
+    // The row walk visits every row exactly once, wrapping around the end
+    // of _rows back to row 0 if necessary, so a positioned cursor is
+    // guaranteed whenever the recompute found at least one match.
+    //
+    // selectedRow:  Row to seed the cursor walk.  May be null, in which
+    //               case iteration starts at row 0.
+    // mode:         Search mode passed to RecomputeRowHighlights for the
+    //               per-row recompute.  Fast skips body scans on
+    //               collapsed rows.
+    //
+    // returns:      The SearchMatch at the new cursor position, or null
+    //               when the trace contains no matches.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public void FindAll(SearchMode mode)
+    public SearchMatch? FindAll(OpcodeTraceRow? selectedRow, SearchMode mode)
     {
         if (_searchQueryType == SearchQueryType.Empty)
         {
             _matchCount = 0;
-            //_firstMatch = null;
-            _lastAppliedQuery = _searchQuery;
-            return;
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "OpcodeTracePresenter.FindAll: empty query");
+            return null;
         }
 
-        if (string.Equals(_searchQuery, _lastAppliedQuery, StringComparison.Ordinal))
+        int rowCount = _rows.Count;
+        if (rowCount == 0)
         {
-            return;
+            _matchCount = 0;
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "OpcodeTracePresenter.FindAll: no rows");
+            return null;
         }
 
-        _matchCount = 0;
-       // _firstMatch = null;
-
-        for (int i = 0; i < _rows.Count; i++)
+        int totalMatches = 0;
+        for (int i = 0; i < rowCount; i++)
         {
-            OpcodeTraceRow row = _rows[i];
-            int rowMatches = RecomputeRowHighlights(row, mode);
-            if (rowMatches > 0)
+            totalMatches += RecomputeRowHighlights(_rows[i], mode);
+        }
+        _matchCount = totalMatches;
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "OpcodeTracePresenter.FindAll: recompute located " + totalMatches
+            + " matches across " + rowCount + " rows");
+
+        if (totalMatches == 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "OpcodeTracePresenter.FindAll: no matches, cursor unchanged");
+            return null;
+        }
+
+        int startRowIndex = 0;
+        if (selectedRow != null)
+        {
+            int found = _rows.IndexOf(selectedRow);
+            if (found >= 0)
             {
-                _matchCount += rowMatches;
-/*                if (_firstMatch == null)
-                {
-                    _firstMatch = row;
-                }*/
+                startRowIndex = found;
+            }
+        }
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "OpcodeTracePresenter.FindAll: startRowIndex=" + startRowIndex);
+
+        for (int step = 0; step < rowCount; step++)
+        {
+            int rowIndex = (startRowIndex + step) % rowCount;
+            OpcodeTraceRow row = _rows[rowIndex];
+            if (row.Matches.Count > 0)
+            {
+                OpcodeTraceRow? previousCursorRow = _cursorRow;
+                _cursorRow = row;
+                _cursorMatchIndex = 0;
+                _cursorOrdinal = 1;
+                ApplyCursorHighlightColor(previousCursorRow);
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "OpcodeTracePresenter.FindAll: cursor at rowIndex=" + rowIndex
+                    + " matchIndex=0 ordinal=1");
+                return row.Matches[0];
             }
         }
 
-        _lastAppliedQuery = _searchQuery;
+        return null;
     }
 }

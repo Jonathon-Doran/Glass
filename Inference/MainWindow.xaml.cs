@@ -1539,10 +1539,14 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////
     // Button_OpcodeTraceFindAll_Click
     //
-    // Reports the total number of matches in the trace for the active search query
-    // and selects the first match.  Scrolls the first match into view so the operator
-    // has a starting point for subsequent Find Next / Find Previous navigation.  When
-    // no rows match, the selection is left alone and the status reports "No matches".
+    // Pushes the find text box's current text into the presenter only when
+    // it differs from the presenter's existing search query, then asks the
+    // presenter to recompute matches across every row and park the cursor
+    // at the first match at or after the list's selected row.  On success
+    // the cursor row and the matched character offset are scrolled into
+    // view and the status text reports the total match count; on failure
+    // the status text reports "No matches" and the viewport is not
+    // changed.  Does not modify the list view's selection.
     //
     // Guards against early firing during XAML load.
     //
@@ -1558,13 +1562,15 @@ public partial class MainWindow : Window
             return;
         }
 
-        _opcodeTracePresenter.SetSearchQuery(TextBoxOpcodeTraceFind.Text);
-        _opcodeTracePresenter.FindAll(SearchMode.Fast);
+        string typedText = TextBoxOpcodeTraceFind.Text ?? string.Empty;
+        if (typedText != _opcodeTracePresenter.SearchQuery)
+        {
+            _opcodeTracePresenter.SetSearchQuery(typedText);
+        }
 
-        OpcodeTraceRow? firstMatch = null;
-        int matchCount = _opcodeTracePresenter.MatchCount;
-
-        if (firstMatch == null)
+        OpcodeTraceRow? selectedRow = OpcodeTraceList.SelectedItem as OpcodeTraceRow;
+        SearchMatch? match = _opcodeTracePresenter.FindAll(selectedRow, SearchMode.Fast);
+        if (match == null)
         {
             StatusBarFindText.Text = "No matches";
             DebugLog.Write(LogChannel.InferenceDebug,
@@ -1572,12 +1578,17 @@ public partial class MainWindow : Window
             return;
         }
 
-        OpcodeTraceList.SelectedItem = firstMatch;
-        OpcodeTraceList.ScrollIntoView(firstMatch);
-        StatusBarFindText.Text = matchCount + " matches";
+        OpcodeTraceRow? cursorRow = _opcodeTracePresenter.CursorRow;
+        if (cursorRow != null)
+        {
+            ScrollMatchIntoView(cursorRow, match.Value);
+            StatusBarRowText.Text = "Message " + cursorRow.PacketIndex;
+        }
+        StatusBarFindText.Text = _opcodeTracePresenter.CursorOrdinal
+            + "/" + _opcodeTracePresenter.MatchCount + " matches";
         DebugLog.Write(LogChannel.InferenceDebug,
-            "Button_OpcodeTraceFindAll_Click: " + matchCount
-            + " matches, first at packetIndex=" + firstMatch.PacketIndex);
+            "Button_OpcodeTraceFindAll_Click: " + _opcodeTracePresenter.MatchCount
+            + " matches, cursor positioned");
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
