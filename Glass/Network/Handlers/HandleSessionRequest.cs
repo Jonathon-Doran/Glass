@@ -17,9 +17,12 @@ namespace Glass.Network.Handlers;
 public class HandleSessionRequest : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_SessionRequest";
-    private OpcodeHandle _opcode;
+    private OpcodeHandle _handle;
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
+
+    private readonly uint _sessionId;
+    private readonly uint _maxLengthId;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleSessionRequest (constructor)
@@ -38,7 +41,10 @@ public class HandleSessionRequest : IHandleOpcodes
     {
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
-        _opcode = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _handle = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, _opcodeName);
+
+        _sessionId = _registry.IndexOfField(_patchLevel, _handle, "session_id");
+        _maxLengthId = _registry.IndexOfField(_patchLevel, _handle, "max_length");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -72,23 +78,40 @@ public class HandleSessionRequest : IHandleOpcodes
         switch (metadata.Channel)
         {
             case SoeConstants.StreamId.StreamZoneToClient:
-                HandleZoneToClient(data, metadata);
+                HandleClientToWorld(data, metadata);
                 break;
         }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleZoneToClient
+    // HandleClientToWorld
     //
-    // Processes zone-to-client traffic
+    // Processes client-to-world traffic
     //
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    private void HandleClientToWorld(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
+        FieldBag bag = _registry.Rent(_patchLevel, _handle);
+
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-            + _opcodeName + " length=" + data.Length);
+    + _opcodeName + " length=" + data.Length);
+
+        try
+        {
+            GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
+
+            uint sessionId = bag.GetUIntAt(_sessionId);
+            uint maxLength = bag.GetUIntAt(_maxLengthId);
+
+            DebugLog.Write(LogChannel.Opcodes, "session ID: 0x" + sessionId.ToString("x8") +
+                ", maxLength = " + maxLength);
+        }
+        finally
+        {
+            bag.Release();
+        }
     }
 }
 

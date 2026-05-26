@@ -571,23 +571,21 @@ public partial class PatchDataEditor : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // AddOpcodeButton_Click
+    // ClearButton_Click
     //
-    // Clears the opcode form and version dropdown, seeds the three grids with empty
-    // DataTables, and sets _patchOpcodeKey to 0 so SaveButton_Click knows to insert a new
-    // PatchOpcode row instead of updating an existing one.  No database write happens here —
-    // the insert is deferred to Save, which inserts the PatchOpcode row first and uses its
-    // new id as the foreign key for the field, group, and optional-field rows the user has
-    // added in the grids.
+    // Resets the editor to the empty state for entering a new opcode.  Clears the opcode and
+    // version selections, blanks the form textboxes, sets _patchOpcodeKey to 0, and replaces
+    // the three grid tables with fresh empty ones bound to the grids.  No-op when no patch
+    // level is selected.
     //
-    // sender:  The Add Opcode button.
+    // sender:  The Clear button.
     // e:       Standard event args; not inspected.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void AddOpcodeButton_Click(object sender, RoutedEventArgs e)
+    private void ClearButton_Click(object sender, RoutedEventArgs e)
     {
         if (PatchLevelComboBox.SelectedItem == null)
         {
-            DebugLog.Write(LogChannel.Fields, "PatchDataEditor.AddOpcodeButton_Click: "
+            DebugLog.Write(LogChannel.Fields, "PatchDataEditor.ClearButton_Click: "
                 + "no patch level selected, ignoring");
             return;
         }

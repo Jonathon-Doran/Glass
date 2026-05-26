@@ -21,6 +21,8 @@ The OpcodeRowPresenter logs are very vergose.
 
 Inference/Core/InferenceDebugLog and InferenceLog need to go away 
 
+Inference should check that New/Open/Recent patches all load data correctly.
+
 ISXGlass:
 
 Phase 3 (multi-machine operations):

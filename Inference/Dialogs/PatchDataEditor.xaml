@@ -51,11 +51,12 @@
                   Margin="0,0,8,0"
                   SelectionChanged="VersionComboBox_SelectionChanged"
                  />
-            <Button x:Name="AddOpcodeButton"
-                Content="Add Opcode"
-                Width="110"
+            <Button x:Name="ClearButton"
+                Content="Clear"
+                Width="80"
                 Margin="0,0,8,0"
-                Click="AddOpcodeButton_Click" />
+                Click="ClearButton_Click" />
+            
             <Button x:Name="DeleteOpcodeButton"
                 Content="Delete Opcode"
                 Width="110"/>
