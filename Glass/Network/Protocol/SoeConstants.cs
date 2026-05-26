@@ -54,7 +54,11 @@ public static class SoeConstants
         StreamClientToWorld = 0,
         StreamWorldToClient = 1,
         StreamClientToZone = 2,
-        StreamZoneToClient = 3
+        StreamZoneToClient = 3,
+        StreamClientToLogin = 4,
+        StreamLoginToClient = 5,
+        StreamClientToWorldChat = 6,
+        StreamWorldChatToClient = 7
     }
 
     public static readonly Dictionary<StreamId, string> StreamNames = new Dictionary<StreamId, string>
@@ -62,7 +66,11 @@ public static class SoeConstants
         { StreamId.StreamClientToWorld, "client->world" },
         { StreamId.StreamWorldToClient, "world->client" },
         { StreamId.StreamClientToZone, "client->zone" },
-        { StreamId.StreamZoneToClient, "zone->client" }
+        { StreamId.StreamZoneToClient, "zone->client" },
+        { StreamId.StreamClientToLogin, "client->login" },
+        { StreamId.StreamLoginToClient, "login->client" },
+        { StreamId.StreamClientToWorldChat, "client->world-chat" },
+        { StreamId.StreamWorldChatToClient, "world-chat->client" }
     };
 
     public static readonly Dictionary<StreamId, string> StreamAbbrev = new Dictionary<StreamId, string>
@@ -70,7 +78,11 @@ public static class SoeConstants
         { StreamId.StreamClientToWorld, "C2W" },
         { StreamId.StreamWorldToClient, "W2C" },
         { StreamId.StreamClientToZone, "C2Z" },
-        { StreamId.StreamZoneToClient, "Z2C" }
+        { StreamId.StreamZoneToClient, "Z2C" },
+        { StreamId.StreamClientToLogin, "C2L" },
+        { StreamId.StreamLoginToClient, "L2C" },
+        { StreamId.StreamClientToWorldChat, "C2WC" },
+        { StreamId.StreamWorldChatToClient, "WC2C" }
     };
 
     // ---------------------------------------------------------------------------

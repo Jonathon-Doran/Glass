@@ -187,14 +187,14 @@ public class OpcodeTracePresenter
         {
             CatalogedPacket packet = accumulated[i];
             string timestampLocal = packet.Metadata.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff");
-            string opcodeHex = "0x" + packet.Opcode.ToString("x4");
             string opcodeName = GlassContext.PatchRegistry.GetOpcodeName(GlassContext.CurrentPatchLevel, packet.Opcode);
             string characterName = ResolveCharacterName(packet.Metadata.SessionId);
             int length = packet.Payload.Length;
 
             OpcodeTraceRow row = new OpcodeTraceRow(packet.PacketIndex,
-                timestampLocal, packet.Opcode, opcodeName, packet.Metadata.Channel,
-                characterName, length, packet.Payload);
+                            timestampLocal, packet.Opcode, opcodeName, packet.Metadata.Channel,
+                            characterName, length, packet.Payload,
+                            (ushort)packet.Metadata.SourcePort, (ushort)packet.Metadata.DestPort);
             row.Color = ResolveColor(packet.PacketIndex, packet.Opcode);
             _rows.Add(row);
         }

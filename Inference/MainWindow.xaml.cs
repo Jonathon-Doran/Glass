@@ -2114,6 +2114,8 @@ public partial class MainWindow : Window
         for (int i = 0; i < sortedRows.Count; i++)
         {
             OpcodeTraceRow row = sortedRows[i];
+            sb.Append(row.PacketIndex);
+            sb.Append('\t');
             sb.Append(row.TimestampLocal);
             sb.Append('\t');
             sb.Append(row.OpcodeHex);
@@ -2121,6 +2123,8 @@ public partial class MainWindow : Window
             sb.Append(row.OpcodeName);
             sb.Append('\t');
             sb.Append(row.ChannelAbbrev);
+            sb.Append('\t');
+            sb.Append(row.PortsText);
             sb.Append('\t');
             sb.Append(row.CharacterName);
             sb.Append('\t');

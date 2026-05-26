@@ -252,19 +252,23 @@
 
                     <Grid x:Name="OpcodeTraceColumnHeader" DockPanel.Dock="Top" Margin="4,0,4,2">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="70"/>
                             <ColumnDefinition Width="120"/>
                             <ColumnDefinition Width="70"/>
                             <ColumnDefinition Width="200"/>
                             <ColumnDefinition Width="60"/>
+                            <ColumnDefinition Width="130"/>
                             <ColumnDefinition Width="120"/>
                             <ColumnDefinition Width="60"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Timestamp" FontWeight="Bold"/>
-                        <TextBlock Grid.Column="1" Text="Opcode" FontWeight="Bold"/>
-                        <TextBlock Grid.Column="2" Text="Name" FontWeight="Bold"/>
-                        <TextBlock Grid.Column="3" Text="Channel" FontWeight="Bold"/>
-                        <TextBlock Grid.Column="4" Text="Character" FontWeight="Bold"/>
-                        <TextBlock Grid.Column="5" Text="Length" FontWeight="Bold"/>
+                        <TextBlock Grid.Column="0" Text="Message" FontWeight="Bold"/>
+                        <TextBlock Grid.Column="1" Text="Timestamp" FontWeight="Bold"/>
+                        <TextBlock Grid.Column="2" Text="Opcode" FontWeight="Bold"/>
+                        <TextBlock Grid.Column="3" Text="Name" FontWeight="Bold"/>
+                        <TextBlock Grid.Column="4" Text="Channel" FontWeight="Bold"/>
+                        <TextBlock Grid.Column="5" Text="Ports" FontWeight="Bold"/>
+                        <TextBlock Grid.Column="6" Text="Character" FontWeight="Bold"/>
+                        <TextBlock Grid.Column="7" Text="Length" FontWeight="Bold"/>
                     </Grid>
 
                     <ListView x:Name="OpcodeTraceList"
@@ -303,33 +307,36 @@
 
                                     <Grid x:Name="OpcodeTraceRowSummary" Grid.Row="0" Background="Transparent" MouseLeftButtonDown="Row_DoubleClick">
                                         <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="70"/>
                                             <ColumnDefinition Width="120"/>
                                             <ColumnDefinition Width="70"/>
                                             <ColumnDefinition Width="200"/>
                                             <ColumnDefinition Width="60"/>
+                                            <ColumnDefinition Width="130"/>
                                             <ColumnDefinition Width="120"/>
                                             <ColumnDefinition Width="60"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0"
+                                        <TextBlock Grid.Column="0" Text="{Binding PacketIndex}"/>
+                                        <TextBlock Grid.Column="1"
                                                infui:HighlightTextBehavior.Text="{Binding TimestampLocal}"
                                                infui:HighlightTextBehavior.Ranges="{Binding Highlights}"
                                                infui:HighlightTextBehavior.Region="SummaryTimestamp"/>
 
-                                        <TextBlock Grid.Column="1"
+                                        <TextBlock Grid.Column="2"
                                                infui:HighlightTextBehavior.Text="{Binding OpcodeHex}"
                                                infui:HighlightTextBehavior.Ranges="{Binding Highlights}"
                                                infui:HighlightTextBehavior.Region="SummaryOpcodeHex"/>
 
-                                        <TextBlock Grid.Column="2"
+                                        <TextBlock Grid.Column="3"
                                                infui:HighlightTextBehavior.Text="{Binding OpcodeName}"
                                                infui:HighlightTextBehavior.Ranges="{Binding Highlights}"
                                                infui:HighlightTextBehavior.Region="SummaryOpcodeName"/>
 
-                                        <TextBlock Grid.Column="3" Text="{Binding ChannelAbbrev}"/>
-                                        <TextBlock Grid.Column="4" Text="{Binding CharacterName}"/>
-                                        <TextBlock Grid.Column="5" Text="{Binding Length}"/>
+                                        <TextBlock Grid.Column="4" Text="{Binding ChannelAbbrev}"/>
+                                        <TextBlock Grid.Column="5" Text="{Binding PortsText}"/>
+                                        <TextBlock Grid.Column="6" Text="{Binding CharacterName}"/>
+                                        <TextBlock Grid.Column="7" Text="{Binding Length}"/>
                                     </Grid>
-
                                     <ScrollViewer Grid.Row="1"
                                             MaxHeight="160"
                                             VerticalScrollBarVisibility="Auto"

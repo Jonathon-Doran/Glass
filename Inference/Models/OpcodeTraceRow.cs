@@ -55,20 +55,24 @@ public class OpcodeTraceRow : INotifyPropertyChanged
     // length:          Payload length in bytes.
     // payload:         RetainedBuffer over the long-lived payload copy.
     //                  Kept for hex-dump expansion in a later cut.
+    // sourcePort:      UDP source port from the packet's metadata.
+    // destPort:        UDP destination port from the packet's metadata.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public OpcodeTraceRow(uint packetIndex, string timestampLocal, ushort opcodeValue,
         string opcodeName, StreamId channel, string characterName, int length,
-        RetainedBuffer payload)
+        RetainedBuffer payload, ushort sourcePort, ushort destPort)
     {
         PacketIndex = packetIndex;
         TimestampLocal = timestampLocal;
         OpcodeValue = opcodeValue;
-        OpcodeHex = "0x"+opcodeValue.ToString("X4");
+        OpcodeHex = "0x" + opcodeValue.ToString("X4");
         OpcodeName = opcodeName;
         Channel = channel;
         CharacterName = characterName;
         Length = length;
         Payload = payload;
+        SourcePort = sourcePort;
+        DestPort = destPort;
         _color = 0;
         _isExpanded = false;
         _isHidden = false;
@@ -85,6 +89,8 @@ public class OpcodeTraceRow : INotifyPropertyChanged
     public ushort OpcodeValue { get; }
     public string OpcodeName { get; }
     public StreamId Channel { get; }
+    public ushort SourcePort { get; }
+    public ushort DestPort { get; }
     public string CharacterName { get; }
     public int Length { get; }
     public RetainedBuffer Payload { get; }
@@ -94,6 +100,13 @@ public class OpcodeTraceRow : INotifyPropertyChanged
         get
         {
             return StreamAbbrev[Channel];
+        }
+    }
+    public string PortsText
+    {
+        get
+        {
+            return SourcePort + " \u2192 " + DestPort;
         }
     }
     public uint Color

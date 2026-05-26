@@ -41,30 +41,22 @@ public class Connection : IDisposable
 
         _streams = new Dictionary<StreamId, SoeStream>();
 
-        _streams[StreamId.StreamClientToWorld] = new SoeStream(
-            StreamId.StreamClientToWorld,
-            arqSeqGiveUp, StreamNames[StreamId.StreamClientToWorld] + ": " + _localPort);
-
-        _streams[StreamId.StreamWorldToClient] = new SoeStream(
-            StreamId.StreamWorldToClient,
-            arqSeqGiveUp, StreamNames[StreamId.StreamWorldToClient] + ": " + _localPort);
-
-        _streams[StreamId.StreamClientToZone] = new SoeStream(
-            StreamId.StreamClientToZone,
-            arqSeqGiveUp, StreamNames[StreamId.StreamClientToZone] + ": " + _localPort);
-
-        _streams[StreamId.StreamZoneToClient] = new SoeStream(
-            StreamId.StreamZoneToClient,
-            arqSeqGiveUp, StreamNames[StreamId.StreamZoneToClient] + ": " + _localPort);
-
-        // Wire session key distribution
         foreach (StreamId streamId in Enum.GetValues<StreamId>())
         {
-            _streams[streamId].OnSessionKey = DistributeSessionKey;
-            _streams[streamId].OnClosing = PropagateClose;
+            SoeStream stream = new SoeStream(
+                streamId,
+                arqSeqGiveUp,
+                StreamNames[streamId] + ": " + _localPort);
+            stream.OnSessionKey = DistributeSessionKey;
+            stream.OnClosing = PropagateClose;
+            _streams[streamId] = stream;
+            DebugLog.Write(LogChannel.LowNetwork,
+                "Connection: created stream " + streamId + " for local port " + _localPort);
         }
 
-        DebugLog.Write(LogChannel.LowNetwork, "Connection: created for local port " + _localPort);
+        DebugLog.Write(LogChannel.LowNetwork,
+            "Connection: created for local port " + _localPort
+            + " with " + _streams.Count + " streams");
     }
 
     public int SessionId

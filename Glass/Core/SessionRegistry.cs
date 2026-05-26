@@ -279,8 +279,16 @@ public class SessionRegistry
             remotePort <= SoeConstants.LoginServerMaxPort)
         {
             return isFromClient
-                ? SoeConstants.StreamId.StreamClientToWorld
-                : SoeConstants.StreamId.StreamWorldToClient;
+                ? SoeConstants.StreamId.StreamClientToLogin
+                : SoeConstants.StreamId.StreamLoginToClient;
+        }
+
+        if (remotePort == SoeConstants.WorldServerChatPort ||
+            remotePort == SoeConstants.WorldServerChat2Port)
+        {
+            return isFromClient
+                ? SoeConstants.StreamId.StreamClientToWorldChat
+                : SoeConstants.StreamId.StreamWorldChatToClient;
         }
 
         if (remotePort >= SoeConstants.WorldServerGeneralMinPort &&
