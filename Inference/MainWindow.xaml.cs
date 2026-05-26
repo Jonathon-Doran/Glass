@@ -995,6 +995,63 @@ public partial class MainWindow : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////
+    // MenuItem_Find_Click
+    //
+    // Shows the trace find bar and moves keyboard focus into the find
+    // text box, selecting any existing query so a new search overwrites
+    // it.  Same behavior as the Ctrl+F shortcut handled in
+    // Window_PreviewKeyDown.
+    //
+    // sender:  The Find... menu item.
+    // e:       Routed event args.
+    ///////////////////////////////////////////////////////////////////////////////////////
+    private void MenuItem_Find_Click(object sender, RoutedEventArgs e)
+    {
+        OpcodeTraceFindBar.Visibility = Visibility.Visible;
+        TextBoxOpcodeTraceFind.Focus();
+        TextBoxOpcodeTraceFind.SelectAll();
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "MenuItem_Find_Click: find bar shown, focus moved");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////
+    // MenuItem_ShowAllRows_Click
+    //
+    // Restores full visibility of the trace.  Flips IsHidden to false on
+    // every row in the presenter, then clears the per-opcode hide set so
+    // a future Refresh does not re-apply it.
+    //
+    // sender:  The Show all rows menu item.
+    // e:       Routed event args.
+    ///////////////////////////////////////////////////////////////////////////////////////
+    private void MenuItem_ShowAllRows_Click(object sender, RoutedEventArgs e)
+    {
+        _opcodeTracePresenter.SetRowsHidden(_opcodeTracePresenter.Rows, false);
+        _opcodeTracePresenter.ClearHiddenOpcodes();
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "MenuItem_ShowAllRows_Click: all rows shown, hide set cleared");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////
+    // MenuItem_CollapseAllRows_Click
+    //
+    // Collapses every expanded row in the presenter by flipping
+    // IsExpanded to false on each.  Does not affect IsHidden state.
+    //
+    // sender:  The Collapse all rows menu item.
+    // e:       Routed event args.
+    ///////////////////////////////////////////////////////////////////////////////////////
+    private void MenuItem_CollapseAllRows_Click(object sender, RoutedEventArgs e)
+    {
+        _opcodeTracePresenter.CollapseAllRows();
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "MenuItem_CollapseAllRows_Click: all rows collapsed");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////
     // Button_OpcodeTraceFindClose_Click
     //
     // Hides the find bar.  Does not clear the text box — reopening the bar with
@@ -1647,6 +1704,55 @@ public partial class MainWindow : Window
         DebugLog.Write(LogChannel.InferenceDebug,
             "Button_OpcodeTraceFindAll_Click: " + _opcodeTracePresenter.MatchCount
             + " matches (mode=" + mode + "), cursor positioned");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////
+    // MenuItem_OpcodeTraceHideRow_Click
+    //
+    // Hides the row that was under the cursor when the context menu
+    // opened.  Reads the row stashed by OpcodeTraceList_ContextMenuOpening
+    // and passes it to the presenter wrapped in a one-element array.
+    // No-ops when no row was stashed.
+    //
+    // sender:  The menu item.
+    // e:       Routed event args.
+    ///////////////////////////////////////////////////////////////////////////////////////
+    private void MenuItem_OpcodeTraceHideRow_Click(object sender, RoutedEventArgs e)
+    {
+        if (_contextMenuRow == null)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MenuItem_OpcodeTraceHideRow_Click: no stashed row, ignoring");
+            return;
+        }
+
+        OpcodeTraceRow row = _contextMenuRow;
+        _opcodeTracePresenter.SetRowsHidden(new[] { row }, true);
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "MenuItem_OpcodeTraceHideRow_Click: hid packetIndex=" + row.PacketIndex);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Button_OpcodeTraceManage_Click
+    //
+    // Opens a modeless OpcodeManageWindow showing every opcode known to
+    // the catalog at the moment of opening, sorted hex ascending, each
+    // with a checkbox bound two-way to its per-opcode hide state.  Flips
+    // push immediately through to the presenter so the trace list
+    // updates in real time while the dialog is open.
+    //
+    // sender:  The Manage... button on the trace toolbar.
+    // e:       Routed event args.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void Button_OpcodeTraceManage_Click(object sender, RoutedEventArgs e)
+    {
+        OpcodeManageWindow window = new OpcodeManageWindow(_opcodeTracePresenter, _packetCatalog);
+        window.Owner = this;
+        window.Show();
+
+        DebugLog.Write(LogChannel.Opcodes,
+            "Button_OpcodeTraceManage_Click: opened manage window");
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2320,26 +2426,47 @@ public partial class MainWindow : Window
         _opcodeTracePresenter.Refresh();
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // Button_OpcodeTraceHide_Click
     //
-    // Hide button on the Opcode Trace toolbar.  Hides the opcode of the currently
-    // selected entry from the list.  Stub — implementation pending hide-set state.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Gathers the distinct wire opcode values from the rows currently
+    // selected in OpcodeTraceList and passes them to the presenter to be
+    // hidden as a class.  Multi-select is honored: every distinct opcode
+    // represented in the selection is hidden, which collapses every row
+    // for those opcodes regardless of whether the row itself was
+    // selected.
+    //
+    // No-ops with a log line when the selection is empty.
+    //
+    // sender:  The Hide button on the trace toolbar.
+    // e:       Routed event args.
+    ///////////////////////////////////////////////////////////////////////////////////////////
     private void Button_OpcodeTraceHide_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.Opcodes, "Button_OpcodeTraceHide_Click: hide requested (stub, not yet implemented)");
-    }
+        System.Collections.IList selected = OpcodeTraceList.SelectedItems;
+        if (selected.Count == 0)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "Button_OpcodeTraceHide_Click: no rows selected, ignoring");
+            return;
+        }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Button_OpcodeTraceManage_Click
-    //
-    // Manage button on the Opcode Trace toolbar.  Opens the hide/unhide management
-    // dialog for opcodes seen this session.  Stub — implementation pending dialog.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void Button_OpcodeTraceManage_Click(object sender, RoutedEventArgs e)
-    {
-        DebugLog.Write(LogChannel.Opcodes, "Button_OpcodeTraceManage_Click: manage requested (stub, not yet implemented)");
+        HashSet<ushort> opcodes = new HashSet<ushort>();
+        for (int i = 0; i < selected.Count; i++)
+        {
+            OpcodeTraceRow? row = selected[i] as OpcodeTraceRow;
+            if (row == null)
+            {
+                continue;
+            }
+            opcodes.Add(row.OpcodeValue);
+        }
+
+        _opcodeTracePresenter.SetOpcodesHidden(opcodes, true);
+
+        DebugLog.Write(LogChannel.Opcodes,
+            "Button_OpcodeTraceHide_Click: hid " + opcodes.Count
+            + " opcode(s) from " + selected.Count + " selected row(s)");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////
@@ -2442,6 +2569,24 @@ public partial class MainWindow : Window
         DebugLog.Write(LogChannel.InferenceDebug,
             "MenuItem_OpcodeTraceOpenDetail_Click: opened detail window for packetIndex="
             + row.PacketIndex);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////
+    // ShowFindBar
+    //
+    // Makes the trace find bar visible and moves keyboard focus to the
+    // find text box, selecting any existing text so a new query
+    // overwrites it.  Idempotent: calling when the bar is already
+    // visible just re-focuses and re-selects.
+    ///////////////////////////////////////////////////////////////////////////////////////
+    private void ShowFindBar()
+    {
+        OpcodeTraceFindBar.Visibility = Visibility.Visible;
+        TextBoxOpcodeTraceFind.Focus();
+        TextBoxOpcodeTraceFind.SelectAll();
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "ShowFindBar: find bar shown, focus moved");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

@@ -23,6 +23,15 @@
             <MenuItem Header="_Edit">
                 <MenuItem x:Name="MenuUndo" Header="_Undo"
                           Click="MenuItem_Undo_Click" IsEnabled="False"/>
+                <Separator/>
+                <MenuItem x:Name="MenuFind" Header="_Find..."
+                          InputGestureText="Ctrl+F"
+                          Click="MenuItem_Find_Click"/>
+                <Separator/>
+                <MenuItem x:Name="MenuShowAllRows" Header="_Show all rows"
+                          Click="MenuItem_ShowAllRows_Click"/>
+                <MenuItem x:Name="MenuCollapseAllRows" Header="_Collapse all rows"
+                          Click="MenuItem_CollapseAllRows_Click"/>
             </MenuItem>
             <MenuItem Header="_Profile" x:Name="MenuProfile" IsEnabled="False">
                 <MenuItem Header="_Launch Profile..." Click="MenuItem_LaunchProfile_Click"/>
@@ -153,7 +162,7 @@
                                     Padding="8,4" Margin="0,0,4,0" IsEnabled="False"/>
                             <Button x:Name="ButtonOpcodeTraceManage" Content="Manage..."
                                     Click="Button_OpcodeTraceManage_Click"
-                                    Padding="8,4" Margin="0,0,4,0" IsEnabled="False"/>
+                                    Padding="8,4" Margin="0,0,4,0"/>
                             <ToggleButton x:Name="ToggleOpcodeTraceExpand" Content="Expand"
                                           Click="Toggle_OpcodeTraceExpand_Click"
                                           Padding="8,4" Margin="0,0,12,0" IsEnabled="False"/>
@@ -273,6 +282,10 @@
                                 <MenuItem x:Name="MenuItem_OpcodeTraceOpenDetail"
                                           Header="Open in window"
                                           Click="MenuItem_OpcodeTraceOpenDetail_Click"/>
+                                
+                                <MenuItem x:Name="MenuItem_OpcodeTraceHideRow"
+                                          Header="Hide row"
+                                          Click="MenuItem_OpcodeTraceHideRow_Click"/>
                             </ContextMenu>
                         </ListView.ContextMenu>
                         <ListView.Resources>
@@ -358,6 +371,9 @@
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsExpanded}" Value="True">
                                         <Setter Property="BorderBrush" Value="Gray"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsHidden}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
                                     </DataTrigger>
                                     <Trigger Property="IsMouseOver" Value="True">
                                         <Setter Property="Background"

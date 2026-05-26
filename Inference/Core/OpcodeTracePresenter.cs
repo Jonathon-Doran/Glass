@@ -817,6 +817,12 @@ public class OpcodeTracePresenter
     // that produced matches is forced into the expanded state so the
     // matches are visible without further user action.
     //
+    // Hidden rows are skipped entirely: highlights and matches are cleared
+    // through the setters, and no Locate helper runs.  A hidden row
+    // therefore never contributes to the total match count and is
+    // invisible to the cursor walks in FindNext, FindPrevious, and
+    // FindAll, regardless of mode.
+    //
     // row:    The row to recompute against the active query.
     // mode:   Search mode passed through to the Locate helpers.
     //
@@ -826,6 +832,13 @@ public class OpcodeTracePresenter
     {
         row.Highlights.Clear();
         row.Matches.Clear();
+
+        if (row.IsHidden)
+        {
+            row.Highlights = new List<HighlightRange>();
+            row.Matches = new List<SearchMatch>();
+            return 0;
+        }
 
         if (_searchQueryType == SearchQueryType.Empty)
         {
@@ -951,6 +964,166 @@ public class OpcodeTracePresenter
         _searchWrap = wrap;
         DebugLog.Write(LogChannel.InferenceDebug,
             "OpcodeTracePresenter.SetSearchWrap: wrap=" + wrap);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // SetRowsHidden
+    //
+    // Sets row.IsHidden to the supplied value for each row in the
+    // collection.  Rows already at the target state are skipped so the
+    // PropertyChanged event does not fire redundantly.
+    //
+    // Hide state is per-row and lives on the row instance.  The next
+    // Refresh rebuilds rows from the catalog and produces fresh instances
+    // with IsHidden = false, so per-row hide is naturally transient
+    // across Refresh.
+    //
+    // Must be called on the UI thread; mutates rows bound to the list
+    // view.
+    //
+    // rows:    The rows to update.
+    // hidden:  The target IsHidden value to assign.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void SetRowsHidden(IEnumerable<OpcodeTraceRow> rows, bool hidden)
+    {
+        int changed = 0;
+        int unchanged = 0;
+        foreach (OpcodeTraceRow row in rows)
+        {
+            if (row.IsHidden == hidden)
+            {
+                unchanged++;
+                continue;
+            }
+
+            row.IsHidden = hidden;
+            changed++;
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "OpcodeTracePresenter.SetRowsHidden: set " + changed
+            + " row(s) to IsHidden=" + hidden + ", " + unchanged + " unchanged");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // SetOpcodesHidden
+    //
+    // Adds or removes each wire opcode value in the collection from
+    // _hiddenOpcodes and flips IsHidden on every row in _rows whose
+    // OpcodeValue is in the supplied set.  Rows already at the target
+    // IsHidden state are skipped so the PropertyChanged event does not
+    // fire redundantly.
+    //
+    // _hiddenOpcodes is the per-opcode persistence layer consulted by
+    // Refresh; updating it here keeps the hide state durable across
+    // future Refresh calls.  _rows itself is never mutated; rows are
+    // collapsed in the view solely through their IsHidden flag.
+    //
+    // Must be called on the UI thread; mutates rows bound to the list
+    // view and _hiddenOpcodes.
+    //
+    // opcodes:  The wire opcode values to update.
+    // hidden:   The target IsHidden value to assign.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void SetOpcodesHidden(IEnumerable<ushort> opcodes, bool hidden)
+    {
+        HashSet<ushort> targetSet = new HashSet<ushort>(opcodes);
+
+        int setChanged = 0;
+        foreach (ushort opcode in targetSet)
+        {
+            if (hidden)
+            {
+                if (_hiddenOpcodes.Add(opcode))
+                {
+                    setChanged++;
+                }
+            }
+            else
+            {
+                if (_hiddenOpcodes.Remove(opcode))
+                {
+                    setChanged++;
+                }
+            }
+        }
+
+        int rowsChanged = 0;
+        for (int i = 0; i < _rows.Count; i++)
+        {
+            OpcodeTraceRow row = _rows[i];
+            if (!targetSet.Contains(row.OpcodeValue))
+            {
+                continue;
+            }
+            if (row.IsHidden == hidden)
+            {
+                continue;
+            }
+            row.IsHidden = hidden;
+            rowsChanged++;
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // CollapseAllRows
+    //
+    // Sets IsExpanded = false on every row in _rows.  Rows already
+    // collapsed are skipped so the PropertyChanged event does not fire
+    // redundantly.  _rows itself is never mutated.
+    //
+    // Must be called on the UI thread; mutates rows bound to the list
+    // view.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void CollapseAllRows()
+    {
+        int collapsed = 0;
+        for (int i = 0; i < _rows.Count; i++)
+        {
+            OpcodeTraceRow row = _rows[i];
+            if (!row.IsExpanded)
+            {
+                continue;
+            }
+            row.IsExpanded = false;
+            collapsed++;
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "OpcodeTracePresenter.CollapseAllRows: collapsed " + collapsed + " row(s)");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetHiddenOpcodes
+    //
+    // Returns a fresh HashSet copy of the wire opcode values currently in
+    // the per-opcode hide set.  The caller may iterate or mutate the
+    // returned set without affecting the presenter's state.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public HashSet<ushort> GetHiddenOpcodes()
+    {
+        HashSet<ushort> snapshot = new HashSet<ushort>(_hiddenOpcodes);
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "OpcodeTracePresenter.GetHiddenOpcodes: returned snapshot of "
+            + snapshot.Count + " opcode(s)");
+        return snapshot;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ClearHiddenOpcodes
+    //
+    // Empties the per-opcode hide set.  Does not touch any row's
+    // IsHidden flag; callers wanting to also make rows visible flip
+    // those flags separately.
+    //
+    // Must be called on the UI thread.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void ClearHiddenOpcodes()
+    {
+        int count = _hiddenOpcodes.Count;
+        _hiddenOpcodes.Clear();
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "OpcodeTracePresenter.ClearHiddenOpcodes: cleared " + count + " opcode(s)");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

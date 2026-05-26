@@ -1,0 +1,48 @@
+﻿<Window x:Class="Inference.Dialogs.OpcodeManageWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.modernwpf.com/2019"
+        ui:WindowHelper.UseModernWindowStyle="True"
+        Title="Manage Opcodes"
+        Height="600" Width="900"
+        ShowInTaskbar="False">
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Padding="8,6"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}">
+            <TextBlock x:Name="HeaderText" FontWeight="SemiBold"/>
+        </Border>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <ItemsControl x:Name="OpcodeItems">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Width="{Binding DataContext.CellWidth,
+                                        RelativeSource={RelativeSource AncestorType=Window}}"
+                                Padding="4,2"
+                                Margin="0">
+                            <StackPanel Orientation="Horizontal">
+                                <CheckBox IsChecked="{Binding IsHidden, Mode=TwoWay}"
+                                          VerticalAlignment="Center"
+                                          MinWidth="0"
+                                          Padding="0"
+                                          Margin="0,0,6,0"/>
+                                <TextBlock VerticalAlignment="Center"
+                                           TextTrimming="None">
+                                    <Run Text="{Binding OpcodeHex, Mode=OneWay}" FontFamily="Consolas"/>
+                                    <Run Text="  "/>
+                                    <Run Text="{Binding OpcodeName, Mode=OneWay}"/>
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

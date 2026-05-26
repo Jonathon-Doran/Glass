@@ -27,6 +27,7 @@ public class OpcodeTraceRow : INotifyPropertyChanged
 {
     private uint _color;
     private bool _isExpanded;
+    private bool _isHidden;
     private string? _fieldText;
     private string? _hexDumpText;
     private List<HighlightRange> _highlights;
@@ -70,6 +71,7 @@ public class OpcodeTraceRow : INotifyPropertyChanged
         Payload = payload;
         _color = 0;
         _isExpanded = false;
+        _isHidden = false;
         _fieldText = null;
         _hexDumpText = null;
 
@@ -110,6 +112,15 @@ public class OpcodeTraceRow : INotifyPropertyChanged
         {
             _isExpanded = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsExpanded)));
+        }
+    }
+    public bool IsHidden
+    {
+        get { return _isHidden; }
+        set
+        {
+            _isHidden = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsHidden)));
         }
     }
 
