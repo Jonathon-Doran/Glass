@@ -52,8 +52,6 @@ public static class ProtocolStackBootstrap
         DebugLog.Write(LogChannel.General,
             "ProtocolStackBootstrap.Initialize: SessionRegistry constructed");
 
-
-
         DebugLog.Write(LogChannel.General, "ProtocolStackBootstrap.Initialize: complete");
     }
 

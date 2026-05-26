@@ -93,14 +93,16 @@ public partial class MainWindow : Window
         AddDummyCandidates();
         InitializePipes();
 
-        OpenDatabase();
-        BuildRecentPatchesMenu();
-        RestoreLastPatchLevel();
-
         GlassContext.SignalBus = new SignalBus();
         GlassContext.PacketBus = new PacketBus();
 
+        OpenDatabase();
         ProtocolStackBootstrap.Initialize();
+
+        BuildRecentPatchesMenu();
+        RestoreLastPatchLevel();
+        GlassContext.PatchRegistry.LoadPatchLevel(_currentPatchLevel!.Value);
+
         GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
 
         UpdateControlStates();
@@ -369,6 +371,12 @@ public partial class MainWindow : Window
         DebugLog.Write(LogChannel.InferenceDebug, "OpenDatabase: opened " + dbPath);
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    /// UpdateRecentPatches - Store the patch level in the settings.
+    /// 
+    /// Parameters:
+    ///     patchLevel:  The current patch level
+    ///////////////////////////////////////////////////////////////////////////////////////////
     private void UpdateRecentPatches(string patchDate, string serverType)
     {
         string displayServerType = serverType.Substring(0, 1).ToUpper() + serverType.Substring(1);
