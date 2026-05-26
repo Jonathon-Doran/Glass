@@ -17,6 +17,7 @@ using static Glass.Network.Protocol.SoeConstants;
 public struct PacketMetadata
 {
     public int FrameNumber;
+    public int Opcode;
     public DateTime Timestamp;
     public string SourceIp;
     public int SourcePort;

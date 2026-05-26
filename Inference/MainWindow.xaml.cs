@@ -98,7 +98,7 @@ public partial class MainWindow : Window
         RestoreLastPatchLevel();
 
         GlassContext.SignalBus = new SignalBus();
-        GlassContext.AppPacketBus = new AppPacketBus();
+        GlassContext.PacketBus = new PacketBus();
 
         ProtocolStackBootstrap.Initialize();
         GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
@@ -109,7 +109,7 @@ public partial class MainWindow : Window
         _packetCatalog = new PacketCatalog(_retainedBufferPool);
         _opcodeRowPresenter = new OpcodeRowPresenter(_packetCatalog);
         OpcodeGrid.ItemsSource = _opcodeRowPresenter.Rows;
-        GlassContext.AppPacketBus.Subscribe(HandleAppPacket);
+        GlassContext.PacketBus.Subscribe(HandleAppPacket);
 
         _opcodeTracePresenter = new OpcodeTracePresenter(_packetCatalog);
         OpcodeTraceList.ItemsSource = _opcodeTracePresenter.Rows;
@@ -805,7 +805,7 @@ public partial class MainWindow : Window
     // Handles the File > Open Pcap menu item.  Opens a file dialog to select
     // a pcap file, sets the current patch level from the user's restored
     // patch level, constructs the demux and file reader, and processes the
-    // file.  Packets flow through the AppPacketBus into the catalog and
+    // file.  Packets flow through the PacketBus into the catalog and
     // presenters in the normal way.
     //
     // sender:  The menu item that raised the event.
@@ -2935,7 +2935,7 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     // HandleAppPacket
     //
-    // AppPacketBus delivery target for the Opcodes grid.  Storage is handled
+    // PacketBus delivery target for the Opcodes grid.  Storage is handled
     // by PacketCatalog, which is subscribed to the same bus and runs before
     // this handler in subscription order.  This handler dispatches to the UI
     // thread and asks the row presenter to update the grid row for the

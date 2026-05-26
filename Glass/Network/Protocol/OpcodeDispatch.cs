@@ -107,7 +107,7 @@ public class OpcodeDispatch : IDisposable
                 + " for opcode 0x" + opcodeValue.ToString("x4"));
         }
 
-        GlassContext.AppPacketBus.Subscribe(HandlePacket);
+        GlassContext.PacketBus.Subscribe(HandlePacket);
         DebugLog.Write(LogChannel.Opcodes, "OpcodeDispatch: scan complete, "
             + _handlers.Length + " handlers registered");
     }
@@ -141,7 +141,7 @@ public class OpcodeDispatch : IDisposable
             }
 
             Clear();
-            GlassContext.AppPacketBus.Unsubscribe(HandlePacket);
+            GlassContext.PacketBus.Unsubscribe(HandlePacket);
             _instance = null;
             GC.SuppressFinalize(this);
         }

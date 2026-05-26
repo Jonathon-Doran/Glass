@@ -6,7 +6,7 @@ using static Glass.Network.Protocol.SoeConstants;
 //
 // Application-level message decoded from the SOE protocol stack.  Carries the
 // payload bytes, the wire opcode, and the per-packet context from the capture
-// source down to subscribers of AppPacketBus.
+// source down to subscribers of PacketBus.
 //
 // Named to match EQ's own internal vocabulary (per Ghidra exploration) rather
 // than the "packet" / "opcode" terminology that grew up around this code

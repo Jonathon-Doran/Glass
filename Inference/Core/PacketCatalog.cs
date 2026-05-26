@@ -12,7 +12,7 @@ namespace Inference.Core;
 // PacketCatalog
 //
 // Indexes every captured application-level packet seen this session.
-// Subscribes to AppPacketBus and, for each delivered payload, asks the
+// Subscribes to PacketBus and, for each delivered payload, asks the
 // supplied RetainedBufferPool for a long-lived copy and records a
 // CatalogedPacket holding the opcode, metadata, and retained payload.
 //
@@ -39,7 +39,7 @@ public class PacketCatalog
     ///////////////////////////////////////////////////////////////////////////////////////////
     // PacketCatalog (constructor)
     //
-    // Initializes the catalog and subscribes its packet handler to the AppPacketBus.
+    // Initializes the catalog and subscribes its packet handler to the PacketBus.
     // The catalog remains subscribed for its entire lifetime.
     //
     // retainedBufferPool:  The pool the catalog calls Retain on for each
@@ -52,15 +52,15 @@ public class PacketCatalog
         _packets = new List<CatalogedPacket>();
         _byOpcode = new Dictionary<ushort, List<CatalogedPacket>>();
         _stats = new Dictionary<ushort, OpcodeStats>();
-        GlassContext.AppPacketBus.Subscribe(HandleAppPacket);
+        GlassContext.PacketBus.Subscribe(HandleAppPacket);
         DebugLog.Write(LogChannel.InferenceDebug,
-            "PacketCatalog.ctor: created and subscribed to GlassContext.AppPacketBus");
+            "PacketCatalog.ctor: created and subscribed to GlassContext.PacketBus");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // HandleAppPacket
     //
-    // AppPacketBus delivery target.  Retains a long-lived copy of the payload
+    // PacketBus delivery target.  Retains a long-lived copy of the payload
     // via RetainedBufferPool and records the packet in both the arrival-order
     // list and the per-opcode bucket.  Per-opcode aggregates (channel, min
     // size, max size) are maintained in a parallel stats dictionary, updated

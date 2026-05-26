@@ -20,7 +20,7 @@ public static class ProtocolStackBootstrap
     //
     // Constructs the shared protocol stack dependencies in canonical order
     // and assigns them to GlassContext.  Call once at application startup,
-    // after the database has been opened and the SignalBus and AppPacketBus
+    // after the database has been opened and the SignalBus and PacketBus
     // have been constructed.
     //
     // Does not set CurrentPatchLevel.  The patch level is determined per

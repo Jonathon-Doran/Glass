@@ -294,6 +294,7 @@ public class SoeStream : IDisposable
         metadata.DestPort = dgram.DestPort;
         metadata.SessionId = dgram.SessionId;
         metadata.Channel = dgram.Channel;
+        metadata.Opcode = netOpcode;
 
 
         DebugLog.Write(LogChannel.LowNetwork,
@@ -336,7 +337,7 @@ public class SoeStream : IDisposable
         }
         else if (netOpcode == SoeConstants.OP_SessionDisconnect)
         {
-            ProcessSessionDisconnect(payload);
+            ProcessSessionDisconnect(payload, metadata);
         }
         else if (netOpcode == SoeConstants.OP_Ack ||
                  netOpcode == SoeConstants.OP_AckFuture ||
@@ -364,7 +365,7 @@ public class SoeStream : IDisposable
     //
     // Final delivery point for decoded application-level opcodes.  Updates the
     // per-stream opcode count and publishes the packet on the application-wide
-    // AppPacketBus.
+    // PacketBus.
     //
     // data:      The application payload (after opcode bytes have been stripped)
     // length:    Length of the application payload
@@ -395,12 +396,12 @@ public class SoeStream : IDisposable
             }
         }
 
-        AppPacketBus bus = GlassContext.AppPacketBus;
+        PacketBus bus = GlassContext.PacketBus;
 
         if (bus == null)
         {
             DebugLog.Write(LogChannel.LowNetwork,
-                "SoeStream.DispatchAppPacket: AppPacketBus is null on GlassContext, dropping opcode 0x"
+                "SoeStream.DispatchAppPacket: PacketBus is null on GlassContext, dropping opcode 0x"
                 + opcode.ToString("x4"));
             return;
         }
@@ -1089,7 +1090,7 @@ public class SoeStream : IDisposable
 
         _sessionId = SoeByteOrder.ReadUInt32(payload, 4);
         _maxLength = SoeByteOrder.ReadUInt32(payload, 8);
-
+        GlassContext.PacketBus.Publish(payload, SoeConstants.OP_SessionRequest, metadata);
         DebugLog.Write(LogChannel.LowNetwork,
             "EQPacket: SessionRequest found, stream "
             + SoeConstants.StreamNames[_streamId] + " (" + _streamId + "), "
@@ -1136,6 +1137,8 @@ public class SoeStream : IDisposable
             OnSessionKey(_sessionId, _streamId, _sessionKey);
         }
 
+        GlassContext.PacketBus.Publish(payload, SoeConstants.OP_SessionResponse, metadata);
+
         _arqSeqExpected = 0;
         _arqSeqFound = true;
     }
@@ -1148,8 +1151,9 @@ public class SoeStream : IDisposable
     // the OnClosing callback.
     //
     // payload:  The session disconnect payload
+    // metadata:    Packet metadata (source/dest IP/Port, timestamp, framenumber)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void ProcessSessionDisconnect(ReadOnlySpan<byte> payload)
+    private void ProcessSessionDisconnect(ReadOnlySpan<byte> payload, PacketMetadata metadata)
     {
         DebugLog.Write(LogChannel.LowNetwork,
             "EQPacket: SessionDisconnect found, stream "
@@ -1162,6 +1166,7 @@ public class SoeStream : IDisposable
         {
             OnClosing(_sessionId, _streamId);
         }
+        GlassContext.PacketBus.Publish(payload, SoeConstants.OP_SessionDisconnect, metadata);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

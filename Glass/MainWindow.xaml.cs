@@ -77,7 +77,7 @@ public partial class MainWindow : Window
             new uint[] { 32, 16, 16, 16, 8, 8, 4, 2, 1 });
 
         GlassContext.SignalBus = new SignalBus();
-        GlassContext.AppPacketBus = new AppPacketBus();
+        GlassContext.PacketBus = new PacketBus();
 
         ProtocolStackBootstrap.Initialize();
         GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;

@@ -2,7 +2,9 @@
 using Glass.Data;
 using Glass.Network.Protocol.Fields;
 using Microsoft.Data.Sqlite;
+using System;
 using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
 
 namespace Glass.Network.Protocol;
 
@@ -163,7 +165,8 @@ public class PatchData
 
 
         LoadOpcodeMap(conn);
-        LoadPatchOpcodes(conn);
+        int lastIndex = LoadPatchOpcodes(conn);
+        LoadSessionOpcodes(lastIndex);
 
         for (int handleIndex = 0; handleIndex < opcodeCount; handleIndex++)
         {
@@ -236,6 +239,8 @@ public class PatchData
         }
 
         int count = Convert.ToInt32(result);
+        count += 3;     // adjust for session opcodes
+
         DebugLog.Write(LogChannel.Opcodes, "PatchData.CountPatchOpcodes: " + count
             + " PatchOpcode row(s) for patchLevel=" + PatchLevel);
         return count;
@@ -255,8 +260,11 @@ public class PatchData
     //
     // Parameters:
     //   conn    - An open database connection, owned by the caller. 
+    //
+    // Returns
+    //   The number of opcodes read
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void LoadPatchOpcodes(SqliteConnection conn)
+    private int LoadPatchOpcodes(SqliteConnection conn)
     {
         using SqliteCommand cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT opcode_value, version, opcode_name"
@@ -287,6 +295,59 @@ public class PatchData
 
         DebugLog.Write(LogChannel.Opcodes, "PatchData.LoadPatchOpcodes: loaded "
             + handleIndex + " PatchOpcode(s) for patchLevel=" + PatchLevel);
+        return handleIndex;
+    }
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // LoadSessionOpcodes
+    //
+    // Create opcode entries for session opcodes that are not in the database.  These should be
+    // present for every patch, and should not change.
+    //
+    // Parameters:
+    //   handleIndex    - The next free index in the arrays 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void LoadSessionOpcodes(int handleIndex)
+    {
+        OpcodeHandle handle = (OpcodeHandle)handleIndex;
+        const int version = 1;
+
+        string requestName = "OP_SessionRequest";
+        ushort requestValue = SoeConstants.OP_SessionRequest;
+        PatchOpcode patchOpcode = new PatchOpcode(PatchLevel, requestValue, version);
+
+        _patchOpcodes[handle] = patchOpcode;
+        _namesByHandle[handle] = requestName;
+        _handlesByName[requestName] = handle;
+        _handlesByValue[requestValue] = handle;
+        _opcodeValuesByName[requestName] = requestValue;
+        _opcodeNamesByValue[requestValue] = requestName;
+        handleIndex = handleIndex + 1;
+
+        handle = (OpcodeHandle)handleIndex;
+        string responseName = "OP_SessionResponse";
+        ushort responseValue = SoeConstants.OP_SessionResponse;
+        patchOpcode = new PatchOpcode(PatchLevel, responseValue, version);
+
+        _patchOpcodes[handle] = patchOpcode;
+        _namesByHandle[handle] = responseName;
+        _handlesByName[responseName] = handle;
+        _handlesByValue[responseValue] = handle;
+        _opcodeValuesByName[responseName] = responseValue;
+        _opcodeNamesByValue[responseValue] = responseName;
+        handleIndex = handleIndex + 1;
+
+        handle = (OpcodeHandle)handleIndex;
+        string disconnectName = "OP_SessionDisconnect";
+        ushort disconnectValue = SoeConstants.OP_SessionDisconnect;
+        patchOpcode = new PatchOpcode(PatchLevel, disconnectValue, version);
+
+        _patchOpcodes[handle] = patchOpcode;
+        _namesByHandle[handle] = disconnectName;
+        _handlesByName[disconnectName] = handle;
+        _handlesByValue[disconnectValue] = handle;
+        _opcodeValuesByName[disconnectName] = disconnectValue;
+        _opcodeNamesByValue[disconnectValue] = disconnectName;
+        handleIndex = handleIndex + 1;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

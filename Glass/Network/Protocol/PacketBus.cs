@@ -5,7 +5,7 @@ using Glass.Core.Logging;
 namespace Glass.Network.Protocol;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// AppPacketBus
+// PacketBus
 //
 // Delivers decoded application-level packets from the SOE protocol stack to any
 // number of subscribers.  The protocol stack publishes; subscribers register
@@ -17,12 +17,12 @@ namespace Glass.Network.Protocol;
 // The data span is valid only for the duration of the Publish call.  Subscribers
 // that need to retain the bytes must copy them.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class AppPacketBus
+public class PacketBus
 {
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Handler
     //
-    // Delegate signature for AppPacketBus subscribers.
+    // Delegate signature for PacketBus subscribers.
     //
     // data:      The application payload, opcode bytes already stripped.  Valid
     //            only for the duration of the call.
@@ -39,14 +39,14 @@ public class AppPacketBus
     private readonly object _lock;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // AppPacketBus (constructor)
+    // PacketBus (constructor)
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public AppPacketBus()
+    public PacketBus()
     {
         _subscribers = new List<Handler>();
         _lock = new object();
 
-        DebugLog.Write(LogChannel.LowNetwork, "AppPacketBus.ctor: created");
+        DebugLog.Write(LogChannel.LowNetwork, "PacketBus.ctor: created");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -61,7 +61,7 @@ public class AppPacketBus
     {
         if (handler == null)
         {
-            DebugLog.Write(LogChannel.LowNetwork, "AppPacketBus.Subscribe: null handler, ignoring");
+            DebugLog.Write(LogChannel.LowNetwork, "PacketBus.Subscribe: null handler, ignoring");
             return;
         }
 
@@ -70,14 +70,14 @@ public class AppPacketBus
             if (_subscribers.Contains(handler))
             {
                 DebugLog.Write(LogChannel.LowNetwork,
-                    "AppPacketBus.Subscribe: handler already subscribed, ignoring");
+                    "PacketBus.Subscribe: handler already subscribed, ignoring");
                 return;
             }
 
             _subscribers.Add(handler);
 
             DebugLog.Write(LogChannel.LowNetwork,
-                "AppPacketBus.Subscribe: added handler, subscriber count is now "
+                "PacketBus.Subscribe: added handler, subscriber count is now "
                 + _subscribers.Count);
         }
     }
@@ -94,7 +94,7 @@ public class AppPacketBus
     {
         if (handler == null)
         {
-            DebugLog.Write(LogChannel.LowNetwork, "AppPacketBus.Unsubscribe: null handler, ignoring");
+            DebugLog.Write(LogChannel.LowNetwork, "PacketBus.Unsubscribe: null handler, ignoring");
             return;
         }
 
@@ -105,13 +105,13 @@ public class AppPacketBus
             if (removed)
             {
                 DebugLog.Write(LogChannel.LowNetwork,
-                    "AppPacketBus.Unsubscribe: removed handler, subscriber count is now "
+                    "PacketBus.Unsubscribe: removed handler, subscriber count is now "
                     + _subscribers.Count);
             }
             else
             {
                 DebugLog.Write(LogChannel.LowNetwork,
-                    "AppPacketBus.Unsubscribe: handler was not subscribed, ignoring");
+                    "PacketBus.Unsubscribe: handler was not subscribed, ignoring");
             }
         }
     }
@@ -154,11 +154,11 @@ public class AppPacketBus
             catch (Exception ex)
             {
                 DebugLog.Write(LogChannel.LowNetwork,
-                    "AppPacketBus.Publish: subscriber " + i
+                    "PacketBus.Publish: subscriber " + i
                     + " threw " + ex.GetType().Name
                     + ": " + ex.Message);
                 DebugLog.Write(LogChannel.LowNetwork,
-                    "AppPacketBus.Publish: stack: " + ex.StackTrace);
+                    "PacketBus.Publish: stack: " + ex.StackTrace);
             }
         }
     }
