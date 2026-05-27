@@ -673,30 +673,20 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ResolveRelativeAnchors
     //
-    // Cold path.  Runs once per opcode during PatchData construction.
+    // Reorders _opcodeFields[handle] so that every relative field appears after the field it
+    // anchors on, then resolves each anchor name to a slot index and writes it into
+    // FieldDefinition.RelativeToSlot.  The ordering is produced by Kahn's algorithm over the
+    // name-anchor graph and handles chains of any depth.
     //
-    // Two passes over the just-assigned _opcodeFields[handle] array.
+    // _pendingRelativeNames supplies the anchor name for each required field, parallel to the
+    // required-field portion of _opcodeFields[handle].
     //
-    // Pass 1: move every entry that has a non-null anchor name in _pendingRelativeNames
-    // to the end of the working list, preserving relative order within each partition.
-    // The hot-path extractor walks definitions once and requires each anchor's runtime
-    // end-bit position to be available by the time its dependents are reached.  Placing
-    // anchored fields after their anchors guarantees this without a second pass at
-    // extract time.
-    //
-    // Pass 2: resolve each non-null anchor name to the slot index of the matching field
-    // in the now-final working list.  Resolution failures are non-fatal — an unknown
-    // anchor name leaves RelativeToSlot null and writes a diagnostic line.  The field
-    // then decodes as if anchored at packet start, which will produce wrong values, but
-    // the log line points at the cause.
-    //
-    // _pendingRelativeNames must hold exactly one entry per required field, in matching
-    // order.  This holds because LoadRequiredFields appends one entry per row it returns
-    // and nothing else writes to the list.  Optional fields are appended to _opcodeFields
-    // after required fields but never carry an anchor.
+    // An anchor name not present in the field list logs and leaves RelativeToSlot null on
+    // that field.  A cycle in the graph logs each unresolved field and appends the affected
+    // fields in their original order.
     //
     // Parameters:
-    //   handle  - The OpcodeHandle whose just-loaded field array to walk.
+    //   handle  - The OpcodeHandle whose field array to reorder and resolve.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void ResolveRelativeAnchors(OpcodeHandle handle)
     {
@@ -709,58 +699,118 @@ public class PatchData
             return;
         }
 
-        List<FieldDefinition> working = new List<FieldDefinition>(definitions);
         List<string?> pending = _pendingRelativeNames!;
+        int definitionCount = definitions.Length;
 
-        // Build the two local maps from the parallel _pendingRelativeNames list.  After
-        // this point both maps are position-free and survive the reorder unchanged.
+        // Build a per-field anchor-name lookup keyed by the field's own name.  The
+        // pending list parallels the required-field portion of definitions; optional
+        // fields sit past pending.Count and never carry an anchor.
         Dictionary<string, string> anchorNameByFieldName = new Dictionary<string, string>();
-        Dictionary<string, FieldDefinition> entriesToMove = new Dictionary<string, FieldDefinition>();
-
-        for (int buildIndex = 0; buildIndex < pending.Count; buildIndex++)
+        for (int pendingIndex = 0; pendingIndex < pending.Count; pendingIndex++)
         {
-            string? anchorName = pending[buildIndex];
+            string? anchorName = pending[pendingIndex];
             if (anchorName == null)
             {
                 continue;
             }
-            FieldDefinition entry = working[buildIndex];
-            anchorNameByFieldName[entry.Name] = anchorName;
-            entriesToMove[entry.Name] = entry;
+            string ownName = definitions[pendingIndex].Name;
+            anchorNameByFieldName[ownName] = anchorName;
         }
 
-        // Pass 1: for each entry to move, find it by name in working, remove, append.
-        foreach (KeyValuePair<string, FieldDefinition> pair in entriesToMove)
+        // Index field positions in the input array by name so the dependency graph
+        // can be built using name-keyed lookups even though the graph itself is
+        // index-keyed.
+        Dictionary<string, int> indexByName = new Dictionary<string, int>(definitionCount);
+        for (int positionIndex = 0; positionIndex < definitionCount; positionIndex++)
         {
-            string entryName = pair.Key;
-            FieldDefinition entryToMove = pair.Value;
+            indexByName[definitions[positionIndex].Name] = positionIndex;
+        }
 
-            int foundIndex = -1;
-            for (int searchIndex = 0; searchIndex < working.Count; searchIndex++)
-            {
-                if (working[searchIndex].Name == entryName)
-                {
-                    foundIndex = searchIndex;
-                    break;
-                }
-            }
+        int[] inDegree = new int[definitionCount];
+        List<int>[] dependents = new List<int>[definitionCount];
+        for (int initIndex = 0; initIndex < definitionCount; initIndex++)
+        {
+            dependents[initIndex] = new List<int>();
+        }
 
-            if (foundIndex < 0)
+        for (int edgeIndex = 0; edgeIndex < definitionCount; edgeIndex++)
+        {
+            string ownName = definitions[edgeIndex].Name;
+            string anchorName;
+            bool hasAnchor = anchorNameByFieldName.TryGetValue(ownName, out anchorName!);
+            if (hasAnchor == false)
             {
-                DebugLog.Write(LogChannel.Fields, "PatchData.ResolveRelativeAnchors: opcode='"
-                    + _namesByHandle[(int)handle] + "' could not locate '" + entryName
-                    + "' for reordering — internal inconsistency, skipping");
                 continue;
             }
 
-            working.RemoveAt(foundIndex);
-            working.Add(entryToMove);
+            int anchorIndex;
+            bool anchorPresent = indexByName.TryGetValue(anchorName, out anchorIndex);
+            if (anchorPresent == false)
+            {
+                DebugLog.Write(LogChannel.Fields, "PatchData.ResolveRelativeAnchors: opcode='"
+                    + _namesByHandle[(int)handle] + "' field='" + ownName
+                    + "' references unknown anchor '" + anchorName
+                    + "', will be left absolute");
+                continue;
+            }
+
+            dependents[anchorIndex].Add(edgeIndex);
+            inDegree[edgeIndex] = inDegree[edgeIndex] + 1;
         }
 
-        // Pass 2: resolve each anchor name against the final ordering.
-        for (int resolveIndex = 0; resolveIndex < working.Count; resolveIndex++)
+        Queue<int> ready = new Queue<int>();
+        for (int readyIndex = 0; readyIndex < definitionCount; readyIndex++)
         {
-            FieldDefinition entry = working[resolveIndex];
+            if (inDegree[readyIndex] == 0)
+            {
+                ready.Enqueue(readyIndex);
+            }
+        }
+
+        List<FieldDefinition> ordered = new List<FieldDefinition>(definitionCount);
+        while (ready.Count > 0)
+        {
+            int currentIndex = ready.Dequeue();
+            ordered.Add(definitions[currentIndex]);
+
+            List<int> currentDependents = dependents[currentIndex];
+            for (int dependentSlot = 0; dependentSlot < currentDependents.Count; dependentSlot++)
+            {
+                int dependentIndex = currentDependents[dependentSlot];
+                inDegree[dependentIndex] = inDegree[dependentIndex] - 1;
+                if (inDegree[dependentIndex] == 0)
+                {
+                    ready.Enqueue(dependentIndex);
+                }
+            }
+        }
+
+        if (ordered.Count != definitionCount)
+        {
+            for (int leftoverIndex = 0; leftoverIndex < definitionCount; leftoverIndex++)
+            {
+                if (inDegree[leftoverIndex] > 0)
+                {
+                    DebugLog.Write(LogChannel.Fields, "PatchData.ResolveRelativeAnchors: opcode='"
+                        + _namesByHandle[(int)handle] + "' field='"
+                        + definitions[leftoverIndex].Name
+                        + "' has unresolved anchor dependency, appending in original order");
+                    ordered.Add(definitions[leftoverIndex]);
+                }
+            }
+        }
+
+        // Build the index lookup against the final order before resolving anchor
+        // slot indices into FieldDefinition.RelativeToSlot.
+        Dictionary<string, uint> finalIndexByName = new Dictionary<string, uint>(definitionCount);
+        for (uint finalIndex = 0; finalIndex < ordered.Count; finalIndex++)
+        {
+            finalIndexByName[ordered[(int)finalIndex].Name] = finalIndex;
+        }
+
+        for (int resolveIndex = 0; resolveIndex < ordered.Count; resolveIndex++)
+        {
+            FieldDefinition entry = ordered[resolveIndex];
             string anchorName;
             bool hasAnchor = anchorNameByFieldName.TryGetValue(entry.Name, out anchorName!);
             if (hasAnchor == false)
@@ -768,17 +818,9 @@ public class PatchData
                 continue;
             }
 
-            uint? resolvedIndex = null;
-            for (uint searchIndex = 0; searchIndex < working.Count; searchIndex++)
-            {
-                if (working[(int)searchIndex].Name == anchorName)
-                {
-                    resolvedIndex = searchIndex;
-                    break;
-                }
-            }
-
-            if (resolvedIndex == null)
+            uint resolvedIndex;
+            bool resolved = finalIndexByName.TryGetValue(anchorName, out resolvedIndex);
+            if (resolved == false)
             {
                 DebugLog.Write(LogChannel.Fields, "PatchData.ResolveRelativeAnchors: opcode='"
                     + _namesByHandle[(int)handle] + "' field='" + entry.Name
@@ -788,10 +830,10 @@ public class PatchData
             }
 
             entry.RelativeToSlot = resolvedIndex;
-            working[resolveIndex] = entry;
+            ordered[resolveIndex] = entry;
         }
 
-        _opcodeFields[handle] = working.ToArray();
+        _opcodeFields[handle] = ordered.ToArray();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

@@ -58,31 +58,24 @@ public class FieldExtractor
     // Every definition produces exactly one slot.  Definitions whose decode does not
     // succeed (Unknown encoding, payload too short for the bit range, unsupported bit
     // width, etc.) produce slots that are added but left in their default Empty state.
-    // This keeps cached field indices stable: a handler that caches "hp is field 3" at
-    // load time can read bag.GetXxxAt(3) without worrying that an upstream field failed
-    // to decode, and detect failure by checking the slot's type tag.
     //
-    // All per-field failure paths are silent.  Failures during Inference are the expected
-    // case (every handler is tried against every packet) and logging them would flood
-    // the log with non-anomalies.
+    // A per-packet array of resolved start bits, one entry per definition, is populated by
+    // ResolveFieldStartBit at the top of each loop iteration.  Relative-anchored fields
+    // read their anchor's resolved start bit from this array.
     //
-    // Reentrancy: safe to call concurrently from multiple threads, provided each thread
-    // passes its own FieldBag.  The bag is mutated; sharing a bag across threads is not
-    // supported.
+    // All per-field failure paths are silent.
     //
     // Parameters:
     //   patchLevel  - The patch identifier the handle belongs to.
-    //   handle      - The OpcodeHandle whose field definitions to walk.
+    //   opcode      - The OpcodeHandle whose field definitions to walk.
     //   payload     - The raw packet payload bytes.  Bit offsets in definitions are
     //                 relative to the start of this span.
-    //   bag         - The bag to fill.  Must have been rented from the registry by the
-    //                 caller and must have enough capacity to hold one slot per
-    //                 definition.  The caller is responsible for releasing the bag when
-    //                 done reading.
+    //   bag         - The bag to fill.  Must have enough capacity to hold one slot per
+    //                 definition.
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     public void Extract(PatchLevel patchLevel, OpcodeHandle opcode, ReadOnlySpan<byte> payload,
-        FieldBag bag)
+     FieldBag bag)
     {
         FieldDefinition[]? definitions = GlassContext.PatchRegistry.GetFields(patchLevel, opcode);
         if (definitions == null)
@@ -96,35 +89,20 @@ public class FieldExtractor
             return;
         }
 
-        // Allocate one slot per definition up front, in definition order.  This guarantees
-        // that any cached slot index resolved via IndexOfField at load time is valid by the
-        // time decoding runs — including indices used by ExtractOptionalGroup to write
-        // sub-fields whose definitions appear later in the array than the block field that
-        // dispatches into the helper.
         for (int definitionIndex = 0; definitionIndex < definitions.Length; definitionIndex++)
         {
             ref FieldSlot newSlot = ref bag.AddSlot();
             newSlot.SetName(definitions[definitionIndex].Name);
         }
 
+        Span<uint> resolvedStartBits = stackalloc uint[definitions.Length];
+
         for (uint definitionIndex = 0; definitionIndex < definitions.Length; definitionIndex++)
         {
             FieldDefinition definition = definitions[definitionIndex];
             ref FieldSlot slot = ref bag.TryGetSlotRef(definitionIndex);
 
-            uint effectiveBitOffset;
-            if (definition.RelativeToSlot == null)
-            {
-                effectiveBitOffset = definition.BitOffset;
-            }
-            else
-            {
-                uint anchorIndex = definition.RelativeToSlot.Value;
-                FieldDefinition anchorDefinition = definitions[anchorIndex];
-                ref FieldSlot anchorSlot = ref bag.TryGetSlotRef(anchorIndex);
-                uint anchorEndBit = anchorDefinition.BitOffset + anchorSlot.GetLength() * 8u;
-                effectiveBitOffset = anchorEndBit + definition.BitOffset;
-            }
+            uint effectiveBitOffset = ResolveFieldStartBit(definitions, bag, resolvedStartBits, definitionIndex);
 
             if (HasBits(payload, effectiveBitOffset, definition.BitLength) == false)
             {
@@ -183,7 +161,6 @@ public class FieldExtractor
                     ExtractSignMagnitudeMsb(payload, effectiveBitOffset, definition.BitLength, definition.Divisor, ref slot);
                     break;
 
-                // We have a couple of encodings that are not processed by Extract
                 case FieldEncoding.OptSignMagnitudeMsb:
                     break;
                 case FieldEncoding.CsvToken:
@@ -214,6 +191,52 @@ public class FieldExtractor
                     break;
             }
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ResolveFieldStartBit
+    //
+    // Computes the absolute bit position in the payload where the field at definitionIndex
+    // begins, stores it into resolvedStartBits[definitionIndex], and returns it.  Absolute
+    // fields use their schema BitOffset directly.  Relative fields use the anchor field's
+    // already-resolved start bit plus the anchor slot's length in bits plus the schema
+    // BitOffset.
+    //
+    // Parameters:
+    //   definitions        - The field definitions for the opcode being decoded.
+    //   bag                - The bag whose slots hold the lengths of already-decoded fields.
+    //   resolvedStartBits  - Per-packet span of resolved start bits.  This method writes
+    //                        the entry for definitionIndex.
+    //   definitionIndex    - Index of the field whose start bit to resolve.
+    //
+    // Returns:
+    //   The resolved start bit, also written to resolvedStartBits[definitionIndex].
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private static uint ResolveFieldStartBit(
+        FieldDefinition[] definitions,
+        FieldBag bag,
+        Span<uint> resolvedStartBits,
+        uint definitionIndex)
+    {
+        FieldDefinition definition = definitions[definitionIndex];
+        uint startBit;
+
+        if (definition.RelativeToSlot == null)
+        {
+            startBit = definition.BitOffset;
+        }
+        else
+        {
+            uint anchorIndex = definition.RelativeToSlot.Value;
+            uint anchorStartBit = resolvedStartBits[(int)anchorIndex];
+            ref FieldSlot anchorSlot = ref bag.TryGetSlotRef(anchorIndex);
+            uint anchorLengthBits = anchorSlot.GetLength() * 8u;
+            uint anchorEndBit = anchorStartBit + anchorLengthBits;
+            startBit = anchorEndBit + definition.BitOffset;
+        }
+
+        resolvedStartBits[(int)definitionIndex] = startBit;
+        return startBit;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
