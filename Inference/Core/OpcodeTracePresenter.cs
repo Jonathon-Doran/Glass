@@ -89,6 +89,11 @@ public class OpcodeTracePresenter
     public OpcodeTraceRow? CursorRow
     {
         get { return _cursorRow; }
+        set
+        {
+            _cursorRow = value;
+            _cursorMatchIndex = -1;
+        }
     }
     public int CursorMatchIndex
     {
@@ -1194,7 +1199,16 @@ public class OpcodeTracePresenter
                     startRowIndex = found;
                 }
             }
-            startMatchIndex = _cursorMatchIndex + 1;
+
+            if (_cursorMatchIndex == -1)
+            {
+                startMatchIndex = 0;
+            }
+            else
+            {
+                startMatchIndex = _cursorMatchIndex + 1;
+            }
+
             DebugLog.Write(LogChannel.InferenceDebug,
                 "OpcodeTracePresenter.FindNext: active search, resuming at rowIndex="
                 + startRowIndex + " matchIndex=" + startMatchIndex);
@@ -1267,11 +1281,13 @@ public class OpcodeTracePresenter
                 OpcodeTraceRow? previousCursorRow = _cursorRow;
                 _cursorRow = row;
                 _cursorMatchIndex = firstCandidate;
-                _cursorOrdinal = _cursorOrdinal + 1;
-                if (_cursorOrdinal > _matchCount)
+                int ordinalCount = 0;
+                for (int walkIndex = 0; walkIndex < rowIndex; walkIndex++)
                 {
-                    _cursorOrdinal = 1;
+                    ordinalCount = ordinalCount + _rows[walkIndex].Matches.Count;
                 }
+                ordinalCount = ordinalCount + firstCandidate + 1;
+                _cursorOrdinal = ordinalCount;
                 ApplyCursorHighlightColor(previousCursorRow);
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "OpcodeTracePresenter.FindNext: cursor at rowIndex=" + rowIndex
@@ -1343,7 +1359,14 @@ public class OpcodeTracePresenter
                     startRowIndex = found;
                 }
             }
-            startMatchIndex = _cursorMatchIndex - 1;
+            if (_cursorMatchIndex == -1)
+            {
+                startMatchIndex = int.MaxValue;
+            }
+            else
+            {
+                startMatchIndex = _cursorMatchIndex - 1;
+            }
         }
         else
         {
@@ -1421,11 +1444,13 @@ public class OpcodeTracePresenter
                 OpcodeTraceRow? previousCursorRow = _cursorRow;
                 _cursorRow = row;
                 _cursorMatchIndex = candidate;
-                _cursorOrdinal = _cursorOrdinal - 1;
-                if (_cursorOrdinal < 1)
+                int ordinalCount = 0;
+                for (int walkIndex = 0; walkIndex < rowIndex; walkIndex++)
                 {
-                    _cursorOrdinal = _matchCount;
+                    ordinalCount = ordinalCount + _rows[walkIndex].Matches.Count;
                 }
+                ordinalCount = ordinalCount + candidate + 1;
+                _cursorOrdinal = ordinalCount;
                 ApplyCursorHighlightColor(previousCursorRow);
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "OpcodeTracePresenter.FindPrevious: cursor at rowIndex=" + rowIndex
@@ -1519,7 +1544,13 @@ public class OpcodeTracePresenter
                 OpcodeTraceRow? previousCursorRow = _cursorRow;
                 _cursorRow = row;
                 _cursorMatchIndex = 0;
-                _cursorOrdinal = 1;
+                int ordinalCount = 0;
+                for (int walkIndex = 0; walkIndex < rowIndex; walkIndex++)
+                {
+                    ordinalCount = ordinalCount + _rows[walkIndex].Matches.Count;
+                }
+                ordinalCount = ordinalCount + 1;
+                _cursorOrdinal = ordinalCount;
                 ApplyCursorHighlightColor(previousCursorRow);
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "OpcodeTracePresenter.FindAll: cursor at rowIndex=" + rowIndex

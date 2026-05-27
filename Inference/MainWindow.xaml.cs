@@ -2055,6 +2055,7 @@ public partial class MainWindow : Window
         bool hasSelection = row != null;
         ButtonOpcodeTraceHide.IsEnabled = hasSelection;
         ToggleOpcodeTraceExpand.IsEnabled = hasSelection;
+        _opcodeTracePresenter.CursorRow = row;
         if (row != null)
         {
             ToggleOpcodeTraceExpand.IsChecked = row.IsExpanded;
