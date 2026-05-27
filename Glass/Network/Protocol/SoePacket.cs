@@ -7,7 +7,6 @@ namespace Glass.Network.Protocol;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // SoePacket
 //
-// Mirrors EQProtocolPacket from packetformat.h/cpp.
 // Parses a raw SOE protocol packet on construction (_init_parse),
 // and provides Decode() for decompression.
 ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -29,7 +28,6 @@ public class SoePacket
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // SoePacket (constructor)
     //
-    // Mirrors _init_parse from packetformat.cpp lines 148-218.
     //
     // data:        The raw packet bytes
     // length:      Total length of the packet
@@ -49,7 +47,6 @@ public class SoePacket
         _rawPayloadLength = 0;
         _decoded = false;
 
-        // _init_parse
         _netOp = (ushort)(_packet[0] | (_packet[1] << 8));
 
         if (!HasFlags())
@@ -134,7 +131,6 @@ public class SoePacket
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Decode
     //
-    // Mirrors packetformat.cpp lines 222-298.
     // Decompresses if FLAG_COMPRESSED is set.
     // Returns false if decompression fails.
     //

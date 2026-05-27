@@ -160,14 +160,15 @@ public partial class PatchDataEditor : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // PopulateOpcodeDropdown
     //
-    // Reads the opcode names from PatchOpcode for the given patch level, sorted, and populates
-    // the opcode combobox.
+    // Reads the opcode names from PatchOpcode for the given patch level, sorted, and binds them
+    // to the opcode combobox as OpcodeDropdownItem instances.  Appends a sentinel item labeled
+    // "(New opcode...)" so the user can choose to create a new opcode row.
     //
     // patchLevel:  The patch level whose opcode names to load.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void PopulateOpcodeDropdown(PatchLevel patchLevel)
     {
-        List<string> opcodeNames = new List<string>();
+        List<OpcodeDropdownItem> items = new List<OpcodeDropdownItem>();
 
         using SqliteCommand cmd = _connection.CreateCommand();
         cmd.CommandText = "SELECT DISTINCT opcode_name"
@@ -181,21 +182,30 @@ public partial class PatchDataEditor : Window
         using SqliteDataReader reader = cmd.ExecuteReader();
         while (reader.Read())
         {
-            string opcodeName = reader.GetString(0);
-            opcodeNames.Add(opcodeName);
+            OpcodeDropdownItem item = new OpcodeDropdownItem();
+            item.OpcodeName = reader.GetString(0);
+            item.IsSentinel = false;
+            items.Add(item);
         }
 
-        DebugLog.Write(LogChannel.Fields, "PatchDataEditor.PopulateOpcodeDropdown: "
-            + opcodeNames.Count + " opcode(s) for patchLevel=" + patchLevel);
+        OpcodeDropdownItem sentinel = new OpcodeDropdownItem();
+        sentinel.OpcodeName = string.Empty;
+        sentinel.IsSentinel = true;
+        items.Add(sentinel);
 
-        OpcodeComboBox.ItemsSource = opcodeNames;
+        DebugLog.Write(LogChannel.Fields, "PatchDataEditor.PopulateOpcodeDropdown: "
+            + (items.Count - 1) + " opcode(s) plus sentinel for patchLevel=" + patchLevel);
+
+        OpcodeComboBox.ItemsSource = items;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // PopulateVersionDropdown
     //
     // Reads the id and version columns from PatchOpcode for the given (patchLevel, opcodeName)
-    // and binds them to the version combobox as VersionDropdownItem instances.  If exactly one
+    // and binds them to the version combobox as VersionDropdownItem instances.  Appends a
+    // sentinel item labeled "(New version...)" with PatchOpcodeKey = 0 so the user can choose
+    // to create a new version row from the currently displayed one.  If exactly one real
     // version exists, selects it so the form populates immediately; otherwise the user picks.
     //
     // patchLevel:  The patch level whose versions to load.
@@ -220,17 +230,24 @@ public partial class PatchDataEditor : Window
         while (reader.Read())
         {
             VersionDropdownItem item = new VersionDropdownItem();
-            item.PatchOpcodeKey = (uint) reader.GetInt32(0);
-            item.Version = (uint) reader.GetInt32(1);
+            item.PatchOpcodeKey = (uint)reader.GetInt32(0);
+            item.Version = (uint)reader.GetInt32(1);
+            item.IsSentinel = false;
             items.Add(item);
         }
 
+        VersionDropdownItem sentinel = new VersionDropdownItem();
+        sentinel.PatchOpcodeKey = 0;
+        sentinel.Version = 0;
+        sentinel.IsSentinel = true;
+        items.Add(sentinel);
+
         DebugLog.Write(LogChannel.Fields, "PatchDataEditor.PopulateVersionDropdown: "
-            + items.Count + " version(s) for " + patchLevel + " " + opcodeName);
+            + (items.Count - 1) + " version(s) plus sentinel for " + patchLevel + " " + opcodeName);
 
         VersionComboBox.ItemsSource = items;
 
-        if (items.Count > 0)
+        if (items.Count > 1)
         {
             VersionComboBox.SelectedIndex = 0;
         }
@@ -484,13 +501,15 @@ public partial class PatchDataEditor : Window
     // Persists pending changes to the database inside a single transaction.  Either every
     // change commits or none does.
     //
-    // When _patchOpcodeKey is 0, the form represents a new opcode that has not yet been
-    // inserted; InsertOpcodeRow runs first and captures the new key so the grid saves can
-    // reference it as their foreign key.  Otherwise SaveOpcodeForm updates the existing row.
+    // When _patchOpcodeKey is 0, the form represents a new opcode (or a new version of an
+    // existing opcode) that has not yet been inserted; InsertOpcodeRow runs first and captures
+    // the new key so the grid saves can reference it as their foreign key.  Otherwise
+    // SaveOpcodeForm updates the existing row.
     //
-    // After a successful commit the three grid tables are reloaded from the database so they
-    // pick up newly assigned primary keys, and the opcode dropdown is refreshed so a newly
-    // inserted opcode shows up.
+    // After a successful commit the opcode dropdown is refreshed so a newly inserted opcode
+    // shows up, the saved opcode is reselected by matching its OpcodeName against the
+    // OpcodeDropdownItem instances in the rebound dropdown, and the saved version is reselected
+    // by matching its Version against the VersionDropdownItem instances.
     //
     // sender:  The Save button.
     // e:       Standard event args; not inspected.
@@ -540,15 +559,26 @@ public partial class PatchDataEditor : Window
         uint version = uint.Parse(OpcodeVersionTextBox.Text.Trim());
 
         PopulateOpcodeDropdown(patchLevel);
-        OpcodeComboBox.SelectedItem = opcodeName;
 
-        if (VersionComboBox.ItemsSource is List<VersionDropdownItem> items)
+        if (OpcodeComboBox.ItemsSource is List<OpcodeDropdownItem> opcodeItems)
         {
-            foreach (VersionDropdownItem item in items)
+            foreach (OpcodeDropdownItem opcodeItem in opcodeItems)
             {
-                if (item.Version == version)
+                if (opcodeItem.IsSentinel == false && opcodeItem.OpcodeName == opcodeName)
                 {
-                    VersionComboBox.SelectedItem = item;
+                    OpcodeComboBox.SelectedItem = opcodeItem;
+                    break;
+                }
+            }
+        }
+
+        if (VersionComboBox.ItemsSource is List<VersionDropdownItem> versionItems)
+        {
+            foreach (VersionDropdownItem versionItem in versionItems)
+            {
+                if (versionItem.IsSentinel == false && versionItem.Version == version)
+                {
+                    VersionComboBox.SelectedItem = versionItem;
                     break;
                 }
             }
@@ -1108,9 +1138,10 @@ public partial class PatchDataEditor : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeComboBox_SelectionChanged
     //
-    // Fires when the opcode name selection changes.  Loads the list of versions for the
-    // selected (patchLevel, opcodeName) into the version dropdown.  Clears the version
-    // dropdown and the three grids when the opcode selection clears.
+    // Fires when the opcode selection changes.  For a real opcode item, loads the list of
+    // versions for the selected (patchLevel, opcodeName) into the version dropdown.  For the
+    // sentinel item, blanks the opcode form, clears the three grids, sets _patchOpcodeKey to 0
+    // so Save will INSERT a new PatchOpcode row, and focuses the name textbox.
     //
     // sender:  The opcode combobox.
     // e:       Standard selection-changed event args; not inspected.
@@ -1137,33 +1168,56 @@ public partial class PatchDataEditor : Window
         }
 
         PatchLevel patchLevel = (PatchLevel)PatchLevelComboBox.SelectedItem;
-        string opcodeName = (string)OpcodeComboBox.SelectedItem;
+        OpcodeDropdownItem item = (OpcodeDropdownItem)OpcodeComboBox.SelectedItem;
+
+        if (item.IsSentinel == true)
+        {
+            _patchOpcodeKey = 0;
+
+            OpcodeNameTextBox.Text = string.Empty;
+            OpcodeHexTextBox.Text = string.Empty;
+            OpcodeByteLengthTextBox.Text = string.Empty;
+            OpcodeVersionTextBox.Text = string.Empty;
+            OpcodeKeyTextBox.Text = string.Empty;
+
+            _fieldsTable = CreateFieldsTable();
+            _optionalGroupsTable = CreateOptionalGroupsTable();
+            _optionalFieldsTable = CreateOptionalFieldsTable();
+
+            FieldsGrid.ItemsSource = _fieldsTable.DefaultView;
+            OptionalGroupsGrid.ItemsSource = _optionalGroupsTable.DefaultView;
+            OptionalFieldsGrid.ItemsSource = _optionalFieldsTable.DefaultView;
+
+            OpcodeNameTextBox.Focus();
+
+            DebugLog.Write(LogChannel.Fields, "PatchDataEditor.OpcodeComboBox_SelectionChanged: "
+                + "sentinel selected, armed for new opcode insert, form cleared");
+            return;
+        }
 
         DebugLog.Write(LogChannel.Fields, "PatchDataEditor.OpcodeComboBox_SelectionChanged: "
-            + "patchLevel=" + patchLevel + " opcodeName=" + opcodeName);
+            + "patchLevel=" + patchLevel + " opcodeName=" + item.OpcodeName);
 
-        PopulateVersionDropdown(patchLevel, opcodeName);
+        PopulateVersionDropdown(patchLevel, item.OpcodeName);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // VersionComboBox_SelectionChanged
     //
-    // Fires when the version selection changes.  Caches the PatchOpcode primary key from the
-    // selected VersionDropdownItem and loads the opcode form, the fields grid, and the
-    // optional groups grid for the (patchLevel, opcodeName, version) triple.
+    // Fires when the version selection changes.  For a real version item, caches the PatchOpcode
+    // primary key from the selected VersionDropdownItem and loads the opcode form, the fields
+    // grid, and the optional groups grid for the (patchLevel, opcodeName, version) triple.
+    //
+    // For the sentinel item, leaves the form populated with whatever version was previously
+    // displayed so the user can use it as a starting point, sets _patchOpcodeKey to 0 so Save
+    // will INSERT a new PatchOpcode row, clears the version textbox, and gives it focus so the
+    // user can type the new version number.
     //
     // sender:  The version combobox.
     // e:       Standard selection-changed event args; not inspected.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void VersionComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        FieldsGrid.ItemsSource = null;
-        OptionalGroupsGrid.ItemsSource = null;
-        OptionalFieldsGrid.ItemsSource = null;
-        OpcodeHexTextBox.Text = string.Empty;
-        OpcodeByteLengthTextBox.Text = string.Empty;
-        _patchOpcodeKey = 0;
-
         if (VersionComboBox.SelectedItem == null)
         {
             DebugLog.Write(LogChannel.Fields, "PatchDataEditor.VersionComboBox_SelectionChanged: "
@@ -1178,9 +1232,38 @@ public partial class PatchDataEditor : Window
             return;
         }
 
-        PatchLevel patchLevel = (PatchLevel)PatchLevelComboBox.SelectedItem;
-        string opcodeName = (string)OpcodeComboBox.SelectedItem;
         VersionDropdownItem item = (VersionDropdownItem)VersionComboBox.SelectedItem;
+
+        if (item.IsSentinel == true)
+        {
+            _patchOpcodeKey = 0;
+            OpcodeVersionTextBox.Text = string.Empty;
+
+            _fieldsTable = CreateFieldsTable();
+            _optionalGroupsTable = CreateOptionalGroupsTable();
+            _optionalFieldsTable = CreateOptionalFieldsTable();
+
+            FieldsGrid.ItemsSource = _fieldsTable.DefaultView;
+            OptionalGroupsGrid.ItemsSource = _optionalGroupsTable.DefaultView;
+            OptionalFieldsGrid.ItemsSource = _optionalFieldsTable.DefaultView;
+
+            OpcodeVersionTextBox.Focus();
+
+            DebugLog.Write(LogChannel.Fields, "PatchDataEditor.VersionComboBox_SelectionChanged: "
+                + "sentinel selected, armed for new version insert, grids cleared");
+            return;
+        }
+
+        FieldsGrid.ItemsSource = null;
+        OptionalGroupsGrid.ItemsSource = null;
+        OptionalFieldsGrid.ItemsSource = null;
+        OpcodeHexTextBox.Text = string.Empty;
+        OpcodeByteLengthTextBox.Text = string.Empty;
+        _patchOpcodeKey = 0;
+
+        PatchLevel patchLevel = (PatchLevel)PatchLevelComboBox.SelectedItem;
+        OpcodeDropdownItem opcodeItem = (OpcodeDropdownItem)OpcodeComboBox.SelectedItem;
+        string opcodeName = opcodeItem.OpcodeName;
         uint version = item.Version;
         _patchOpcodeKey = item.PatchOpcodeKey;
 
@@ -1229,17 +1312,47 @@ public partial class PatchDataEditor : Window
     // VersionDropdownItem
     //
     // Item bound to the version combobox.  Carries the PatchOpcode primary key alongside the
-    // version number.  ToString returns just the version so the combobox displays "1", "2",
-    // etc., while the handler reads PatchOpcodeKey directly off the selected item.
+    // version number for real rows.  When IsSentinel is true the item represents the
+    // "(New version...)" entry: PatchOpcodeKey is 0, Version is 0, and ToString returns the
+    // sentinel label so the combobox displays it in place of a number.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private class VersionDropdownItem
     {
         public uint PatchOpcodeKey { get; set; }
         public uint Version { get; set; }
+        public bool IsSentinel { get; set; }
 
         public override string ToString()
         {
+            if (IsSentinel == true)
+            {
+                return "(New version...)";
+            }
+
             return Version.ToString();
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeDropdownItem
+    //
+    // Item bound to the opcode combobox.  Carries the opcode_name for real rows.  When
+    // IsSentinel is true the item represents the "(New opcode...)" entry: OpcodeName is empty
+    // and ToString returns the sentinel label so the combobox displays it in place of a name.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private class OpcodeDropdownItem
+    {
+        public string OpcodeName { get; set; } = string.Empty;
+        public bool IsSentinel { get; set; }
+
+        public override string ToString()
+        {
+            if (IsSentinel == true)
+            {
+                return "(New opcode...)";
+            }
+
+            return OpcodeName;
         }
     }
 }

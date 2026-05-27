@@ -197,7 +197,6 @@ public class SoeStream : IDisposable
 
         SoePacket packet = new SoePacket(rawData, rawData.Length, false);
 
-        // Diagnostic output — mirrors Python handlePacket
         DebugLog.Write(LogChannel.LowNetwork,
             "========================================================================");
         DebugLog.Write(LogChannel.LowNetwork,
@@ -255,13 +254,11 @@ public class SoeStream : IDisposable
             return;
         }
 
-        // processPacket
         ReadOnlySpan<byte> payload = packet.Payload();
         bool hasArq = packet.HasArqSeq();
 
         ProcessPacket(packet.NetOpCode, payload, packet.ArqSeq, hasArq, false, dgram);
 
-        // processCache
         if (_arqCache.Count > 0)
         {
             ProcessCache();
@@ -294,8 +291,6 @@ public class SoeStream : IDisposable
         metadata.DestPort = dgram.DestPort;
         metadata.SessionId = dgram.SessionId;
         metadata.Channel = dgram.Channel;
-        metadata.Opcode = netOpcode;
-
 
         DebugLog.Write(LogChannel.LowNetwork,
             "          [processPacket] netop=0x" + netOpcode.ToString("x4")
@@ -405,6 +400,10 @@ public class SoeStream : IDisposable
                 + opcode.ToString("x4"));
             return;
         }
+
+        // store the handle as soon as possible so that everything downstream has it
+        metadata.Handle = OpcodeDispatch.Instance.ResolveOpcodeHandle(opcode, data, metadata);
+       // DebugLog.Write(LogChannel.InferenceDebug, "metadata handle resolved to " + metadata.Handle);
 
         bus.Publish(data, opcode, metadata);
     }

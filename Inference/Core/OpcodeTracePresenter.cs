@@ -356,7 +356,18 @@ public class OpcodeTracePresenter
         ReadOnlySpan<byte> payload = row.Payload.AsReadOnlySpan();
         row.HexDumpText = HexDumpFormatter.Format(payload, _maxHexBytes);
 
-        OpcodeHandle handle = GlassContext.PatchRegistry.GetOpcodeHandle(GlassContext.CurrentPatchLevel, row.OpcodeValue);
+        CatalogedPacket? packet = _catalog.PacketAt(row.PacketIndex);
+
+        if (packet == null)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug, "packetindex " + row.PacketIndex + " is no in the catalog");
+
+            return;
+        }
+
+        PacketMetadata metadata = packet.Value.Metadata;
+
+        OpcodeHandle handle = metadata.Handle;
         if ((int)handle == -1)
         {
             row.FieldText = string.Empty;

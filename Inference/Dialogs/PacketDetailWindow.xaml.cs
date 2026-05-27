@@ -108,8 +108,9 @@ public partial class PacketDetailWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private static string ExtractFieldText(ushort opcode, ReadOnlySpan<byte> payload)
     {
-        OpcodeHandle handle = GlassContext.PatchRegistry.GetOpcodeHandle(
-            GlassContext.CurrentPatchLevel, opcode);
+        PatchOpcode patchOpcode = new PatchOpcode(GlassContext.CurrentPatchLevel, opcode);
+        OpcodeHandle handle = GlassContext.PatchRegistry.GetOpcodeHandle(patchOpcode);
+
         if ((int)handle == -1)
         {
             DebugLog.Write(LogChannel.InferenceDebug,

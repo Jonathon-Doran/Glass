@@ -816,7 +816,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        GlassContext.CurrentPatchLevel = GlassContext.PatchRegistry.LoadLatestPatchLevel("Live");
+        PatchLevel patchLevel = GlassContext.PatchRegistry.LoadLatestPatchLevel("Live");
+        GlassContext.CurrentPatchLevel = patchLevel;
+
         DebugLog.Write(LogChannel.General,
             "Pcap_Click: patch level set to latest Live (pcap metadata not yet supported)");
         OpcodeDispatch.RebuildForCurrentPatchLevel();
@@ -877,14 +879,11 @@ public partial class MainWindow : Window
 
                     foreach (KeyValuePair<ushort, int> op in sorted)
                     {
-                        string? name = OpcodeDispatch.Instance.GetOpcodeName(op.Key);
-                        if (name == null)
-                        {
-                            name = "unknown";
-                        }
-                        string handled = OpcodeDispatch.Instance.IsOpcodeHandled(op.Key)
-                            ? "+" : " ";
-                        DebugLog.Write(LogChannel.Network, "  " + handled + " 0x" + op.Key.ToString("x4") + " (" + name + ")"
+                        string name = GlassContext.PatchRegistry.GetOpcodeName(patchLevel, op.Key);
+
+ //                       string handled = OpcodeDispatch.Instance.IsOpcodeHandled(op.Key)
+ //                           ? "+" : " ";
+                        DebugLog.Write(LogChannel.Network, "  " + " 0x" + op.Key.ToString("x4") + " (" + name + ")"
                             + ": " + op.Value + " times");
                     }
                 }

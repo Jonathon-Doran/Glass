@@ -75,7 +75,7 @@ public class PatchData
     // hot path by the dispatcher to resolve an incoming wire opcode to the handle that
     // indexes its handler array.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private readonly Dictionary<ushort, OpcodeHandle> _handlesByValue;
+    private readonly Dictionary<PatchOpcode, OpcodeHandle> _handlesByOpcode;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // _namesByHandle
@@ -160,7 +160,7 @@ public class PatchData
         _opcodeOptionalGroups = new OptionalGroup?[opcodeCount];
         _namesByHandle = new string[opcodeCount];
         _handlesByName = new Dictionary<string, OpcodeHandle>(opcodeCount);
-        _handlesByValue = new Dictionary<ushort, OpcodeHandle>(opcodeCount);
+        _handlesByOpcode = new Dictionary<PatchOpcode, OpcodeHandle>(opcodeCount);
         _pendingRelativeNames = new List<string?>();
 
 
@@ -286,7 +286,7 @@ public class PatchData
             _patchOpcodes[handle] = patchOpcode;
             _namesByHandle[handle] = opcodeName;
             _handlesByName[opcodeName] = handle;
-            _handlesByValue[opcodeValue] = handle;
+            _handlesByOpcode[patchOpcode] = handle;
 
             handleIndex = handleIndex + 1;
         }
@@ -826,22 +826,20 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeHandle
     //
-    // Returns the OpcodeHandle for the given wire opcode value in this patch.  Called on
-    // the hot path by the dispatcher to resolve an incoming wire opcode to the handle
-    // that indexes its handler array.
+    // Returns the OpcodeHandle for the given opcode in this patch.  
     //
     // Returns (OpcodeHandle)(-1) if the wire value is not in this patch.
     //
     // Parameters:
-    //   opcodeValue  - The wire opcode value (e.g. 0x6FA1).
+    //   opcode  - The opcode to lookup
     //
     // Returns:
     //   The OpcodeHandle for the wire value, or (OpcodeHandle)(-1) if not in this patch.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public OpcodeHandle GetOpcodeHandle(ushort opcodeValue)
+    public OpcodeHandle GetOpcodeHandle(PatchOpcode opcode)
     {
         OpcodeHandle handle;
-        bool found = _handlesByValue.TryGetValue(opcodeValue, out handle);
+        bool found = _handlesByOpcode.TryGetValue(opcode, out handle);
         if (found == false)
         {
             return (OpcodeHandle)(-1);

@@ -141,4 +141,18 @@ public class HandleZoneEntry : IHandleOpcodes
         DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry.HandleClientToZone: "
             + _opcodeName + " length=" + data.Length);
     }
+
+    public uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    {
+        switch (metadata.Channel)
+        {
+            case SoeConstants.StreamId.StreamZoneToClient:
+                return 1;
+
+            case SoeConstants.StreamId.StreamClientToZone:
+                return 2;
+        }
+
+        return 1;
+    }
 }

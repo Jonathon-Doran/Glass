@@ -227,51 +227,51 @@ public class PatchRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeHandle
     //
-    // Returns the OpcodeHandle for the given opcode name in the given patch level.  Looks
-    // up the patch in the loaded set and delegates to the PatchData.
+    // Returns the OpcodeHandle for the (patch level, wire opcode value, version) tuple
+    // carried by the supplied PatchOpcode.  Looks up the patch in the loaded set and
+    // delegates to the PatchData.
     //
-    // Throws InvalidOperationException if the patch level is not loaded.  Callers must
-    // invoke LoadPatchLevel (or LoadLatestPatchLevel) for the patch before any code that
-    // reaches this method runs.
+    // Throws InvalidOperationException if the patch level is not loaded.
     //
-    // Returns "Unknown" if the opcode is unknown to the patchLevel
+    // Returns (OpcodeHandle)(-1) if no matching row exists in the patch.
+    //
+    // Parameters:
+    //   patchOpcode  - The (PatchLevel, Opcode, Version) tuple identifying the row.
+    //                  Its Level must already be loaded.
+    //
+    // Returns:
+    //   The OpcodeHandle for the row, or (OpcodeHandle)(-1) if no matching row exists.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public OpcodeHandle GetOpcodeHandle(PatchOpcode patchOpcode)
+    {
+        PatchData patchData = FindPatchData(patchOpcode.Level);
+        return patchData.GetOpcodeHandle(patchOpcode);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetOpcodeName
+    //
+    // Returns the logical opcode name for the given wire opcode value in the given patch
+    // level.  Looks up the patch in the loaded set and delegates to the PatchData.
+    //
+    // Throws InvalidOperationException if the patch level is not loaded.
+    //
+    // Returns "Unknown" if the wire value is not in the patch.
     //
     // Parameters:
     //   patchLevel   - The patch identifier.  Must already be loaded.
     //   opcodeValue  - The wire opcode value (e.g. 0x6FA1).
     //
     // Returns:
-    //   The name for the named opcode, or "Unknown" if it is not found.
+    //   The opcode name (e.g. "OP_PlayerProfile"), or "Unknown" if not in the patch.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    ///
+
     public string GetOpcodeName(PatchLevel patchLevel, ushort opcodeValue)
     {
         PatchData patchData = FindPatchData(patchLevel);
         return patchData.GetOpcodeName(opcodeValue);
     }
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetOpcodeHandle
-    //
-    // Returns the OpcodeHandle for the given wire opcode value in the given patch level.
-    // Looks up the patch in the loaded set and delegates to the PatchData.
-    //
-    // Throws InvalidOperationException if the patch level is not loaded.
-    //
-    // Returns (OpcodeHandle)(-1) if the wire value is not in the patch.
-    //
-    // Parameters:
-    //   patchLevel   - The patch identifier.  Must already be loaded.
-    //   opcodeValue  - The wire opcode value (e.g. 0x6FA1).
-    //
-    // Returns:
-    //   The OpcodeHandle for the wire value, or (OpcodeHandle)(-1) if not in the patch.
-    ///////////////////////////////////////////////////////////////////////////////////////////
 
-    public OpcodeHandle GetOpcodeHandle(PatchLevel patchLevel, ushort opcodeValue)
-    {
-        PatchData patchData = FindPatchData(patchLevel);
-        return patchData.GetOpcodeHandle(opcodeValue);
-    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeValue
