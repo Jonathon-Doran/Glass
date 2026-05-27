@@ -288,4 +288,22 @@ public class PacketCatalog
             return _packets[(int)packetIndex];
         }
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Clear
+    //
+    // Removes every cataloged packet, every per-opcode bucket, and every
+    // per-opcode stats record.  Takes the catalog lock for the duration of
+    // the operation.
+    ///////////////////////////////////////////////////////////////////////////////////////
+    public void Clear()
+    {
+        lock (_lock)
+        {
+            _packets.Clear();
+            _byOpcode.Clear();
+            _stats.Clear();
+        }
+        DebugLog.Write(LogChannel.InferenceDebug, "PacketCatalog.Clear: cleared");
+    }
 }

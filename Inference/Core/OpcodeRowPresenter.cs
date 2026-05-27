@@ -100,4 +100,17 @@ public class OpcodeRowPresenter
             "OpcodeRowPresenter.Update: added row for opcode="
             + opcodeHex + " name=" + name + " channel=" + stats.Channel);
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Clear
+    //
+    // Removes every row from the bound collection and the per-opcode lookup.
+    // Must be called on the UI thread.
+    ///////////////////////////////////////////////////////////////////////////////////////
+    public void Clear()
+    {
+        _rows.Clear();
+        _rowByOpcode.Clear();
+        DebugLog.Write(LogChannel.InferenceDebug, "OpcodeRowPresenter.Clear: cleared");
+    }
 }

@@ -1530,4 +1530,32 @@ public class OpcodeTracePresenter
 
         return null;
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Clear
+    //
+    // Resets every field to its initial state.  Must be called on the UI thread.
+    ///////////////////////////////////////////////////////////////////////////////////////
+    public void Clear()
+    {
+        _rows.Clear();
+        _hiddenOpcodes.Clear();
+        _colorByOpcode.Clear();
+        _colorByPacketIndex.Clear();
+        lock (_characterNameCacheLock)
+        {
+            _characterNameCache.Clear();
+        }
+        _maxHexBytes = 64;
+        _searchQuery = string.Empty;
+        _searchQueryBytes = null;
+        _matchCount = 0;
+        _searchQueryType = SearchQueryType.Empty;
+        _cursorRow = null;
+        _cursorOrdinal = 0;
+        _cursorMatchIndex = -1;
+        _searchWrap = false;
+
+        DebugLog.Write(LogChannel.InferenceDebug, "OpcodeTracePresenter.Clear: cleared");
+    }
 }

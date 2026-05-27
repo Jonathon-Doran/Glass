@@ -841,6 +841,8 @@ public partial class MainWindow : Window
             return;
         }
 
+        UIReset();
+
         GlassContext.PatchRegistry.LoadPatchLevel(_currentPatchLevel.Value);
         GlassContext.CurrentPatchLevel = _currentPatchLevel.Value;
         OpcodeDispatch.RebuildForCurrentPatchLevel();
@@ -866,15 +868,17 @@ public partial class MainWindow : Window
         }
 
         StatusCapture.Text = "Capture: Reading pcap";
-        PcapProgressPanel.Visibility = Visibility.Visible;
-        PcapProgressText.Text = "Scanning...";
-        PcapProgressBar.Value = 0;
+        StatusBarProgressPanel.Visibility = Visibility.Visible;
+        StatusBarProgressText.Text = "Scanning...";
+        StatusBarProgressBar.Value = 0;
+        StatusBarRowText.Visibility = Visibility.Collapsed;
+        StatusBarSecondaryText.Visibility = Visibility.Collapsed;
 
         // initialize the progress bar on the status bar
         Progress<int> progress = new Progress<int>(percent =>
         {
-            PcapProgressBar.Value = percent;
-            PcapProgressText.Text = "Loading " + percent + "%";
+            StatusBarProgressBar.Value = percent;
+            StatusBarProgressText.Text = "Loading " + percent + "%";
         });
 
         int routed = await Task.Run(() => reader.ProcessFile(dialog.FileName, null, progress));
@@ -882,7 +886,9 @@ public partial class MainWindow : Window
         StatusCapture.Text = "Capture: Pcap complete (" + routed + " packets)";
 
         // restore the menu item
-        PcapProgressPanel.Visibility = Visibility.Collapsed;
+        StatusBarProgressPanel.Visibility = Visibility.Collapsed;
+        StatusBarRowText.Visibility = Visibility.Visible;
+        StatusBarSecondaryText.Visibility = Visibility.Visible;
 
         if (menuItem != null)
         {
@@ -1194,7 +1200,7 @@ public partial class MainWindow : Window
         SearchMatch? match = _opcodeTracePresenter.FindNext(selectedRow, mode);
         if (match == null)
         {
-            StatusBarFindText.Text = "No match";
+            StatusBarSecondaryText.Text = "No match";
             DebugLog.Write(LogChannel.InferenceDebug,
                 "Button_OpcodeTraceFindNext_Click: no match (mode=" + mode + ")");
             return;
@@ -1205,7 +1211,7 @@ public partial class MainWindow : Window
             ScrollMatchIntoView(cursorRow, match.Value);
             StatusBarRowText.Text = "Message " + cursorRow.PacketIndex;
         }
-        StatusBarFindText.Text = _opcodeTracePresenter.CursorOrdinal
+        StatusBarSecondaryText.Text = _opcodeTracePresenter.CursorOrdinal
             + "/" + _opcodeTracePresenter.MatchCount + " matches";
         DebugLog.Write(LogChannel.InferenceDebug,
             "Button_OpcodeTraceFindNext_Click: match found (mode=" + mode + ")");
@@ -1263,7 +1269,7 @@ public partial class MainWindow : Window
         SearchMatch? match = _opcodeTracePresenter.FindPrevious(selectedRow, mode);
         if (match == null)
         {
-            StatusBarFindText.Text = "No match";
+            StatusBarSecondaryText.Text = "No match";
             DebugLog.Write(LogChannel.InferenceDebug,
                 "Button_OpcodeTraceFindPrevious_Click: no match (mode=" + mode + ")");
             return;
@@ -1274,7 +1280,7 @@ public partial class MainWindow : Window
             ScrollMatchIntoView(cursorRow, match.Value);
             StatusBarRowText.Text = "Message " + cursorRow.PacketIndex;
         }
-        StatusBarFindText.Text = _opcodeTracePresenter.CursorOrdinal
+        StatusBarSecondaryText.Text = _opcodeTracePresenter.CursorOrdinal
             + "/" + _opcodeTracePresenter.MatchCount + " matches";
         DebugLog.Write(LogChannel.InferenceDebug,
             "Button_OpcodeTraceFindPrevious_Click: match found (mode=" + mode + ")");
@@ -1634,7 +1640,7 @@ public partial class MainWindow : Window
         }
 
         TextBoxOpcodeTraceFind.Clear();
-        StatusBarFindText.Text = "";
+        StatusBarSecondaryText.Text = "";
         _opcodeTracePresenter.SetSearchQuery(null);
         _opcodeTracePresenter.ClearHighlights();
         TextBoxOpcodeTraceFind.Focus();
@@ -1695,7 +1701,7 @@ public partial class MainWindow : Window
         SearchMatch? match = _opcodeTracePresenter.FindAll(selectedRow, mode);
         if (match == null)
         {
-            StatusBarFindText.Text = "No matches";
+            StatusBarSecondaryText.Text = "No matches";
             DebugLog.Write(LogChannel.InferenceDebug,
                 "Button_OpcodeTraceFindAll_Click: no matches (mode=" + mode + ")");
             return;
@@ -1707,7 +1713,7 @@ public partial class MainWindow : Window
             ScrollMatchIntoView(cursorRow, match.Value);
             StatusBarRowText.Text = "Message " + cursorRow.PacketIndex;
         }
-        StatusBarFindText.Text = _opcodeTracePresenter.CursorOrdinal
+        StatusBarSecondaryText.Text = _opcodeTracePresenter.CursorOrdinal
             + "/" + _opcodeTracePresenter.MatchCount + " matches";
         DebugLog.Write(LogChannel.InferenceDebug,
             "Button_OpcodeTraceFindAll_Click: " + _opcodeTracePresenter.MatchCount
@@ -2942,6 +2948,53 @@ public partial class MainWindow : Window
                 DebugLog.Write(LogChannel.ISXGlass, $"{msg}");
                 break;
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // UIReset
+    //
+    // Returns the application to its initial state.  Clears the packet catalog
+    // and both presenters, closes any open OpcodeManageWindow, clears the
+    // candidate grid and hex dump display, resets the Analysis tab filters
+    // to their first item, collapses the find bar and clears its text, and
+    // clears the trace status text blocks.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void UIReset()
+    {
+        _packetCatalog.Clear();
+        _opcodeRowPresenter.Clear();
+        _opcodeTracePresenter.Clear();
+
+        Window[] ownedSnapshot = new Window[OwnedWindows.Count];
+        OwnedWindows.CopyTo(ownedSnapshot, 0);
+        for (int ownedIndex = 0; ownedIndex < ownedSnapshot.Length; ownedIndex++)
+        {
+            OpcodeManageWindow? manageWindow = ownedSnapshot[ownedIndex] as OpcodeManageWindow;
+            if (manageWindow != null)
+            {
+                manageWindow.Close();
+            }
+        }
+
+        CandidateGrid.ItemsSource = null;
+        HexDumpDisplay.Document.Blocks.Clear();
+
+        if (AnalysisSessionFilter.Items.Count > 0)
+        {
+            AnalysisSessionFilter.SelectedIndex = 0;
+        }
+        if (AnalysisChannelFilter.Items.Count > 0)
+        {
+            AnalysisChannelFilter.SelectedIndex = 0;
+        }
+
+        OpcodeTraceFindBar.Visibility = Visibility.Collapsed;
+        TextBoxOpcodeTraceFind.Text = string.Empty;
+
+        StatusBarRowText.Text = string.Empty;
+        StatusBarSecondaryText.Text = string.Empty;
+
+        DebugLog.Write(LogChannel.InferenceDebug, "MainWindow.UIReset: complete");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

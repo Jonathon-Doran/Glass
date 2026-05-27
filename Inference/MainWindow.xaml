@@ -67,11 +67,11 @@
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock x:Name="StatusBarRowText" Text="" Width="Auto" Margin="0,0,16,0"/>
                         <Separator/>
-                        <TextBlock x:Name="StatusBarFindText" Text="" Width="Auto"/>
+                        <TextBlock x:Name="StatusBarSecondaryText" Text="" Width="Auto"/>
                     </StackPanel>
-                    <StackPanel Orientation="Horizontal" x:Name="PcapProgressPanel" Visibility="Collapsed">
-                        <TextBlock x:Name="PcapProgressText" Text="" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                        <ProgressBar x:Name="PcapProgressBar"
+                    <StackPanel Orientation="Horizontal" x:Name="StatusBarProgressPanel" Visibility="Collapsed">
+                        <TextBlock x:Name="StatusBarProgressText" Text="" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <ProgressBar x:Name="StatusBarProgressBar"
                          Minimum="0" Maximum="100"
                          Width="200" Height="14"
                          VerticalAlignment="Center"/>
