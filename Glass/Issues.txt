@@ -17,11 +17,13 @@ PacketEnvelope should include a Connection and not the ip addresses and ports.
 SessionRegistry is not checking for an existing Connection properly
 
 CharacterId standardization would be a good thhing
-The OpcodeRowPresenter logs are very vergose.
+The OpcodeRowPresenter logs are very verbose.
 
 Inference/Core/InferenceDebugLog and InferenceLog need to go away 
 
 Inference should check that New/Open/Recent patches all load data correctly.
+
+I don't believe that handlers are handling arrays of items well.  Certainly the opcode trace is not automatically doing this.
 
 ISXGlass:
 

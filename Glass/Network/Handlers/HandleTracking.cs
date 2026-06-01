@@ -140,10 +140,8 @@ public class HandleTrackingUpdate : IHandleOpcodes
             uint offset = 0;
             uint index = 0;
 
-            // TODO:  Hard-coded fixed length for now.
             _fixedEntryLength = bag.GetLengthAt(_countId) + bag.GetLengthAt(_spawnIdIndex) +
                 bag.GetLengthAt(_levelId);
-            _fixedEntryLength = 12;
 
             do
             {
@@ -229,7 +227,7 @@ public class HandleTrackingUpdate : IHandleOpcodes
         DebugLog.Write(LogChannel.Opcodes, _opcodeName + " entry: spawn_id=0x" + spawnId.ToString("x4")
             + " level=" + level + " name='" + name + "'");
 
-        return _fixedEntryLength + nameLength + 1;
+        return _fixedEntryLength + nameLength;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
