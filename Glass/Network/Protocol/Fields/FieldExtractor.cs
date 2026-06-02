@@ -168,7 +168,15 @@ public class FieldExtractor
 
                 case FieldEncoding.OptionalGroup:
                     {
-                        OptionalGroup? group = GlassContext.PatchRegistry.GetOptionalGroup(patchLevel, opcode);
+                        if (definition.OptionalGroupId == null)
+                        {
+                            DebugLog.Write(LogChannel.Fields, "FieldExtractor.Extract: field '"
+                                + definition.Name + "' has OptionalGroup encoding but no OptionalGroupId, slot left empty");
+                            break;
+                        }
+
+                        OptionalGroup? group = GlassContext.PatchRegistry.GetOptionalGroup(patchLevel,
+                            definition.OptionalGroupId.Value);
                         if (group != null)
                         {
                             ExtractOptionalGroup(payload, effectiveBitOffset, group, bag);

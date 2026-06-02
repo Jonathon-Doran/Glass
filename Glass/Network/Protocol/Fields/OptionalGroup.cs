@@ -23,6 +23,7 @@ public class OptionalGroup
     public uint FlagSlotIndex;
     public uint FlagBitLength;
     public OptionalSubField[] SubFields;
+    public uint Id;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // OptionalGroup (constructor)
@@ -32,8 +33,9 @@ public class OptionalGroup
     //                   name during LoadFields via PatchData.IndexOfField.
     //   subFields     - The optional sub-fields in sequence_order from the database.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public OptionalGroup(uint flagSlotIndex, uint flagBitLength, OptionalSubField[] subFields)
+    public OptionalGroup(uint groupId, uint flagSlotIndex, uint flagBitLength, OptionalSubField[] subFields)
     {
+        Id = groupId;
         FlagSlotIndex = flagSlotIndex;
         FlagBitLength = flagBitLength;
         SubFields = subFields;

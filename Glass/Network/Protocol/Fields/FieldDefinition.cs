@@ -23,6 +23,12 @@
 // means absolute (anchored at packet start).  Resolution from the database string to the
 // slot index happens in a second pass during load.
 //
+// OptionalGroupId, when non-null, is the index of the resolved OptionalGroup this field
+// decodes, within the patch's optional-group list.  Set at load time when the field's
+// encoding string names a substructure rather than a known scalar encoding.  Null means the
+// field is an ordinary scalar field.  Resolution from the encoding-string name to the index
+// happens during load, the same way RelativeToSlot is resolved from the relative_to string.
+//
 // This is plain data — no methods, no validation.  Validation happens at load time in the
 // handler's load routine and at the FieldExtractor's string-table lookup.
 ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -34,4 +40,5 @@ public struct FieldDefinition
     public float Divisor;
     public uint? RelativeToSlot;
     public FieldEncoding Encoding;
+    public uint? OptionalGroupId;
 }

@@ -365,6 +365,10 @@ public class Database
             pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
             pragmaOn.ExecuteNonQuery();
         }
+        if (version < 44)
+        {
+            ApplyMigration(conn, 44, Migration_044);
+        }
     }
 
     private int GetSchemaVersion()
@@ -1184,6 +1188,9 @@ public class Database
         ALTER TABLE Characters_new RENAME TO Characters;
     ";
 
+    private const string Migration_044 = @"
+        ALTER TABLE PacketOptionalGroup ADD COLUMN name TEXT NOT NULL DEFAULT '';
+    ";
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"

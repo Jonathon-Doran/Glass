@@ -67,6 +67,18 @@ public class PatchData
     // LoadPatchOpcodes; never resized.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private readonly OptionalGroup?[] _opcodeOptionalGroups;
+    private readonly Dictionary<uint, OptionalGroup> _optionalGroupsById;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // _optionalGroupIdsByName
+    //
+    // Maps an optional group's name to its PacketOptionalGroup id.  Built once before the
+    // per-opcode field loop from every PacketOptionalGroup row for this patch.  Consulted
+    // during field loading when a PacketField encoding string is not a known scalar
+    // encoding: the string is looked up here to resolve it to a group id.  Cold path only;
+    // not used after construction.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private Dictionary<string, int>? _optionalGroupIdsByName;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // _handlesByValue
@@ -144,6 +156,7 @@ public class PatchData
         BuildEncodingMap();
         _opcodeValuesByName = new Dictionary<string, ushort>();
         _opcodeNamesByValue = new Dictionary<ushort, string>();
+        _optionalGroupsById = new Dictionary<uint, OptionalGroup>();
 
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
@@ -165,6 +178,7 @@ public class PatchData
 
 
         LoadOpcodeMap(conn);
+        LoadOptionalGroupNames(conn);
         LoadPatchOpcodes(conn);
 
         for (int handleIndex = 0; handleIndex < opcodeCount; handleIndex++)
@@ -379,6 +393,7 @@ public class PatchData
         if (group != null)
         {
             _opcodeOptionalGroups[handle] = group;
+            _optionalGroupsById[group.Id] = group;
         }
     }
 
@@ -442,15 +457,29 @@ public class PatchData
             }
 
             FieldEncoding encoding;
+            int resolvedGroupId = -1;
             bool encodingFound = _encodingsByString.TryGetValue(encodingString, out encoding);
             if (encodingFound == false)
             {
-                DebugLog.Write(LogChannel.Fields, "PatchData.LoadRequiredFields: unrecognized encoding '"
-                    + encodingString + "' for opcode=" + _namesByHandle[(int)handle]
-                    + " 0x" + patchOpcode.Opcode.ToString("X4")
-                    + " version=" + patchOpcode.Version + " fieldName='" + fieldName
-                    + "', storing as Unknown");
-                encoding = FieldEncoding.Unknown;
+                bool isGroupName = _optionalGroupIdsByName!.TryGetValue(encodingString, out resolvedGroupId);
+                if (isGroupName == true)
+                {
+                    DebugLog.Write(LogChannel.Fields, "PatchData.LoadRequiredFields: encoding '"
+                        + encodingString + "' for opcode=" + _namesByHandle[(int)handle]
+                        + " 0x" + patchOpcode.Opcode.ToString("X4")
+                        + " version=" + patchOpcode.Version + " fieldName='" + fieldName
+                        + "' names optional group id " + resolvedGroupId + ", treating as OptionalGroup");
+                    encoding = FieldEncoding.OptionalGroup;
+                }
+                else
+                {
+                    DebugLog.Write(LogChannel.Fields, "PatchData.LoadRequiredFields: unrecognized encoding '"
+                        + encodingString + "' for opcode=" + _namesByHandle[(int)handle]
+                        + " 0x" + patchOpcode.Opcode.ToString("X4")
+                        + " version=" + patchOpcode.Version + " fieldName='" + fieldName
+                        + "', storing as Unknown");
+                    encoding = FieldEncoding.Unknown;
+                }
             }
 
             FieldDefinition definition;
@@ -460,6 +489,14 @@ public class PatchData
             definition.Encoding = encoding;
             definition.Divisor = divisor;
             definition.RelativeToSlot = null;
+            if (resolvedGroupId >= 0)
+            {
+                definition.OptionalGroupId = (uint)resolvedGroupId;
+            }
+            else
+            {
+                definition.OptionalGroupId = null;
+            }
             fields.Add(definition);
             _pendingRelativeNames!.Add(relativeToName);
         }
@@ -559,12 +596,68 @@ public class PatchData
                 definition.BitLength = bitLength;
                 definition.Encoding = encoding;
                 definition.Divisor = divisor;
+                definition.OptionalGroupId = null;
                 definition.RelativeToSlot = null;
                 fields.Add(definition);
             }
         }
 
         return fields;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // LoadOptionalGroupNames
+    //
+    // Reads every PacketOptionalGroup row for this patch level and builds the name-to-id
+    // map used during field loading to resolve a PacketField encoding string that names a
+    // substructure.  Rows with an empty name are skipped and logged; an unnamed group
+    // cannot be referenced by a field.  A duplicate name is logged and the first occurrence
+    // is kept.
+    //
+    // Parameters:
+    //   conn    - An open database connection, owned by the caller.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void LoadOptionalGroupNames(SqliteConnection conn)
+    {
+        _optionalGroupIdsByName = new Dictionary<string, int>();
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT pog.id, pog.name"
+            + " FROM PacketOptionalGroup pog"
+            + " JOIN PatchOpcode po ON pog.patch_opcode_id = po.id"
+            + " WHERE po.patch_date = @patchDate"
+            + " AND po.server_type = @serverType";
+        cmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
+        cmd.Parameters.AddWithValue("@serverType", PatchLevel.ServerType);
+
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        int rowCount = 0;
+        while (reader.Read())
+        {
+            int groupId = reader.GetInt32(0);
+            string groupName = reader.GetString(1);
+            rowCount++;
+
+            if (groupName.Length == 0)
+            {
+                DebugLog.Write(LogChannel.Fields, "PatchData.LoadOptionalGroupNames: group id "
+                    + groupId + " has empty name, skipping; it cannot be referenced by a field");
+                continue;
+            }
+
+            if (_optionalGroupIdsByName.ContainsKey(groupName) == true)
+            {
+                DebugLog.Write(LogChannel.Fields, "PatchData.LoadOptionalGroupNames: duplicate group "
+                    + "name '" + groupName + "' (id " + groupId + "), keeping first occurrence");
+                continue;
+            }
+
+            _optionalGroupIdsByName[groupName] = groupId;
+        }
+
+        DebugLog.Write(LogChannel.Fields, "PatchData.LoadOptionalGroupNames: read " + rowCount
+            + " group row(s), map has " + _optionalGroupIdsByName.Count + " named group(s) for patchLevel="
+            + PatchLevel);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -590,7 +683,7 @@ public class PatchData
         PatchOpcode patchOpcode = _patchOpcodes[handle];
         OptionalGroup? result = null;
 
-        List<int> groupIds = new List<int>();
+        List<uint> groupIds = new List<uint>();
         List<string> groupFlagFieldNames = new List<string>();
 
 
@@ -612,7 +705,7 @@ public class PatchData
             using SqliteDataReader reader = groupsCmd.ExecuteReader();
             while (reader.Read())
             {
-                int groupId = reader.GetInt32(0);
+                uint groupId = (uint) reader.GetInt32(0);
                 string flagFieldName = reader.GetString(1);
                 groupIds.Add(groupId);
                 groupFlagFieldNames.Add(flagFieldName);
@@ -621,7 +714,7 @@ public class PatchData
 
         for (int groupIndex = 0; groupIndex < groupIds.Count; groupIndex++)
         {
-            int groupId = groupIds[groupIndex];
+            uint groupId = groupIds[groupIndex];
             string flagFieldName = groupFlagFieldNames[groupIndex];
 
             uint flagsLength = GetFieldBitLength(handle, flagFieldName);
@@ -664,7 +757,7 @@ public class PatchData
                 subFields.Add(subField);
             }
 
-            result = new OptionalGroup(flagSlotIndex, flagsLength, subFields.ToArray());
+            result = new OptionalGroup(groupId, flagSlotIndex, flagsLength, subFields.ToArray());
         }
 
         return result;
@@ -996,6 +1089,32 @@ public class PatchData
     {
         return _opcodeOptionalGroups[handle];
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetOptionalGroup
+    //
+    // Returns the OptionalGroup for the given PacketOptionalGroup id, or null if no group
+    // with that id was loaded for this patch.
+    //
+    // Parameters:
+    //   groupId  - The PacketOptionalGroup id, as carried on FieldDefinition.OptionalGroupId.
+    //
+    // Returns:
+    //   The OptionalGroup, or null if no group with that id is loaded.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public OptionalGroup? GetOptionalGroup(uint groupId)
+    {
+        OptionalGroup? group;
+        if (_optionalGroupsById.TryGetValue(groupId, out group) == true)
+        {
+            return group;
+        }
+
+        DebugLog.Write(LogChannel.Fields, "PatchData.GetOptionalGroup: no group with id "
+            + groupId + " in patchLevel=" + PatchLevel + ", returning null");
+        return null;
+    }
+
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetFieldBitLength
