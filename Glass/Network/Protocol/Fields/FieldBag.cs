@@ -175,7 +175,7 @@ public class FieldBag
         }
 
         int value;
-        SlotReadResult result = _slots[slotIndex].TryGetInt32(out value);
+        SlotReadResult result = _slots[slotIndex].TryGetInt(out value);
         switch (result)
         {
             case SlotReadResult.Success:
@@ -198,7 +198,7 @@ public class FieldBag
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GetUInt3At
+    // GetUIntAt
     //
     // Reads the slot at the given index as a 32-bit unsigned integer.  Logs and returns 0
     // if the index is out of range.  Used by handlers that have cached field indices at
@@ -218,7 +218,7 @@ public class FieldBag
         }
 
         uint value;
-        SlotReadResult result = _slots[slotIndex].TryGetUInt32(out value);
+        SlotReadResult result = _slots[slotIndex].TryGetUInt(out value);
         switch (result)
         {
             case SlotReadResult.Success:
@@ -296,13 +296,12 @@ public class FieldBag
     // (e.g. via Encoding.ASCII.GetString or span.CopyTo).
     //
     // slotIndex:  The cached index of the field, typically resolved via
-    //             FieldDefinitionExtensions.IndexOfField at handler construction.  A value
-    //             of -1 (the "field not found" sentinel) returns an empty span.
+    //             FieldDefinitionExtensions.IndexOfField at handler construction. 
     ///////////////////////////////////////////////////////////////////////////////////////////////
 
     public ReadOnlySpan<byte> GetBytesAt(uint slotIndex)
     {
-        if (slotIndex < 0 || slotIndex >= _slotCount)
+        if (slotIndex >= _slotCount)
         {
             DebugLog.Write(LogChannel.Fields, _currentOpcodeName + " FieldBag.GetBytesAt: slotIndex "
                 + slotIndex + " out of range [0, " + _slotCount + "), returning 0");
@@ -346,6 +345,31 @@ public class FieldBag
     public uint GetLengthAt(uint slotIndex)
     {
         return _slots[slotIndex].GetLength();
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetTypeAt
+    //
+    // Returns the FieldType of the slot at the given index.  Logs and returns FieldType.Empty
+    // if the index is out of range.  Used by callers that must read a slot in its own type —
+    // for example, predicate evaluation, which reads a signed source field as signed and an
+    // unsigned source field as unsigned so the comparison preserves the field's sign.
+    //
+    // slotIndex:  The cached index of the field, typically resolved via IndexOfField at
+    //             construction.  A value of -1 (the "field not found" sentinel) returns
+    //             FieldType.Empty.
+    //
+    // Returns:  The slot's FieldType, or FieldType.Empty if the index is out of range.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public FieldType GetTypeAt(uint slotIndex)
+    {
+        if (slotIndex >= _slotCount)
+        {
+            DebugLog.Write(LogChannel.Fields, _currentOpcodeName + " FieldBag.GetTypeAt: slotIndex "
+                + slotIndex + " out of range [0, " + _slotCount + "), returning Empty");
+            return FieldType.Empty;
+        }
+        return _slots[slotIndex].Type;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

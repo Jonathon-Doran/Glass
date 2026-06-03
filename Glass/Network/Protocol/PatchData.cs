@@ -3,6 +3,7 @@ using Glass.Data;
 using Glass.Network.Protocol.Fields;
 using Microsoft.Data.Sqlite;
 using System;
+using System.Diagnostics;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 
@@ -174,6 +175,32 @@ public class PatchData
     private List<PendingMultiplictyField>? _pendingMultiplicityFields;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // PendingFieldPredicate
+    //
+    // Load-time record pairing a field that carries a predicate with the raw predicate string read
+    // from its PacketField row.  Created during a collection's field read loop for every row whose
+    // predicate column is non-null, and consumed after ResolveRelativeAnchors has reordered the
+    // collection's field array.  The owner is held by name because the reorder invalidates the
+    // read-loop position; the resolve step looks the name up against the finalized array to find
+    // the element to write.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    internal struct PendingFieldPredicate
+    {
+        public string OwnerFieldName;
+        public string RawPredicate;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // _pendingFieldPredicates
+    //
+    // Scratch list used during a collection's field read loop in LoadFields.  Holds one entry per
+    // field whose predicate column is non-null.  The predicate-resolution step consumes the list
+    // after ResolveRelativeAnchors reorders the field array, then clears it for reuse by the next
+    // collection.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private List<PendingFieldPredicate>? _pendingFieldPredicates;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // PatchData (constructor, explicit patch)
     //
     // Loads the opcode-name-to-wire-value map and every opcode's field definitions for the
@@ -210,6 +237,7 @@ public class PatchData
         _opcodeNamesByValue = new Dictionary<ushort, string>();
         _optionalGroupsById = new Dictionary<uint, OptionalGroup>();
         _pendingMultiplicityFields = new List<PendingMultiplictyField>();
+        _pendingFieldPredicates = new List<PendingFieldPredicate>();
 
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
@@ -262,6 +290,8 @@ public class PatchData
         }
         ResolveMultiplicity();
         _pendingRelativeNames = null;
+        _pendingMultiplicityFields = null;
+        _pendingFieldPredicates = null;
 
         DebugLog.Write(LogChannel.Opcodes, "PatchData ctor: loaded " +
             _opcodeValuesByName.Count + " opcode name(s) and " + _patchOpcodes.Length + " opcode(s) for patch " + PatchLevel);
@@ -676,12 +706,12 @@ public class PatchData
         List<FieldDefinition> fields = new List<FieldDefinition>();
 
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT field_name, bit_offset, bit_length, encoding, divisor, relative_to"
-            + " FROM PacketField"
-            + " WHERE patch_date = @patchDate"
-            + " AND server_type = @serverType"
-            + " AND collection_name = @collectionName"
-            + " ORDER BY bit_offset";
+        cmd.CommandText = "SELECT field_name, bit_offset, bit_length, encoding, divisor, relative_to, predicate"
+                    + " FROM PacketField"
+                    + " WHERE patch_date = @patchDate"
+                    + " AND server_type = @serverType"
+                    + " AND collection_name = @collectionName"
+                    + " ORDER BY bit_offset";
         cmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
         cmd.Parameters.AddWithValue("@serverType", PatchLevel.ServerType);
         cmd.Parameters.AddWithValue("@collectionName", collectionName);
@@ -725,6 +755,16 @@ public class PatchData
                     }
                 }
 
+                string? predicateString;
+                if (reader.IsDBNull(6))
+                {
+                    predicateString = null;
+                }
+                else
+                {
+                    predicateString = reader.GetString(6);
+                }
+
                 FieldDefinition definition;
                 definition.Name = fieldName;
                 definition.BitOffset = bitOffset;
@@ -734,8 +774,20 @@ public class PatchData
                 definition.RelativeToSlot = null;
                 definition.OptionalGroupId = null;
                 definition.Multiplicity = multiplicity;
+                definition.Predicate = default;
                 fields.Add(definition);
                 _pendingRelativeNames!.Add(relativeToName);
+
+                if (predicateString != null)
+                {
+                    PendingFieldPredicate pendingPredicate;
+                    pendingPredicate.OwnerFieldName = fieldName;
+                    pendingPredicate.RawPredicate = predicateString;
+                    _pendingFieldPredicates!.Add(pendingPredicate);
+                    DebugLog.Write(LogChannel.Fields, "PatchData.LoadFields: collection='"
+                        + collectionName + "' field='" + fieldName
+                        + "' carries predicate '" + predicateString + "', pending resolution");
+                }
             }
         }
 
@@ -747,7 +799,10 @@ public class PatchData
 
         _collectionFields[handle] = fields.ToArray();
         ResolveRelativeAnchors(handle);
+        ResolvePredicates(handle);
+
         _pendingRelativeNames!.Clear();
+        _pendingFieldPredicates!.Clear();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -851,6 +906,7 @@ public class PatchData
             definition.Divisor = divisor;
             definition.RelativeToSlot = null;
             definition.Multiplicity = MultiplicityHandle.None;
+            definition.Predicate = default;
             if (resolvedGroupId >= 0)
             {
                 definition.OptionalGroupId = (uint)resolvedGroupId;
@@ -961,6 +1017,7 @@ public class PatchData
                 definition.OptionalGroupId = null;
                 definition.RelativeToSlot = null;
                 definition.Multiplicity = MultiplicityHandle.None;
+                definition.Predicate = default;
                 fields.Add(definition);
             }
         }
@@ -1605,6 +1662,136 @@ public class PatchData
             + pending.Count + " pending multiplicity field(s) for patchLevel=" + PatchLevel);
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ResolvePredicates
+    //
+    // Resolves each pending predicate for the given collection against its finalized field
+    // array.  Run after ResolveRelativeAnchors has reordered the array, so every source and
+    // owner name resolves against the order the extractor will see.  For each pending entry
+    // the raw string is parsed into op and operand, the source field name is resolved to a
+    // slot index, and the result is written onto the owner field's Predicate.
+    //
+    // The owner is located by name because the reorder invalidated the read-loop position.
+    // The write indexes the backing array directly so it lands on the stored struct rather
+    // than a copy.
+    //
+    // A predicate string that fails to parse, a source name not present in the collection,
+    // or an owner name not present in the collection is a broken patch definition: the
+    // failure is logged with a stack trace and the process is terminated, since a field
+    // whose presence depends on an unresolvable predicate must never decode.
+    //
+    // Parameters:
+    //   handle  - The CollectionHandle whose pending predicates to resolve.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void ResolvePredicates(CollectionHandle handle)
+    {
+        List<PendingFieldPredicate> pending = _pendingFieldPredicates!;
+        FieldDefinition[]? definitions = _collectionFields[handle];
+
+        if (definitions == null)
+        {
+            if (pending.Count > 0)
+            {
+                string message = "PatchData.ResolvePredicates: collection '"
+                    + _collectionNamesByHandle[handle] + "' has " + pending.Count
+                    + " pending predicate(s) but no field array for patchLevel=" + PatchLevel
+                    + " -- broken patch definition, aborting";
+
+                DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                    + Environment.StackTrace);
+
+                Environment.FailFast(message);
+            }
+
+            DebugLog.Write(LogChannel.Fields, "PatchData.ResolvePredicates: collection '"
+                + _collectionNamesByHandle[handle] + "' has no field array and no pending "
+                + "predicates, nothing to resolve");
+            return;
+        }
+
+        for (int pendingIndex = 0; pendingIndex < pending.Count; pendingIndex++)
+        {
+            PendingFieldPredicate entry = pending[pendingIndex];
+
+            string sourceName;
+            FieldPredicate predicate;
+            bool parsed = ParsePredicate(entry.RawPredicate, out sourceName, out predicate);
+            if (parsed == false)
+            {
+                string message = "PatchData.ResolvePredicates: collection '"
+                    + _collectionNamesByHandle[handle] + "' field '" + entry.OwnerFieldName
+                    + "' predicate '" + entry.RawPredicate + "' failed to parse for patchLevel="
+                    + PatchLevel + " -- broken patch definition, aborting";
+
+                DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                    + Environment.StackTrace);
+
+                Environment.FailFast(message);
+            }
+
+            FieldIndex sourceSlot = IndexOfField(handle, sourceName);
+            if (sourceSlot.Exists == false)
+            {
+                string message = "PatchData.ResolvePredicates: collection '"
+                    + _collectionNamesByHandle[handle] + "' field '" + entry.OwnerFieldName
+                    + "' predicate '" + entry.RawPredicate + "' names source field '"
+                    + sourceName + "' not present in the collection for patchLevel=" + PatchLevel
+                    + " -- broken patch definition, aborting";
+
+                DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                    + Environment.StackTrace);
+
+                Environment.FailFast(message);
+            }
+
+
+            FieldIndex ownerSlot = IndexOfField(handle, entry.OwnerFieldName);
+            if (ownerSlot.Exists == false)
+            {
+                string message = "PatchData.ResolvePredicates: collection '"
+                    + _collectionNamesByHandle[handle] + "' predicate owner field '"
+                    + entry.OwnerFieldName + "' not present in the collection for patchLevel="
+                    + PatchLevel + " -- broken patch definition, aborting";
+
+                DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                    + Environment.StackTrace);
+
+                Environment.FailFast(message);
+            }
+
+            if (sourceSlot >= ownerSlot)
+            {
+                string message = "PatchData.ResolvePredicates: collection '"
+                    + _collectionNamesByHandle[handle] + "' field '" + entry.OwnerFieldName
+                    + "' (slot " + ownerSlot + ") predicate '" + entry.RawPredicate
+                    + "' names source field '" + sourceName + "' at slot " + sourceSlot
+                    + ", which is not decoded before the gated field for patchLevel=" + PatchLevel
+                    + " -- broken patch definition, aborting";
+
+                DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                    + Environment.StackTrace);
+
+                Environment.FailFast(message);
+            }
+
+            predicate.SourceSlot = sourceSlot;
+            definitions[ownerSlot].Predicate = predicate;
+
+            // This is a local reference, so mutates the stored structure in place.
+            definitions[ownerSlot].Predicate = predicate;
+
+            DebugLog.Write(LogChannel.Fields, "PatchData.ResolvePredicates: collection '"
+                            + _collectionNamesByHandle[handle] + "' field '" + entry.OwnerFieldName
+                            + "' (slot " + ownerSlot + ") predicate resolved to source slot "
+                            + predicate.SourceSlot + " op=" + predicate.Op + " operand=" + predicate.Operand
+                            + " signedOperand=" + predicate.SignedOperand);
+        }
+
+        DebugLog.Write(LogChannel.Fields, "PatchData.ResolvePredicates: resolved "
+            + pending.Count + " pending predicate(s) for collection '"
+            + _collectionNamesByHandle[handle] + "' in patchLevel=" + PatchLevel);
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeHandle
     //
@@ -1761,6 +1948,23 @@ public class PatchData
     public FieldDefinition[]? GetFieldDefinitions(OpcodeHandle opcode)
     {
         return _opcodeFields[opcode];
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetFieldDefinitions
+    //
+    // Returns the FieldDefinition array for the given CollectionHandle, or null if the
+    // collection has no fields loaded for this patch.
+    //
+    // Parameters:
+    //   collection  - The CollectionHandle whose field definitions to return.
+    //
+    // Returns:
+    //   The FieldDefinition array, or null if absent.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public FieldDefinition[]? GetFieldDefinitions(CollectionHandle collection)
+    {
+        return _collectionFields[collection];
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1980,6 +2184,188 @@ public class PatchData
         string[] result = new string[_encodingsByString.Count];
         _encodingsByString.Keys.CopyTo(result, 0);
         return result;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ParsePredicate
+    //
+    // Parses a raw predicate string of the form "name OP operand" into its three parts: the
+    // source field name on the left, the comparison operator, and the unsigned operand on the
+    // right.  The operator is matched longest-first so a two-character operator is not split
+    // into a one-character one.  The operand is read as hexadecimal when prefixed with 0x or
+    // 0X, otherwise as decimal.  Whitespace around any part is optional and trimmed.
+    //
+    // Op and operand are final once parsed; the source name still requires resolution to a
+    // slot index by the caller.  This method performs no resolution and reads no payload.
+    //
+    // Parameters:
+    //   raw         - The raw predicate string from the PacketField predicate column.
+    //   sourceName  - Receives the trimmed source field name on success, empty on failure.
+    //   op          - Receives the parsed PredicateOp on success, None on failure.
+    //   operand     - Receives the parsed operand on success, 0 on failure.
+    //
+    // Returns:
+    //   true when the string parsed into all three parts; false when the operator is missing
+    //   or unrecognized, the source name is empty, or the operand is not a valid number.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private bool ParsePredicate(string raw, out string sourceName, out FieldPredicate predicate)
+    {
+        sourceName = "";
+        predicate = default;
+
+        if (raw == null)
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: null predicate string, parse failed");
+            return false;
+        }
+
+        string trimmed = raw.Trim();
+        if (trimmed.Length == 0)
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: empty predicate string, parse failed");
+            return false;
+        }
+
+        string operatorToken = "";
+        int operatorIndex = -1;
+
+        string[] twoCharOperators = new string[] { "==", "!=", ">=", "<=" };
+        for (int candidateIndex = 0; candidateIndex < twoCharOperators.Length; candidateIndex++)
+        {
+            int foundIndex = trimmed.IndexOf(twoCharOperators[candidateIndex], StringComparison.Ordinal);
+            if (foundIndex >= 0)
+            {
+                operatorToken = twoCharOperators[candidateIndex];
+                operatorIndex = foundIndex;
+                break;
+            }
+        }
+
+        if (operatorIndex < 0)
+        {
+            string[] oneCharOperators = new string[] { ">", "<", "&" };
+            for (int candidateIndex = 0; candidateIndex < oneCharOperators.Length; candidateIndex++)
+            {
+                int foundIndex = trimmed.IndexOf(oneCharOperators[candidateIndex], StringComparison.Ordinal);
+                if (foundIndex >= 0)
+                {
+                    operatorToken = oneCharOperators[candidateIndex];
+                    operatorIndex = foundIndex;
+                    break;
+                }
+            }
+        }
+
+        if (operatorIndex < 0)
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: no recognized operator in '"
+                + trimmed + "', parse failed");
+            return false;
+        }
+
+        string leftPart = trimmed.Substring(0, operatorIndex).Trim();
+        string rightPart = trimmed.Substring(operatorIndex + operatorToken.Length).Trim();
+
+        if (leftPart.Length == 0)
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: empty source name in '"
+                + trimmed + "', parse failed");
+            return false;
+        }
+
+        if (rightPart.Length == 0)
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: empty operand in '"
+                + trimmed + "', parse failed");
+            return false;
+        }
+
+        PredicateOp parsedOp;
+        if (operatorToken == "&")
+        {
+            parsedOp = PredicateOp.BitmaskNonZero;
+        }
+        else if (operatorToken == "==")
+        {
+            parsedOp = PredicateOp.Equal;
+        }
+        else if (operatorToken == "!=")
+        {
+            parsedOp = PredicateOp.NotEqual;
+        }
+        else if (operatorToken == ">=")
+        {
+            parsedOp = PredicateOp.GreaterOrEqual;
+        }
+        else if (operatorToken == "<=")
+        {
+            parsedOp = PredicateOp.LessOrEqual;
+        }
+        else if (operatorToken == ">")
+        {
+            parsedOp = PredicateOp.Greater;
+        }
+        else if (operatorToken == "<")
+        {
+            parsedOp = PredicateOp.Less;
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: unhandled operator '"
+                + operatorToken + "' in '" + trimmed + "', parse failed");
+            return false;
+        }
+
+        uint parsedOperand;
+        int parsedSignedOperand;
+
+        if (rightPart.StartsWith("0x", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            string hexDigits = rightPart.Substring(2);
+            bool hexParsed = uint.TryParse(hexDigits, System.Globalization.NumberStyles.HexNumber,
+                System.Globalization.CultureInfo.InvariantCulture, out parsedOperand);
+            if (hexParsed == false)
+            {
+                DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: hex operand '" + rightPart
+                    + "' in '" + trimmed + "' is not a valid 32-bit value, parse failed");
+                return false;
+            }
+            parsedSignedOperand = unchecked((int)parsedOperand);
+        }
+        else if (rightPart.StartsWith("-", StringComparison.Ordinal) == true)
+        {
+            bool signedParsed = int.TryParse(rightPart, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out parsedSignedOperand);
+            if (signedParsed == false)
+            {
+                DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: signed operand '" + rightPart
+                    + "' in '" + trimmed + "' is not a valid 32-bit signed value, parse failed");
+                return false;
+            }
+            parsedOperand = unchecked((uint)parsedSignedOperand);
+        }
+        else
+        {
+            bool unsignedParsed = uint.TryParse(rightPart, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out parsedOperand);
+            if (unsignedParsed == false)
+            {
+                DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: operand '" + rightPart
+                    + "' in '" + trimmed + "' is not a valid unsigned number, parse failed");
+                return false;
+            }
+            parsedSignedOperand = unchecked((int)parsedOperand);
+        }
+
+        sourceName = leftPart;
+        predicate.Op = parsedOp;
+        predicate.Operand = parsedOperand;
+        predicate.SignedOperand = parsedSignedOperand;
+
+        DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: parsed '" + trimmed
+            + "' to source='" + sourceName + "' op=" + predicate.Op + " operand=" + predicate.Operand
+            + " signedOperand=" + predicate.SignedOperand);
+        return true;
     }
 }
 

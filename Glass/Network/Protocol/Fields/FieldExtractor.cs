@@ -119,7 +119,7 @@ public class FieldExtractor
                         ulong raw;
                         if (TryReadBitsLE(payload, effectiveBitOffset, definition.BitLength, out raw) == true)
                         {
-                            slot.SetUInt32((uint)raw);
+                            slot.SetUInt((uint)raw);
                         }
                         break;
                     }
@@ -130,7 +130,7 @@ public class FieldExtractor
                         if (TryReadBitsLE(payload, effectiveBitOffset, definition.BitLength, out raw) == true)
                         {
                             int signed = SignExtend(raw, definition.BitLength);
-                            slot.SetInt32(signed);
+                            slot.SetInt(signed);
                         }
                         break;
                     }
@@ -148,7 +148,7 @@ public class FieldExtractor
                         ulong raw;
                         if (TryReadBitsLE(payload, effectiveBitOffset, definition.BitLength, out raw) == true)
                         {
-                            slot.SetUInt32((uint)raw);
+                            slot.SetUInt((uint)raw);
                         }
                         break;
                     }
@@ -163,6 +163,177 @@ public class FieldExtractor
 
                 case FieldEncoding.OptSignMagnitudeMsb:
                     break;
+                case FieldEncoding.CsvToken:
+                    break;
+
+                case FieldEncoding.OptionalGroup:
+                    {
+                        if (definition.OptionalGroupId == null)
+                        {
+                            DebugLog.Write(LogChannel.Fields, "FieldExtractor.Extract: field '"
+                                + definition.Name + "' has OptionalGroup encoding but no OptionalGroupId, slot left empty");
+                            break;
+                        }
+
+                        OptionalGroup? group = GlassContext.PatchRegistry.GetOptionalGroup(patchLevel,
+                            definition.OptionalGroupId.Value);
+                        if (group != null)
+                        {
+                            ExtractOptionalGroup(payload, effectiveBitOffset, group, bag);
+                        }
+                        break;
+                    }
+
+                case FieldEncoding.StringNullTerminated:
+                    ExtractNullTerminatedString(payload, effectiveBitOffset, ref slot);
+                    break;
+
+                case FieldEncoding.StringLengthPrefixed:
+                    ExtractLengthPrefixedString(payload, effectiveBitOffset, ref slot);
+                    break;
+
+                default:
+                    DebugLog.Write(LogChannel.Fields, "FieldExtractor.Extract: unhandled encoding "
+                        + definition.Encoding + " for field '" + definition.Name
+                        + "', slot left empty");
+                    break;
+            }
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Extract
+    //
+    // Walks the field definitions for the given CollectionHandle and writes one FieldSlot per
+    // definition into the caller-provided FieldBag, preserving definition-to-slot index
+    // alignment.  Called from the hot path on every decoded collection instance.
+    //
+    // Resolves the field definitions from the registry by patchLevel and handle.  Returns
+    // silently if the collection has no fields loaded for this patch.
+    //
+    // Every definition produces exactly one slot.  Definitions whose decode does not succeed
+    // (Unknown encoding, payload too short for the bit range, unsupported bit width) produce
+    // slots that are added but left in their default Empty state.
+    //
+    // A field carrying a predicate is decoded only when its predicate holds.  The predicate's
+    // source field is decoded earlier in this pass — the load-time order check guarantees the
+    // source's slot precedes the gated field — so its value is available when the gate runs.
+    // When the predicate does not hold the field is absent from the payload entirely: its slot
+    // is left Empty, its start bit is not resolved, and no payload is consumed, so a following
+    // field's offset is computed as though the absent field contributed nothing.
+    //
+    // A per-packet array of resolved start bits, one entry per definition, is populated by
+    // ResolveFieldStartBit at the top of each decoded iteration.  Relative-anchored fields read
+    // their anchor's resolved start bit from this array.
+    //
+    // Parameters:
+    //   patchLevel  - The patch identifier the handle belongs to.
+    //   collection  - The CollectionHandle whose field definitions to walk.
+    //   payload     - The raw payload bytes.  Bit offsets in definitions are relative to the
+    //                 start of this span.
+    //   bag         - The bag to fill.  Must have enough capacity to hold one slot per
+    //                 definition.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void Extract(PatchLevel patchLevel, CollectionHandle collection, ReadOnlySpan<byte> payload,
+        FieldBag bag)
+    {
+        FieldDefinition[]? definitions = GlassContext.PatchRegistry.GetFields(patchLevel, collection);
+        if (definitions == null)
+        {
+            return;
+        }
+
+        if (bag == null)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.Extract: null bag, nothing to extract");
+            return;
+        }
+
+        for (int definitionIndex = 0; definitionIndex < definitions.Length; definitionIndex++)
+        {
+            ref FieldSlot newSlot = ref bag.AddSlot();
+            newSlot.SetName(definitions[definitionIndex].Name);
+        }
+
+        Span<uint> resolvedStartBits = stackalloc uint[definitions.Length];
+
+        for (uint definitionIndex = 0; definitionIndex < definitions.Length; definitionIndex++)
+        {
+            FieldDefinition definition = definitions[definitionIndex];
+            ref FieldSlot slot = ref bag.TryGetSlotRef(definitionIndex);
+
+            if (definition.Predicate.Op != PredicateOp.None)
+            {
+                if (EvaluatePredicate(bag, definition.Predicate) == false)
+                {
+                    DebugLog.Write(LogChannel.Fields, "FieldExtractor.Extract: field '"
+                        + definition.Name + "' predicate did not hold, field absent, slot left empty");
+                    continue;
+                }
+            }
+
+            uint effectiveBitOffset = ResolveFieldStartBit(definitions, bag, resolvedStartBits, definitionIndex);
+
+            if (HasBits(payload, effectiveBitOffset, definition.BitLength) == false)
+            {
+                continue;
+            }
+
+            switch (definition.Encoding)
+            {
+                case FieldEncoding.Unknown:
+                    break;
+
+                case FieldEncoding.UInt:
+                    {
+                        ulong raw;
+                        if (TryReadBitsLE(payload, effectiveBitOffset, definition.BitLength, out raw) == true)
+                        {
+                            slot.SetUInt((uint)raw);
+                        }
+                        break;
+                    }
+
+                case FieldEncoding.Int:
+                    {
+                        ulong raw;
+                        if (TryReadBitsLE(payload, effectiveBitOffset, definition.BitLength, out raw) == true)
+                        {
+                            int signed = SignExtend(raw, definition.BitLength);
+                            slot.SetInt(signed);
+                        }
+                        break;
+                    }
+
+                case FieldEncoding.UIntMsb:
+                    ExtractUIntMsb(payload, effectiveBitOffset, definition.BitLength, ref slot);
+                    break;
+
+                case FieldEncoding.Float:
+                    ExtractFloatLE(payload, effectiveBitOffset, definition.BitLength, ref slot);
+                    break;
+
+                case FieldEncoding.UIntMasked:
+                    {
+                        ulong raw;
+                        if (TryReadBitsLE(payload, effectiveBitOffset, definition.BitLength, out raw) == true)
+                        {
+                            slot.SetUInt((uint)raw);
+                        }
+                        break;
+                    }
+
+                case FieldEncoding.SignMagnitudeLsb:
+                    ExtractSignMagnitudeLsb(payload, effectiveBitOffset, definition.BitLength, definition.Divisor, ref slot);
+                    break;
+
+                case FieldEncoding.SignMagnitudeMsb:
+                    ExtractSignMagnitudeMsb(payload, effectiveBitOffset, definition.BitLength, definition.Divisor, ref slot);
+                    break;
+
+                case FieldEncoding.OptSignMagnitudeMsb:
+                    break;
+
                 case FieldEncoding.CsvToken:
                     break;
 
@@ -655,7 +826,7 @@ public class FieldExtractor
             bitsLeft = bitsLeft - bitsToTake;
         }
 
-        slot.SetUInt32(result);
+        slot.SetUInt(result);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -771,5 +942,200 @@ public class FieldExtractor
 
         DebugLog.Write(LogChannel.Opcodes, "signedValue = " + signedValue +
              " floatValue = " + fValue);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // EvaluatePredicate
+    //
+    // Decides whether a predicated field is present by testing the value of its source field,
+    // already decoded into the bag earlier in this pass.  Reads the source slot in its own
+    // type — a signed source as a signed int compared against SignedOperand, an unsigned source
+    // as an unsigned int compared against Operand — so the comparison preserves the field's
+    // sign and never reinterprets bits across the sign boundary.
+    //
+    // The source slot must hold an integer value.  The load-time order check guarantees the
+    // source is decoded before any field that gates on it, so an absent source here means the
+    // source's own decode failed and the packet is corrupt.  A non-integer source type means a
+    // field was gated on a Float or string, which the predicate cannot test.  Both are
+    // unrecoverable: the failure is logged with a stack trace and the process is terminated.
+    //
+    // Parameters:
+    //   bag        - The bag being filled; holds the already-decoded source slot.
+    //   predicate  - The resolved predicate carrying the source slot, operator, and operands.
+    //
+    // Returns:
+    //   true   - The predicate holds; the gated field is present and should be decoded.
+    //   false  - The predicate does not hold; the gated field is absent and its slot stays Empty.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private bool EvaluatePredicate(FieldBag bag, FieldPredicate predicate)
+    {
+        FieldType sourceType = bag.GetTypeAt(predicate.SourceSlot);
+
+        if (sourceType == FieldType.UInt)
+        {
+            uint sourceValue = bag.GetUIntAt(predicate.SourceSlot);
+            return EvaluateUnsigned(sourceValue, predicate);
+        }
+
+        if (sourceType == FieldType.Int)
+        {
+            int sourceValue = bag.GetIntAt(predicate.SourceSlot);
+            return EvaluateSigned(sourceValue, predicate);
+        }
+
+        string message = "FieldExtractor.EvaluatePredicate: source slot " + predicate.SourceSlot
+            + " has type " + sourceType + ", which is not an integer the predicate can test; "
+            + "the gating field is absent or mistyped, packet or schema is broken -- aborting";
+
+        DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+            + Environment.StackTrace);
+
+        Environment.FailFast(message);
+        return false;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // EvaluateUnsigned
+    //
+    // Applies the predicate's operator to an unsigned source value, comparing against the
+    // unsigned operand.  BitmaskNonZero tests the raw bits; the ordered operators compare
+    // unsigned magnitude.
+    //
+    // Parameters:
+    //   sourceValue  - The source field's value, read as unsigned.
+    //   predicate    - The resolved predicate carrying the operator and unsigned operand.
+    //
+    // Returns:
+    //   true when the comparison holds, false otherwise.  Fail-fasts on an unhandled operator.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private bool EvaluateUnsigned(uint sourceValue, FieldPredicate predicate)
+    {
+        bool result;
+        switch (predicate.Op)
+        {
+            case PredicateOp.BitmaskNonZero:
+                result = (sourceValue & predicate.Operand) != 0u;
+                break;
+
+            case PredicateOp.Equal:
+                result = sourceValue == predicate.Operand;
+                break;
+
+            case PredicateOp.NotEqual:
+                result = sourceValue != predicate.Operand;
+                break;
+
+            case PredicateOp.Greater:
+                result = sourceValue > predicate.Operand;
+                break;
+
+            case PredicateOp.GreaterOrEqual:
+                result = sourceValue >= predicate.Operand;
+                break;
+
+            case PredicateOp.Less:
+                result = sourceValue < predicate.Operand;
+                break;
+
+            case PredicateOp.LessOrEqual:
+                result = sourceValue <= predicate.Operand;
+                break;
+
+            default:
+                {
+                    string message = "FieldExtractor.EvaluateUnsigned: unhandled predicate op "
+                        + predicate.Op + " -- broken predicate definition, aborting";
+
+                    DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                        + Environment.StackTrace);
+
+                    Environment.FailFast(message);
+                    result = false;
+                    break;
+                }
+        }
+
+        DebugLog.Write(LogChannel.Fields, "FieldExtractor.EvaluateUnsigned: source " + sourceValue
+            + " op " + predicate.Op + " operand " + predicate.Operand + " -> "
+            + (result ? "present" : "absent"));
+        return result;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // EvaluateSigned
+    //
+    // Applies the predicate's operator to a signed source value, comparing against the signed
+    // operand.  BitmaskNonZero tests the raw bits, reinterpreted as unsigned for the mask, so
+    // a sign-extended source does not turn a narrow mask into a match on the extension bits;
+    // the ordered operators compare signed magnitude.
+    //
+    // Parameters:
+    //   sourceValue  - The source field's value, read as signed.
+    //   predicate    - The resolved predicate carrying the operator and both operand views.
+    //
+    // Returns:
+    //   true when the comparison holds, false otherwise.  Fail-fasts on an unhandled operator.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private bool EvaluateSigned(int sourceValue, FieldPredicate predicate)
+    {
+        bool result;
+        switch (predicate.Op)
+        {
+            case PredicateOp.BitmaskNonZero:
+                {
+                    string message = "FieldExtractor.EvaluateSigned: BitmaskNonZero applied to a "
+                        + "signed source field; a bitmask test requires an unsigned field -- "
+                        + "broken schema definition, aborting";
+
+                    DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                        + Environment.StackTrace);
+
+                    Environment.FailFast(message);
+                    result = false;
+                    break;
+                }
+
+            case PredicateOp.Equal:
+                result = sourceValue == predicate.SignedOperand;
+                break;
+
+            case PredicateOp.NotEqual:
+                result = sourceValue != predicate.SignedOperand;
+                break;
+
+            case PredicateOp.Greater:
+                result = sourceValue > predicate.SignedOperand;
+                break;
+
+            case PredicateOp.GreaterOrEqual:
+                result = sourceValue >= predicate.SignedOperand;
+                break;
+
+            case PredicateOp.Less:
+                result = sourceValue < predicate.SignedOperand;
+                break;
+
+            case PredicateOp.LessOrEqual:
+                result = sourceValue <= predicate.SignedOperand;
+                break;
+
+            default:
+                {
+                    string message = "FieldExtractor.EvaluateSigned: unhandled predicate op "
+                        + predicate.Op + " -- broken predicate definition, aborting";
+
+                    DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                        + Environment.StackTrace);
+
+                    Environment.FailFast(message);
+                    result = false;
+                    break;
+                }
+        }
+
+        DebugLog.Write(LogChannel.Fields, "FieldExtractor.EvaluateSigned: source " + sourceValue
+            + " op " + predicate.Op + " signedOperand " + predicate.SignedOperand + " -> "
+            + (result ? "present" : "absent"));
+        return result;
     }
 }

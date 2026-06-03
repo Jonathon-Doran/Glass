@@ -448,6 +448,29 @@ public class PatchRegistry
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetFields
+    //
+    // Returns the FieldDefinition array for the given CollectionHandle in the given patch
+    // level.  Looks up the patch in the loaded set and delegates to the PatchData.
+    //
+    // Throws InvalidOperationException if the patch level is not loaded.
+    //
+    // Returns null if the collection has no fields loaded for this patch.
+    //
+    // Parameters:
+    //   patchLevel  - The patch identifier.  Must already be loaded.
+    //   collection  - The CollectionHandle whose field definitions to return.
+    //
+    // Returns:
+    //   The FieldDefinition array, or null if absent.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public FieldDefinition[]? GetFields(PatchLevel patchLevel, CollectionHandle collection)
+    {
+        PatchData patchData = FindPatchData(patchLevel);
+        return patchData.GetFieldDefinitions(collection);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOptionalGroup
     //
     // Returns the OptionalGroup for the given OpcodeHandle in the given patch level, or

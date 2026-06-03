@@ -36,8 +36,14 @@ public enum PredicateOp
 //
 // SourceSlot is the resolved slot index of the field whose value is tested, resolved at
 // load via IndexOfField the same way relative anchors and gate count fields are resolved.
-// Op selects the comparison.  Operand is the value compared against, or the mask for
-// BitmaskNonZero.
+// Op selects the comparison.
+//
+// Operand and SignedOperand hold the same parsed constant under two interpretations, so the
+// comparison runs in the source's own signedness without reinterpreting bits across the sign
+// boundary.  BitmaskNonZero, Equal, and NotEqual test the raw bits and use Operand, read as
+// unsigned.  Greater, GreaterOrEqual, Less, and LessOrEqual compare magnitude order and use
+// SignedOperand, read as signed.  Carrying both is necessary because a single field cannot
+// represent both a full-range unsigned mask and a signed ordered bound without loss.
 //
 // This is static policy known before any packet arrives; it reads no payload and performs
 // no decode.  The FieldExtractor reads the source slot from the bag and applies Op against
@@ -45,7 +51,8 @@ public enum PredicateOp
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public struct FieldPredicate
 {
-    public uint SourceSlot;
+    public FieldIndex SourceSlot;
     public PredicateOp Op;
     public uint Operand;
+    public int SignedOperand;
 }

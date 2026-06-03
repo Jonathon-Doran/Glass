@@ -39,7 +39,7 @@ public struct PayloadBuffer80
 // One named field value, stored inline with no heap allocation.  A FieldBag holds an
 // array of these.  The slot's Type tag determines how the payload bytes are interpreted.
 //
-// The setter methods (SetName, SetInt32, etc.) are used by the extractor when filling a
+// The setter methods (SetName, SetInt, etc.) are used by the extractor when filling a
 // bag.  The getter methods (GetInt32, GetAsciiSpan, etc.) are called by FieldBag during
 // handler-driven lookups.  Handlers do not access slots directly.
 //
@@ -156,48 +156,33 @@ public struct FieldSlot
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // SetInt32
+    // SetInt
     //
     // Stores a 32-bit signed integer in machine byte order in the payload buffer.
     //
     // value:  The integer to store.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void SetInt32(int value)
+    public void SetInt(int value)
     {
         Span<byte> destination = _payload;
         BinaryPrimitives.WriteInt32LittleEndian(destination, value);
         _payloadLength = 4;
-        _type = FieldType.Int32;
+        _type = FieldType.Int;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // SetUInt32
+    // SetUInt
     //
     // Stores a 32-bit unsigned integer in the payload buffer.
     //
     // value:  The unsigned integer to store.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void SetUInt32(uint value)
+    public void SetUInt(uint value)
     {
         Span<byte> destination = _payload;
         BinaryPrimitives.WriteUInt32LittleEndian(destination, value);
         _payloadLength = 4;
-        _type = FieldType.UInt32;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // SetUInt8
-    //
-    // Stores a single unsigned byte in the payload buffer.
-    //
-    // value:  The byte to store.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void SetUInt8(byte value)
-    {
-        Span<byte> destination = _payload;
-        destination[0] = value;
-        _payloadLength = 1;
-        _type = FieldType.UInt8;
+        _type = FieldType.UInt;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -235,14 +220,14 @@ public struct FieldSlot
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // TryGetInt32
+    // TryGetInt
     //
     // Reads the slot as a 32-bit signed integer.  Returns SlotReadResult.Success and the
     // value on success, SlotReadResult.TypeMismatch and zero on type mismatch.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public SlotReadResult TryGetInt32(out int value)
+    public SlotReadResult TryGetInt(out int value)
     {
-        if (_type != FieldType.Int32)
+        if ((_type != FieldType.UInt) && (_type != FieldType.Int))
         {
             value = 0;
             return SlotReadResult.TypeMismatch;
@@ -254,14 +239,14 @@ public struct FieldSlot
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // TryGetUInt32
+    // TryGetUInt
     //
     // Reads the slot as a 32-bit unsigned integer.  Returns SlotReadResult.Success and the
     // value on success, SlotReadResult.TypeMismatch and zero on type mismatch.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public SlotReadResult TryGetUInt32(out uint value)
+    public SlotReadResult TryGetUInt(out uint value)
     {
-        if (_type != FieldType.UInt32)
+        if (_type != FieldType.UInt)
         {
             value = 0;
             return SlotReadResult.TypeMismatch;
@@ -269,25 +254,6 @@ public struct FieldSlot
 
         ReadOnlySpan<byte> source = _payload;
         value = BinaryPrimitives.ReadUInt32LittleEndian(source);
-        return SlotReadResult.Success;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // TryGetUInt8
-    //
-    // Reads the slot as an 8-bit unsigned integer.  Returns SlotReadResult.Success and the
-    // value on success, SlotReadResult.TypeMismatch and zero on type mismatch.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public SlotReadResult TryGetUInt8(out int value)
-    {
-        if (_type != FieldType.UInt8)
-        {
-            value = 0;
-            return SlotReadResult.TypeMismatch;
-        }
-
-        ReadOnlySpan<byte> source = _payload;
-        value = BinaryPrimitives.ReadInt32LittleEndian(source);
         return SlotReadResult.Success;
     }
 
@@ -441,42 +407,29 @@ public struct FieldSlot
     {
         switch (_type)
         {
-            case FieldType.UInt8:
+            case FieldType.Int:
                 {
                     int value;
-                    SlotReadResult result = TryGetUInt8(out value);
-                    if (result == SlotReadResult.Success)
-                    {
-                        return "0x" + value.ToString("X2");
-                    }
-                    DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName()
-                        + " UInt8 read failed: " + result);
-                    return string.Empty;
-                }
-
-            case FieldType.Int32:
-                {
-                    int value;
-                    SlotReadResult result = TryGetInt32(out value);
+                    SlotReadResult result = TryGetInt(out value);
                     if (result == SlotReadResult.Success)
                     {
                         return "0x" + value.ToString("X8");
                     }
                     DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName()
-                        + " Int32 read failed: " + result);
+                        + " Int read failed: " + result);
                     return string.Empty;
                 }
 
-            case FieldType.UInt32:
+            case FieldType.UInt:
                 {
                     uint value;
-                    SlotReadResult result = TryGetUInt32(out value);
+                    SlotReadResult result = TryGetUInt(out value);
                     if (result == SlotReadResult.Success)
                     {
                         return "0x" + value.ToString("X8");
                     }
                     DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName()
-                        + " UInt32 read failed: " + result);
+                        + " UInt read failed: " + result);
                     return string.Empty;
                 }
 

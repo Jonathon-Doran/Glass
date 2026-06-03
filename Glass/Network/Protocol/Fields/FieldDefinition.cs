@@ -33,6 +33,13 @@
 // names the child collection and the multiplicity rule.  MultiplicityHandle.None means the field
 // is an ordinary scalar, not a gate reference.
 //
+// Predicate is the field-level presence condition.  When its Op is PredicateOp.None the field is
+// unconditionally present and the extractor decodes it without evaluating any condition.  When Op
+// is any other value the field is decoded only when the predicate holds against an earlier field's
+// value in the same collection; otherwise the slot is left empty.  The predicate's SourceSlot is
+// resolved from a field name to a slot index at load time, the same way RelativeToSlot and gate
+// count fields are resolved.
+//
 // This is plain data — no methods, no validation.  Validation happens at load time in the
 // handler's load routine and at the FieldExtractor's string-table lookup.
 ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -46,4 +53,5 @@ public struct FieldDefinition
     public FieldEncoding Encoding;
     public uint? OptionalGroupId;
     public MultiplicityHandle Multiplicity;
+    public FieldPredicate Predicate;
 }
