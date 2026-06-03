@@ -208,14 +208,12 @@ public class PatchRegistry
     // invoke LoadPatchLevel (or LoadLatestPatchLevel) for the patch before any code that
     // reaches this method runs.
     //
-    // Returns (OpcodeHandle)(-1) if the opcode name is unknown to the patch.
-    //
     // Parameters:
     //   patchLevel  - The patch identifier.  Must already be loaded.
     //   opcodeName  - The logical name (e.g. "OP_PlayerProfile").
     //
     // Returns:
-    //   The OpcodeHandle for the named opcode, or (OpcodeHandle)(-1) if not in the patch.
+    //   The OpcodeHandle for the named opcode, or OpcodeHandle.None if not in the patch.
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     public OpcodeHandle GetOpcodeHandle(PatchLevel patchLevel, string opcodeName)
@@ -233,19 +231,37 @@ public class PatchRegistry
     //
     // Throws InvalidOperationException if the patch level is not loaded.
     //
-    // Returns (OpcodeHandle)(-1) if no matching row exists in the patch.
-    //
     // Parameters:
     //   patchOpcode  - The (PatchLevel, Opcode, Version) tuple identifying the row.
     //                  Its Level must already be loaded.
     //
     // Returns:
-    //   The OpcodeHandle for the row, or (OpcodeHandle)(-1) if no matching row exists.
+    //   The OpcodeHandle for the row, or OpcodeHandle.None if no matching row exists.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public OpcodeHandle GetOpcodeHandle(PatchOpcode patchOpcode)
     {
         PatchData patchData = FindPatchData(patchOpcode.Level);
         return patchData.GetOpcodeHandle(patchOpcode);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetCollectionHandle
+    //
+    // A CollectionHandle defines a set of named fields in the given patch level.
+    //
+    // Throws InvalidOperationException if the patch level is not loaded.
+    //
+    // Parameters:
+    //   patchLevel      - The patch identifier.  Must already be loaded.
+    //   collectionName  - The FieldCollection name to look up.
+    //
+    // Returns:
+    //   The CollectionHandle for the named collection, or CollectionHandle.None if absent.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public CollectionHandle GetCollectionHandle(PatchLevel patchLevel, string collectionName)
+    {
+        PatchData patchData = FindPatchData(patchLevel);
+        return patchData.GetCollectionHandle(collectionName);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -372,20 +388,40 @@ public class PatchRegistry
     //
     // Throws InvalidOperationException if the patch level is not loaded.
     //
-    // Returns (FieldIndex)(-1) if the named field is not present.
-    //
     // Parameters:
     //   patchLevel  - The patch identifier.  Must already be loaded.
     //   handle      - The OpcodeHandle whose field definitions to search.
     //   fieldName   - The field_name column value to look up.
     //
     // Returns:
-    //   The FieldIndex of the named field, or (FieldIndex)(-1) if not found.
+    //   The FieldIndex of the named field, or FieldIndex.None if not found.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public FieldIndex IndexOfField(PatchLevel patchLevel, OpcodeHandle opcode, string fieldName)
     {
         PatchData patchData = FindPatchData(patchLevel);
         return patchData.IndexOfField(opcode, fieldName);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // IndexOfField
+    //
+    // Returns the FieldIndex of the named field within the CollectionHandle's field
+    // definitions in the given patch level.
+    //
+    // Throws InvalidOperationException if the patch level is not loaded.
+    //
+    // Parameters:
+    //   patchLevel  - The patch identifier.  Must already be loaded.
+    //   collection  - The CollectionHandle whose field definitions to search.
+    //   fieldName   - The field_name column value to look up.
+    //
+    // Returns:
+    //   The FieldIndex of the named field, or FieldIndex.None if not found.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public FieldIndex IndexOfField(PatchLevel patchLevel, CollectionHandle collection, string fieldName)
+    {
+        PatchData patchData = FindPatchData(patchLevel);
+        return patchData.IndexOfField(collection, fieldName);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

@@ -29,7 +29,7 @@ using static Glass.Network.Protocol.SoeConstants;
 public struct UdpDatagram
 {
     public BufferLease Payload;
-    PatchOpcode Opcode;
+   // PatchOpcode Opcode;
     public int FrameNumber;
     public DateTime Timestamp;
     public string SourceIp;

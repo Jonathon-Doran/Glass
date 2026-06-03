@@ -369,6 +369,50 @@ public class Database
         {
             ApplyMigration(conn, 44, Migration_044);
         }
+        if (version < 45)
+        {
+            ApplyMigration(conn, 45, Migration_045);
+        }
+        if (version < 46)
+        {
+            ApplyMigration(conn, 46, Migration_046);
+        }
+        if (version < 47)
+        {
+            using SqliteCommand pragmaOff = conn.CreateCommand();
+            pragmaOff.CommandText = "PRAGMA foreign_keys = OFF";
+            pragmaOff.ExecuteNonQuery();
+
+            ApplyMigration(conn, 47, Migration_047);
+
+            using SqliteCommand pragmaOn = conn.CreateCommand();
+            pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
+            pragmaOn.ExecuteNonQuery();
+        }
+        if (version < 48)
+        {
+            ApplyMigration(conn, 48, Migration_048);
+        }
+        if (version < 49)
+        {
+            ApplyMigration(conn, 49, Migration_049);
+        }
+        if (version < 50)
+        {
+            using SqliteCommand pragmaOff = conn.CreateCommand();
+            pragmaOff.CommandText = "PRAGMA foreign_keys = OFF";
+            pragmaOff.ExecuteNonQuery();
+
+            ApplyMigration(conn, 50, Migration_050);
+
+            using SqliteCommand pragmaOn = conn.CreateCommand();
+            pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
+            pragmaOn.ExecuteNonQuery();
+        }
+        if (version < 51)
+        {
+            ApplyMigration(conn, 51, Migration_051);
+        }
     }
 
     private int GetSchemaVersion()
@@ -1191,6 +1235,139 @@ public class Database
     private const string Migration_044 = @"
         ALTER TABLE PacketOptionalGroup ADD COLUMN name TEXT NOT NULL DEFAULT '';
     ";
+
+    private const string Migration_045 = @"
+        CREATE TABLE FieldCollection (
+            id          INTEGER PRIMARY KEY,
+            name        TEXT NOT NULL,
+            version     INTEGER NOT NULL DEFAULT 1,
+            patch_date  TEXT NOT NULL,
+            server_type TEXT NOT NULL,
+            UNIQUE (patch_date, server_type, name)
+        );
+
+        INSERT INTO FieldCollection (id, name, version, patch_date, server_type)
+        SELECT
+            id,
+            opcode_name || 'V' || version,
+            version,
+            patch_date,
+            server_type
+        FROM PatchOpcode;
+    ";
+
+    private const string Migration_046 = @"
+        CREATE TABLE FieldCollection_new (
+            id          INTEGER PRIMARY KEY,
+            name        TEXT NOT NULL,
+            patch_date  TEXT NOT NULL,
+            server_type TEXT NOT NULL,
+            UNIQUE (patch_date, server_type, name)
+        );
+
+        INSERT INTO FieldCollection_new (id, name, patch_date, server_type)
+        SELECT id, name, patch_date, server_type
+        FROM FieldCollection;
+
+        DROP TABLE FieldCollection;
+        ALTER TABLE FieldCollection_new RENAME TO FieldCollection;
+    ";
+
+    private const string Migration_047 = @"
+        CREATE TABLE PacketField_new (
+            id              INTEGER PRIMARY KEY,
+            patch_date      TEXT NOT NULL,
+            server_type     TEXT NOT NULL,
+            collection_name TEXT NOT NULL,
+            field_name      TEXT NOT NULL,
+            bit_offset      INTEGER NOT NULL,
+            bit_length      INTEGER NOT NULL,
+            encoding        TEXT NOT NULL,
+            divisor         REAL NOT NULL DEFAULT 1.0,
+            relative_to     TEXT,
+            UNIQUE (patch_date, server_type, collection_name, field_name)
+        );
+
+        INSERT INTO PacketField_new
+            (patch_date, server_type, collection_name, field_name,
+             bit_offset, bit_length, encoding, divisor, relative_to)
+        SELECT
+            fc.patch_date, fc.server_type, fc.name, pf.field_name,
+            pf.bit_offset, pf.bit_length, pf.encoding, pf.divisor, pf.relative_to
+        FROM PacketField pf
+        JOIN FieldCollection fc ON fc.id = pf.patch_opcode_id
+        ORDER BY fc.patch_date, fc.server_type, fc.name, pf.bit_offset;
+
+        DROP TABLE PacketField;
+        ALTER TABLE PacketField_new RENAME TO PacketField;
+    ";
+
+    private const string Migration_048 = @"
+        ALTER TABLE PatchOpcode ADD COLUMN collection_name TEXT NOT NULL DEFAULT '';
+
+        UPDATE PatchOpcode
+        SET collection_name = opcode_name;
+
+        UPDATE PatchOpcode
+        SET collection_name = 'OP_ZoneEntryV1'
+        WHERE opcode_name = 'OP_ZoneEntry' AND version = 1;
+
+        UPDATE PatchOpcode
+        SET collection_name = 'OP_ZoneEntryV2'
+        WHERE opcode_name = 'OP_ZoneEntry' AND version = 2;
+    ";
+
+    private const string Migration_049 = @"
+        CREATE TABLE Multiplicity (
+            id                  INTEGER PRIMARY KEY,
+            name                TEXT NOT NULL,
+            kind                TEXT NOT NULL,
+            child_collection    TEXT NOT NULL,
+            field_name          TEXT,
+            patch_date          TEXT NOT NULL,
+            server_type         TEXT NOT NULL,
+            UNIQUE (patch_date, server_type, name)
+        );
+    ";
+
+    private const string Migration_050 = @"
+        INSERT INTO Multiplicity (patch_date, server_type, name, kind, child_collection, field_name)
+        SELECT DISTINCT
+            patch_date,
+            server_type,
+            'Gate_' || collection_name,
+            'Always',
+            collection_name,
+            NULL
+        FROM PatchOpcode;
+
+        CREATE TABLE PatchOpcode_new (
+            id              INTEGER PRIMARY KEY,
+            patch_date      TEXT NOT NULL,
+            server_type     TEXT NOT NULL,
+            opcode_value    INTEGER NOT NULL,
+            opcode_name     TEXT NOT NULL,
+            version         INTEGER NOT NULL DEFAULT 1,
+            byte_length     INTEGER,
+            gate_name       TEXT NOT NULL DEFAULT '',
+            UNIQUE (patch_date, server_type, opcode_value, opcode_name, version)
+        );
+
+        INSERT INTO PatchOpcode_new
+            (id, patch_date, server_type, opcode_value, opcode_name, version, byte_length, gate_name)
+        SELECT
+            id, patch_date, server_type, opcode_value, opcode_name, version, byte_length,
+            'Gate_' || collection_name
+        FROM PatchOpcode;
+
+        DROP TABLE PatchOpcode;
+        ALTER TABLE PatchOpcode_new RENAME TO PatchOpcode;
+    ";
+    
+    private const string Migration_051 = @"
+        ALTER TABLE Gate RENAME TO Multiplicity;
+    ";
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"

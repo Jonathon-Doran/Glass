@@ -29,6 +29,10 @@
 // field is an ordinary scalar field.  Resolution from the encoding-string name to the index
 // happens during load, the same way RelativeToSlot is resolved from the relative_to string.
 //
+// Multiplicity, when it Exists, is the handle of the gate this field decodes through; the gate
+// names the child collection and the multiplicity rule.  GateHandle.None means the field
+// is an ordinary scalar, not a gate reference.
+//
 // This is plain data — no methods, no validation.  Validation happens at load time in the
 // handler's load routine and at the FieldExtractor's string-table lookup.
 ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -41,4 +45,5 @@ public struct FieldDefinition
     public uint? RelativeToSlot;
     public FieldEncoding Encoding;
     public uint? OptionalGroupId;
+    public GateHandle Gate;
 }

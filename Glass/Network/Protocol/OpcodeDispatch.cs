@@ -194,7 +194,7 @@ public class OpcodeDispatch : IDisposable
     {
         if (_handlers.TryGetValue(opcodeValue, out IHandleOpcodes? handler) == false)
         {
-            return (OpcodeHandle)(-1);
+            return OpcodeHandle.None;
         }
 
         uint version = handler.ResolveVersion(data, metadata);
@@ -202,12 +202,12 @@ public class OpcodeDispatch : IDisposable
         PatchOpcode patchOpcode = new PatchOpcode(_patchLevel, opcodeValue, (int)version);
         OpcodeHandle handle = GlassContext.PatchRegistry.GetOpcodeHandle(patchOpcode);
 
-        if ((int)handle < 0)
+        if (! handle.Exists)
         {
             DebugLog.Write(LogChannel.Opcodes,
                 "OpcodeDispatch.ResolveOpcodeHandle: registry has no entry for wire opcode 0x"
                 + opcodeValue.ToString("x4") + " version " + version);
-            return (OpcodeHandle)(-1);
+            return OpcodeHandle.None;
         }
 
         return handle;

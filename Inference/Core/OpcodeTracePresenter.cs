@@ -373,7 +373,7 @@ public class OpcodeTracePresenter
         PacketMetadata metadata = packet.Value.Metadata;
 
         OpcodeHandle handle = metadata.Handle;
-        if ((int)handle == -1)
+        if (! handle.Exists)
         {
             row.FieldText = string.Empty;
             return;

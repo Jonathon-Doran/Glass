@@ -111,7 +111,7 @@ public partial class PacketDetailWindow : Window
         PatchOpcode patchOpcode = new PatchOpcode(GlassContext.CurrentPatchLevel, opcode);
         OpcodeHandle handle = GlassContext.PatchRegistry.GetOpcodeHandle(patchOpcode);
 
-        if ((int)handle == -1)
+        if (! handle.Exists)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "PacketDetailWindow.ExtractFieldText: opcode=0x" + opcode.ToString("x4")
