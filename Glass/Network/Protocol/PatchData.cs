@@ -140,38 +140,38 @@ public class PatchData
     private List<string?>? _pendingRelativeNames;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // _gates
+    // _multiplicty
     //
-    // Flat array of resolved Multiplicity structures for this patch level, indexed by GateHandle.
-    // Sized by CountPatchGates and filled incrementally as each gate is resolved at its
-    // referrer's load time, in resolution order.  A GateHandle is a position in this array.
+    // Flat array of resolved Multiplicity structures for this patch level, indexed by MultiplicityHandle.
+    // Sized by CountMultiplicity and filled incrementally as each multiplicity is resolved at its
+    // referrer's load time, in resolution order.  A MultiplicityHandle is a position in this array.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private readonly Multiplicity[] _gates;
+    private readonly Multiplicity[] _multiplicty;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // _nextGateHandle
+    // _nextMultiplicityHandle
     //
-    // The next GateHandle to assign, advanced by one each time a gate is resolved and stored
-    // in _gates.  Starts at 0 and runs dense to the gate count.
+    // The next MultiplicityHandle to assign, advanced by one each time a multiplicity is resolved and stored
+    // in _multiplicty.  Starts at 0 and runs dense to the multiplicity count.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private uint _nextGateHandle;
+    private uint _nextMultiplicityHandle;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // PendingGateField
+    // PendingMultiplictyField
     //
-    // Load-time record pairing a gate awaiting field resolution with the field name to resolve
-    // and the collection that name resolves against.  Created when a gate carrying a field name
-    // is loaded and consumed by the gate field-resolution pass, which looks the name up within
-    // the parent collection's fields and writes the resulting FieldIndex onto the gate.
+    // Load-time record pairing a multiplicity awaiting field resolution with the field name to resolve
+    // and the collection that name resolves against.  Created when a multiplicity carrying a field name
+    // is loaded and consumed by the multiplicity field-resolution pass, which looks the name up within
+    // the parent collection's fields and writes the resulting FieldIndex onto the multiplicity.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    internal struct PendingGateField
+    internal struct PendingMultiplictyField
     {
-        public GateHandle Gate;
+        public MultiplicityHandle Multiplicity;
         public string FieldName;
         public CollectionHandle ParentCollection;
     }
 
-    private List<PendingGateField>? _pendingGateFields;
+    private List<PendingMultiplictyField>? _pendingMultiplicityFields;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // PatchData (constructor, explicit patch)
@@ -209,14 +209,14 @@ public class PatchData
         _opcodeValuesByName = new Dictionary<string, ushort>();
         _opcodeNamesByValue = new Dictionary<ushort, string>();
         _optionalGroupsById = new Dictionary<uint, OptionalGroup>();
-        _pendingGateFields = new List<PendingGateField>();
+        _pendingMultiplicityFields = new List<PendingMultiplictyField>();
 
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
 
         int opcodeCount = CountPatchOpcodes(conn);
         int collectionCount = CountPatchCollections(conn);
-        uint gateCount = CountPatchGates(conn);
+        uint multiplicityCount = CountMultiplicity(conn);
 
         if (opcodeCount == 0)
         {
@@ -235,8 +235,8 @@ public class PatchData
 
         _collectionNamesByHandle = new string[collectionCount];
         _handlesByCollectionName = new Dictionary<string, CollectionHandle>(collectionCount);
-        _gates = new Multiplicity[gateCount];
-        _nextGateHandle = 0;
+        _multiplicty = new Multiplicity[multiplicityCount];
+        _nextMultiplicityHandle = 0;
 
         LoadOpcodeMap(conn);
         LoadPatchCollections(conn);
@@ -260,7 +260,7 @@ public class PatchData
                 + collectionIndex + " name=" + _collectionNamesByHandle[handle]);
             LoadFields(handle, conn);
         }
-        ResolveGateFields();
+        ResolveMultiplicity();
         _pendingRelativeNames = null;
 
         DebugLog.Write(LogChannel.Opcodes, "PatchData ctor: loaded " +
@@ -271,7 +271,7 @@ public class PatchData
     // CollectionHandleForOpcode
     //
     // Resolves an opcode to the CollectionHandle of the collection it decodes, by reading the
-    // opcode's gate binding and the gate's child collection from the database, then mapping
+    // opcode's multiplicity binding and the multiplicity's child collection from the database, then mapping
     // that collection name to its handle.  Temporary: bridges the opcode field loader to the
     // collection-keyed field store until the loader is collection-native.
     //
@@ -312,7 +312,7 @@ public class PatchData
 
         if (childCollection == null)
         {
-            DebugLog.Write(LogChannel.Fields, "PatchData.CollectionHandleForOpcode: no gate/collection "
+            DebugLog.Write(LogChannel.Fields, "PatchData.CollectionHandleForOpcode: no multiplicity/collection "
                 + "binding for opcode '" + opcodeName + "' in patchLevel=" + PatchLevel
                 + ", returning None");
             return CollectionHandle.None;
@@ -323,7 +323,7 @@ public class PatchData
         if (found == false)
         {
             DebugLog.Write(LogChannel.Fields, "PatchData.CollectionHandleForOpcode: opcode '"
-                + opcodeName + "' gate names collection '" + childCollection
+                + opcodeName + "' multiplicity names collection '" + childCollection
                 + "' that is not loaded in patchLevel=" + PatchLevel + ", returning None");
             return CollectionHandle.None;
         }
@@ -432,7 +432,7 @@ public class PatchData
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // CountPatchGates
+    // CountMultiplicity
     //
     // Returns the number of Multiplicity rows for this patch level.
     //
@@ -446,7 +446,7 @@ public class PatchData
     // Returns:
     //   The number of Multiplicity rows for this patch level.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private uint CountPatchGates(SqliteConnection conn)
+    private uint CountMultiplicity(SqliteConnection conn)
     {
         using SqliteCommand cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT COUNT(*)"
@@ -459,13 +459,13 @@ public class PatchData
         object? result = cmd.ExecuteScalar();
         if (result == null || result == DBNull.Value)
         {
-            throw new InvalidOperationException("PatchData.CountPatchGates: count query "
+            throw new InvalidOperationException("PatchData.CountMultiplicity: count query "
                 + "returned null for patchLevel=" + PatchLevel);
         }
 
         uint count = Convert.ToUInt32(result);
 
-        DebugLog.Write(LogChannel.Fields, "PatchData.CountPatchGates: " + count
+        DebugLog.Write(LogChannel.Fields, "PatchData.CountMultiplicity: " + count
             + " Multiplicity row(s) for patchLevel=" + PatchLevel);
         return count;
     }
@@ -706,12 +706,12 @@ public class PatchData
                 }
 
                 FieldEncoding encoding;
-                GateHandle gate = GateHandle.None;
+                MultiplicityHandle multiplicity = MultiplicityHandle.None;
 
                 if (encodingString.StartsWith("Multiplicity") == true)
                 {
-                    gate = LoadGate(encodingString, handle, conn);
-                    encoding = FieldEncoding.Gate;
+                    multiplicity = LoadMultiplicity(encodingString, handle, conn);
+                    encoding = FieldEncoding.Multiplicity;
                 }
                 else
                 {
@@ -733,7 +733,7 @@ public class PatchData
                 definition.Divisor = divisor;
                 definition.RelativeToSlot = null;
                 definition.OptionalGroupId = null;
-                definition.Gate = gate;
+                definition.Multiplicity = multiplicity;
                 fields.Add(definition);
                 _pendingRelativeNames!.Add(relativeToName);
             }
@@ -850,7 +850,7 @@ public class PatchData
             definition.Encoding = encoding;
             definition.Divisor = divisor;
             definition.RelativeToSlot = null;
-            definition.Gate = GateHandle.None;
+            definition.Multiplicity = MultiplicityHandle.None;
             if (resolvedGroupId >= 0)
             {
                 definition.OptionalGroupId = (uint)resolvedGroupId;
@@ -960,7 +960,7 @@ public class PatchData
                 definition.Divisor = divisor;
                 definition.OptionalGroupId = null;
                 definition.RelativeToSlot = null;
-                definition.Gate = GateHandle.None;
+                definition.Multiplicity = MultiplicityHandle.None;
                 fields.Add(definition);
             }
         }
@@ -969,28 +969,28 @@ public class PatchData
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // LoadGate
+    // LoadMultiplicity
     //
-    // Reads the single Multiplicity row named by gateName for this patch level, builds its Multiplicity
-    // struct, stores it at the next GateHandle, and returns that handle.  The child_collection
+    // Reads the single Multiplicity row named by multiplicityField for this patch level, builds its Multiplicity
+    // struct, stores it at the next MultiplicityHandle, and returns that handle.  The child_collection
     // name is looked up to a CollectionHandle; kind is parsed to MultiplicityKind.  When the row's
-    // field_name is non-null, a PendingGateField is appended pairing this gate with that name
+    // field_name is non-null, a PendingMultiplictyField is appended pairing this multiplicity with that name
     // and the parent collection, for the field-resolution step to resolve to a FieldIndex.
     //
     // An unparsable kind is stored as Always and logged.  A child_collection naming no loaded
-    // collection stores CollectionHandle.None and logs.  A missing gate row logs and stores a
-    // gate with CollectionHandle.None so the returned handle stays valid.
+    // collection stores CollectionHandle.None and logs.  A missing multiplicity row logs and stores a
+    // multiplicity with CollectionHandle.None so the returned handle stays valid.
     //
     // Parameters:
-    //   gateName          - The Multiplicity.name to read.
-    //   parentCollection  - The collection this gate is referenced from, recorded on any
-    //                       PendingGateField for later field resolution.
+    //   multiplicityField          - The Multiplicity.name to read.
+    //   parentCollection  - The collection this multiplicity is referenced from, recorded on any
+    //                       PendingMultiplictyField for later field resolution.
     //   conn              - An open database connection, owned by the caller.
     //
     // Returns:
-    //   The GateHandle assigned to the loaded gate.
+    //   The MultiplicityHandle assigned to the loaded multiplicity.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private GateHandle LoadGate(string gateName, CollectionHandle parentCollection, SqliteConnection conn)
+    private MultiplicityHandle LoadMultiplicity(string multiplicityField, CollectionHandle parentCollection, SqliteConnection conn)
     {
         string kindString = "";
         string childCollectionName = "";
@@ -1006,7 +1006,7 @@ public class PatchData
                 + " AND name = @name";
             cmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
             cmd.Parameters.AddWithValue("@serverType", PatchLevel.ServerType);
-            cmd.Parameters.AddWithValue("@name", gateName);
+            cmd.Parameters.AddWithValue("@name", multiplicityField);
 
             using SqliteDataReader reader = cmd.ExecuteReader();
             if (reader.Read())
@@ -1023,8 +1023,8 @@ public class PatchData
 
         if (rowFound == false)
         {
-            DebugLog.Write(LogChannel.Fields, "PatchData.LoadGate: no Multiplicity row named '"
-                + gateName + "' for patchLevel=" + PatchLevel + ", storing gate with no child collection");
+            DebugLog.Write(LogChannel.Fields, "PatchData.LoadMultiplicity: no Multiplicity row named '"
+                + multiplicityField + "' for patchLevel=" + PatchLevel + ", storing multiplicity with no child collection");
         }
 
         MultiplicityKind kind = MultiplicityKind.Once;
@@ -1033,7 +1033,7 @@ public class PatchData
             bool kindParsed = Enum.TryParse<MultiplicityKind>(kindString, out kind);
             if (kindParsed == false)
             {
-                DebugLog.Write(LogChannel.Fields, "PatchData.LoadGate: gate '" + gateName
+                DebugLog.Write(LogChannel.Fields, "PatchData.LoadMultiplicity: multiplicity '" + multiplicityField
                     + "' has unparsable kind '" + kindString + "', storing as Always");
                 kind = MultiplicityKind.Once;
             }
@@ -1050,36 +1050,36 @@ public class PatchData
             }
             else
             {
-                DebugLog.Write(LogChannel.Fields, "PatchData.LoadGate: gate '" + gateName
+                DebugLog.Write(LogChannel.Fields, "PatchData.LoadMultiplicity: multiplicity '" + multiplicityField
                     + "' names child collection '" + childCollectionName
                     + "' that is not loaded for patchLevel=" + PatchLevel + ", storing CollectionHandle.None");
             }
         }
 
-        GateHandle handle = (GateHandle)_nextGateHandle;
-        _nextGateHandle = _nextGateHandle + 1;
+        MultiplicityHandle handle = (MultiplicityHandle)_nextMultiplicityHandle;
+        _nextMultiplicityHandle = _nextMultiplicityHandle + 1;
 
-        Multiplicity gate;
-        gate.Name = gateName;
-        gate.Kind = kind;
-        gate.ChildCollection = childCollection;
-        gate.FieldSlot = FieldIndex.None;
+        Multiplicity multiplicity;
+        multiplicity.Name = multiplicityField;
+        multiplicity.Kind = kind;
+        multiplicity.ChildCollection = childCollection;
+        multiplicity.FieldSlot = FieldIndex.None;
 
-        _gates[handle] = gate;
+        _multiplicty[handle] = multiplicity;
 
         if (fieldName != null)
         {
-            PendingGateField pending;
-            pending.Gate = handle;
+            PendingMultiplictyField pending;
+            pending.Multiplicity = handle;
             pending.FieldName = fieldName;
             pending.ParentCollection = parentCollection;
-            _pendingGateFields!.Add(pending);
-            DebugLog.Write(LogChannel.Fields, "PatchData.LoadGate: gate '" + gateName
+            _pendingMultiplicityFields!.Add(pending);
+            DebugLog.Write(LogChannel.Fields, "PatchData.LoadMultiplicity: multiplicity '" + multiplicityField
                 + "' field '" + fieldName + "' pending resolution against collection handle "
                 + (uint)parentCollection);
         }
 
-        DebugLog.Write(LogChannel.Fields, "PatchData.LoadGate: loaded gate '" + gateName
+        DebugLog.Write(LogChannel.Fields, "PatchData.LoadMultiplicity: loaded multiplicity '" + multiplicityField
             + "' kind=" + kind + " childCollection=" + (uint)childCollection
             + " at handle " + (uint)handle + " for patchLevel=" + PatchLevel);
 
@@ -1569,26 +1569,26 @@ public class PatchData
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // ResolveGateFields
+    // ResolveMultiplicity
     //
-    // Resolves each pending gate field name to a FieldIndex within its parent collection and
-    // writes it onto the gate's FieldSlot.  Run once after every collection's fields are loaded,
+    // Resolves each pending multiplicity field name to a FieldIndex within its parent collection and
+    // writes it onto the multiplicity's FieldSlot.  Run once after every collection's fields are loaded,
     // so a name can resolve against any parent collection.
     //
     // A name not present in its parent collection is a broken patch definition: the failure is
-    // logged with a stack trace and the process is terminated, since a gate decoding against a
+    // logged with a stack trace and the process is terminated, since a multiplicity decoding against a
     // field its collection does not define must never run.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void ResolveGateFields()
+    private void ResolveMultiplicity()
     {
-        List<PendingGateField> pending = _pendingGateFields!;
+        List<PendingMultiplictyField> pending = _pendingMultiplicityFields!;
         for (int pendingIndex = 0; pendingIndex < pending.Count; pendingIndex++)
         {
-            PendingGateField entry = pending[pendingIndex];
+            PendingMultiplictyField entry = pending[pendingIndex];
             FieldIndex slot = IndexOfField(entry.ParentCollection, entry.FieldName);
             if (slot.Exists == false)
             {
-                string message = "PatchData.ResolveGateFields: gate handle " + (uint)entry.Gate
+                string message = "PatchData.ResolveMultiplicity: multiplicity handle " + (uint)entry.Multiplicity
                     + " references field '" + entry.FieldName + "' not present in collection '"
                     + _collectionNamesByHandle[entry.ParentCollection] + "' for patchLevel="
                     + PatchLevel + " -- broken patch definition, aborting";
@@ -1598,11 +1598,11 @@ public class PatchData
 
                 Environment.FailFast(message);
             }
-            _gates[entry.Gate].FieldSlot = slot;
+            _multiplicty[entry.Multiplicity].FieldSlot = slot;
         }
 
-        DebugLog.Write(LogChannel.Fields, "PatchData.ResolveGateFields: resolved "
-            + pending.Count + " pending gate field(s) for patchLevel=" + PatchLevel);
+        DebugLog.Write(LogChannel.Fields, "PatchData.ResolveMultiplicity: resolved "
+            + pending.Count + " pending multiplicity field(s) for patchLevel=" + PatchLevel);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

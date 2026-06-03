@@ -31,5 +31,5 @@ public enum FieldEncoding
     StringNullTerminated,
     StringLengthPrefixed,
     OptionalGroup,
-    Gate
+    Multiplicity
 }

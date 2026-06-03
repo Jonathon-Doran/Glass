@@ -1365,7 +1365,7 @@ public class Database
     ";
     
     private const string Migration_051 = @"
-        ALTER TABLE Gate RENAME TO Multiplicity;
+        ALTER TABLE Multiplicity RENAME TO Multiplicity;
     ";
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
