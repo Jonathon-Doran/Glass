@@ -1322,7 +1322,7 @@ public class Database
     ";
 
     private const string Migration_049 = @"
-        CREATE TABLE Multiplicity (
+        CREATE TABLE Gate (
             id                  INTEGER PRIMARY KEY,
             name                TEXT NOT NULL,
             kind                TEXT NOT NULL,
@@ -1335,7 +1335,7 @@ public class Database
     ";
 
     private const string Migration_050 = @"
-        INSERT INTO Multiplicity (patch_date, server_type, name, kind, child_collection, field_name)
+        INSERT INTO Gate (patch_date, server_type, name, kind, child_collection, field_name)
         SELECT DISTINCT
             patch_date,
             server_type,
@@ -1369,7 +1369,7 @@ public class Database
     ";
     
     private const string Migration_051 = @"
-        ALTER TABLE Multiplicity RENAME TO Multiplicity;
+        ALTER TABLE Gate RENAME TO Gate;
     ";
 
     private const string Migration_052 = @"

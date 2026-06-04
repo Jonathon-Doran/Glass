@@ -16,9 +16,9 @@ namespace Inference.Dialogs;
 // CollectionEditor
 //
 // Modeless editor for the collection-centric patch-data tables: FieldCollection, PacketField,
-// and Multiplicity.  A patch level and a collection are selected; the collection's PacketField
+// and Gate.  A patch level and a collection are selected; the collection's PacketField
 // rows are edited in one grid.  A field's gate is entered as an expression that the save path
-// translates into a Multiplicity row named "Gate_<child>" and the field's encoding; a field's
+// translates into a Gate row named "Gate_<child>" and the field's encoding; a field's
 // predicate is entered as a string validated on save.  Reads and writes via direct SQL through
 // the Database singleton.
 ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -360,7 +360,7 @@ public partial class CollectionEditor : Window
     // exists only to match loaded rows back to their database row at update or delete time.
     //
     // The gate column is a grid-only expression column; it does not map to a PacketField column
-    // directly.  The save path parses it into a Multiplicity row named "Gate_<child>" and writes
+    // directly.  The save path parses it into a Gate row named "Gate_<child>" and writes
     // that name into the field's encoding.  The remaining columns map one-to-one to PacketField.
     //
     // The show_relative_to, show_gate, and show_predicate columns are view-only toggle state for
@@ -429,7 +429,7 @@ public partial class CollectionEditor : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // LoadGateExpression
     //
-    // Reads the Multiplicity row named by gateName for the given patch level and formats it into
+    // Reads the Gate row named by gateName for the given patch level and formats it into
     // the gate expression shown in the grid.  Called by LoadFieldsTable for a field whose encoding
     // names a gate.  The row's kind, child_collection, and field_name are read and passed to
     // FormatGateExpression.
@@ -438,8 +438,8 @@ public partial class CollectionEditor : Window
     // the field shows no gate rather than a malformed one; the underlying data is left untouched.
     //
     // Parameters:
-    //   patchLevel  - The patch level whose Multiplicity row to read.
-    //   gateName    - The Multiplicity.name, taken from the field's encoding (e.g. "Gate_XXX").
+    //   patchLevel  - The patch level whose Gate row to read.
+    //   gateName    - The Gate.name, taken from the field's encoding (e.g. "Gate_XXX").
     //
     // Returns:
     //   The formatted gate expression, or the empty string when the row is missing or invalid.
@@ -454,7 +454,7 @@ public partial class CollectionEditor : Window
         using (SqliteCommand cmd = _connection.CreateCommand())
         {
             cmd.CommandText = "SELECT kind, child_collection, field_name"
-                + " FROM Multiplicity"
+                + " FROM Gate"
                 + " WHERE patch_date = @patchDate"
                 + " AND server_type = @serverType"
                 + " AND name = @name";
@@ -477,7 +477,7 @@ public partial class CollectionEditor : Window
 
         if (rowFound == false)
         {
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.LoadGateExpression: no Multiplicity row "
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.LoadGateExpression: no Gate row "
                 + "named '" + gateName + "' for patchLevel=" + patchLevel + ", returning empty expression");
             return string.Empty;
         }
@@ -486,7 +486,7 @@ public partial class CollectionEditor : Window
         bool kindParsed = Enum.TryParse<MultiplicityKind>(kindString, out kind);
         if (kindParsed == false)
         {
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.LoadGateExpression: Multiplicity '" + gateName
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.LoadGateExpression: Gate '" + gateName
                 + "' has unparsable kind '" + kindString + "', returning empty expression");
             return string.Empty;
         }
@@ -503,7 +503,7 @@ public partial class CollectionEditor : Window
     //
     // Reads the PacketField rows for the given collection, builds the grid's DataTable, and binds
     // it to FieldsGrid.  For each row the encoding is inspected: when it names a gate (starts with
-    // "Gate_") the matching Multiplicity row is read and formatted into the gate column, and the
+    // "Gate_") the matching Gate row is read and formatted into the gate column, and the
     // encoding column is left empty so the grid shows the field as a gate rather than a scalar.
     // Otherwise the encoding is shown as-is and the gate column is left empty.  The relative_to
     // and predicate columns are shown empty when their database value is null.
@@ -797,7 +797,7 @@ public partial class CollectionEditor : Window
     // Persists pending changes to the database inside a single transaction.  Either every change
     // commits or none does.  Ensures the FieldCollection row exists under the name in the name box,
     // renaming it and cascading the new name through PacketField.collection_name, gate encodings,
-    // and Multiplicity rows when the name differs from the loaded name; then walks the fields table
+    // and Gate rows when the name differs from the loaded name; then walks the fields table
     // and writes its INSERT/UPDATE/DELETE statements.
     //
     // A malformed gate expression or predicate string aborts the save with a message and rolls the
@@ -1018,8 +1018,8 @@ public partial class CollectionEditor : Window
     //   FieldCollection.name              oldName -> newName
     //   PacketField.collection_name       oldName -> newName   (the collection's own fields)
     //   PacketField.encoding              Gate_oldName -> Gate_newName   (fields gating into it)
-    //   Multiplicity.name                 Gate_oldName -> Gate_newName
-    //   Multiplicity.child_collection     oldName -> newName
+    //   Gate.name                 Gate_oldName -> Gate_newName
+    //   Gate.child_collection     oldName -> newName
     //
     // After this runs no row in the patch references the old name.
     //
@@ -1081,7 +1081,7 @@ public partial class CollectionEditor : Window
         using (SqliteCommand cmd = _connection.CreateCommand())
         {
             cmd.Transaction = tx;
-            cmd.CommandText = "UPDATE Multiplicity"
+            cmd.CommandText = "UPDATE Gate"
                 + " SET name = @newGate,"
                 + "     child_collection = @newName"
                 + " WHERE patch_date = @patchDate"
@@ -1104,8 +1104,8 @@ public partial class CollectionEditor : Window
     // ResolveFieldEncoding
     //
     // Determines the encoding string to store for a field row and ensures any gate it carries has a
-    // Multiplicity row.  When the row's gate cell is non-empty it is parsed, the parsed gate's
-    // Multiplicity row named "Gate_<child>" is upserted, and that gate name is returned as the
+    // Gate row.  When the row's gate cell is non-empty it is parsed, the parsed gate's
+    // Gate row named "Gate_<child>" is upserted, and that gate name is returned as the
     // field's encoding.  When the gate cell is empty the row's scalar encoding cell is returned
     // unchanged.
     //
@@ -1413,19 +1413,19 @@ public partial class CollectionEditor : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // UpsertGate
     //
-    // Inserts or updates the Multiplicity row named gateName for the given patch level from a parsed
+    // Inserts or updates the Gate row named gateName for the given patch level from a parsed
     // gate expression.  When a row with that name already exists for the patch it is updated;
     // otherwise a new row is inserted.  The row's kind is the expression's kind, its child_collection
     // is the expression's child collection, and its field_name is the count field for a Times gate
     // or null for Once and UntilEnd.
     //
-    // Multiplicity rows are keyed by name and may be shared by more than one parent field, so this
+    // Gate rows are keyed by name and may be shared by more than one parent field, so this
     // upserts rather than always inserting: two fields gating the same child collection the same way
     // resolve to the one row.
     //
     // tx:          The transaction within which the write runs.
     // patchLevel:  The patch level the gate belongs to.
-    // gateName:    The Multiplicity name, "Gate_<child>".
+    // gateName:    The Gate name, "Gate_<child>".
     // gate:        The parsed gate expression supplying kind, child collection, and count field.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void UpsertGate(SqliteTransaction tx, PatchLevel patchLevel, string gateName, GateExpression gate)
@@ -1445,7 +1445,7 @@ public partial class CollectionEditor : Window
         {
             cmd.Transaction = tx;
             cmd.CommandText = "SELECT COUNT(*)"
-                + " FROM Multiplicity"
+                + " FROM Gate"
                 + " WHERE patch_date = @patchDate"
                 + " AND server_type = @serverType"
                 + " AND name = @name";
@@ -1462,7 +1462,7 @@ public partial class CollectionEditor : Window
         {
             using SqliteCommand cmd = _connection.CreateCommand();
             cmd.Transaction = tx;
-            cmd.CommandText = "UPDATE Multiplicity"
+            cmd.CommandText = "UPDATE Gate"
                 + " SET kind = @kind,"
                 + "     child_collection = @childCollection,"
                 + "     field_name = @fieldName"
@@ -1477,7 +1477,7 @@ public partial class CollectionEditor : Window
             cmd.Parameters.AddWithValue("@name", gateName);
             cmd.ExecuteNonQuery();
 
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.UpsertGate: updated Multiplicity '"
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.UpsertGate: updated Gate '"
                 + gateName + "' kind=" + gate.Kind + " child='" + gate.ChildCollection
                 + "' countField='" + gate.CountFieldName + "' for patchLevel=" + patchLevel);
             return;
@@ -1486,7 +1486,7 @@ public partial class CollectionEditor : Window
         using (SqliteCommand cmd = _connection.CreateCommand())
         {
             cmd.Transaction = tx;
-            cmd.CommandText = "INSERT INTO Multiplicity"
+            cmd.CommandText = "INSERT INTO Gate"
                 + " (patch_date, server_type, name, kind, child_collection, field_name)"
                 + " VALUES (@patchDate, @serverType, @name, @kind, @childCollection, @fieldName)";
             cmd.Parameters.AddWithValue("@patchDate", patchLevel.PatchDate);
@@ -1497,7 +1497,7 @@ public partial class CollectionEditor : Window
             cmd.Parameters.AddWithValue("@fieldName", countFieldParam);
             cmd.ExecuteNonQuery();
 
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.UpsertGate: inserted Multiplicity '"
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.UpsertGate: inserted Gate '"
                 + gateName + "' kind=" + gate.Kind + " child='" + gate.ChildCollection
                 + "' countField='" + gate.CountFieldName + "' for patchLevel=" + patchLevel);
         }
@@ -1510,7 +1510,7 @@ public partial class CollectionEditor : Window
     // statements according to each row's RowState, all within the caller's transaction.  Inserted
     // and updated rows carry collectionName as their collection_name; their encoding is resolved by
     // ResolveFieldEncoding, which returns a scalar encoding or a "Gate_<child>" name and upserts the
-    // gate's Multiplicity row when the field is gated.  The relative_to and predicate columns are
+    // gate's Gate row when the field is gated.  The relative_to and predicate columns are
     // written as null when their cell is blank.  No-op when the table is null or has no changes.
     //
     // tx:              The transaction within which the writes run.
@@ -1610,14 +1610,14 @@ public partial class CollectionEditor : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ReconcileOldGate
     //
-    // Removes the Multiplicity row a field's gate previously named when that gate is no longer the
+    // Removes the Gate row a field's gate previously named when that gate is no longer the
     // field's gate.  Computes the original gate name from the gate cell's original value and the
     // new gate name from its current value, applying the "Gate_" prefix only when the parsed child
     // collection does not already carry it, so both names match what is stored.  When the original
-    // name is non-empty and differs from the new name the original's Multiplicity row is deleted,
+    // name is non-empty and differs from the new name the original's Gate row is deleted,
     // covering a cleared gate, a changed gate, and a renamed gate.  Nothing is deleted when the
     // gate is unchanged, when there was no original gate, or when the original expression does not
-    // parse.  The new gate's Multiplicity row is written by ResolveFieldEncoding, which the caller
+    // parse.  The new gate's Gate row is written by ResolveFieldEncoding, which the caller
     // invokes after this method.
     //
     // tx:          The transaction within which the delete runs.
@@ -1647,7 +1647,7 @@ public partial class CollectionEditor : Window
 
         using SqliteCommand cmd = _connection.CreateCommand();
         cmd.Transaction = tx;
-        cmd.CommandText = "DELETE FROM Multiplicity"
+        cmd.CommandText = "DELETE FROM Gate"
             + " WHERE patch_date = @patchDate"
             + " AND server_type = @serverType"
             + " AND name = @name";
@@ -1658,13 +1658,13 @@ public partial class CollectionEditor : Window
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.ReconcileOldGate: field '"
             + fieldName + "' gate changed from '" + originalName + "' to '" + newName
-            + "', deleted old Multiplicity for patchLevel=" + patchLevel + " rows=" + affected);
+            + "', deleted old Gate for patchLevel=" + patchLevel + " rows=" + affected);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // GateNameFromCell
     //
-    // Returns the stored Multiplicity name for a gate cell value.  Parses the expression and, on
+    // Returns the stored Gate name for a gate cell value.  Parses the expression and, on
     // success, prefixes the child collection with "Gate_" only when it does not already carry that
     // prefix.  Returns the empty string when the cell is empty or the expression does not parse,
     // representing a field with no gate name.

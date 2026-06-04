@@ -73,8 +73,8 @@ public partial class MainWindow : Window
         });
         GlassContext.GlassVideoPipe.Start();
         GlassContext.BufferPool = new BufferPool(
-            new uint[] { 64, 256, 512, 1024, 2048, 16384, 65536, 262144, 524288 },
-            new uint[] { 32, 16, 16, 16, 8, 8, 4, 2, 1 });
+            new uint[] { 16, 64, 256, 512, 1024, 2048, 16384, 65536, 262144, 524288 },
+            new uint[] { 64, 32, 16, 16, 16, 8, 8, 4, 2, 1 });
 
         GlassContext.SignalBus = new SignalBus();
         GlassContext.PacketBus = new PacketBus();

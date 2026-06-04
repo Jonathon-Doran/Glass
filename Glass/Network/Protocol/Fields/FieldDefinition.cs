@@ -29,8 +29,8 @@
 // field is an ordinary scalar field.  Resolution from the encoding-string name to the index
 // happens during load, the same way RelativeToSlot is resolved from the relative_to string.
 //
-// Multiplicity, when it Exists, is the handle of the gate this field decodes through; the gate
-// names the child collection and the multiplicity rule.  MultiplicityHandle.None means the field
+// Gate, when it Exists, is the handle of the gate this field decodes through; the gate
+// names the child collection and the multiplicity rule.  GateHandle.None means the field
 // is an ordinary scalar, not a gate reference.
 //
 // Predicate is the field-level presence condition.  When its Op is PredicateOp.None the field is
@@ -52,6 +52,6 @@ public struct FieldDefinition
     public uint? RelativeToSlot;
     public FieldEncoding Encoding;
     public uint? OptionalGroupId;
-    public MultiplicityHandle Multiplicity;
+    public GateHandle Gate;
     public FieldPredicate Predicate;
 }
