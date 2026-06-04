@@ -39,6 +39,8 @@
             </MenuItem>
             <MenuItem Header="_Tools">
                 <MenuItem Header="_Patch Data Editor" Click="MenuItem_PatchDataEditor_Click"/>
+                <MenuItem Header="_Collection Editor" Click="MenuItem_CollectionEditor_Click"/>
+
             </MenuItem>
         </Menu>
         <StatusBar DockPanel.Dock="Bottom">

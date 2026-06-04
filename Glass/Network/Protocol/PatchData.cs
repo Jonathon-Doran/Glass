@@ -738,7 +738,7 @@ public class PatchData
                 FieldEncoding encoding;
                 MultiplicityHandle multiplicity = MultiplicityHandle.None;
 
-                if (encodingString.StartsWith("Multiplicity") == true)
+                if (encodingString.StartsWith("Gate") == true)
                 {
                     multiplicity = LoadMultiplicity(encodingString, handle, conn);
                     encoding = FieldEncoding.Multiplicity;

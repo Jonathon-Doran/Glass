@@ -139,6 +139,43 @@ public class PatchRegistry
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetAllPatchLevels
+    //
+    // Reads the distinct (patch_date, server_type) pairs from PatchOpcode and returns a
+    // PatchLevel for each, ordered by patch_date then server_type.  Enumerates every patch
+    // level present in the database, whether or not its PatchData is loaded; this is a
+    // discovery query, not a cache read.
+    //
+    // Returns:
+    //   The patch levels present in PatchOpcode, possibly empty if the table has no rows.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public static List<PatchLevel> GetAllPatchLevels()
+    {
+        List<PatchLevel> patchLevels = new List<PatchLevel>();
+
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT DISTINCT patch_date, server_type"
+            + " FROM PatchOpcode"
+            + " ORDER BY patch_date, server_type";
+
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            string patchDate = reader.GetString(0);
+            string serverType = reader.GetString(1);
+            PatchLevel patchLevel = new PatchLevel(patchDate, serverType);
+            patchLevels.Add(patchLevel);
+        }
+
+        DebugLog.Write(LogChannel.Network, "PatchRegistry.GetAllPatchLevels: "
+            + patchLevels.Count + " patch level(s) in PatchOpcode");
+
+        return patchLevels;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // TryFindPatchData
     //
     // Returns the loaded PatchData matching the given patch level, or null if no loaded

@@ -1853,6 +1853,23 @@ public partial class MainWindow : Window
         editor.Show();
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // MenuItem_CollectionEditor_Click
+    //
+    // Opens the Collection Editor as a modeless window owned by this MainWindow.
+    //
+    // sender:  The Tools > Collection Editor menu item.
+    // e:       Standard event args; not inspected.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void MenuItem_CollectionEditor_Click(object sender, RoutedEventArgs e)
+    {
+        DebugLog.Write(LogChannel.Fields, "MainWindow.MenuItem_CollectionEditor_Click: opening editor");
+
+        CollectionEditor editor = new CollectionEditor();
+        editor.Owner = this;
+        editor.Show();
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Button_Analyze_Click
     //
