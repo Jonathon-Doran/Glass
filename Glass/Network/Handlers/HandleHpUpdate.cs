@@ -23,9 +23,9 @@ public class HandleHpUpdate : IHandleOpcodes
     private PatchLevel _patchLevel;
 
 
-    private readonly uint _playerId;
-    private readonly uint _currentHPId;
-    private readonly uint _maxHPId;
+    private readonly SlotId _playerIdSlot;
+    private readonly SlotId _currentHPIdSlot;
+    private readonly SlotId _maxHPIdSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleHpUpdate (constructor)
@@ -46,9 +46,9 @@ public class HandleHpUpdate : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _handle = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
-        _playerId = _registry.IndexOfField(_patchLevel, _handle, "player_id");
-        _currentHPId = _registry.IndexOfField(_patchLevel, _handle, "current_hp");
-        _maxHPId = _registry.IndexOfField(_patchLevel, _handle, "max_hp");
+        _playerIdSlot = _registry.IndexOfField(_patchLevel, _handle, "player_id");
+        _currentHPIdSlot = _registry.IndexOfField(_patchLevel, _handle, "current_hp");
+        _maxHPIdSlot = _registry.IndexOfField(_patchLevel, _handle, "max_hp");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -105,7 +105,7 @@ public class HandleHpUpdate : IHandleOpcodes
         {
             GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
 
-            uint playerId = bag.GetUIntAt(_playerId);
+            uint playerId = bag.GetUIntAt(_playerIdSlot);
 
             character = CharacterRepository.Instance.GetById((int) playerId);
 
@@ -115,8 +115,8 @@ public class HandleHpUpdate : IHandleOpcodes
                 return;
             }
 
-            character.MaxHP = bag.GetUIntAt(_maxHPId);
-            character.CurrentHP = bag.GetUIntAt(_currentHPId);
+            character.MaxHP = bag.GetUIntAt(_maxHPIdSlot);
+            character.CurrentHP = bag.GetUIntAt(_currentHPIdSlot);
         }
         finally
         {

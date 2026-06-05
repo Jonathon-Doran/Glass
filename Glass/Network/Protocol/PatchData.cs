@@ -2,10 +2,6 @@
 using Glass.Data;
 using Glass.Network.Protocol.Fields;
 using Microsoft.Data.Sqlite;
-using System;
-using System.Diagnostics;
-using System.Reflection.Emit;
-using System.Runtime.CompilerServices;
 
 namespace Glass.Network.Protocol;
 
@@ -49,8 +45,8 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // _opcodeFields
     //
-    // Parallel array to _patchOpcodes: _opcodeFields[handle] is the FieldDefinition[] for
-    // _patchOpcodes[handle], or null if that opcode has no fields defined for this patch
+    // Parallel array to _patchOpcodes: _opcodeFields[opcodeHandle] is the FieldDefinition[] for
+    // _patchOpcodes[opcodeHandle], or null if that opcode has no fields defined for this patch
     //
     // Allocated once in the constructor sized to the number of rows returned by
     // LoadPatchOpcodes; never resized.
@@ -69,8 +65,8 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // _opcodeOptionalGroups
     //
-    // Parallel array to _patchOpcodes: _opcodeOptionalGroups[handle] is the OptionalGroup
-    // for the opcode at that handle, or null if the opcode has no optional block defined
+    // Parallel array to _patchOpcodes: _opcodeOptionalGroups[opcodeHandle] is the OptionalGroup
+    // for the opcode at that opcodeHandle, or null if the opcode has no optional block defined
     // for this patch.  Most opcodes have no optional block; those slots stay null.
     //
     // Allocated once in the constructor sized to the number of rows returned by
@@ -82,11 +78,12 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////
     // _collectionNamesByHandle
     //
-    // Parallel array to _patchOpcodes: _collectionNamesByHandle[handle] is the
-    // collection_name string for _patchOpcodes[handle].  
+    // Parallel array to _patchOpcodes: _collectionNamesByHandle[opcodeHandle] is the
+    // collection_name string for _patchOpcodes[opcodeHandle].  
     ///////////////////////////////////////////////////////////////////////////////////////////
     private readonly string[] _collectionNamesByHandle;
-    private readonly Dictionary<string, CollectionHandle> _handlesByCollectionName;
+    private readonly Dictionary<string, CollectionHandle> _collectionHandleByCollectionName;
+    private readonly Dictionary<OpcodeHandle, CollectionHandle> _collectionHandleByOpcodeHandle;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // _optionalGroupIdsByName
@@ -103,25 +100,25 @@ public class PatchData
     // _handlesByValue
     //
     // Maps the wire opcode value to the OpcodeHandle assigned at load time.  Used on the
-    // hot path by the dispatcher to resolve an incoming wire opcode to the handle that
+    // hot path by the dispatcher to resolve an incoming wire opcode to the opcodeHandle that
     // indexes its handler array.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private readonly Dictionary<PatchOpcode, OpcodeHandle> _handlesByOpcode;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // _namesByHandle
+    // _opcodeNamesByOpcodeHandle
     //
-    // Parallel array to _patchOpcodes: _namesByHandle[handle] is the opcode_name string
-    // for _patchOpcodes[handle].  Allocated once in the constructor sized to the number
+    // Parallel array to _patchOpcodes: _opcodeNamesByOpcodeHandle[opcodeHandle] is the opcode_name string
+    // for _patchOpcodes[opcodeHandle].  Allocated once in the constructor sized to the number
     // of rows returned by LoadPatchOpcodes; never resized.  Used by GetOpcodeName and by
-    // diagnostic log lines that need to render a handle as a human-readable name.
+    // diagnostic log lines that need to render a opcodeHandle as a human-readable name.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private readonly string[] _namesByHandle;
+    private readonly string[] _opcodeNamesByOpcodeHandle;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // _handlesByName
     //
-    // Reverse map of _namesByHandle: opcode_name string to OpcodeHandle.  Used by
+    // Reverse map of _opcodeNamesByOpcodeHandle: opcode_name string to OpcodeHandle.  Used by
     // GetOpcodeHandle(string) when handlers resolve the opcodes they care about at
     // construction time.  Cold path — handlers call this once per opcode they register.
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -143,8 +140,8 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////
     // _gate
     //
-    // Flat array of resolved Gate structures for this patch level, indexed by GateHandle.
-    // Sized by CountGates and filled incrementally as each gate is resolved at its
+    // Flat array of childCollection Gate structures for this patch level, indexed by GateHandle.
+    // Sized by CountGates and filled incrementally as each gate is childCollection at its
     // referrer's load time, in resolution order.  A GateHandle is a position in this array.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private readonly Gate[] _gate;
@@ -152,7 +149,7 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////
     // _nextGateHandle
     //
-    // The next GateHandle to assign, advanced by one each time a gate is resolved and stored
+    // The next GateHandle to assign, advanced by one each time a gate is childCollection and stored
     // in _gate.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private uint _nextGateHandle;
@@ -163,7 +160,7 @@ public class PatchData
     // Load-time record pairing a gate awaiting field resolution with the field name to resolve
     // and the collection that name resolves against.  Created when a gate carrying a field name
     // is loaded and consumed by the gate field-resolution pass, which looks the name up within
-    // the parent collection's fields and writes the resulting FieldIndex onto the gate.
+    // the parent collection's fields and writes the resulting SlotId onto the gate.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     internal struct PendingGateField
     {
@@ -210,9 +207,9 @@ public class PatchData
     // Load order:
     //   1. Build the encoding string table (used while reading PacketField rows).
     //   2. Load the opcode-name-to-wire-value map from PatchOpcode.
-    //   3. Enumerate every PatchOpcode for this patch.  Allocate the parallel handle-
+    //   3. Enumerate every PatchOpcode for this patch.  Allocate the parallel opcodeHandle-
     //      indexed arrays from the resulting count.
-    //   4. For each PatchOpcode, store it under its handle, then load its required field
+    //   4. For each PatchOpcode, store it under its opcodeHandle, then load its required field
     //      definitions from PacketField, then append its optional field definitions from
     //      PacketOptionalGroup / PacketOptionalField.
     //
@@ -236,6 +233,7 @@ public class PatchData
         _opcodeValuesByName = new Dictionary<string, ushort>();
         _opcodeNamesByValue = new Dictionary<ushort, string>();
         _optionalGroupsById = new Dictionary<uint, OptionalGroup>();
+
         _pendingGateFields = new List<PendingGateField>();
         _pendingFieldPredicates = new List<PendingFieldPredicate>();
 
@@ -256,15 +254,16 @@ public class PatchData
         _opcodeFields = new FieldDefinition[opcodeCount][];
         _collectionFields = new FieldDefinition[collectionCount][];
         _opcodeOptionalGroups = new OptionalGroup?[opcodeCount];
-        _namesByHandle = new string[opcodeCount];
+        _opcodeNamesByOpcodeHandle = new string[opcodeCount];
         _handlesByName = new Dictionary<string, OpcodeHandle>(opcodeCount);
         _handlesByOpcode = new Dictionary<PatchOpcode, OpcodeHandle>(opcodeCount);
         _pendingRelativeNames = new List<string?>();
 
         _collectionNamesByHandle = new string[collectionCount];
-        _handlesByCollectionName = new Dictionary<string, CollectionHandle>(collectionCount);
+        _collectionHandleByCollectionName = new Dictionary<string, CollectionHandle>(collectionCount);
         _gate = new Gate[gateCount];
         _nextGateHandle = 0;
+        _collectionHandleByOpcodeHandle = new Dictionary<OpcodeHandle, CollectionHandle>(opcodeCount);
 
         LoadOpcodeMap(conn);
         LoadPatchCollections(conn);
@@ -275,7 +274,7 @@ public class PatchData
         {
             OpcodeHandle handle = (OpcodeHandle) handleIndex;
             PatchOpcode patchOpcode = _patchOpcodes[handle];
-            DebugLog.Write(LogChannel.Opcodes, "PatchData ctor: loading fields for handle="
+            DebugLog.Write(LogChannel.Opcodes, "PatchData ctor: loading fields for opcodeHandle="
                 + handleIndex + " opcode=0x" + patchOpcode.Opcode.ToString("X4")
                 + " version=" + patchOpcode.Version);
             LoadFields(handle, conn);
@@ -284,7 +283,7 @@ public class PatchData
         for (uint collectionIndex = 0; collectionIndex < collectionCount; collectionIndex++)
         {
             CollectionHandle handle = (CollectionHandle)collectionIndex;
-            DebugLog.Write(LogChannel.Fields, "PatchData ctor: loading fields for collection handle="
+            DebugLog.Write(LogChannel.Fields, "PatchData ctor: loading fields for collection opcodeHandle="
                 + collectionIndex + " name=" + _collectionNamesByHandle[handle]);
             LoadFields(handle, conn);
         }
@@ -302,7 +301,7 @@ public class PatchData
     //
     // Resolves an opcode to the CollectionHandle of the collection it decodes, by reading the
     // opcode's gate binding and the gates's child collection from the database, then mapping
-    // that collection name to its handle.  Temporary: bridges the opcode field loader to the
+    // that collection name to its opcodeHandle.  Temporary: bridges the opcode field loader to the
     // collection-keyed field store until the loader is collection-native.
     //
     // Parameters:
@@ -311,18 +310,18 @@ public class PatchData
     //
     // Returns:
     //   The CollectionHandle for the opcode's collection, or CollectionHandle.None if the
-    //   binding or collection cannot be resolved.
+    //   binding or collection cannot be childCollection.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private CollectionHandle CollectionHandleForOpcode(OpcodeHandle opcodeHandle, SqliteConnection conn)
     {
-        string opcodeName = _namesByHandle[opcodeHandle];
+        string opcodeName = _opcodeNamesByOpcodeHandle[opcodeHandle];
 
         string? childCollection = null;
         using (SqliteCommand cmd = conn.CreateCommand())
         {
             cmd.CommandText = "SELECT m.child_collection"
                 + " FROM PatchOpcode po"
-                + " JOIN Gate m"
+                + " JOIN Multiplicity m"
                 + " ON m.name = po.gate_name"
                 + " AND m.patch_date = po.patch_date"
                 + " AND m.server_type = po.server_type"
@@ -349,7 +348,7 @@ public class PatchData
         }
 
         CollectionHandle handle;
-        bool found = _handlesByCollectionName.TryGetValue(childCollection, out handle);
+        bool found = _collectionHandleByCollectionName.TryGetValue(childCollection, out handle);
         if (found == false)
         {
             DebugLog.Write(LogChannel.Fields, "PatchData.CollectionHandleForOpcode: opcode '"
@@ -386,7 +385,7 @@ public class PatchData
     // CountPatchOpcodes
     //
     // Returns the number of PatchOpcode rows for this patch level.  Used by the constructor
-    // to size the handle-indexed arrays before any per-opcode loading runs.
+    // to size the opcodeHandle-indexed arrays before any per-opcode loading runs.
     //
     // Throws InvalidOperationException if the count query returns null, which would
     // indicate a database problem rather than an empty result (an empty PatchOpcode table
@@ -480,7 +479,7 @@ public class PatchData
     {
         using SqliteCommand cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT COUNT(*)"
-            + " FROM Gate"
+            + " FROM Multiplicity"
             + " WHERE patch_date = @patchDate"
             + " AND server_type = @serverType";
         cmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
@@ -503,10 +502,10 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // LoadPatchOpcodes
     //
-    // Reads every PatchOpcode row for this patch level and populates the handle-indexed
-    // structures: _patchOpcodes, _namesByHandle, and _handlesByName.  Row order from the
-    // database determines handle assignment — the first row read becomes handle 0, the
-    // second handle 1, and so on.
+    // Reads every PatchOpcode row for this patch level and populates the opcodeHandle-indexed
+    // structures: _patchOpcodes, _opcodeNamesByOpcodeHandle, and _handlesByName.  Row order from the
+    // database determines opcodeHandle assignment — the first row read becomes opcodeHandle 0, the
+    // second opcodeHandle 1, and so on.
     //
     // The arrays and dictionary must be allocated by the constructor before this method
     // runs.  The size is determined by CountPatchOpcodes, which uses the same WHERE clause
@@ -536,13 +535,13 @@ public class PatchData
             int version = reader.GetInt32(1);
             string opcodeName = reader.GetString(2);
             ushort opcodeValue = (ushort)opcodeValueRaw;
-            OpcodeHandle handle = (OpcodeHandle)handleIndex;
+            OpcodeHandle opcodeHandle = (OpcodeHandle)handleIndex;
 
             PatchOpcode patchOpcode = new PatchOpcode(PatchLevel, opcodeValue, version);
-            _patchOpcodes[handle] = patchOpcode;
-            _namesByHandle[handle] = opcodeName;
-            _handlesByName[opcodeName] = handle;
-            _handlesByOpcode[patchOpcode] = handle;
+            _patchOpcodes[opcodeHandle] = patchOpcode;
+            _opcodeNamesByOpcodeHandle[opcodeHandle] = opcodeName;
+            _handlesByName[opcodeName] = opcodeHandle;
+            _handlesByOpcode[patchOpcode] = opcodeHandle;
 
             handleIndex = handleIndex + 1;
         }
@@ -555,10 +554,10 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // LoadPatchCollections
     //
-    // Reads every FieldCollection row for this patch level and populates the handle-indexed
+    // Reads every FieldCollection row for this patch level and populates the opcodeHandle-indexed
     // structures: _collectionNamesByHandle and _handlesByCollectionName.  Row order from the
-    // database determines handle assignment — the first row read becomes handle 0, the
-    // second handle 1, and so on.
+    // database determines opcodeHandle assignment — the first row read becomes opcodeHandle 0, the
+    // second opcodeHandle 1, and so on.
     //
     // The array and dictionary must be allocated by the constructor before this method runs.
     // The size is determined by CountPatchCollections, which uses the same WHERE clause and
@@ -588,7 +587,7 @@ public class PatchData
             CollectionHandle handle = (CollectionHandle)handleIndex;
 
             _collectionNamesByHandle[handle] = collectionName;
-            _handlesByCollectionName[collectionName] = handle;
+            _collectionHandleByCollectionName[collectionName] = handle;
 
             handleIndex = handleIndex + 1;
         }
@@ -641,22 +640,22 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // LoadFields
     //
-    // Builds the field metadata for one opcode and stores it in the handle-indexed arrays.
+    // Builds the field metadata for one opcode and stores it in the opcodeHandle-indexed arrays.
     // Required field definitions, optional field definitions (slot allocators), and the
     // OptionalGroup metadata are loaded by helpers that return their results; this method
-    // merges the FieldDefinitions, assigns _opcodeFields[handle], then builds the
+    // merges the FieldDefinitions, assigns _opcodeFields[opcodeHandle], then builds the
     // OptionalGroup once IndexOfField can resolve names against the assigned array.
     //
-    // Order matters: _opcodeFields[handle] must be set before LoadOptionalGroup runs,
+    // Order matters: _opcodeFields[opcodeHandle] must be set before LoadOptionalGroup runs,
     // because LoadOptionalGroup calls IndexOfField, which reads the array.
     //
     // An opcode with no fields at all (no PacketField rows and no PacketOptionalGroup
-    // rows) leaves _opcodeFields[handle] and _opcodeOptionalGroups[handle] both null.
+    // rows) leaves _opcodeFields[opcodeHandle] and _opcodeOptionalGroups[opcodeHandle] both null.
     // The extractor treats null _opcodeFields as "opcode known but unsupported" and
     // skips dispatch.
     //
     // Parameters:
-    //   handle  - The OpcodeHandle whose fields to load.
+    //   opcodeHandle  - The OpcodeHandle whose fields to load.
     //   conn    - An open database connection, owned by the caller. 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void LoadFields(OpcodeHandle handle, SqliteConnection conn)
@@ -688,7 +687,7 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // LoadFields
     //
-    // Reads the PacketField rows for the collection at the given handle, ordered by bit_offset,
+    // Reads the PacketField rows for the collection at the given opcodeHandle, ordered by bit_offset,
     // builds their FieldDefinition array, stores it in _collectionFields, and resolves relative
     // anchors.  A collection with no PacketField rows leaves the entry null.
     //
@@ -697,7 +696,7 @@ public class PatchData
     // cleared before this method returns.
     //
     // Parameters:
-    //   handle  - The CollectionHandle whose fields to load.
+    //   opcodeHandle  - The CollectionHandle whose fields to load.
     //   conn    - An open database connection, owned by the caller.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void LoadFields(CollectionHandle handle, SqliteConnection conn)
@@ -808,19 +807,19 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // LoadRequiredFields
     //
-    // Reads PacketField rows for the opcode at the given handle, ordered by bit_offset,
+    // Reads PacketField rows for the opcode at the given opcodeHandle, ordered by bit_offset,
     // and returns them as a list of FieldDefinition entries.
     //
     // Unrecognized encoding strings are stored as FieldEncoding.Unknown so the row still
     // produces a slot; the extractor silently skips Unknown slots.
     //
-    // The relative_to column is read into a transient parallel list and resolved to slot
+    // The relative_to column is read into a transient parallel list and childCollection to slot
     // indices by ResolveRelativeAnchors after the caller has merged required and optional
     // fields into the final array.  Resolution cannot happen here because anchors may name
     // any sibling slot, including optional-field slots loaded by LoadOptionalFields.
     //
     // Parameters:
-    //   handle  - The OpcodeHandle whose required fields to load.
+    //   opcodeHandle  - The OpcodeHandle whose required fields to load.
     //   conn    - An open database connection.
     //
     // Returns:
@@ -835,8 +834,8 @@ public class PatchData
         CollectionHandle collection = CollectionHandleForOpcode(handle, conn);
         if (collection.Exists == false)
         {
-            DebugLog.Write(LogChannel.Fields, "PatchData.LoadRequiredFields: no collection resolved "
-                + "for opcode '" + _namesByHandle[handle] + "' in patchLevel=" + PatchLevel
+            DebugLog.Write(LogChannel.Fields, "PatchData.LoadRequiredFields: no collection childCollection "
+                + "for opcode '" + _opcodeNamesByOpcodeHandle[handle] + "' in patchLevel=" + PatchLevel
                 + ", returning no fields");
             return fields;
         }
@@ -881,7 +880,7 @@ public class PatchData
                 if (isGroupName == true)
                 {
                     DebugLog.Write(LogChannel.Fields, "PatchData.LoadRequiredFields: encoding '"
-                        + encodingString + "' for opcode=" + _namesByHandle[handle]
+                        + encodingString + "' for opcode=" + _opcodeNamesByOpcodeHandle[handle]
                         + " 0x" + patchOpcode.Opcode.ToString("X4")
                         + " version=" + patchOpcode.Version + " fieldName='" + fieldName
                         + "' names optional group id " + resolvedGroupId + ", treating as OptionalGroup");
@@ -890,7 +889,7 @@ public class PatchData
                 else
                 {
                     DebugLog.Write(LogChannel.Fields, "PatchData.LoadRequiredFields: unrecognized encoding '"
-                        + encodingString + "' for opcode=" + _namesByHandle[handle]
+                        + encodingString + "' for opcode=" + _opcodeNamesByOpcodeHandle[handle]
                         + " 0x" + patchOpcode.Opcode.ToString("X4")
                         + " version=" + patchOpcode.Version + " fieldName='" + fieldName
                         + "', storing as Unknown");
@@ -926,17 +925,17 @@ public class PatchData
     // LoadOptionalFields
     //
     // Reads PacketOptionalGroup and PacketOptionalField rows for the opcode at the given
-    // handle and returns the FieldDefinition entries that allocate slots for each optional
+    // opcodeHandle and returns the FieldDefinition entries that allocate slots for each optional
     // sub-field.  Each entry carries the group's bit_offset (which is unused at extract
     // time for optional fields) and the row's encoding (an opt_* sentinel that Extract's
     // main switch skips).
     //
     // The OptionalGroup metadata itself is built by LoadOptionalGroup, after
-    // _opcodeFields[handle] is assigned.  This method only produces the slot-allocator
+    // _opcodeFields[opcodeHandle] is assigned.  This method only produces the slot-allocator
     // FieldDefinitions.
     //
     // Parameters:
-    //   handle  - The OpcodeHandle whose optional fields to load.
+    //   opcodeHandle  - The OpcodeHandle whose optional fields to load.
     //   conn    - An open database connection.
     //
     // Returns:
@@ -1001,7 +1000,7 @@ public class PatchData
                 if (encodingFound == false)
                 {
                     DebugLog.Write(LogChannel.Fields, "PatchData.LoadOptionalFields: unrecognized encoding '"
-                        + encodingString + "' for opcode=" + _namesByHandle[handle]
+                        + encodingString + "' for opcode=" + _opcodeNamesByOpcodeHandle[handle]
                         + " 0x" + patchOpcode.Opcode.ToString("X4")
                         + " version=" + patchOpcode.Version + " groupId=" + groupId
                         + " fieldName='" + fieldName + "', storing as Unknown");
@@ -1029,14 +1028,14 @@ public class PatchData
     // LoadGate
     //
     // Reads the single Gate row named by gateField for this patch level, builds its Gate
-    // struct, stores it at the next GateHandle, and returns that handle.  The child_collection
+    // struct, stores it at the next GateHandle, and returns that opcodeHandle.  The child_collection
     // name is looked up to a CollectionHandle; kind is parsed to MultiplicityKind.  When the row's
     // field_name is non-null, a PendingGateField is appended pairing this gate with that name
-    // and the parent collection, for the field-resolution step to resolve to a FieldIndex.
+    // and the parent collection, for the field-resolution step to resolve to a SlotId.
     //
     // An unparsable kind is stored as Always and logged.  A child_collection naming no loaded
     // collection stores CollectionHandle.None and logs.  A missing gate row logs and stores a
-    // gate with CollectionHandle.None so the returned handle stays valid.
+    // gate with CollectionHandle.None so the returned opcodeHandle stays valid.
     //
     // Parameters:
     //   gateField         - The Gate name to read.
@@ -1099,13 +1098,8 @@ public class PatchData
         CollectionHandle childCollection = CollectionHandle.None;
         if (childCollectionName.Length > 0)
         {
-            CollectionHandle resolved;
-            bool collectionFound = _handlesByCollectionName.TryGetValue(childCollectionName, out resolved);
-            if (collectionFound == true)
-            {
-                childCollection = resolved;
-            }
-            else
+            bool collectionFound = _collectionHandleByCollectionName.TryGetValue(childCollectionName, out childCollection);
+            if (collectionFound == false)
             {
                 DebugLog.Write(LogChannel.Fields, "PatchData.LoadGate: gate '" + gateField
                     + "' names child collection '" + childCollectionName
@@ -1120,7 +1114,7 @@ public class PatchData
         gate.Name = gateField;
         gate.Kind = kind;
         gate.ChildCollection = childCollection;
-        gate.FieldSlot = FieldIndex.None;
+        gate.FieldSlot = SlotId.None;
 
         _gate[handle] = gate;
 
@@ -1132,13 +1126,13 @@ public class PatchData
             pending.ParentCollection = parentCollection;
             _pendingGateFields!.Add(pending);
             DebugLog.Write(LogChannel.Fields, "PatchData.LoadGate: gate '" + gateField
-                + "' field '" + fieldName + "' pending resolution against collection handle "
+                + "' field '" + fieldName + "' pending resolution against collection opcodeHandle "
                 + (uint)parentCollection);
         }
 
         DebugLog.Write(LogChannel.Fields, "PatchData.LoadGate: loaded gate '" + gateField
             + "' kind=" + kind + " childCollection=" + (uint)childCollection
-            + " at handle " + (uint)handle + " for patchLevel=" + PatchLevel);
+            + " at opcodeHandle " + (uint)handle + " for patchLevel=" + PatchLevel);
 
         return handle;
     }
@@ -1202,15 +1196,15 @@ public class PatchData
     // LoadOptionalGroup
     //
     // Reads PacketOptionalGroup and PacketOptionalField rows for the opcode at the given
-    // handle, resolves field names to slot indices via IndexOfField, and returns the
-    // built OptionalGroup.  Must be called after _opcodeFields[handle] is assigned.
+    // opcodeHandle, resolves field names to slot indices via IndexOfField, and returns the
+    // built OptionalGroup.  Must be called after _opcodeFields[opcodeHandle] is assigned.
     //
     // Today's schema supports multiple groups per opcode but the in-memory structure
     // holds one — if a future opcode declares more than one group, only the last one
     // read is returned.  Refactor when that case shows up.
     //
     // Parameters:
-    //   handle  - The OpcodeHandle whose optional group to load.
+    //   opcodeHandle  - The OpcodeHandle whose optional group to load.
     //   conn    - An open database connection.
     //
     // Returns:
@@ -1257,7 +1251,7 @@ public class PatchData
 
             uint flagsLength = GetFieldBitLength(handle, flagFieldName);
 
-            FieldIndex flagSlotIndex = IndexOfField(handle, flagFieldName);
+            SlotId flagSlot = IndexOfField(handle, flagFieldName);
 
 
             List<OptionalSubField> subFields = new List<OptionalSubField>();
@@ -1284,10 +1278,10 @@ public class PatchData
                     encoding = FieldEncoding.Unknown;
                 }
 
-                FieldIndex slotIndex = IndexOfField(handle, fieldName);
+                SlotId slot = IndexOfField(handle, fieldName);
 
                 OptionalSubField subField;
-                subField.SlotIndex = slotIndex;
+                subField.Slot = slot;
                 subField.BitLength = bitLength;
                 subField.Encoding = encoding;
                 subField.Name = fieldName;
@@ -1295,7 +1289,7 @@ public class PatchData
                 subFields.Add(subField);
             }
 
-            result = new OptionalGroup(groupId, flagSlotIndex, flagsLength, subFields.ToArray());
+            result = new OptionalGroup(groupId, flagSlot, flagsLength, subFields.ToArray());
         }
 
         return result;
@@ -1304,20 +1298,20 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ResolveRelativeAnchors
     //
-    // Reorders _opcodeFields[handle] so that every relative field appears after the field it
+    // Reorders _opcodeFields[opcodeHandle] so that every relative field appears after the field it
     // anchors on, then resolves each anchor name to a slot index and writes it into
     // FieldDefinition.RelativeToSlot.  The ordering is produced by Kahn's algorithm over the
     // name-anchor graph and handles chains of any depth.
     //
     // _pendingRelativeNames supplies the anchor name for each required field, parallel to the
-    // required-field portion of _opcodeFields[handle].
+    // required-field portion of _opcodeFields[opcodeHandle].
     //
     // An anchor name not present in the field list logs and leaves RelativeToSlot null on
     // that field.  A cycle in the graph logs each unresolved field and appends the affected
     // fields in their original order.
     //
     // Parameters:
-    //   handle  - The OpcodeHandle whose field array to reorder and resolve.
+    //   opcodeHandle  - The OpcodeHandle whose field array to reorder and resolve.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void ResolveRelativeAnchors(OpcodeHandle handle)
     {
@@ -1325,7 +1319,7 @@ public class PatchData
         if (definitions == null)
         {
             DebugLog.Write(LogChannel.Fields, "PatchData.ResolveRelativeAnchors: no field "
-                + "definitions for opcode='" + _namesByHandle[handle]
+                + "definitions for opcode='" + _opcodeNamesByOpcodeHandle[handle]
                 + "', nothing to resolve");
             return;
         }
@@ -1379,7 +1373,7 @@ public class PatchData
             if (anchorPresent == false)
             {
                 DebugLog.Write(LogChannel.Fields, "PatchData.ResolveRelativeAnchors: opcode='"
-                    + _namesByHandle[handle] + "' field='" + ownName
+                    + _opcodeNamesByOpcodeHandle[handle] + "' field='" + ownName
                     + "' references unknown anchor '" + anchorName
                     + "', will be left absolute");
                 continue;
@@ -1423,7 +1417,7 @@ public class PatchData
                 if (inDegree[leftoverIndex] > 0)
                 {
                     DebugLog.Write(LogChannel.Fields, "PatchData.ResolveRelativeAnchors: opcode='"
-                        + _namesByHandle[handle] + "' field='"
+                        + _opcodeNamesByOpcodeHandle[handle] + "' field='"
                         + definitions[leftoverIndex].Name
                         + "' has unresolved anchor dependency, appending in original order");
                     ordered.Add(definitions[leftoverIndex]);
@@ -1454,7 +1448,7 @@ public class PatchData
             if (resolved == false)
             {
                 DebugLog.Write(LogChannel.Fields, "PatchData.ResolveRelativeAnchors: opcode='"
-                    + _namesByHandle[handle] + "' field='" + entry.Name
+                    + _opcodeNamesByOpcodeHandle[handle] + "' field='" + entry.Name
                     + "' references unknown anchor '" + anchorName
                     + "', leaving RelativeToSlot null");
                 continue;
@@ -1470,20 +1464,20 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ResolveRelativeAnchors
     //
-    // Reorders _collectionFields[handle] so that every relative field appears after the field it
+    // Reorders _collectionFields[opcodeHandle] so that every relative field appears after the field it
     // anchors on, then resolves each anchor name to a slot index and writes it into
     // FieldDefinition.RelativeToSlot.  The ordering is produced by Kahn's algorithm over the
     // name-anchor graph and handles chains of any depth.
     //
     // _pendingRelativeNames supplies the anchor name for each field, parallel to
-    // _collectionFields[handle].
+    // _collectionFields[opcodeHandle].
     //
     // An anchor name not present in the field list logs and leaves RelativeToSlot null on
     // that field.  A cycle in the graph logs each unresolved field and appends the affected
     // fields in their original order.
     //
     // Parameters:
-    //   handle  - The CollectionHandle whose field array to reorder and resolve.
+    //   opcodeHandle  - The CollectionHandle whose field array to reorder and resolve.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void ResolveRelativeAnchors(CollectionHandle handle)
     {
@@ -1628,7 +1622,7 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ResolveGates
     //
-    // Resolves each pending gate field name to a FieldIndex within its parent collection and
+    // Resolves each pending gate field name to a SlotId within its parent collection and
     // writes it onto the gate's FieldSlot.  Run once after every collection's fields are loaded,
     // so a name can resolve against any parent collection.
     //
@@ -1642,10 +1636,10 @@ public class PatchData
         for (int pendingIndex = 0; pendingIndex < pending.Count; pendingIndex++)
         {
             PendingGateField entry = pending[pendingIndex];
-            FieldIndex slot = IndexOfField(entry.ParentCollection, entry.FieldName);
+            SlotId slot = IndexOfField(entry.ParentCollection, entry.FieldName);
             if (slot.Exists == false)
             {
-                string message = "PatchData.ResolveGates: gate handle " + (uint)entry.Gate
+                string message = "PatchData.ResolveGates: gate opcodeHandle " + (uint)entry.Gate
                     + " references field '" + entry.FieldName + "' not present in collection '"
                     + _collectionNamesByHandle[entry.ParentCollection] + "' for patchLevel="
                     + PatchLevel + " -- broken patch definition, aborting";
@@ -1658,7 +1652,7 @@ public class PatchData
             _gate[entry.Gate].FieldSlot = slot;
         }
 
-        DebugLog.Write(LogChannel.Fields, "PatchData.ResolveGates: resolved "
+        DebugLog.Write(LogChannel.Fields, "PatchData.ResolveGates: childCollection "
             + pending.Count + " pending gate field(s) for patchLevel=" + PatchLevel);
     }
 
@@ -1668,7 +1662,7 @@ public class PatchData
     // Resolves each pending predicate for the given collection against its finalized field
     // array.  Run after ResolveRelativeAnchors has reordered the array, so every source and
     // owner name resolves against the order the extractor will see.  For each pending entry
-    // the raw string is parsed into op and operand, the source field name is resolved to a
+    // the raw string is parsed into op and operand, the source field name is childCollection to a
     // slot index, and the result is written onto the owner field's Predicate.
     //
     // The owner is located by name because the reorder invalidated the read-loop position.
@@ -1681,7 +1675,7 @@ public class PatchData
     // whose presence depends on an unresolvable predicate must never decode.
     //
     // Parameters:
-    //   handle  - The CollectionHandle whose pending predicates to resolve.
+    //   opcodeHandle  - The CollectionHandle whose pending predicates to resolve.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void ResolvePredicates(CollectionHandle handle)
     {
@@ -1729,7 +1723,7 @@ public class PatchData
                 Environment.FailFast(message);
             }
 
-            FieldIndex sourceSlot = IndexOfField(handle, sourceName);
+            SlotId sourceSlot = IndexOfField(handle, sourceName);
             if (sourceSlot.Exists == false)
             {
                 string message = "PatchData.ResolvePredicates: collection '"
@@ -1745,7 +1739,7 @@ public class PatchData
             }
 
 
-            FieldIndex ownerSlot = IndexOfField(handle, entry.OwnerFieldName);
+            SlotId ownerSlot = IndexOfField(handle, entry.OwnerFieldName);
             if (ownerSlot.Exists == false)
             {
                 string message = "PatchData.ResolvePredicates: collection '"
@@ -1759,7 +1753,7 @@ public class PatchData
                 Environment.FailFast(message);
             }
 
-            if (sourceSlot >= ownerSlot)
+            if (! SlotDefinedBefore(sourceSlot, ownerSlot))
             {
                 string message = "PatchData.ResolvePredicates: collection '"
                     + _collectionNamesByHandle[handle] + "' field '" + entry.OwnerFieldName
@@ -1775,21 +1769,49 @@ public class PatchData
             }
 
             predicate.SourceSlot = sourceSlot;
-            definitions[ownerSlot].Predicate = predicate;
 
             // This is a local reference, so mutates the stored structure in place.
-            definitions[ownerSlot].Predicate = predicate;
+            definitions[ownerSlot.Index].Predicate = predicate;
 
             DebugLog.Write(LogChannel.Fields, "PatchData.ResolvePredicates: collection '"
                             + _collectionNamesByHandle[handle] + "' field '" + entry.OwnerFieldName
-                            + "' (slot " + ownerSlot + ") predicate resolved to source slot "
+                            + "' (slot " + ownerSlot + ") predicate childCollection to source slot "
                             + predicate.SourceSlot + " op=" + predicate.Op + " operand=" + predicate.Operand
                             + " signedOperand=" + predicate.SignedOperand);
         }
 
-        DebugLog.Write(LogChannel.Fields, "PatchData.ResolvePredicates: resolved "
+        DebugLog.Write(LogChannel.Fields, "PatchData.ResolvePredicates: childCollection "
             + pending.Count + " pending predicate(s) for collection '"
             + _collectionNamesByHandle[handle] + "' in patchLevel=" + PatchLevel);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // SlotDefinedBefore
+    //
+    // Determines if one slot was defined before another.  This is an existence check during
+    // hot-path iteration to make sure that slot dependencies can be childCollection.
+    //
+    // Parameters:
+    //   a, b:   The slots to compare.  Slot 'a' is checked to see if it was defined before 'b'
+    //
+    // Returns:
+    //   True if a is non-local or defined earlier in a collection
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+
+    private bool SlotDefinedBefore(SlotId a, SlotId b)
+    {
+        if (a.Collection != b.Collection)
+        {
+            // TODO:  really need an ancestor check
+            return true;
+        }
+
+        if (a.Index < b.Index)
+        {
+            return true;
+        }
+
+        return false;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -1852,15 +1874,24 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////
     public CollectionHandle GetCollectionHandle(string collectionName)
     {
-        CollectionHandle handle;
-        bool found = _handlesByCollectionName.TryGetValue(collectionName, out handle);
+        CollectionHandle collectionHandle;
+        bool found = _collectionHandleByCollectionName.TryGetValue(collectionName, out collectionHandle);
         if (found == false)
         {
             DebugLog.Write(LogChannel.Fields, "PatchData.GetCollectionHandle: unknown collection name '"
                 + collectionName + "' in patchLevel=" + PatchLevel + ", returning None");
             return CollectionHandle.None;
         }
-        return handle;
+        return collectionHandle;
+    }
+
+    public CollectionHandle GetCollectionHandleFromOpcode(OpcodeHandle opcodeHandle)
+    {
+        string opcodeName = _opcodeNamesByOpcodeHandle[opcodeHandle];
+
+        CollectionHandle collectionHandle = CollectionHandle.None;
+        _collectionHandleByCollectionName.TryGetValue(opcodeName, out collectionHandle);
+        return collectionHandle;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1869,14 +1900,14 @@ public class PatchData
     // Returns the opcode name for the given OpcodeHandle in this patch.
     //
     // Parameters:
-    //   handle  - The OpcodeHandle whose name to return.
+    //   opcodeHandle  - The OpcodeHandle whose name to return.
     //
     // Returns:
     //   The opcode name (e.g. "OP_PlayerProfile").
     ///////////////////////////////////////////////////////////////////////////////////////////
     public string GetOpcodeName(OpcodeHandle handle)
     {
-        return _namesByHandle[handle];
+        return _opcodeNamesByOpcodeHandle[handle];
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1904,10 +1935,10 @@ public class PatchData
     // Returns the wire opcode value for the given OpcodeHandle in this patch.
     //
     // Parameters:
-    //   handle  - The OpcodeHandle whose wire opcode value to return.
+    //   opcodeHandle  - The OpcodeHandle whose wire opcode value to return.
     //
     // Returns:
-    //   The wire opcode value (e.g. 0x6FA1), or 0 if the handle is invalid.
+    //   The wire opcode value (e.g. 0x6FA1), or 0 if the opcodeHandle is invalid.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public ushort GetOpcodeValue(OpcodeHandle handle)
     {
@@ -1923,7 +1954,7 @@ public class PatchData
     // GetOpcodeCount
     //
     // Returns the number of opcodes loaded for this patch.  Equal to the length of the
-    // handle-indexed arrays and the count of PatchOpcode rows for this patch.
+    // opcodeHandle-indexed arrays and the count of PatchOpcode rows for this patch.
     //
     // Returns:
     //   The number of opcodes in this patch.
@@ -1940,7 +1971,7 @@ public class PatchData
     // has no fields loaded for this patch.
     //
     // Parameters:
-    //   handle  - The OpcodeHandle whose field definitions to return.
+    //   opcodeHandle  - The OpcodeHandle whose field definitions to return.
     //
     // Returns:
     //   The FieldDefinition array, or null if absent.
@@ -1978,7 +2009,7 @@ public class PatchData
     // to look up the metadata the optional-block helper needs to walk the sub-fields.
     //
     // Parameters:
-    //   handle  - The OpcodeHandle whose optional group to return.
+    //   opcodeHandle  - The OpcodeHandle whose optional group to return.
     //
     // Returns:
     //   The OptionalGroup, or null if the opcode has no optional block.
@@ -2024,7 +2055,7 @@ public class PatchData
     // is not present in the loaded definitions.
     //
     // Parameters:
-    //   handle    - The OpcodeHandle whose field definitions to search.
+    //   opcodeHandle    - The OpcodeHandle whose field definitions to search.
     //   fieldName - The field_name column value to look up.
     //
     // Returns:
@@ -2036,7 +2067,7 @@ public class PatchData
         if (definitions == null)
         {
             DebugLog.Write(LogChannel.Fields, "PatchData.GetFieldBitLength: no field definitions for opcode '" +
-                _namesByHandle[opcode] + "' in patchLevel=" + PatchLevel + ", returning 0");
+                _opcodeNamesByOpcodeHandle[opcode] + "' in patchLevel=" + PatchLevel + ", returning 0");
             return 0u;
         }
 
@@ -2049,7 +2080,7 @@ public class PatchData
         }
 
         DebugLog.Write(LogChannel.Fields, "PatchData.GetFieldBitLength: field '" + fieldName
-            + "' not in definitions for opcode '" + _namesByHandle[opcode] +
+            + "' not in definitions for opcode '" + _opcodeNamesByOpcodeHandle[opcode] +
             "' in patchLevel=" + PatchLevel + ", returning 0");
         return 0u;
     }
@@ -2057,51 +2088,52 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////
     // IndexOfField
     //
-    // Returns the FieldIndex of the named field within the FieldDefinition list for the
+    // Returns the SlotId of the named field within the FieldDefinition list for the
     // given OpcodeHandle.  Called by handlers at construction time to cache field indices
     // for hot-path reads from FieldBags.  Cold path.
     //
-    // Returns (FieldIndex)(-1) if the opcode has no fields loaded for this patch, or if
+    // Returns (SlotId)(-1) if the opcode has no fields loaded for this patch, or if
     // the named field is not present in the loaded definitions.
     //
     // Parameters:
-    //   handle    - The OpcodeHandle whose field definitions to search.
+    //   opcodeHandle    - The OpcodeHandle whose field definitions to search.
     //   fieldName - The field_name column value to look up.
     //
     // Returns:
-    //   The FieldIndex of the named field, or FieldIndex.None if not found.
+    //   The SlotId of the named field, or SlotId.None if not found.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public FieldIndex IndexOfField(OpcodeHandle opcode, string fieldName)
+    public SlotId IndexOfField(OpcodeHandle opcode, string fieldName)
     {
         FieldDefinition[]? definitions = _opcodeFields[opcode];
+        CollectionHandle collectionHandle = GetCollectionHandleFromOpcode(opcode);
         if (definitions == null)
         {
             DebugLog.Write(LogChannel.Fields, "PatchData.IndexOfField: no field definitions for opcode '" +
-                _namesByHandle[opcode] + "' in patchLevel=" + PatchLevel + "), returning -1");
-            return FieldIndex.None;
+                _opcodeNamesByOpcodeHandle[opcode] + "' in patchLevel=" + PatchLevel + "), returning -1");
+            return SlotId.None;
         }
 
         for (uint fieldIndex = 0; fieldIndex < definitions.Length; fieldIndex++)
         {
             if (definitions[fieldIndex].Name == fieldName)
             {
-                return (FieldIndex)fieldIndex;
+                return new SlotId(collectionHandle, fieldIndex);
             }
         }
 
         DebugLog.Write(LogChannel.Fields, "PatchData.IndexOfField: field '" + fieldName
-            + "' not in definitions for opcode '" + _namesByHandle[opcode] + 
+            + "' not in definitions for opcode '" + _opcodeNamesByOpcodeHandle[opcode] + 
             "' in patchLevel=" + PatchLevel + "), returning -1");
-        return FieldIndex.None;
+        return SlotId.None;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // IndexOfField
     //
-    // Returns the FieldIndex of the named field within the collection's field definitions.
+    // Returns the SlotId of the named field within the collection's field definitions.
     // Cold path; callers resolve an index once and retain it.
     //
-    // Returns FieldIndex.None if the collection has no fields loaded for this patch, or if
+    // Returns SlotId.None if the collection has no fields loaded for this patch, or if
     // the named field is not present in the loaded definitions.
     //
     // Parameters:
@@ -2109,9 +2141,9 @@ public class PatchData
     //   fieldName   - The field_name column value to look up.
     //
     // Returns:
-    //   The FieldIndex of the named field, or FieldIndex.None if not found.
+    //   The SlotId of the named field, or SlotId.None if not found.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public FieldIndex IndexOfField(CollectionHandle collection, string fieldName)
+    public SlotId IndexOfField(CollectionHandle collection, string fieldName)
     {
         FieldDefinition[]? definitions = _collectionFields[collection];
         if (definitions == null)
@@ -2119,54 +2151,54 @@ public class PatchData
             DebugLog.Write(LogChannel.Fields, "PatchData.IndexOfField: no field definitions for collection '"
                 + _collectionNamesByHandle[collection] + "' in patchLevel=" + PatchLevel
                 + ", returning None");
-            return FieldIndex.None;
+            return SlotId.None;
         }
 
         for (uint fieldIndex = 0; fieldIndex < definitions.Length; fieldIndex++)
         {
             if (definitions[fieldIndex].Name == fieldName)
             {
-                return (FieldIndex)fieldIndex;
+                return new SlotId(collection, fieldIndex);
             }
         }
 
         DebugLog.Write(LogChannel.Fields, "PatchData.IndexOfField: field '" + fieldName
             + "' not in definitions for collection '" + _collectionNamesByHandle[collection]
             + "' in patchLevel=" + PatchLevel + ", returning None");
-        return FieldIndex.None;
+        return SlotId.None;
     }
 
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetFieldPosition
     //
-    // Returns the BitOffset stored on a field definition.  Used for field rows whose
+    // Returns the BitOffset of a slot.  Used for field rows whose
     // BitOffset carries position-like metadata that Extract does not consume — for
     // example, csv_token rows where BitOffset is the 1-based index of the token within
     // a comma-separated payload.
     //
-    // handle:   The opcode handle previously obtained from GetOpcodeHandle.
-    // fieldId:  The field index previously obtained from IndexOfField.
+    // opcodeHandle:   The opcode opcodeHandle previously obtained from GetOpcodeHandle.
+    // slot:     The slot to query.
     //
-    // Returns the field's BitOffset.  Throws if the handle or field id cannot be
-    // resolved.
+    // Returns the slot's BitOffset.  Throws if the opcodeHandle or field id cannot be
+    // childCollection.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public uint GetFieldPosition(OpcodeHandle handle, uint fieldId)
+    public uint GetFieldPosition(OpcodeHandle handle, SlotId slot)
     {
         FieldDefinition[]? definitions = _opcodeFields[handle];
 
         if (definitions == null)
         {
-            throw new InvalidOperationException("PatchData.GetFieldPosition: no fields for handle " + handle);
+            throw new InvalidOperationException("PatchData.GetFieldPosition: no fields for opcodeHandle " + handle);
         }
 
-        if (fieldId >= definitions.Length)
+        if (slot.Index >= definitions.Length)
         {
-            throw new ArgumentOutOfRangeException(nameof(fieldId),
-                "PatchData.GetFieldPosition: field id " + fieldId + " out of range for handle " + handle);
+            throw new ArgumentOutOfRangeException(nameof(slot),
+                "PatchData.GetFieldPosition: field id " + slot.Index + " out of range for opcodeHandle " + handle);
         }
 
-        FieldDefinition definition = definitions[fieldId];
+        FieldDefinition definition = definitions[slot.Index];
         return definition.BitOffset - 1;
     }
 

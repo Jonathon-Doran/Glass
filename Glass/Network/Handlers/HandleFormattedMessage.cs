@@ -20,7 +20,7 @@ public class HandleFormattedMessage : IHandleOpcodes
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
 
-    private readonly uint _messageId;
+    private readonly SlotId _messageIdSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleFormattedMessage(constructor)
@@ -41,7 +41,7 @@ public class HandleFormattedMessage : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcode = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
-        _messageId = _registry.IndexOfField(_patchLevel, _opcode, "msg_text");
+        _messageIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "msg_text");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -97,7 +97,7 @@ public class HandleFormattedMessage : IHandleOpcodes
         {
             GlassContext.FieldExtractor.Extract(_patchLevel, _opcode, data, bag);
 
-            ReadOnlySpan<byte> messageBytes = bag.GetBytesAt(_messageId);
+            ReadOnlySpan<byte> messageBytes = bag.GetBytesAt(_messageIdSlot);
             message = Encoding.ASCII.GetString(messageBytes);
         }
         finally

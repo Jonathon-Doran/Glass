@@ -21,7 +21,7 @@ public class HandleTarget : IHandleOpcodes
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
 
-    private readonly uint _spawnIdIndex;
+    private readonly SlotId _spawnIdSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleTarget  (constructor)
@@ -42,7 +42,7 @@ public class HandleTarget : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _handle = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
-        _spawnIdIndex = _registry.IndexOfField(_patchLevel, _handle, "spawn_id");
+        _spawnIdSlot = _registry.IndexOfField(_patchLevel, _handle, "spawn_id");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -99,7 +99,7 @@ public class HandleTarget : IHandleOpcodes
         {
             GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
 
-            spawnId = bag.GetUIntAt(_spawnIdIndex);
+            spawnId = bag.GetUIntAt(_spawnIdSlot);
         }
         finally
         {

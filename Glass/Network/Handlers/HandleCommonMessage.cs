@@ -20,9 +20,9 @@ public class HandleCommonMessage : IHandleOpcodes
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
 
-    private readonly uint _senderId;
-    private readonly uint _channelId;
-    private readonly uint _messageId;
+    private readonly SlotId _senderIdSlot;
+    private readonly SlotId _channelIdSlot;
+    private readonly SlotId _messageIdSlot;
 
     private static readonly byte ChannelShout = 0x03;
     private static readonly byte ChannelOoc = 0x05;
@@ -47,9 +47,9 @@ public class HandleCommonMessage : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcode = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
-        _senderId = _registry.IndexOfField(_patchLevel, _opcode, "sender_name");
-        _channelId = _registry.IndexOfField(_patchLevel, _opcode, "channel_id");
-        _messageId = _registry.IndexOfField(_patchLevel, _opcode, "message_text");
+        _senderIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "sender_name");
+        _channelIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "channel_id");
+        _messageIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "message_text");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -125,11 +125,11 @@ public class HandleCommonMessage : IHandleOpcodes
         {
             GlassContext.FieldExtractor.Extract(_patchLevel, _opcode, data, bag);
 
-            ReadOnlySpan<byte> senderBytes = bag.GetBytesAt(_senderId);
+            ReadOnlySpan<byte> senderBytes = bag.GetBytesAt(_senderIdSlot);
             sender = Encoding.ASCII.GetString(senderBytes);
-            channel = bag.GetUIntAt(_channelId);
+            channel = bag.GetUIntAt(_channelIdSlot);
 
-            ReadOnlySpan<byte> messageBytes = bag.GetBytesAt(_messageId);
+            ReadOnlySpan<byte> messageBytes = bag.GetBytesAt(_messageIdSlot);
             message = Encoding.ASCII.GetString(messageBytes);
         }
         finally

@@ -77,6 +77,7 @@ public class FieldExtractor
     public void Extract(PatchLevel patchLevel, OpcodeHandle opcode, ReadOnlySpan<byte> payload,
      FieldBag bag)
     {
+        CollectionHandle collection = GlassContext.PatchRegistry.GetCollectionHandle(patchLevel, opcode);
         FieldDefinition[]? definitions = GlassContext.PatchRegistry.GetFields(patchLevel, opcode);
         if (definitions == null)
         {
@@ -100,9 +101,10 @@ public class FieldExtractor
         for (uint definitionIndex = 0; definitionIndex < definitions.Length; definitionIndex++)
         {
             FieldDefinition definition = definitions[definitionIndex];
-            ref FieldSlot slot = ref bag.TryGetSlotRef(definitionIndex);
+            SlotId slotId = new SlotId(collection, definitionIndex);
+            ref FieldSlot slot = ref bag.TryGetSlotRef(slotId);
 
-            uint effectiveBitOffset = ResolveFieldStartBit(definitions, bag, resolvedStartBits, definitionIndex);
+            uint effectiveBitOffset = ResolveFieldStartBit(collection, definitions, bag, resolvedStartBits, definitionIndex);
 
             if (HasBits(payload, effectiveBitOffset, definition.BitLength) == false)
             {
@@ -260,7 +262,8 @@ public class FieldExtractor
         for (uint definitionIndex = 0; definitionIndex < definitions.Length; definitionIndex++)
         {
             FieldDefinition definition = definitions[definitionIndex];
-            ref FieldSlot slot = ref bag.TryGetSlotRef(definitionIndex);
+            SlotId slotId = new SlotId(collection, definitionIndex);
+            ref FieldSlot slot = ref bag.TryGetSlotRef(slotId);
 
             if (definition.Predicate.Op != PredicateOp.None)
             {
@@ -272,7 +275,7 @@ public class FieldExtractor
                 }
             }
 
-            uint effectiveBitOffset = ResolveFieldStartBit(definitions, bag, resolvedStartBits, definitionIndex);
+            uint effectiveBitOffset = ResolveFieldStartBit(collection, definitions, bag, resolvedStartBits, definitionIndex);
 
             if (HasBits(payload, effectiveBitOffset, definition.BitLength) == false)
             {
@@ -392,6 +395,7 @@ public class FieldExtractor
     //   The resolved start bit, also written to resolvedStartBits[definitionIndex].
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private static uint ResolveFieldStartBit(
+        CollectionHandle collection, 
         FieldDefinition[] definitions,
         FieldBag bag,
         Span<uint> resolvedStartBits,
@@ -408,7 +412,8 @@ public class FieldExtractor
         {
             uint anchorIndex = definition.RelativeToSlot.Value;
             uint anchorStartBit = resolvedStartBits[(int)anchorIndex];
-            ref FieldSlot anchorSlot = ref bag.TryGetSlotRef(anchorIndex);
+            SlotId anchorSlotId = new SlotId(collection, anchorIndex);
+            ref FieldSlot anchorSlot = ref bag.TryGetSlotRef(anchorSlotId);
             uint anchorLengthBits = anchorSlot.GetLength() * 8u;
             uint anchorEndBit = anchorStartBit + anchorLengthBits;
             startBit = anchorEndBit + definition.BitOffset;
@@ -739,7 +744,7 @@ public class FieldExtractor
     private void ExtractOptionalGroup(ReadOnlySpan<byte> payload, uint bitOffset,
         OptionalGroup group, FieldBag bag)
     {
-        uint flags = bag.GetUIntAt(group.FlagSlotIndex);
+        uint flags = bag.GetUIntAt(group.FlagSlotId);
 
         uint runningBitOffset = bitOffset;
 
@@ -755,7 +760,7 @@ public class FieldExtractor
             {
                 continue;
             }
-            ref FieldSlot slot = ref bag.TryGetSlotRef(subField.SlotIndex);
+            ref FieldSlot slot = ref bag.TryGetSlotRef(subField.Slot);
             if (Unsafe.IsNullRef(ref slot) == true)
             {
                 runningBitOffset = runningBitOffset + subField.BitLength;

@@ -51,7 +51,7 @@ public enum PredicateOp
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public struct FieldPredicate
 {
-    public FieldIndex SourceSlot;
+    public SlotId SourceSlot;
     public PredicateOp Op;
     public uint Operand;
     public int SignedOperand;

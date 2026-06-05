@@ -19,8 +19,8 @@ public class HandleDeath : IHandleOpcodes
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
 
-    private readonly uint _spawnId;
-    private readonly uint _killerId;
+    private readonly SlotId _spawnIdSlot;
+    private readonly SlotId _killerIdSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleDeath (constructor)
@@ -41,8 +41,8 @@ public class HandleDeath : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcode = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
-        _spawnId = _registry.IndexOfField(_patchLevel, _opcode, "spawn_id");
-        _killerId = _registry.IndexOfField(_patchLevel, _opcode, "killer_id");
+        _spawnIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "spawn_id");
+        _killerIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "killer_id");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -100,8 +100,8 @@ public class HandleDeath : IHandleOpcodes
         {
             GlassContext.FieldExtractor.Extract(_patchLevel, _opcode, data, bag);
 
-            spawnId = bag.GetUIntAt(_spawnId);
-            killerId = bag.GetUIntAt(_killerId);
+            spawnId = bag.GetUIntAt(_spawnIdSlot);
+            killerId = bag.GetUIntAt(_killerIdSlot);
         }
         finally
         {

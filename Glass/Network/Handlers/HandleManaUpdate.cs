@@ -22,9 +22,9 @@ public class HandleManaUpdate : IHandleOpcodes
     private PatchLevel _patchLevel;
 
 
-    private readonly uint _playerId;
-    private readonly uint _currentManaId;
-    private readonly uint _maxManaId;
+    private readonly SlotId _playerIdSlot;
+    private readonly SlotId _currentManaSlot;
+    private readonly SlotId _maxManaSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleManaUpdate (constructor)
@@ -45,9 +45,9 @@ public class HandleManaUpdate : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcode = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
-        _playerId = _registry.IndexOfField(_patchLevel, _opcode, "player_id");
-        _currentManaId = _registry.IndexOfField(_patchLevel, _opcode, "current_mana");
-        _maxManaId = _registry.IndexOfField(_patchLevel, _opcode, "max_mana");
+        _playerIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "player_id");
+        _currentManaSlot = _registry.IndexOfField(_patchLevel, _opcode, "current_mana");
+        _maxManaSlot = _registry.IndexOfField(_patchLevel, _opcode, "max_mana");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -103,7 +103,7 @@ public class HandleManaUpdate : IHandleOpcodes
         {
             GlassContext.FieldExtractor.Extract(_patchLevel, _opcode, data, bag);
 
-            uint playerId = bag.GetUIntAt(_playerId);
+            uint playerId = bag.GetUIntAt(_playerIdSlot);
 
             character = CharacterRepository.Instance.GetById((int)playerId);
 
@@ -113,8 +113,8 @@ public class HandleManaUpdate : IHandleOpcodes
                 return;
             }
 
-            character.MaxMana = bag.GetUIntAt(_maxManaId);
-            character.CurrentMana = bag.GetUIntAt(_currentManaId);
+            character.MaxMana = bag.GetUIntAt(_maxManaSlot);
+            character.CurrentMana = bag.GetUIntAt(_currentManaSlot);
         }
         finally
         {

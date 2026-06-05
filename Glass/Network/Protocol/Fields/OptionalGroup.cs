@@ -20,7 +20,7 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class OptionalGroup
 {
-    public uint FlagSlotIndex;
+    public SlotId FlagSlotId;
     public uint FlagBitLength;
     public OptionalSubField[] SubFields;
     public uint Id;
@@ -29,14 +29,13 @@ public class OptionalGroup
     // OptionalGroup (constructor)
     //
     // Parameters:
-    //   flagSlotIndex - The bag slot index of the flag word, resolved from the flag field
-    //                   name during LoadFields via PatchData.IndexOfField.
+    //   flagSlotId    - The SlotId of the flag word
     //   subFields     - The optional sub-fields in sequence_order from the database.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public OptionalGroup(uint groupId, uint flagSlotIndex, uint flagBitLength, OptionalSubField[] subFields)
+    public OptionalGroup(uint groupId, SlotId flagSlotId, uint flagBitLength, OptionalSubField[] subFields)
     {
         Id = groupId;
-        FlagSlotIndex = flagSlotIndex;
+        FlagSlotId = flagSlotId;
         FlagBitLength = flagBitLength;
         SubFields = subFields;
     }
@@ -55,7 +54,7 @@ public class OptionalGroup
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public struct OptionalSubField
 {
-    public uint SlotIndex;
+    public SlotId Slot;
     public uint BitLength;
     public FieldEncoding Encoding;
     public float Divisor;

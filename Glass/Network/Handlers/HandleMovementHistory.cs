@@ -24,11 +24,11 @@ public class HandleMovementHistory : IHandleOpcodes
     private bool _oddSizeObserved = false;
     private bool _characterNotFound = false;
 
-    private readonly uint _xPosId;
-    private readonly uint _yPosId;
-    private readonly uint _zPosId;
-    private readonly uint _timestampId;
-    private readonly uint _movestateId;
+    private readonly SlotId _xPosSlot;
+    private readonly SlotId _yPosSlot;
+    private readonly SlotId _zPosSlot;
+    private readonly SlotId _timestampSlot;
+    private readonly SlotId _movestateSlot;
 
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -51,11 +51,11 @@ public class HandleMovementHistory : IHandleOpcodes
         _opcode = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
 
-        _xPosId = _registry.IndexOfField(_patchLevel, _opcode, "x_pos");
-        _yPosId = _registry.IndexOfField(_patchLevel, _opcode, "y_pos");
-        _zPosId = _registry.IndexOfField(_patchLevel, _opcode, "z_pos");
-        _timestampId = _registry.IndexOfField(_patchLevel, _opcode, "timestamp");
-        _movestateId = _registry.IndexOfField(_patchLevel, _opcode, "move_state");
+        _xPosSlot = _registry.IndexOfField(_patchLevel, _opcode, "x_pos");
+        _yPosSlot = _registry.IndexOfField(_patchLevel, _opcode, "y_pos");
+        _zPosSlot = _registry.IndexOfField(_patchLevel, _opcode, "z_pos");
+        _timestampSlot = _registry.IndexOfField(_patchLevel, _opcode, "timestamp");
+        _movestateSlot = _registry.IndexOfField(_patchLevel, _opcode, "move_state");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -172,11 +172,11 @@ public class HandleMovementHistory : IHandleOpcodes
                 ReadOnlySpan<byte> entry = data.Slice(i * 17, 17);
                 GlassContext.FieldExtractor.Extract(_patchLevel, _opcode, entry, bag);
 
-                float xPos = bag.GetFloatAt(_xPosId);
-                float yPos = bag.GetFloatAt(_yPosId);
-                float zPos = bag.GetFloatAt(_zPosId);
-                uint moveState = bag.GetUIntAt(_movestateId);
-                uint timestamp = bag.GetUIntAt(_timestampId);
+                float xPos = bag.GetFloatAt(_xPosSlot);
+                float yPos = bag.GetFloatAt(_yPosSlot);
+                float zPos = bag.GetFloatAt(_zPosSlot);
+                uint moveState = bag.GetUIntAt(_movestateSlot);
+                uint timestamp = bag.GetUIntAt(_timestampSlot);
 
                 // movementState seems 2 when standing still, 1 when moving.   And 2 appears mid-movement during duplicate position
                 DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName + " entry[" + i + "]"

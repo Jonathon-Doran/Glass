@@ -21,11 +21,11 @@ public class HandleMobUpdate : IHandleOpcodes
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
 
-    private readonly uint _spawnId;
-    private readonly uint _xPosId;
-    private readonly uint _yPosId;
-    private readonly uint _zPosId;
-    // private readonly int _headingId;
+    private readonly SlotId _spawnIdSlot;
+    private readonly SlotId _xPosSlot;
+    private readonly SlotId _yPosSlot;
+    private readonly SlotId _zPosSlot;
+    // private readonly int _headingSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleMobUpdate (constructor)
@@ -46,13 +46,13 @@ public class HandleMobUpdate : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcode = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
-        _spawnId = _registry.IndexOfField(_patchLevel, _opcode, "spawn_id");
-        _xPosId = _registry.IndexOfField(_patchLevel, _opcode, "x_pos");
-        _yPosId = _registry.IndexOfField(_patchLevel, _opcode, "y_pos");
-        _zPosId = _registry.IndexOfField(_patchLevel, _opcode, "z_pos");
+        _spawnIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "spawn_id");
+        _xPosSlot = _registry.IndexOfField(_patchLevel, _opcode, "x_pos");
+        _yPosSlot = _registry.IndexOfField(_patchLevel, _opcode, "y_pos");
+        _zPosSlot = _registry.IndexOfField(_patchLevel, _opcode, "z_pos");
 
         // Todo:  heading should be 16-bits at byte 12
-       // _headingId = _fields.IndexOfField("heading");
+       // _headingSlot = _fields.IndexOfField("heading");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -112,10 +112,10 @@ public class HandleMobUpdate : IHandleOpcodes
         {
             GlassContext.FieldExtractor.Extract(_patchLevel, _opcode, data, bag);
 
-            spawnId = bag.GetUIntAt(_spawnId);
-            xPos = bag.GetFloatAt(_xPosId);
-            yPos = bag.GetFloatAt(_yPosId);
-            zPos = bag.GetFloatAt(_zPosId);
+            spawnId = bag.GetUIntAt(_spawnIdSlot);
+            xPos = bag.GetFloatAt(_xPosSlot);
+            yPos = bag.GetFloatAt(_yPosSlot);
+            zPos = bag.GetFloatAt(_zPosSlot);
         }
         finally
         {

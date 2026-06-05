@@ -5,21 +5,15 @@ namespace Glass.Network.Protocol.Fields;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // FieldType
 //
-// Identifies the data type stored in a FieldSlot.  The slot's inline payload buffer is
-// interpreted according to this tag.  Empty indicates an unused slot.
-//
-// Numeric types are stored in their native byte representation in the payload buffer.
-// AsciiString stores the bytes directly with the byte count in the slot's Length field;
-// the bytes are NOT null-terminated in the slot.
+// Identifies the data type stored in a FieldSlot.  Empty indicates an unused slot.
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public enum FieldType : byte
 {
     Empty = 0,
-    Int = 5,
-    UInt = 6,
-    Int64 = 7,
-    UInt64 = 8,
-    Float = 9,
-    AsciiString = 10,
-    Bytes = 11
+    Int = 1,
+    UInt = 2,
+    Float = 3,
+    AsciiString = 4,
+    Bytes = 5,
+    Gate = 6
 }

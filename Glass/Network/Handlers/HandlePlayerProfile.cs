@@ -22,23 +22,23 @@ public class HandlePlayerProfile : IHandleOpcodes
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
 
-    private readonly uint _nameId;
-    private readonly uint _levelId;
-    private readonly uint _playerClassId;
-    private readonly uint _practicePointsId;
-    private readonly uint _manaId;
-    private readonly uint _hitpointsId;
-    private readonly uint _strengthId;
-    private readonly uint _staminaId;
-    private readonly uint _charismaId;
-    private readonly uint _dexterityId;
-    private readonly uint _intelligenceId;
-    private readonly uint _agilityId;
-    private readonly uint _wisdomId;
-    private readonly uint _platinumCarriedId;
-    private readonly uint _goldCarriedId;
-    private readonly uint _silverCarriedId;
-    private readonly uint _copperCarriedId;
+    private readonly SlotId _nameSlot;
+    private readonly SlotId _levelSlot;
+    private readonly SlotId _playerClassSlot;
+    private readonly SlotId _practicePointsSlot;
+    private readonly SlotId _manaSlot;
+    private readonly SlotId _hitpointsSlot;
+    private readonly SlotId _strengthSlot;
+    private readonly SlotId _staminaSlot;
+    private readonly SlotId _charismaSlot;
+    private readonly SlotId _dexteritySlot;
+    private readonly SlotId _intelligenceSlot;
+    private readonly SlotId _agilitySlot;
+    private readonly SlotId _wisdomSlot;
+    private readonly SlotId _platinumCarriedSlot;
+    private readonly SlotId _goldCarriedSlot;
+    private readonly SlotId _silverCarriedSlot;
+    private readonly SlotId _copperCarriedSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandlePlayerProfile (constructor)
@@ -59,23 +59,23 @@ public class HandlePlayerProfile : IHandleOpcodes
        _patchLevel = GlassContext.CurrentPatchLevel;
         _handle = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
-        _nameId = _registry.IndexOfField(_patchLevel, _handle, "name");
-        _levelId = _registry.IndexOfField(_patchLevel, _handle, "level");
-        _playerClassId = _registry.IndexOfField(_patchLevel, _handle, "player_class");
-        _practicePointsId = _registry.IndexOfField(_patchLevel, _handle, "practice_points");
-        _manaId = _registry.IndexOfField(_patchLevel, _handle, "mana");
-        _hitpointsId = _registry.IndexOfField(_patchLevel, _handle, "max_hitpoints");
-        _strengthId = _registry.IndexOfField(_patchLevel, _handle, "strength");
-        _staminaId = _registry.IndexOfField(_patchLevel, _handle, "stamina");
-        _charismaId = _registry.IndexOfField(_patchLevel, _handle, "charisma");
-        _dexterityId =  _registry.IndexOfField(_patchLevel, _handle, "dexterity");
-        _intelligenceId = _registry.IndexOfField(_patchLevel, _handle, "intelligence");
-        _agilityId = _registry.IndexOfField(_patchLevel, _handle, "agility");
-        _wisdomId = _registry.IndexOfField(_patchLevel, _handle, "wisdom");
-        _platinumCarriedId = _registry.IndexOfField(_patchLevel, _handle, "platinum_carried");
-        _goldCarriedId = _registry.IndexOfField(_patchLevel, _handle, "gold_carried");
-        _silverCarriedId = _registry.IndexOfField(_patchLevel, _handle, "silver_carried");
-        _copperCarriedId = _registry.IndexOfField(_patchLevel, _handle, "copper_carried");
+        _nameSlot = _registry.IndexOfField(_patchLevel, _handle, "name");
+        _levelSlot = _registry.IndexOfField(_patchLevel, _handle, "level");
+        _playerClassSlot = _registry.IndexOfField(_patchLevel, _handle, "player_class");
+        _practicePointsSlot = _registry.IndexOfField(_patchLevel, _handle, "practice_points");
+        _manaSlot = _registry.IndexOfField(_patchLevel, _handle, "mana");
+        _hitpointsSlot = _registry.IndexOfField(_patchLevel, _handle, "max_hitpoints");
+        _strengthSlot = _registry.IndexOfField(_patchLevel, _handle, "strength");
+        _staminaSlot = _registry.IndexOfField(_patchLevel, _handle, "stamina");
+        _charismaSlot = _registry.IndexOfField(_patchLevel, _handle, "charisma");
+        _dexteritySlot =  _registry.IndexOfField(_patchLevel, _handle, "dexterity");
+        _intelligenceSlot = _registry.IndexOfField(_patchLevel, _handle, "intelligence");
+        _agilitySlot = _registry.IndexOfField(_patchLevel, _handle, "agility");
+        _wisdomSlot = _registry.IndexOfField(_patchLevel, _handle, "wisdom");
+        _platinumCarriedSlot = _registry.IndexOfField(_patchLevel, _handle, "platinum_carried");
+        _goldCarriedSlot = _registry.IndexOfField(_patchLevel, _handle, "gold_carried");
+        _silverCarriedSlot = _registry.IndexOfField(_patchLevel, _handle, "silver_carried");
+        _copperCarriedSlot = _registry.IndexOfField(_patchLevel, _handle, "copper_carried");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -134,7 +134,7 @@ public class HandlePlayerProfile : IHandleOpcodes
         {
             GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
 
-            ReadOnlySpan<byte> nameBytes = bag.GetBytesAt(_nameId);
+            ReadOnlySpan<byte> nameBytes = bag.GetBytesAt(_nameSlot);
             string name = Encoding.ASCII.GetString(nameBytes);
 
             Character? character = CharacterRepository.Instance.GetByName(name);
@@ -144,23 +144,23 @@ public class HandlePlayerProfile : IHandleOpcodes
                 return;
             }
 
-            character.Level = bag.GetUIntAt(_levelId);
-            character.PracticePoints = bag.GetUIntAt(_practicePointsId);
-            character.MaxHP = bag.GetUIntAt(_hitpointsId);
-            character.MaxMana = bag.GetUIntAt(_manaId);
+            character.Level = bag.GetUIntAt(_levelSlot);
+            character.PracticePoints = bag.GetUIntAt(_practicePointsSlot);
+            character.MaxHP = bag.GetUIntAt(_hitpointsSlot);
+            character.MaxMana = bag.GetUIntAt(_manaSlot);
 
-            character.Strength = bag.GetUIntAt(_strengthId);
-            character.Stamina = bag.GetUIntAt(_staminaId);
-            character.Charisma = bag.GetUIntAt(_charismaId);
-            character.Dexterity = bag.GetUIntAt(_dexterityId);
-            character.Intelligence = bag.GetUIntAt(_intelligenceId);
-            character.Agility = bag.GetUIntAt(_agilityId);
-            character.Wisdom = bag.GetUIntAt(_wisdomId);
+            character.Strength = bag.GetUIntAt(_strengthSlot);
+            character.Stamina = bag.GetUIntAt(_staminaSlot);
+            character.Charisma = bag.GetUIntAt(_charismaSlot);
+            character.Dexterity = bag.GetUIntAt(_dexteritySlot);
+            character.Intelligence = bag.GetUIntAt(_intelligenceSlot);
+            character.Agility = bag.GetUIntAt(_agilitySlot);
+            character.Wisdom = bag.GetUIntAt(_wisdomSlot);
 
-            character.Platinum = bag.GetUIntAt(_platinumCarriedId);
-            character.Gold = bag.GetUIntAt(_goldCarriedId);
-            character.Silver = bag.GetUIntAt(_silverCarriedId);
-            character.Copper = bag.GetUIntAt(_copperCarriedId);
+            character.Platinum = bag.GetUIntAt(_platinumCarriedSlot);
+            character.Gold = bag.GetUIntAt(_goldCarriedSlot);
+            character.Silver = bag.GetUIntAt(_silverCarriedSlot);
+            character.Copper = bag.GetUIntAt(_copperCarriedSlot);
 
             // PlayerProfile is the first time we see the character name on the network.
             if (metadata.SessionId == -1)

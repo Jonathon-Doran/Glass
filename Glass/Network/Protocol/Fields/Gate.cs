@@ -24,12 +24,12 @@ public enum MultiplicityKind
 //
 // Kind selects the multiplicity rule.  ChildCollection identifies the child FieldCollection
 // to decode.  FieldSlot is the resolved index of the field a kind consults; it is
-// FieldIndex.None when the gate consults no field.
+// SlotId.None when the gate consults no field.
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public struct Gate
 {
     public string Name;
     public MultiplicityKind Kind;
     public CollectionHandle ChildCollection;
-    public FieldIndex FieldSlot;
+    public SlotId FieldSlot;
 }

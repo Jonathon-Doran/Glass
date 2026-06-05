@@ -24,9 +24,9 @@ public class HandleZoneEntry : IHandleOpcodes
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
 
-    private readonly uint _nameId;
-    private readonly uint _spawnId;
-    private readonly uint _levelId;
+    private readonly SlotId _nameSlot;
+    private readonly SlotId _spawnIdSlot;
+    private readonly SlotId _levelSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleZoneEntry (constructor)
@@ -47,9 +47,9 @@ public class HandleZoneEntry : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _handle = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
-        _nameId = _registry.IndexOfField(_patchLevel, _handle, "name");
-        _spawnId = _registry.IndexOfField(_patchLevel, _handle, "spawn_id");
-        _levelId = _registry.IndexOfField(_patchLevel, _handle, "level");
+        _nameSlot = _registry.IndexOfField(_patchLevel, _handle, "name");
+        _spawnIdSlot = _registry.IndexOfField(_patchLevel, _handle, "spawn_id");
+        _levelSlot = _registry.IndexOfField(_patchLevel, _handle, "level");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -111,11 +111,11 @@ public class HandleZoneEntry : IHandleOpcodes
         {
             GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
 
-            ReadOnlySpan<byte> nameBytes = bag.GetBytesAt(_nameId);
+            ReadOnlySpan<byte> nameBytes = bag.GetBytesAt(_nameSlot);
             name = Encoding.ASCII.GetString(nameBytes);
   
-            spawn_id = bag.GetUIntAt(_spawnId);
-            level = bag.GetUIntAt(_levelId);
+            spawn_id = bag.GetUIntAt(_spawnIdSlot);
+            level = bag.GetUIntAt(_levelSlot);
         }
         finally
         {

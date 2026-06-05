@@ -2,9 +2,6 @@
 using Glass.Core.Logging;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
-using System;
-using System.Buffers.Binary;
-using System.Diagnostics;
 namespace Glass.Network.Handlers;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // HandleNpcMove
@@ -18,19 +15,19 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
 
-    private readonly uint _spawnId;
-    private readonly uint _xPosId;
-    private readonly uint _yPosId;
-    private readonly uint _zPosId;
-    private readonly uint _headingId;
-    private readonly uint _pitchId;
-    private readonly uint _headingDeltaId;
-    private readonly uint _velocityId;
-    private readonly uint _dxId;
-    private readonly uint _dyId;
-    private readonly uint _dzId;
+    private readonly SlotId _spawnIdSlot;
+    private readonly SlotId _xPosSlot;
+    private readonly SlotId _yPosSlot;
+    private readonly SlotId _zPosSlot;
+    private readonly SlotId _headingSlot;
+    private readonly SlotId _pitchSlot;
+    private readonly SlotId _headingDeltaSlot;
+    private readonly SlotId _velocitySlot;
+    private readonly SlotId _dxSlot;
+    private readonly SlotId _dySlot;
+    private readonly SlotId _dzSlot;
 
-    private readonly uint _flagsId;
+    private readonly SlotId _flagsSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleNpcMoveUpdate (constructor)
@@ -51,19 +48,19 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _handle = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
-        _spawnId = _registry.IndexOfField(_patchLevel, _handle, "spawn_id");
-        _xPosId = _registry.IndexOfField(_patchLevel, _handle, "x_pos");
-        _yPosId = _registry.IndexOfField(_patchLevel, _handle, "y_pos");
-        _zPosId = _registry.IndexOfField(_patchLevel, _handle, "z_pos");
-        _headingId = _registry.IndexOfField(_patchLevel, _handle, "heading");
-        _pitchId = _registry.IndexOfField(_patchLevel, _handle, "pitch");
-        _headingDeltaId = _registry.IndexOfField(_patchLevel, _handle, "heading_delta");
-        _velocityId = _registry.IndexOfField(_patchLevel, _handle, "velocity");
-        _dxId = _registry.IndexOfField(_patchLevel, _handle, "dx");
-        _dyId = _registry.IndexOfField(_patchLevel, _handle, "dy");
-        _dzId = _registry.IndexOfField(_patchLevel, _handle, "dz");
+        _spawnIdSlot = _registry.IndexOfField(_patchLevel, _handle, "spawn_id");
+        _xPosSlot = _registry.IndexOfField(_patchLevel, _handle, "x_pos");
+        _yPosSlot = _registry.IndexOfField(_patchLevel, _handle, "y_pos");
+        _zPosSlot = _registry.IndexOfField(_patchLevel, _handle, "z_pos");
+        _headingSlot = _registry.IndexOfField(_patchLevel, _handle, "heading");
+        _pitchSlot = _registry.IndexOfField(_patchLevel, _handle, "pitch");
+        _headingDeltaSlot = _registry.IndexOfField(_patchLevel, _handle, "heading_delta");
+        _velocitySlot = _registry.IndexOfField(_patchLevel, _handle, "velocity");
+        _dxSlot = _registry.IndexOfField(_patchLevel, _handle, "dx");
+        _dySlot = _registry.IndexOfField(_patchLevel, _handle, "dy");
+        _dzSlot = _registry.IndexOfField(_patchLevel, _handle, "dz");
 
-        _flagsId = _registry.IndexOfField(_patchLevel, _handle, "flags");
+        _flagsSlot = _registry.IndexOfField(_patchLevel, _handle, "flags");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -125,12 +122,12 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
         {
             GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
 
-            uint spawnId = bag.GetUIntAt(_spawnId);
-            float x = bag.GetFloatAt(_xPosId);
-            float y = bag.GetFloatAt(_yPosId);
-            float z = bag.GetFloatAt(_zPosId);
-            float heading = bag.GetFloatAt(_headingId);
-            uint flags = bag.GetUIntAt(_flagsId);
+            uint spawnId = bag.GetUIntAt(_spawnIdSlot);
+            float x = bag.GetFloatAt(_xPosSlot);
+            float y = bag.GetFloatAt(_yPosSlot);
+            float z = bag.GetFloatAt(_zPosSlot);
+            float heading = bag.GetFloatAt(_headingSlot);
+            uint flags = bag.GetUIntAt(_flagsSlot);
 
             DebugLog.Write(LogChannel.Opcodes, "Flags is 0x" + flags.ToString("x2"));
 
@@ -138,35 +135,35 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
 
             System.Text.StringBuilder optional = new System.Text.StringBuilder();
 
-            if (bag.IsPresent(_pitchId))
+            if (bag.IsPresent(_pitchSlot))
             {
                 optional.Append(" pitch=");
-                optional.Append(bag.GetFloatAt(_pitchId));
+                optional.Append(bag.GetFloatAt(_pitchSlot));
             }
-            if (bag.IsPresent(_headingDeltaId))
+            if (bag.IsPresent(_headingDeltaSlot))
             {
                 optional.Append(" headingDelta=");
-                optional.Append(bag.GetFloatAt(_headingDeltaId));
+                optional.Append(bag.GetFloatAt(_headingDeltaSlot));
             }
-            if (bag.IsPresent(_velocityId))
+            if (bag.IsPresent(_velocitySlot))
             {
                 optional.Append(" velocity=");
-                optional.Append(bag.GetFloatAt(_velocityId));
+                optional.Append(bag.GetFloatAt(_velocitySlot));
             }
-            if (bag.IsPresent(_dxId))
+            if (bag.IsPresent(_dxSlot))
             {
                 optional.Append(" dx=");
-                optional.Append(bag.GetFloatAt(_dxId));
+                optional.Append(bag.GetFloatAt(_dxSlot));
             }
-            if (bag.IsPresent(_dyId))
+            if (bag.IsPresent(_dySlot))
             {
                 optional.Append(" dy=");
-                optional.Append(bag.GetFloatAt(_dyId));
+                optional.Append(bag.GetFloatAt(_dySlot));
             }
-            if (bag.IsPresent(_dzId))
+            if (bag.IsPresent(_dzSlot))
             {
                 optional.Append(" dz=");
-                optional.Append(bag.GetFloatAt(_dzId));
+                optional.Append(bag.GetFloatAt(_dzSlot));
             }
 
             string timestamp = metadata.Timestamp.ToString("HH:mm:ss.fff");

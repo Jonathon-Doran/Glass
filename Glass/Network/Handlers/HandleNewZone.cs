@@ -23,9 +23,9 @@ public class HandleNewZone : IHandleOpcodes
     private PatchLevel _patchLevel;
 
 
-    private readonly uint _shortNameId;
-    private readonly uint _longNameId;
-    private readonly uint _zoneId;
+    private readonly SlotId _shortNameSlot;
+    private readonly SlotId _longNameSlot;
+    private readonly SlotId _zoneIdSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleNewZone(constructor)
@@ -46,9 +46,9 @@ public class HandleNewZone : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcode = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
-        _shortNameId = _registry.IndexOfField(_patchLevel, _opcode, "short_name");
-        _longNameId = _registry.IndexOfField(_patchLevel, _opcode, "long_name");
-        _zoneId = _registry.IndexOfField(_patchLevel, _opcode, "zone_id");
+        _shortNameSlot = _registry.IndexOfField(_patchLevel, _opcode, "short_name");
+        _longNameSlot = _registry.IndexOfField(_patchLevel, _opcode, "long_name");
+        _zoneIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "zone_id");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -106,14 +106,14 @@ public class HandleNewZone : IHandleOpcodes
         {
             GlassContext.FieldExtractor.Extract(_patchLevel, _opcode, data, bag);
 
-            ReadOnlySpan<byte> snameBytes = bag.GetBytesAt(_shortNameId);
+            ReadOnlySpan<byte> snameBytes = bag.GetBytesAt(_shortNameSlot);
             shortName = Encoding.ASCII.GetString(snameBytes);
 
-            ReadOnlySpan<byte> lnameBytes = bag.GetBytesAt(_longNameId);
+            ReadOnlySpan<byte> lnameBytes = bag.GetBytesAt(_longNameSlot);
             longName = Encoding.ASCII.GetString(lnameBytes);
 
 
-            zoneId = bag.GetUIntAt(_zoneId);
+            zoneId = bag.GetUIntAt(_zoneIdSlot);
         }
         finally
         {

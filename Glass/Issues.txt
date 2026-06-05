@@ -25,6 +25,10 @@ Inference should check that New/Open/Recent patches all load data correctly.
 
 I don't believe that handlers are handling arrays of items well.  Certainly the opcode trace is not automatically doing this.
 
+FieldSlot should be refactored to allow null references.  Some sentinel value.
+
+PatchData.SlotDefinedBefore needs an ancestor check to validate collection handles.
+
 ISXGlass:
 
 Phase 3 (multi-machine operations):

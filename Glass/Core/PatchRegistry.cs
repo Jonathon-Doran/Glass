@@ -301,6 +301,11 @@ public class PatchRegistry
         return patchData.GetCollectionHandle(collectionName);
     }
 
+    public CollectionHandle GetCollectionHandle(PatchLevel patchLevel, OpcodeHandle opcodeHandle)
+    {
+        PatchData patchData = FindPatchData(patchLevel);
+        return patchData.GetCollectionHandleFromOpcode(opcodeHandle);
+    }
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeName
     //
@@ -419,7 +424,7 @@ public class PatchRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////
     // IndexOfField
     //
-    // Returns the FieldIndex of the named field within the OpcodeHandle's field
+    // Returns the SlotId of the named field within the OpcodeHandle's field
     // definitions in the given patch level.  Looks up the patch in the loaded set and
     // delegates to the PatchData.
     //
@@ -431,9 +436,9 @@ public class PatchRegistry
     //   fieldName   - The field_name column value to look up.
     //
     // Returns:
-    //   The FieldIndex of the named field, or FieldIndex.None if not found.
+    //   The SlotId of the named field, or SlotId.None if not found.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public FieldIndex IndexOfField(PatchLevel patchLevel, OpcodeHandle opcode, string fieldName)
+    public SlotId IndexOfField(PatchLevel patchLevel, OpcodeHandle opcode, string fieldName)
     {
         PatchData patchData = FindPatchData(patchLevel);
         return patchData.IndexOfField(opcode, fieldName);
@@ -442,7 +447,7 @@ public class PatchRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////
     // IndexOfField
     //
-    // Returns the FieldIndex of the named field within the CollectionHandle's field
+    // Returns the SlotId of the named field within the CollectionHandle's field
     // definitions in the given patch level.
     //
     // Throws InvalidOperationException if the patch level is not loaded.
@@ -453,9 +458,9 @@ public class PatchRegistry
     //   fieldName   - The field_name column value to look up.
     //
     // Returns:
-    //   The FieldIndex of the named field, or FieldIndex.None if not found.
+    //   The SlotId of the named field, or SlotId.None if not found.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public FieldIndex IndexOfField(PatchLevel patchLevel, CollectionHandle collection, string fieldName)
+    public SlotId IndexOfField(PatchLevel patchLevel, CollectionHandle collection, string fieldName)
     {
         PatchData patchData = FindPatchData(patchLevel);
         return patchData.IndexOfField(collection, fieldName);
@@ -560,12 +565,12 @@ public class PatchRegistry
     //
     // patchLevel:  The patch level whose PatchData holds the field definitions.
     // handle:      The opcode handle previously obtained from GetOpcodeHandle.
-    // fieldId:     The field index previously obtained from IndexOfField.
+    // slot:        The slot queried.
     //
     // Returns the field's BitOffset as an int, or -1 if the patch level, handle, or
     // field id cannot be resolved.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public uint GetFieldPosition(PatchLevel patchLevel, OpcodeHandle handle, uint fieldId)
+    public uint GetFieldPosition(PatchLevel patchLevel, OpcodeHandle handle, SlotId slot)
     {
         PatchData? patchData = FindPatchData(patchLevel);
 
@@ -576,7 +581,7 @@ public class PatchRegistry
 
         }
 
-        uint position = patchData.GetFieldPosition(handle, fieldId);
+        uint position = patchData.GetFieldPosition(handle, slot);
 
         return position;
     }

@@ -413,7 +413,7 @@ public struct FieldSlot
                     SlotReadResult result = TryGetInt(out value);
                     if (result == SlotReadResult.Success)
                     {
-                        return "0x" + value.ToString("X8");
+                        return "0x" + value.ToString("X8") + " (" + value + ")";
                     }
                     DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName()
                         + " Int read failed: " + result);
@@ -426,7 +426,7 @@ public struct FieldSlot
                     SlotReadResult result = TryGetUInt(out value);
                     if (result == SlotReadResult.Success)
                     {
-                        return "0x" + value.ToString("X8");
+                        return "0x" + value.ToString("X8") + " (" + value + ")";
                     }
                     DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName()
                         + " UInt read failed: " + result);

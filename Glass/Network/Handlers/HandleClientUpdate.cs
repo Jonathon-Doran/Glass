@@ -21,12 +21,12 @@ public class HandleClientUpdate : IHandleOpcodes
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
 
-    private readonly uint _sequenceId;
-    private readonly uint _playerId;
-    private readonly uint _xPosId;
-    private readonly uint _yPosId;
-    private readonly uint _zPosId;
-    private readonly uint _headingId;
+    private readonly SlotId _sequenceSlot;
+    private readonly SlotId _playerIdSlot;
+    private readonly SlotId _xPosSlot;
+    private readonly SlotId _yPosSlot;
+    private readonly SlotId _zPosSlot;
+    private readonly SlotId _headingSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleClientUpdate(constructor)
@@ -46,12 +46,12 @@ public class HandleClientUpdate : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcode = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
-        _sequenceId = _registry.IndexOfField(_patchLevel, _opcode, "sequence");
-        _playerId = _registry.IndexOfField(_patchLevel, _opcode, "player_id");
-        _xPosId = _registry.IndexOfField(_patchLevel, _opcode, "x_pos");
-        _yPosId = _registry.IndexOfField(_patchLevel, _opcode, "y_pos");
-        _zPosId = _registry.IndexOfField(_patchLevel, _opcode, "z_pos");
-        _headingId = _registry.IndexOfField(_patchLevel, _opcode, "heading");
+        _sequenceSlot = _registry.IndexOfField(_patchLevel, _opcode, "sequence");
+        _playerIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "player_id");
+        _xPosSlot = _registry.IndexOfField(_patchLevel, _opcode, "x_pos");
+        _yPosSlot = _registry.IndexOfField(_patchLevel, _opcode, "y_pos");
+        _zPosSlot = _registry.IndexOfField(_patchLevel, _opcode, "z_pos");
+        _headingSlot = _registry.IndexOfField(_patchLevel, _opcode, "heading");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -115,15 +115,15 @@ public class HandleClientUpdate : IHandleOpcodes
                 return;
             }
 
-            character.XPos = bag.GetFloatAt(_xPosId);
-            character.YPos = bag.GetFloatAt(_yPosId);
-            character.ZPos = bag.GetFloatAt(_zPosId);
+            character.XPos = bag.GetFloatAt(_xPosSlot);
+            character.YPos = bag.GetFloatAt(_yPosSlot);
+            character.ZPos = bag.GetFloatAt(_zPosSlot);
 
-            uint sequence = bag.GetUIntAt(_sequenceId);
-            uint playerId = bag.GetUIntAt(_playerId);
+            uint sequence = bag.GetUIntAt(_sequenceSlot);
+            uint playerId = bag.GetUIntAt(_playerIdSlot);
 
             // Note on heading:  measured as 160-degrees per second to within 0.2%.  One degree is 6.25ms of keypress.  
-            character.Heading = bag.GetUIntAt(_headingId) / 8192.0f * 360.0f;
+            character.Heading = bag.GetUIntAt(_headingSlot) / 8192.0f * 360.0f;
 
             string name = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
 
