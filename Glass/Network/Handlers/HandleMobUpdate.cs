@@ -17,9 +17,10 @@ namespace Glass.Network.Handlers;
 public class HandleMobUpdate : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_MobUpdate";
-    private OpcodeHandle _opcode;
-    private PatchRegistry _registry;
-    private PatchLevel _patchLevel;
+    private readonly PatchOpcode _opcodeHandled;
+    private readonly OpcodeHandle _opcode;
+    private readonly PatchRegistry _registry;
+    private readonly PatchLevel _patchLevel;
 
     private readonly SlotId _spawnIdSlot;
     private readonly SlotId _xPosSlot;
@@ -44,7 +45,8 @@ public class HandleMobUpdate : IHandleOpcodes
     {
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
-        _opcode = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
+        _opcode = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
         _spawnIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "spawn_id");
         _xPosSlot = _registry.IndexOfField(_patchLevel, _opcode, "x_pos");
@@ -127,5 +129,13 @@ public class HandleMobUpdate : IHandleOpcodes
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
             + _opcodeName + " spawnid: " + spawnId.ToString("x4") + " at ("
             + xPos.ToString("F2") + "," + yPos.ToString("F2") + "," + zPos.ToString("F2") + ")");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeHandled
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public PatchOpcode OpcodeHandled
+    {
+        get { return _opcodeHandled; }
     }
 }

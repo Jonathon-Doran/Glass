@@ -3,6 +3,8 @@ using Glass.Core.Logging;
 using SharpPcap;
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using static Glass.Network.Protocol.PacketBus;
 using static Glass.Network.Protocol.SoeConstants;
 namespace Glass.Network.Protocol;
 
@@ -92,7 +94,7 @@ public class SoeStream : IDisposable
     // Statistics
     // ---------------------------------------------------------------------------
     private long _packetCount;
-    private readonly Dictionary<ushort, int> _opcodeCount;
+    private readonly Dictionary<OpcodeValue, int> _opcodeCount;
     private readonly object _opcodeCountLock = new object();
 
     // ---------------------------------------------------------------------------
@@ -130,7 +132,7 @@ public class SoeStream : IDisposable
         _decompressor = new SoeDecompressor();
 
         _packetCount = 0;
-        _opcodeCount = new Dictionary<ushort, int>();
+        _opcodeCount = new Dictionary<OpcodeValue, int>();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -196,6 +198,7 @@ public class SoeStream : IDisposable
         }
 
         SoePacket packet = new SoePacket(rawData, rawData.Length, false);
+        dgram.Opcode = (OpcodeValue) packet.NetOpCode;
 
         DebugLog.Write(LogChannel.LowNetwork,
             "========================================================================");
@@ -257,7 +260,7 @@ public class SoeStream : IDisposable
         ReadOnlySpan<byte> payload = packet.Payload();
         bool hasArq = packet.HasArqSeq();
 
-        ProcessPacket(packet.NetOpCode, payload, packet.ArqSeq, hasArq, false, dgram);
+        ProcessPacket((OpcodeValue) packet.NetOpCode, payload, packet.ArqSeq, hasArq, false, dgram);
 
         if (_arqCache.Count > 0)
         {
@@ -278,7 +281,7 @@ public class SoeStream : IDisposable
     // isSubpacket:  True if this packet was extracted from an OP_Combined container
     // dgram:        The UDP datagram with headers removed
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void ProcessPacket(ushort netOpcode, ReadOnlySpan<byte> payload,
+    private void ProcessPacket(OpcodeValue netOpcode, ReadOnlySpan<byte> payload,
                                    ushort arqSeq, bool hasArq, bool isSubpacket,
                                    UdpDatagram dgram)
     {
@@ -291,17 +294,15 @@ public class SoeStream : IDisposable
         metadata.DestPort = dgram.DestPort;
         metadata.SessionId = dgram.SessionId;
         metadata.Channel = dgram.Channel;
+ 
+        PatchLevel currentPatch = GlassContext.CurrentPatchLevel;
 
-        DebugLog.Write(LogChannel.LowNetwork,
-            "          [processPacket] netop=0x" + netOpcode.ToString("x4")
-            + " subpacket=" + isSubpacket
-            + " payloadLen=" + payload.Length);
+        metadata.Opcode = OpcodeDispatch.Instance.ResolvePatchOpcode(netOpcode, payload, metadata);
 
-        if (SoeConstants.IsAppOpcode(netOpcode))
+        if (SoeConstants.IsAppOpcode(netOpcode.Value))
         {
             DebugLog.Write(LogChannel.LowNetwork,
-                "          [processPacket] APP opcode on wire: 0x"
-                + netOpcode.ToString("x4"));
+                "          [processPacket] APP opcode on wire: 0x" + netOpcode);
             DispatchAppPacket(payload, payload.Length, netOpcode, metadata);
             return;
         }
@@ -349,7 +350,7 @@ public class SoeStream : IDisposable
         else
         {
             DebugLog.Write(LogChannel.LowNetwork,
-                "EQPacket: Unhandled net opcode " + netOpcode.ToString("x4")
+                "EQPacket: Unhandled net opcode " + netOpcode
                 + ", stream " + StreamNames[_streamId]
                 + ", size " + payload.Length);
         }
@@ -367,14 +368,26 @@ public class SoeStream : IDisposable
     // opcode:    The application-level opcode
     // metadata:  Source/dest IP and port, timestamp, frame number
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void DispatchAppPacket(ReadOnlySpan<byte> data, int length, ushort opcode, PacketMetadata metadata)
+    private void DispatchAppPacket(ReadOnlySpan<byte> data, int length, OpcodeValue opcode, PacketMetadata metadata)
     {
         DebugLog.Write(LogChannel.LowNetwork, "");
-        DebugLog.Write(LogChannel.LowNetwork, "Opcode: 0x" + opcode.ToString("x4"));
+        DebugLog.Write(LogChannel.LowNetwork, "Opcode: 0x" + opcode);
+
+        if (opcode.Value == 0xa5bf)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "Dispatching opcode " + metadata.Opcode + 
+                " stream " + StreamNames[_streamId]);
+        }
+        metadata.Opcode = OpcodeDispatch.Instance.ResolvePatchOpcode(opcode, data, metadata);
+        if (opcode.Value == 0xa5bf)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "Updating app opcode to " + metadata.Opcode +
+                " stream " + StreamNames[_streamId]);
+        }
 
         DebugLog.Write(LogChannel.LowNetwork,
             "          [dispatchPacket] stream=" + StreamNames[_streamId]
-            + " opCode=0x" + opcode.ToString("x4") + " len=" + length);
+            + " opCode= " + metadata.Opcode + " len=" + length);
 
         DebugLog.WriteMultiline(LogChannel.LowNetwork,
             SoeHexDump.Format(data.Slice(0, length), "          "));
@@ -397,13 +410,9 @@ public class SoeStream : IDisposable
         {
             DebugLog.Write(LogChannel.LowNetwork,
                 "SoeStream.DispatchAppPacket: PacketBus is null on GlassContext, dropping opcode 0x"
-                + opcode.ToString("x4"));
+                + opcode);
             return;
         }
-
-        // store the handle as soon as possible so that everything downstream has it
-        metadata.Handle = OpcodeDispatch.Instance.ResolveOpcodeHandle(opcode, data, metadata);
-       // DebugLog.Write(LogChannel.InferenceDebug, "metadata handle resolved to " + metadata.Handle);
 
         bus.Publish(data, opcode, metadata);
     }
@@ -411,15 +420,15 @@ public class SoeStream : IDisposable
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeCount
     //
-    // Returns the dictionary of dispatched opcode counts.
+    // Returns a snapshot copy of the dispatched opcode counts
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public IReadOnlyDictionary<ushort, int> OpcodeCount
+    public IReadOnlyDictionary<OpcodeValue, int> OpcodeCount
     {
         get
         {
             lock (_opcodeCountLock)
             {
-                return new Dictionary<ushort, int>(_opcodeCount);
+                return new Dictionary<OpcodeValue, int>(_opcodeCount);
             }
         }
     }
@@ -469,7 +478,7 @@ public class SoeStream : IDisposable
                 continue;
             }
 
-            ushort subOpCode = (ushort)(payload[pos] | (payload[pos + 1] << 8));
+            OpcodeValue subOpCode = (OpcodeValue)(payload[pos] | (payload[pos + 1] << 8));
             subNum++;
 
 
@@ -478,7 +487,7 @@ public class SoeStream : IDisposable
             DebugLog.Write(LogChannel.LowNetwork, "          ");
             DebugLog.Write(LogChannel.LowNetwork,
                 "          Sub-packet #" + subNum + " (" + subpacketLength + " bytes)"
-                + " opcode=0x" + subOpCode.ToString("x4"));
+                + " opcode=0x" + subOpCode);
 
             if (subOpCode == 0)
             {
@@ -490,11 +499,11 @@ public class SoeStream : IDisposable
                     pos += subpacketLength;
                     continue;
                 }
-                subOpCode = (ushort)(payload[pos + 1] | (payload[pos + 2] << 8));
+                subOpCode = (OpcodeValue) (payload[pos + 1] | (payload[pos + 2] << 8));
                 DispatchAppPacket(payload.Slice(pos + 3, subpacketLength - 3),
                                   subpacketLength - 3, subOpCode, metadata);
             }
-            else if (SoeConstants.IsNetOpcode(subOpCode))
+            else if (SoeConstants.IsNetOpcode(subOpCode.Value))
             {
                 ReadOnlySpan<byte> subData = payload.Slice(pos, subpacketLength);
                 ProcessSubpacket(subData, metadata);
@@ -550,7 +559,7 @@ public class SoeStream : IDisposable
                     continue;
                 }
 
-                ushort subOpCode = (ushort)(payload[pos] | (payload[pos + 1] << 8));
+                OpcodeValue subOpCode = (OpcodeValue) (payload[pos] | (payload[pos + 1] << 8));
                 int dataPos = pos;
                 int actualLen = subpacketLength;
 
@@ -565,7 +574,7 @@ public class SoeStream : IDisposable
                         pos += subpacketLength;
                         continue;
                     }
-                    subOpCode = (ushort)(payload[dataPos] | (payload[dataPos + 1] << 8));
+                    subOpCode = (OpcodeValue) (payload[dataPos] | (payload[dataPos + 1] << 8));
                 }
 
                 subNum++;
@@ -573,7 +582,7 @@ public class SoeStream : IDisposable
 
                 DebugLog.Write(LogChannel.LowNetwork,
                     "          Sub-packet #" + subNum + " (" + subpacketLength + " bytes)"
-                    + " opcode=0x" + subOpCode.ToString("x4"));
+                    + " opcode=0x" + subOpCode);
 
                 DispatchAppPacket(payload.Slice(dataPos + 2, actualLen - 2),
                                   actualLen - 2, subOpCode, metadata);
@@ -607,7 +616,7 @@ public class SoeStream : IDisposable
                     continue;
                 }
 
-                ushort subOpCode = (ushort)(payload[pos] | (payload[pos + 1] << 8));
+                OpcodeValue subOpCode = (OpcodeValue) (payload[pos] | (payload[pos + 1] << 8));
                 int dataPos = pos;
                 int actualLen = longLength;
 
@@ -622,13 +631,13 @@ public class SoeStream : IDisposable
                         pos += longLength;
                         continue;
                     }
-                    subOpCode = (ushort)(payload[dataPos] | (payload[dataPos + 1] << 8));
+                    subOpCode = (OpcodeValue) (payload[dataPos] | (payload[dataPos + 1] << 8));
                 }
 
                 subNum++;
                 DebugLog.Write(LogChannel.LowNetwork,
                     "           Sub-packet #" + subNum + " (" + longLength + " bytes, long form)"
-                    + " opcode=0x" + subOpCode.ToString("x4"));
+                    + " opcode=0x" + subOpCode);
 
 
                 DispatchAppPacket(payload.Slice(dataPos + 2, actualLen - 2),
@@ -673,11 +682,11 @@ public class SoeStream : IDisposable
                 return;
             }
 
-            ushort subOpCode = (ushort)(payload[0] | (payload[1] << 8));
+            OpcodeValue subOpCode = (OpcodeValue) (payload[0] | (payload[1] << 8));
 
             DebugLog.Write(LogChannel.LowNetwork,
                 "          Sequenced: seq=" + arqSeq.ToString("x4")
-                + " subOpCode=0x" + subOpCode.ToString("x4"));
+                + " subOpCode=0x" + subOpCode);
 
             if (subOpCode == 0)
             {
@@ -687,10 +696,10 @@ public class SoeStream : IDisposable
                         "WARNING: Sequenced packet with payload too short for extended opcode");
                     return;
                 }
-                subOpCode = (ushort)(payload[1] | (payload[2] << 8));
+                subOpCode = (OpcodeValue) (payload[1] | (payload[2] << 8));
                 DispatchAppPacket(payload.Slice(3), payload.Length - 3, subOpCode, metadata);
             }
-            else if (SoeConstants.IsNetOpcode(subOpCode))
+            else if (SoeConstants.IsNetOpcode(subOpCode.Value))
             {
                 ProcessSubpacket(payload, metadata);
             }
@@ -840,11 +849,11 @@ public class SoeStream : IDisposable
                     return;
                 }
 
-                ushort fragOpCode = (ushort)(fragPayload[0] | (fragPayload[1] << 8));
+                OpcodeValue fragOpCode = (OpcodeValue) (fragPayload[0] | (fragPayload[1] << 8));
 
                 DebugLog.Write(LogChannel.LowNetwork,
                     "          Fragment COMPLETE: " + _fragmentDataSize + " bytes"
-                    + " opcode=0x" + fragOpCode.ToString("x4"));
+                    + " opcode=0x" + fragOpCode);
 
                 if (fragOpCode == 0)
                 {
@@ -856,14 +865,14 @@ public class SoeStream : IDisposable
                         FragmentReset();
                         return;
                     }
-                    fragOpCode = (ushort)(fragPayload[1] | (fragPayload[2] << 8));
+                    fragOpCode = (OpcodeValue) (fragPayload[1] | (fragPayload[2] << 8));
                     DebugLog.Write(LogChannel.LowNetwork,
                         "dispatching complete fragment with new fragOpCode "
-                        + fragOpCode.ToString("x4"));
+                        + fragOpCode);
                     DispatchAppPacket(fragPayload.Slice(3),
                                       _fragmentDataSize - 3, fragOpCode, metadata);
                 }
-                else if (SoeConstants.IsNetOpcode(fragOpCode))
+                else if (SoeConstants.IsNetOpcode(fragOpCode.Value))
                 {
                     DebugLog.Write(LogChannel.LowNetwork,
                         "dispatching complete fragment via processPacket");
@@ -873,7 +882,7 @@ public class SoeStream : IDisposable
                 {
                     DebugLog.Write(LogChannel.LowNetwork,
                         "dispatching complete fragment with fragOpcode "
-                        + fragOpCode.ToString("x4") + " via dispatchPacket");
+                        + fragOpCode + " via dispatchPacket");
                     DispatchAppPacket(fragPayload.Slice(2),
                                       _fragmentDataSize - 2, fragOpCode, metadata);
                 }
@@ -932,7 +941,7 @@ public class SoeStream : IDisposable
         // Payload is deliberately left default.  Nothing downstream will read it as the
         // datagram is immediately converted back to metadata.
 
-        ProcessPacket(spacket.NetOpCode, spacket.Payload(), spacket.ArqSeq,
+        ProcessPacket((OpcodeValue) spacket.NetOpCode, spacket.Payload(), spacket.ArqSeq,
                       spacket.HasArqSeq(), true, dgram);
     }
 
@@ -1089,7 +1098,7 @@ public class SoeStream : IDisposable
 
         _sessionId = SoeByteOrder.ReadUInt32(payload, 4);
         _maxLength = SoeByteOrder.ReadUInt32(payload, 8);
-        GlassContext.PacketBus.Publish(payload, SoeConstants.OP_SessionRequest, metadata);
+        GlassContext.PacketBus.Publish(payload, (OpcodeValue) SoeConstants.OP_SessionRequest, metadata);
         DebugLog.Write(LogChannel.LowNetwork,
             "EQPacket: SessionRequest found, stream "
             + SoeConstants.StreamNames[_streamId] + " (" + _streamId + "), "
@@ -1136,7 +1145,7 @@ public class SoeStream : IDisposable
             OnSessionKey(_sessionId, _streamId, _sessionKey);
         }
 
-        GlassContext.PacketBus.Publish(payload, SoeConstants.OP_SessionResponse, metadata);
+        GlassContext.PacketBus.Publish(payload, (OpcodeValue) SoeConstants.OP_SessionResponse, metadata);
 
         _arqSeqExpected = 0;
         _arqSeqFound = true;
@@ -1165,7 +1174,7 @@ public class SoeStream : IDisposable
         {
             OnClosing(_sessionId, _streamId);
         }
-        GlassContext.PacketBus.Publish(payload, SoeConstants.OP_SessionDisconnect, metadata);
+        GlassContext.PacketBus.Publish(payload, (OpcodeValue) SoeConstants.OP_SessionDisconnect, metadata);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

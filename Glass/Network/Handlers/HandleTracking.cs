@@ -15,9 +15,10 @@ using System.Text;
 public class HandleTrackingUpdate : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_Tracking";
-    private OpcodeHandle _handle;
-    private PatchRegistry _registry;
-    private PatchLevel _patchLevel;
+    private readonly PatchOpcode _opcodeHandled;
+    private readonly OpcodeHandle _handle;
+    private readonly PatchRegistry _registry;
+    private readonly PatchLevel _patchLevel;
 
     private readonly SlotId _magicSlot;         // for v1
 
@@ -47,6 +48,7 @@ public class HandleTrackingUpdate : IHandleOpcodes
     {
         _registry =   GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
+        _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _handle =    _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
         _magicSlot = _registry.IndexOfField(_patchLevel, _handle, "magic");
@@ -230,44 +232,35 @@ public class HandleTrackingUpdate : IHandleOpcodes
         return _fixedEntryLength + nameLength;
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleClientToServer
-    //
-    // Processes client-to-zone
-    //
-    // data:      The application payload
-    // metadata:  Packet metadata (timestamp, source/dest)
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleClientToServer(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName + " length=" + data.Length + " client->zone");
-        if (data.Length == 0)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "Request tracking data");
-        }
-    }
+        FieldBag bag = _registry.Rent(_patchLevel, _handle);
 
-    private int FindNullTerminator(ReadOnlySpan<byte> data, uint length)
-    {
-        // Find the null terminator for the name string at offset 0
-        int nullPos = -1;
-        for (int i = 0; i < length; i++)
+        try
         {
-            if (data[i] == 0)
+            GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
+
+            uint magic = bag.GetUIntAt(_magicSlot);
+
+            if (magic == TRACKING_MAGIC_NUMBER)
             {
-                nullPos = i;
-                break;
+                return 1;
             }
         }
-
-        if (nullPos < 0)
+        finally
         {
-            DebugLog.Write(LogChannel.Opcodes, "HandleTracking.HandleServerToClient: "
-                + _opcodeName + " no null terminator found, length=" + length);
-            return -1;
+            bag.Release();
         }
 
-        return nullPos;
+        return 2;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeHandled
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public PatchOpcode OpcodeHandled
+    {
+        get { return _opcodeHandled; }
     }
 }
 

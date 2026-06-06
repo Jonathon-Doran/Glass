@@ -46,8 +46,8 @@ public partial class PacketDetailWindow : Window
         int payloadLength = payload.Length;
 
         string opcodeName = GlassContext.PatchRegistry.GetOpcodeName(
-            GlassContext.CurrentPatchLevel, packet.Opcode);
-        string opcodeHex = "0x" + packet.Opcode.ToString("x4");
+            GlassContext.CurrentPatchLevel, (OpcodeValue) packet.Opcode);
+        string opcodeHex = "0x" + packet.Opcode;
         string characterName = ResolveCharacterName(packet.Metadata.SessionId);
 
         Title = "Packet " + packet.PacketIndex + " — " + opcodeName;
@@ -64,7 +64,7 @@ public partial class PacketDetailWindow : Window
             + " opcode=" + opcodeHex + " (" + opcodeName + ")"
             + " length=" + payloadLength);
 
-        FieldTextBox.Text = ExtractFieldText(packet.Opcode, payload);
+        FieldTextBox.Text = ExtractFieldText((OpcodeValue) packet.Opcode, payload);
         HexDumpTextBox.Text = HexDumpFormatter.Format(payload, int.MaxValue);
     }
 
@@ -106,7 +106,7 @@ public partial class PacketDetailWindow : Window
     // opcode:   Wire opcode value.
     // payload:  Bytes to extract from.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private static string ExtractFieldText(ushort opcode, ReadOnlySpan<byte> payload)
+    private static string ExtractFieldText(OpcodeValue opcode, ReadOnlySpan<byte> payload)
     {
         PatchOpcode patchOpcode = new PatchOpcode(GlassContext.CurrentPatchLevel, opcode);
         OpcodeHandle handle = GlassContext.PatchRegistry.GetOpcodeHandle(patchOpcode);
@@ -114,7 +114,7 @@ public partial class PacketDetailWindow : Window
         if (! handle.Exists)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "PacketDetailWindow.ExtractFieldText: opcode=0x" + opcode.ToString("x4")
+                "PacketDetailWindow.ExtractFieldText: opcode=0x" + opcode
                 + " not in active patch, no fields available");
             return string.Empty;
         }
@@ -140,7 +140,7 @@ public partial class PacketDetailWindow : Window
             }
 
             DebugLog.Write(LogChannel.InferenceDebug,
-                "PacketDetailWindow.ExtractFieldText: opcode=0x" + opcode.ToString("x4")
+                "PacketDetailWindow.ExtractFieldText: opcode=0x" + opcode
                 + " extracted " + bindingCount + " bindings");
             return sb.ToString();
         }

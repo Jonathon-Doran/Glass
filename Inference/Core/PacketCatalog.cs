@@ -33,8 +33,8 @@ public class PacketCatalog
     private readonly RetainedBufferPool _retainedBufferPool;
     private readonly object _lock;
     private readonly List<CatalogedPacket> _packets;
-    private readonly Dictionary<ushort, List<CatalogedPacket>> _byOpcode;
-    private readonly Dictionary<ushort, OpcodeStats> _stats;
+    private readonly Dictionary<OpcodeValue, List<CatalogedPacket>> _byOpcode;
+    private readonly Dictionary<OpcodeValue, OpcodeStats> _stats;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // PacketCatalog (constructor)
@@ -50,8 +50,8 @@ public class PacketCatalog
         _retainedBufferPool = retainedBufferPool;
         _lock = new object();
         _packets = new List<CatalogedPacket>();
-        _byOpcode = new Dictionary<ushort, List<CatalogedPacket>>();
-        _stats = new Dictionary<ushort, OpcodeStats>();
+        _byOpcode = new Dictionary<OpcodeValue, List<CatalogedPacket>>();
+        _stats = new Dictionary<OpcodeValue, OpcodeStats>();
         GlassContext.PacketBus.Subscribe(HandleAppPacket);
         DebugLog.Write(LogChannel.InferenceDebug,
             "PacketCatalog.ctor: created and subscribed to GlassContext.PacketBus");
@@ -83,7 +83,7 @@ public class PacketCatalog
     // metadata:  Source/dest IP and port, timestamp, frame number, session,
     //            and channel.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleAppPacket(ReadOnlySpan<byte> data, ushort opcode, PacketMetadata metadata)
+    private void HandleAppPacket(ReadOnlySpan<byte> data, OpcodeValue opcode, PacketMetadata metadata)
     {
         int length = data.Length;
         RetainedBuffer payload = _retainedBufferPool.Retain(data);
@@ -110,9 +110,7 @@ public class PacketCatalog
 
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "PacketCatalog.HandleAppPacket: first packet for opcode=0x"
-                    + opcode.ToString("x4")
-                    + " channel=" + metadata.Channel
-                    + " size=" + length);
+                    + opcode + " channel=" + metadata.Channel + " size=" + length);
             }
             else
             {
@@ -149,7 +147,7 @@ public class PacketCatalog
     // maxResults:  Maximum number of packets to return.  Use int.MaxValue
     //              for no cap.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public List<CatalogedPacket> PacketsFor(ushort opcode,
+    public List<CatalogedPacket> PacketsFor(OpcodeValue opcode,
         SoeConstants.StreamId? channel, int? sessionId, int maxResults)
     {
         List<CatalogedPacket> results = new List<CatalogedPacket>();
@@ -161,7 +159,7 @@ public class PacketCatalog
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "PacketCatalog.PacketsFor: no bucket for opcode=0x"
-                    + opcode.ToString("x4"));
+                    + opcode);
                 return results;
             }
 
@@ -187,7 +185,7 @@ public class PacketCatalog
         }
 
         DebugLog.Write(LogChannel.InferenceDebug,
-            "PacketCatalog.PacketsFor: opcode=0x" + opcode.ToString("x4")
+            "PacketCatalog.PacketsFor: opcode=0x" + opcode
             + " channel=" + (channel?.ToString() ?? "any")
             + " session=" + (sessionId?.ToString() ?? "any")
             + " returned=" + results.Count);
@@ -206,7 +204,7 @@ public class PacketCatalog
     //
     // opcode:  Wire opcode value to query.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public OpcodeStats? StatsFor(ushort opcode)
+    public OpcodeStats? StatsFor(OpcodeValue opcode)
     {
         lock (_lock)
         {
@@ -215,7 +213,7 @@ public class PacketCatalog
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "PacketCatalog.StatsFor: no stats for opcode=0x"
-                    + opcode.ToString("x4"));
+                    + opcode);
                 return null;
             }
             return stats;
@@ -232,7 +230,7 @@ public class PacketCatalog
     //
     // opcode:  Wire opcode value to query.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public int CountFor(ushort opcode)
+    public int CountFor(OpcodeValue opcode)
     {
         lock (_lock)
         {
@@ -253,11 +251,11 @@ public class PacketCatalog
     // a fresh array; the caller may iterate it without holding the lock.
     // Order is unspecified.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public ushort[] KnownOpcodes()
+    public OpcodeValue[] KnownOpcodes()
     {
         lock (_lock)
         {
-            ushort[] snapshot = new ushort[_byOpcode.Count];
+            OpcodeValue[] snapshot = new OpcodeValue[_byOpcode.Count];
             _byOpcode.Keys.CopyTo(snapshot, 0);
             return snapshot;
         }

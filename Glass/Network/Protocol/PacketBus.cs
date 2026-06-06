@@ -32,7 +32,7 @@ public class PacketBus
     //            underlying UDP packet that the message arrived on.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public delegate void Handler(ReadOnlySpan<byte> data,
-                                  ushort opcode,
+                                  OpcodeValue opcode,
                                   PacketMetadata metadata);
 
     private readonly List<Handler> _subscribers;
@@ -127,7 +127,7 @@ public class PacketBus
     // opcode:    The wire opcode value.
     // metadata:  Source/dest IP and port, timestamp, and frame number.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public void Publish(ReadOnlySpan<byte> data, ushort opcode, PacketMetadata metadata)
+    public void Publish(ReadOnlySpan<byte> data, OpcodeValue opcode, PacketMetadata metadata)
     {
         // Snapshot the subscriber list under the lock so a subscriber that
         // unsubscribes during delivery does not mutate the list we are walking.

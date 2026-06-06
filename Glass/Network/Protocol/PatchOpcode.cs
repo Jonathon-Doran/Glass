@@ -21,12 +21,43 @@
 // Cold path only.  Hot-path access uses OpcodeHandle, which PatchData issues when an
 // opcode is registered.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public readonly record struct PatchOpcode(PatchLevel Level, ushort Opcode, int Version)
+public readonly record struct PatchOpcode(PatchLevel Level, OpcodeValue Opcode, uint Version)
 {
     // Convenience constructor: most opcodes have only one version (Version = 1).  This
     // overload preserves the old OpcodeId(opcode) ergonomic so two-arg construction
     // sites do not need to spell out the default.
-    public PatchOpcode(PatchLevel level, ushort opcode) : this(level, opcode, 1)
+    public PatchOpcode(PatchLevel level, OpcodeValue opcode) : this(level, opcode, 1)
     {
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // None
+    //
+    // The reserved PatchOpcode meaning "no opcode", carrying version 0, which no loaded
+    // opcode uses.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public static PatchOpcode None
+    {
+        get { return new PatchOpcode(default, OpcodeValue.None, 0); }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Exists
+    //
+    // True when this is not the reserved "no opcode" value.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public bool Exists
+    {
+        get { return Opcode.Exists; }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ToString
+    //
+    // Renders the patch opcode as its opcode value, version, and patch level.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public override string ToString()
+    {
+        return Opcode + " v" + Version + " [" + Level + "]";
     }
 }

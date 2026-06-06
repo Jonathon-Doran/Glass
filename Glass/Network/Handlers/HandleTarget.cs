@@ -17,9 +17,10 @@ namespace Glass.Network.Handlers;
 public class HandleTarget : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_TargetMouse";
-    private OpcodeHandle _handle;
-    private PatchRegistry _registry;
-    private PatchLevel _patchLevel;
+    private readonly PatchOpcode _opcodeHandled;
+    private readonly OpcodeHandle _handle;
+    private readonly PatchRegistry _registry;
+    private readonly PatchLevel _patchLevel;
 
     private readonly SlotId _spawnIdSlot;
 
@@ -40,6 +41,7 @@ public class HandleTarget : IHandleOpcodes
     {
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
+        _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _handle = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
         _spawnIdSlot = _registry.IndexOfField(_patchLevel, _handle, "spawn_id");
@@ -112,5 +114,12 @@ public class HandleTarget : IHandleOpcodes
         DebugLog.Write(LogChannel.Opcodes, "Target = 0x" + spawnId.ToString("x4"));
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeHandled
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public PatchOpcode OpcodeHandled
+    {
+        get { return _opcodeHandled; }
+    }
 }
 

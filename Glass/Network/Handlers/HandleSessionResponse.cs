@@ -17,9 +17,10 @@ namespace Glass.Network.Handlers;
 public class HandleSessionResponse : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_SessionResponse";
-    private OpcodeHandle _handle;
-    private PatchRegistry _registry;
-    private PatchLevel _patchLevel;
+    private readonly PatchOpcode _opcodeHandled;
+    private readonly OpcodeHandle _handle;
+    private readonly PatchRegistry _registry;
+    private readonly PatchLevel _patchLevel;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleSessionResponse (constructor)
@@ -38,6 +39,7 @@ public class HandleSessionResponse : IHandleOpcodes
     {
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
+        _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _handle = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, _opcodeName);
     }
 
@@ -91,6 +93,14 @@ public class HandleSessionResponse : IHandleOpcodes
 
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
     + _opcodeName + " length=" + data.Length);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeHandled
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public PatchOpcode OpcodeHandled
+    {
+        get { return _opcodeHandled; }
     }
 }
 

@@ -19,6 +19,8 @@ SessionRegistry is not checking for an existing Connection properly
 CharacterId standardization would be a good thhing
 The OpcodeRowPresenter logs are very verbose.
 
+Does PatchRegistry.Rent really need an opcodehandle?
+
 Inference/Core/InferenceDebugLog and InferenceLog need to go away 
 
 Inference should check that New/Open/Recent patches all load data correctly.
@@ -26,6 +28,7 @@ Inference should check that New/Open/Recent patches all load data correctly.
 I don't believe that handlers are handling arrays of items well.  Certainly the opcode trace is not automatically doing this.
 
 FieldSlot should be refactored to allow null references.  Some sentinel value.
+	(Empty type indicates an unused slot)
 
 PatchData.SlotDefinedBefore needs an ancestor check to validate collection handles.
 

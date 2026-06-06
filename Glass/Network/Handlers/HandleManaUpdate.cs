@@ -17,10 +17,10 @@ namespace Glass.Network.Handlers;
 public class HandleManaUpdate : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_ManaUpdate";
-    private OpcodeHandle _opcode;
-    private PatchRegistry _registry;
-    private PatchLevel _patchLevel;
-
+    private readonly PatchOpcode _opcodeHandled;
+    private readonly OpcodeHandle _opcode;
+    private readonly PatchRegistry _registry;
+    private readonly PatchLevel _patchLevel;
 
     private readonly SlotId _playerIdSlot;
     private readonly SlotId _currentManaSlot;
@@ -43,7 +43,8 @@ public class HandleManaUpdate : IHandleOpcodes
     {
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
-        _opcode = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
+        _opcode = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
         _playerIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "player_id");
         _currentManaSlot = _registry.IndexOfField(_patchLevel, _opcode, "current_mana");
@@ -124,6 +125,14 @@ public class HandleManaUpdate : IHandleOpcodes
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
             + _opcodeName + " length=" + data.Length);
         DebugLog.Write(LogChannel.Opcodes, "Mana at " + character.CurrentMana + " / " + character.MaxMana);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeHandled
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public PatchOpcode OpcodeHandled
+    {
+        get { return _opcodeHandled; }
     }
 }
 

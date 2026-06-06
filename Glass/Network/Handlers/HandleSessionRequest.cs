@@ -17,9 +17,10 @@ namespace Glass.Network.Handlers;
 public class HandleSessionRequest : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_SessionRequest";
-    private OpcodeHandle _handle;
-    private PatchRegistry _registry;
-    private PatchLevel _patchLevel;
+    private readonly PatchOpcode _opcodeHandled;
+    private readonly OpcodeHandle _handle;
+    private readonly PatchRegistry _registry;
+    private readonly PatchLevel _patchLevel;
 
     private readonly SlotId _sessionIdSlot;
     private readonly SlotId _maxLengthSlot;
@@ -41,7 +42,8 @@ public class HandleSessionRequest : IHandleOpcodes
     {
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
-        _handle = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
+        _handle = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
         _sessionIdSlot = _registry.IndexOfField(_patchLevel, _handle, "session_id");
         _maxLengthSlot = _registry.IndexOfField(_patchLevel, _handle, "max_length");
@@ -112,6 +114,14 @@ public class HandleSessionRequest : IHandleOpcodes
         {
             bag.Release();
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeHandled
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public PatchOpcode OpcodeHandled
+    {
+        get { return _opcodeHandled; }
     }
 }
 

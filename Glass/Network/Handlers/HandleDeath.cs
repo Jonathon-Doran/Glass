@@ -15,9 +15,10 @@ namespace Glass.Network.Handlers;
 public class HandleDeath : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_Death";
-    private OpcodeHandle _opcode;
-    private PatchRegistry _registry;
-    private PatchLevel _patchLevel;
+    private readonly OpcodeHandle _opcode;
+    private readonly PatchOpcode _opcodeHandled;
+    private readonly PatchRegistry _registry;
+    private readonly PatchLevel _patchLevel;
 
     private readonly SlotId _spawnIdSlot;
     private readonly SlotId _killerIdSlot;
@@ -39,6 +40,7 @@ public class HandleDeath : IHandleOpcodes
     {
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
+        _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
         _opcode = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
         _spawnIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "spawn_id");
@@ -112,5 +114,13 @@ public class HandleDeath : IHandleOpcodes
             + _opcodeName + " length=" + data.Length);
         DebugLog.Write(LogChannel.Opcodes, "Dead=" + spawnId + " (0x" + spawnId.ToString("x4") + ")");
         DebugLog.Write(LogChannel.Opcodes, "Killer=" + killerId + " (0x" + killerId.ToString("x4") + ")");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeHandled
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public PatchOpcode OpcodeHandled
+    {
+        get { return _opcodeHandled; }
     }
 }

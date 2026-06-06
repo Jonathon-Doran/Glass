@@ -18,10 +18,10 @@ namespace Glass.Network.Handlers;
 public class HandleNewZone : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_NewZone";
-    private OpcodeHandle _opcode;
-    private PatchRegistry _registry;
-    private PatchLevel _patchLevel;
-
+    private readonly PatchOpcode _opcodeHandled;
+    private readonly OpcodeHandle _opcode;
+    private readonly PatchRegistry _registry;
+    private readonly PatchLevel _patchLevel;
 
     private readonly SlotId _shortNameSlot;
     private readonly SlotId _longNameSlot;
@@ -44,7 +44,8 @@ public class HandleNewZone : IHandleOpcodes
     {
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
-        _opcode = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
+        _opcode = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
         _shortNameSlot = _registry.IndexOfField(_patchLevel, _opcode, "short_name");
         _longNameSlot = _registry.IndexOfField(_patchLevel, _opcode, "long_name");
@@ -123,6 +124,12 @@ public class HandleNewZone : IHandleOpcodes
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
             + _opcodeName + " length=" + data.Length);
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeHandled
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public PatchOpcode OpcodeHandled
+    {
+        get { return _opcodeHandled; }
+    }
 }
-
-

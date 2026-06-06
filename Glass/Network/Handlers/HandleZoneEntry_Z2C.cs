@@ -11,16 +11,17 @@ using System.Text;
 namespace Glass.Network.Handlers;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// HandleZoneEntry
+// HandleZoneEntry_Z2C
 //
 // Handles OP_ZoneEntry packets.  Server-to-client packets contain NPC/mob
 // spawn data with a null-terminated name at offset 0.  Client-to-server
 // packets contain the player's own zone entry with a different layout.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleZoneEntry : IHandleOpcodes
+public class HandleZoneEntry_Z2C : IHandleOpcodes
 {
-    private readonly string _opcodeName = "OP_ZoneEntry";
-    private OpcodeHandle _handle;
+    private readonly string _opcodeName = "OP_ZoneEntry_Z2C";
+    private readonly PatchOpcode _opcodeHandled;
+    private readonly OpcodeHandle _handle;
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
 
@@ -29,7 +30,7 @@ public class HandleZoneEntry : IHandleOpcodes
     private readonly SlotId _levelSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleZoneEntry (constructor)
+    // HandleZoneEntry_Z2C (constructor)
     //
     // Resolves the wire opcode and loads the field definitions for OP_ZoneEntry from
     // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
@@ -41,11 +42,14 @@ public class HandleZoneEntry : IHandleOpcodes
     // with a zero opcode, so this handler simply will not receive packets.  All field
     // index lookups resolve to -1 in that case but are never consulted.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleZoneEntry()
+    public HandleZoneEntry_Z2C()
     {
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
+        _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _handle = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
+
+        DebugLog.Write(LogChannel.Opcodes, "ZoneEntry Z2C registering opcode " + _opcodeHandled);
 
         _nameSlot = _registry.IndexOfField(_patchLevel, _handle, "name");
         _spawnIdSlot = _registry.IndexOfField(_patchLevel, _handle, "spawn_id");
@@ -71,36 +75,16 @@ public class HandleZoneEntry : IHandleOpcodes
         get { return _opcodeName; }
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandlePacket
-    //
-    // Dispatches to direction-specific handlers.
-    //
-    // data:      The application payload
-    // metadata:  Packet metadata (timestamp, source/dest)
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
-    {
-        switch (metadata.Channel)
-        {
-            case SoeConstants.StreamId.StreamZoneToClient:
-                HandleZoneToClient(data, metadata);
-                break;
-            case SoeConstants.StreamId.StreamClientToZone:
-                HandleClientToZone(data, metadata);
-                break;
-        }
-    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleZoneToClient
+    // HandlePacket
     //
     // Processes zone-to-client OP_ZoneEntry.
     //
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         string name;
         uint spawn_id;
@@ -129,19 +113,15 @@ public class HandleZoneEntry : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleClientToZone
+    // ResolveVersion
     //
-    // Processes client-to-zone OP_ZoneEntry. 
+    // Returns the opcode version for a packet.
     //
-    // data:      The application payload
-    // metadata:  Packet metadata (timestamp, source/dest)
+    // data:      The application payload.
+    // metadata:  Packet metadata
+    //
+    // Returns:   The resolved version number.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
-    {
-        DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry.HandleClientToZone: "
-            + _opcodeName + " length=" + data.Length);
-    }
-
     public uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         switch (metadata.Channel)
@@ -154,5 +134,13 @@ public class HandleZoneEntry : IHandleOpcodes
         }
 
         return 0;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeHandled
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public PatchOpcode OpcodeHandled
+    {
+        get { return _opcodeHandled; }
     }
 }

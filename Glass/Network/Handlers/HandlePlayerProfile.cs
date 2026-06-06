@@ -18,6 +18,7 @@ namespace Glass.Network.Handlers;
 public class HandlePlayerProfile : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_PlayerProfile";
+    private readonly PatchOpcode _opcodeHandled;
     private OpcodeHandle _handle;
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
@@ -56,8 +57,9 @@ public class HandlePlayerProfile : IHandleOpcodes
     public HandlePlayerProfile()
     {
         _registry = GlassContext.PatchRegistry;
-       _patchLevel = GlassContext.CurrentPatchLevel;
-        _handle = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _patchLevel = GlassContext.CurrentPatchLevel;
+        _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
+        _handle = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
         _nameSlot = _registry.IndexOfField(_patchLevel, _handle, "name");
         _levelSlot = _registry.IndexOfField(_patchLevel, _handle, "level");
@@ -221,6 +223,14 @@ public class HandlePlayerProfile : IHandleOpcodes
 
         DebugLog.Write(LogChannel.Opcodes, $"[GetClassName] classId=0x{classId:X2} not in map, returning 'Unknown'");
         return $"Unknown(0x{classId:X2})";
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeHandled
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public PatchOpcode OpcodeHandled
+    {
+        get { return _opcodeHandled; }
     }
 }
 

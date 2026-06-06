@@ -24,7 +24,7 @@ public class OpcodeRowPresenter
 {
     private readonly PacketCatalog _catalog;
     private readonly ObservableCollection<OpcodeEntry> _rows;
-    private readonly Dictionary<ushort, OpcodeEntry> _rowByOpcode;
+    private readonly Dictionary<OpcodeValue, OpcodeEntry> _rowByOpcode;
     public ObservableCollection<OpcodeEntry> Rows => _rows;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -42,7 +42,7 @@ public class OpcodeRowPresenter
     {
         _catalog = catalog;
         _rows = new ObservableCollection<OpcodeEntry>();
-        _rowByOpcode = new Dictionary<ushort, OpcodeEntry>();
+        _rowByOpcode = new Dictionary<OpcodeValue, OpcodeEntry>();
         DebugLog.Write(LogChannel.InferenceDebug, "OpcodeRowPresenter.ctor: created");
     }
 
@@ -64,14 +64,14 @@ public class OpcodeRowPresenter
     //
     // opcode:  Wire opcode value just delivered by the bus.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public void Update(ushort opcode)
+    public void Update(OpcodeValue opcode)
     {
         OpcodeStats? snapshot = _catalog.StatsFor(opcode);
         if (snapshot == null)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "OpcodeRowPresenter.Update: no stats for opcode=0x"
-                + opcode.ToString("x4") + ", catalog out of sync");
+                + opcode + ", catalog out of sync");
             return;
         }
         OpcodeStats stats = snapshot.Value;
@@ -85,7 +85,7 @@ public class OpcodeRowPresenter
             return;
         }
 
-        string opcodeHex = "0x" + opcode.ToString("x4");
+        string opcodeHex = "0x" + opcode;
         PatchLevel currentPatchLevel = GlassContext.CurrentPatchLevel;
         string name = GlassContext.PatchRegistry.GetOpcodeName(currentPatchLevel, opcode);
         row = new OpcodeEntry(opcodeHex, stats.Channel, stats.MinSize)

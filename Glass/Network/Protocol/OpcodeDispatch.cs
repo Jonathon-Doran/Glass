@@ -23,7 +23,7 @@ public class OpcodeDispatch : IDisposable
 {
     private static OpcodeDispatch? _instance = null;
     private readonly PatchLevel _patchLevel;
-    private readonly FrozenDictionary<ushort, IHandleOpcodes> _handlers;
+    private readonly FrozenDictionary<PatchOpcode, IHandleOpcodes> _handlers;
     private static readonly object _instanceLock = new object();
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -57,7 +57,7 @@ public class OpcodeDispatch : IDisposable
     private OpcodeDispatch()
     {
         int opcodeCount = GlassContext.PatchRegistry.GetOpcodeCount(GlassContext.CurrentPatchLevel);
-        Dictionary<ushort, IHandleOpcodes> builder = new Dictionary<ushort, IHandleOpcodes>();
+        Dictionary<PatchOpcode, IHandleOpcodes> builder = new Dictionary<PatchOpcode, IHandleOpcodes>();
 
         DebugLog.Write(LogChannel.Opcodes, "OpcodeDispatch: scanning assembly for IHandleOpcodes implementations");
 
@@ -88,15 +88,19 @@ public class OpcodeDispatch : IDisposable
             }
 
             IHandleOpcodes handler = (IHandleOpcodes)constructor.Invoke(null);
-            string opcodeName = handler.OpcodeName;
+            PatchOpcode patchOpcode = handler.OpcodeHandled;
 
-            OpcodeHandle opcode = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, opcodeName);
-            ushort opcodeValue = GlassContext.PatchRegistry.GetOpcodeValue(_patchLevel, opcode);
+            if (patchOpcode.Exists == false)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "OpcodeDispatch: skipping " + type.Name
+                    + " — handler reports no opcode for patch level " + _patchLevel);
+                continue;
+            }
 
-            builder[opcodeValue] = handler;
+            builder[patchOpcode] = handler;
 
             DebugLog.Write(LogChannel.Opcodes, "OpcodeDispatch: registered " + type.Name
-                + " for opcode 0x" + opcodeValue.ToString("x4"));
+                + " for opcode " + patchOpcode );
         }
 
         _handlers = builder.ToFrozenDictionary();
@@ -155,14 +159,14 @@ public class OpcodeDispatch : IDisposable
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandlePacket
     //
-    // Matches the AppPacketHandler delegate signature.  Looks up the opcode
-    // in the handler dictionary and calls the handler if found.
+    // Matches the AppPacketHandler delegate signature.  Resolves the wire opcode to its
+    // version-correct PatchOpcode and calls the registered handler if one exists.
     //
-    // data:       The application payload
-    // opcode:     The application-level opcode
-    // metadata:  Packet metadata (timestamp, source/dest)
+    // data:        The application payload
+    // opcodeValue: The wire opcode value from the application packet header
+    // metadata:    Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, ushort opcodeValue, PacketMetadata metadata)
+    public void HandlePacket(ReadOnlySpan<byte> data, OpcodeValue opcodeValue, PacketMetadata metadata)
     {
         if (Volatile.Read(ref _instance) == null)
         {
@@ -170,46 +174,51 @@ public class OpcodeDispatch : IDisposable
             return;
         }
 
-        if (_handlers.TryGetValue(opcodeValue, out IHandleOpcodes? handler) == true)
+        if (opcodeValue.Value == 0xa5bf)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "OpcodeDispatch.Handle sees metadata for " +
+                metadata.Opcode);
+        }
+
+        PatchOpcode opcode = ResolvePatchOpcode(opcodeValue, data, metadata);
+
+        if (opcodeValue.Value == 0xa5bf)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "OpcodeDispatch.Handle would like to update to " +
+                opcode);
+        }
+
+        if (_handlers.TryGetValue(opcode, out IHandleOpcodes? handler) == true)
         {
             handler.HandlePacket(data, metadata);
         }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // ResolveOpcodeHandle
+    // ResolvePatchOpcode
     //
-    // Resolves an OpcodeHandle for the application packet described by opcodeValue, data,
-    // and metadata.  Looks up the handler for the wire opcode, asks the handler for its
-    // version, and asks PatchRegistry for the handle that matches the resulting PatchOpcode.
+    // Resolves a wire opcode value to its versioned PatchOpcode for this patch level.  Finds the
+    // version-1 handler for the wire value, asks it for the version this packet decodes to, and
+    // returns the PatchOpcode carrying that version.  Returns PatchOpcode.None when no handler is
+    // registered for the wire value.
     //
-    // Returns (OpcodeHandle)(-1) when no handler is registered for the wire opcode or when
-    // the registry has no entry matching the PatchOpcode.
+    // opcodeValue: The wire opcode value from the application packet header
+    // data:        The application payload
+    // metadata:    Packet metadata for the packet being resolved
     //
-    // opcodeValue:  Wire opcode value from the application packet header.
-    // data:         Application payload (opcode bytes already stripped).
-    // metadata:     Packet metadata for the packet being resolved.
+    // Returns the versioned PatchOpcode, or PatchOpcode.None when the wire value has no handler.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public OpcodeHandle ResolveOpcodeHandle(ushort opcodeValue, ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public PatchOpcode ResolvePatchOpcode(OpcodeValue opcodeValue, ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (_handlers.TryGetValue(opcodeValue, out IHandleOpcodes? handler) == false)
+        PatchOpcode baseOpcode = new PatchOpcode(_patchLevel, opcodeValue, 1);
+
+        if (_handlers.TryGetValue(baseOpcode, out IHandleOpcodes? versionResolver) == false)
         {
-            return OpcodeHandle.None;
+            return PatchOpcode.None;
         }
 
-        uint version = handler.ResolveVersion(data, metadata);
-
-        PatchOpcode patchOpcode = new PatchOpcode(_patchLevel, opcodeValue, (int)version);
-        OpcodeHandle handle = GlassContext.PatchRegistry.GetOpcodeHandle(patchOpcode);
-
-        if (! handle.Exists)
-        {
-            DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeDispatch.ResolveOpcodeHandle: registry has no entry for wire opcode 0x"
-                + opcodeValue.ToString("x4") + " version " + version);
-            return OpcodeHandle.None;
-        }
-
-        return handle;
+        uint version = versionResolver.ResolveVersion(data, metadata);
+        PatchOpcode resolvedOpcode = new PatchOpcode(_patchLevel, opcodeValue, version);
+        return resolvedOpcode;
     }
 }

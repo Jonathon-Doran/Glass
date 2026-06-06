@@ -1,7 +1,9 @@
-﻿using Glass.Core.Logging;
+﻿using Glass.Core;
+using Glass.Core.Logging;
 using Glass.Data;
 using Glass.Network.Protocol.Fields;
 using Microsoft.Data.Sqlite;
+using System.Reflection.Emit;
 
 namespace Glass.Network.Protocol;
 
@@ -28,25 +30,25 @@ namespace Glass.Network.Protocol;
 public class PatchData
 {
     public readonly PatchLevel PatchLevel;
-    private readonly Dictionary<string, ushort> _opcodeValuesByName;
-    private readonly Dictionary<ushort, string> _opcodeNamesByValue;
+    private readonly Dictionary<string, OpcodeValue> _opcodeValuesByName;
+    private readonly Dictionary<OpcodeValue, string> _opcodeNamesByValue;
     private readonly Dictionary<string, FieldEncoding> _encodingsByString;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // _patchOpcodes
+    // _patchOpcodeByOpcodeHandle
     //
-    // Flat array of every PatchOpcode loaded for this patch level, indexed by OpcodeHandle.
+    // Flat array of every PatchOpcode loaded for this patch level, indexed by Opcode.
     // Allocated once in the constructor sized to the number of rows returned by
-    // LoadPatchOpcodes; never resized.  An OpcodeHandle is a position in this array, valid
+    // LoadPatchOpcodes; never resized.  An Opcode is a position in this array, valid
     // only for this PatchData instance.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private readonly PatchOpcode[] _patchOpcodes;
+    private readonly PatchOpcode[] _patchOpcodeByOpcodeHandle;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // _opcodeFields
     //
-    // Parallel array to _patchOpcodes: _opcodeFields[opcodeHandle] is the FieldDefinition[] for
-    // _patchOpcodes[opcodeHandle], or null if that opcode has no fields defined for this patch
+    // Parallel array to _patchOpcodeByOpcodeHandle: _opcodeFields[opcodeHandle] is the FieldDefinition[] for
+    // _patchOpcodeByOpcodeHandle[opcodeHandle], or null if that opcode has no fields defined for this patch
     //
     // Allocated once in the constructor sized to the number of rows returned by
     // LoadPatchOpcodes; never resized.
@@ -65,7 +67,7 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // _opcodeOptionalGroups
     //
-    // Parallel array to _patchOpcodes: _opcodeOptionalGroups[opcodeHandle] is the OptionalGroup
+    // Parallel array to _patchOpcodeByOpcodeHandle: _opcodeOptionalGroups[opcodeHandle] is the OptionalGroup
     // for the opcode at that opcodeHandle, or null if the opcode has no optional block defined
     // for this patch.  Most opcodes have no optional block; those slots stay null.
     //
@@ -78,8 +80,8 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////
     // _collectionNamesByHandle
     //
-    // Parallel array to _patchOpcodes: _collectionNamesByHandle[opcodeHandle] is the
-    // collection_name string for _patchOpcodes[opcodeHandle].  
+    // Parallel array to _patchOpcodeByOpcodeHandle: _collectionNamesByHandle[opcodeHandle] is the
+    // collection_name string for _patchOpcodeByOpcodeHandle[opcodeHandle].  
     ///////////////////////////////////////////////////////////////////////////////////////////
     private readonly string[] _collectionNamesByHandle;
     private readonly Dictionary<string, CollectionHandle> _collectionHandleByCollectionName;
@@ -99,30 +101,32 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////
     // _handlesByValue
     //
-    // Maps the wire opcode value to the OpcodeHandle assigned at load time.  Used on the
+    // Maps the wire opcode value to the Opcode assigned at load time.  Used on the
     // hot path by the dispatcher to resolve an incoming wire opcode to the opcodeHandle that
     // indexes its handler array.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private readonly Dictionary<PatchOpcode, OpcodeHandle> _handlesByOpcode;
+    private readonly Dictionary<PatchOpcode, OpcodeHandle> _opcodeHandlesByPatchOpcode;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // _opcodeNamesByOpcodeHandle
     //
-    // Parallel array to _patchOpcodes: _opcodeNamesByOpcodeHandle[opcodeHandle] is the opcode_name string
-    // for _patchOpcodes[opcodeHandle].  Allocated once in the constructor sized to the number
+    // Parallel array to _patchOpcodeByOpcodeHandle: _opcodeNamesByOpcodeHandle[opcodeHandle] is the opcode_name string
+    // for _patchOpcodeByOpcodeHandle[opcodeHandle].  Allocated once in the constructor sized to the number
     // of rows returned by LoadPatchOpcodes; never resized.  Used by GetOpcodeName and by
     // diagnostic log lines that need to render a opcodeHandle as a human-readable name.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private readonly string[] _opcodeNamesByOpcodeHandle;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // _handlesByName
+    // _opcodeHandlesByName
     //
-    // Reverse map of _opcodeNamesByOpcodeHandle: opcode_name string to OpcodeHandle.  Used by
+    // Reverse map of _opcodeNamesByOpcodeHandle: opcode_name string to Opcode.  Used by
     // GetOpcodeHandle(string) when handlers resolve the opcodes they care about at
     // construction time.  Cold path — handlers call this once per opcode they register.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private readonly Dictionary<string, OpcodeHandle> _handlesByName;
+    private readonly Dictionary<string, OpcodeHandle> _opcodeHandlesByName;
+
+    private readonly Dictionary<OpcodeValue, OpcodeHandle> _opcodeHandlesByValue;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // _pendingRelativeNames
@@ -230,8 +234,8 @@ public class PatchData
         PatchLevel = patchLevel;
         _encodingsByString = new Dictionary<string, FieldEncoding>();
         BuildEncodingMap();
-        _opcodeValuesByName = new Dictionary<string, ushort>();
-        _opcodeNamesByValue = new Dictionary<ushort, string>();
+        _opcodeValuesByName = new Dictionary<string, OpcodeValue>();
+        _opcodeNamesByValue = new Dictionary<OpcodeValue, string>();
         _optionalGroupsById = new Dictionary<uint, OptionalGroup>();
 
         _pendingGateFields = new List<PendingGateField>();
@@ -250,13 +254,14 @@ public class PatchData
                 + PatchLevel);
         }
 
-        _patchOpcodes = new PatchOpcode[opcodeCount];
+        _patchOpcodeByOpcodeHandle = new PatchOpcode[opcodeCount];
         _opcodeFields = new FieldDefinition[opcodeCount][];
         _collectionFields = new FieldDefinition[collectionCount][];
         _opcodeOptionalGroups = new OptionalGroup?[opcodeCount];
         _opcodeNamesByOpcodeHandle = new string[opcodeCount];
-        _handlesByName = new Dictionary<string, OpcodeHandle>(opcodeCount);
-        _handlesByOpcode = new Dictionary<PatchOpcode, OpcodeHandle>(opcodeCount);
+        _opcodeHandlesByName = new Dictionary<string, OpcodeHandle>(opcodeCount);
+        _opcodeHandlesByValue = new Dictionary<OpcodeValue, OpcodeHandle>(opcodeCount);
+        _opcodeHandlesByPatchOpcode = new Dictionary<PatchOpcode, OpcodeHandle>(opcodeCount);
         _pendingRelativeNames = new List<string?>();
 
         _collectionNamesByHandle = new string[collectionCount];
@@ -266,17 +271,15 @@ public class PatchData
         _collectionHandleByOpcodeHandle = new Dictionary<OpcodeHandle, CollectionHandle>(opcodeCount);
 
         LoadOpcodeMap(conn);
+        LoadPatchOpcodes(conn);
         LoadPatchCollections(conn);
         LoadOptionalGroupNames(conn);
-        LoadPatchOpcodes(conn);
+
 
         for (uint handleIndex = 0; handleIndex < opcodeCount; handleIndex++)
         {
             OpcodeHandle handle = (OpcodeHandle) handleIndex;
-            PatchOpcode patchOpcode = _patchOpcodes[handle];
-            DebugLog.Write(LogChannel.Opcodes, "PatchData ctor: loading fields for opcodeHandle="
-                + handleIndex + " opcode=0x" + patchOpcode.Opcode.ToString("X4")
-                + " version=" + patchOpcode.Version);
+            PatchOpcode patchOpcode = _patchOpcodeByOpcodeHandle[handle];
             LoadFields(handle, conn);
         }
 
@@ -293,7 +296,7 @@ public class PatchData
         _pendingFieldPredicates = null;
 
         DebugLog.Write(LogChannel.Opcodes, "PatchData ctor: loaded " +
-            _opcodeValuesByName.Count + " opcode name(s) and " + _patchOpcodes.Length + " opcode(s) for patch " + PatchLevel);
+            _opcodeValuesByName.Count + " opcode name(s) and " + _patchOpcodeByOpcodeHandle.Length + " opcode(s) for patch " + PatchLevel);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -321,7 +324,7 @@ public class PatchData
         {
             cmd.CommandText = "SELECT m.child_collection"
                 + " FROM PatchOpcode po"
-                + " JOIN Multiplicity m"
+                + " JOIN Gate m"
                 + " ON m.name = po.gate_name"
                 + " AND m.patch_date = po.patch_date"
                 + " AND m.server_type = po.server_type"
@@ -479,7 +482,7 @@ public class PatchData
     {
         using SqliteCommand cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT COUNT(*)"
-            + " FROM Multiplicity"
+            + " FROM Gate"
             + " WHERE patch_date = @patchDate"
             + " AND server_type = @serverType";
         cmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
@@ -503,7 +506,7 @@ public class PatchData
     // LoadPatchOpcodes
     //
     // Reads every PatchOpcode row for this patch level and populates the opcodeHandle-indexed
-    // structures: _patchOpcodes, _opcodeNamesByOpcodeHandle, and _handlesByName.  Row order from the
+    // structures: _patchOpcodeByOpcodeHandle, _opcodeNamesByOpcodeHandle, and _opcodeHandlesByName.  Row order from the
     // database determines opcodeHandle assignment — the first row read becomes opcodeHandle 0, the
     // second opcodeHandle 1, and so on.
     //
@@ -532,16 +535,19 @@ public class PatchData
         while (reader.Read())
         {
             int opcodeValueRaw = reader.GetInt32(0);
-            int version = reader.GetInt32(1);
+            uint version = (uint) reader.GetInt32(1);
             string opcodeName = reader.GetString(2);
-            ushort opcodeValue = (ushort)opcodeValueRaw;
+            OpcodeValue opcodeValue = (OpcodeValue) opcodeValueRaw;
             OpcodeHandle opcodeHandle = (OpcodeHandle)handleIndex;
-
-            PatchOpcode patchOpcode = new PatchOpcode(PatchLevel, opcodeValue, version);
-            _patchOpcodes[opcodeHandle] = patchOpcode;
+            PatchLevel currentPatch = GlassContext.CurrentPatchLevel;
+            PatchOpcode patchOpcode = new PatchOpcode(currentPatch, opcodeValue, version);
+            DebugLog.Write(LogChannel.Opcodes, "Register opcode " + patchOpcode +
+                " as handle " + opcodeHandle);
+            _patchOpcodeByOpcodeHandle[opcodeHandle] = patchOpcode;
             _opcodeNamesByOpcodeHandle[opcodeHandle] = opcodeName;
-            _handlesByName[opcodeName] = opcodeHandle;
-            _handlesByOpcode[patchOpcode] = opcodeHandle;
+            _opcodeHandlesByName[opcodeName] = opcodeHandle;
+            _opcodeHandlesByValue[opcodeValue] = opcodeHandle;
+            _opcodeHandlesByPatchOpcode[patchOpcode] = opcodeHandle;
 
             handleIndex = handleIndex + 1;
         }
@@ -626,8 +632,7 @@ public class PatchData
         while (reader.Read())
         {
             string opcodeName = reader.GetString(0);
-            int opcodeValueRaw = reader.GetInt32(1);
-            ushort opcodeValue = (ushort)opcodeValueRaw;
+            OpcodeValue opcodeValue = (OpcodeValue) reader.GetInt32(1);
             _opcodeValuesByName[opcodeName] = opcodeValue;
             _opcodeNamesByValue[opcodeValue] = opcodeName;
             rowCount++;
@@ -655,7 +660,7 @@ public class PatchData
     // skips dispatch.
     //
     // Parameters:
-    //   opcodeHandle  - The OpcodeHandle whose fields to load.
+    //   opcodeHandle  - The Opcode whose fields to load.
     //   conn    - An open database connection, owned by the caller. 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void LoadFields(OpcodeHandle handle, SqliteConnection conn)
@@ -819,7 +824,7 @@ public class PatchData
     // any sibling slot, including optional-field slots loaded by LoadOptionalFields.
     //
     // Parameters:
-    //   opcodeHandle  - The OpcodeHandle whose required fields to load.
+    //   opcodeHandle  - The Opcode whose required fields to load.
     //   conn    - An open database connection.
     //
     // Returns:
@@ -829,7 +834,7 @@ public class PatchData
     private List<FieldDefinition> LoadRequiredFields(OpcodeHandle handle, SqliteConnection conn)
     {
         List<FieldDefinition> fields = new List<FieldDefinition>();
-        PatchOpcode patchOpcode = _patchOpcodes[handle];
+        PatchOpcode patchOpcode = _patchOpcodeByOpcodeHandle[handle];
 
         CollectionHandle collection = CollectionHandleForOpcode(handle, conn);
         if (collection.Exists == false)
@@ -881,7 +886,7 @@ public class PatchData
                 {
                     DebugLog.Write(LogChannel.Fields, "PatchData.LoadRequiredFields: encoding '"
                         + encodingString + "' for opcode=" + _opcodeNamesByOpcodeHandle[handle]
-                        + " 0x" + patchOpcode.Opcode.ToString("X4")
+                        + " 0x" + patchOpcode.Opcode
                         + " version=" + patchOpcode.Version + " fieldName='" + fieldName
                         + "' names optional group id " + resolvedGroupId + ", treating as OptionalGroup");
                     encoding = FieldEncoding.OptionalGroup;
@@ -890,7 +895,7 @@ public class PatchData
                 {
                     DebugLog.Write(LogChannel.Fields, "PatchData.LoadRequiredFields: unrecognized encoding '"
                         + encodingString + "' for opcode=" + _opcodeNamesByOpcodeHandle[handle]
-                        + " 0x" + patchOpcode.Opcode.ToString("X4")
+                        + " 0x" + patchOpcode.Opcode
                         + " version=" + patchOpcode.Version + " fieldName='" + fieldName
                         + "', storing as Unknown");
                     encoding = FieldEncoding.Unknown;
@@ -935,7 +940,7 @@ public class PatchData
     // FieldDefinitions.
     //
     // Parameters:
-    //   opcodeHandle  - The OpcodeHandle whose optional fields to load.
+    //   opcodeHandle  - The Opcode whose optional fields to load.
     //   conn    - An open database connection.
     //
     // Returns:
@@ -944,7 +949,7 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private List<FieldDefinition> LoadOptionalFields(OpcodeHandle handle, SqliteConnection conn)
     {
-        PatchOpcode patchOpcode = _patchOpcodes[handle];
+        PatchOpcode patchOpcode = _patchOpcodeByOpcodeHandle[handle];
         List<FieldDefinition> fields = new List<FieldDefinition>();
 
         List<int> groupIds = new List<int>();
@@ -962,7 +967,7 @@ public class PatchData
                 + " ORDER BY pog.bit_offset";
             groupsCmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
             groupsCmd.Parameters.AddWithValue("@serverType", PatchLevel.ServerType);
-            groupsCmd.Parameters.AddWithValue("@opcodeValue", (int)patchOpcode.Opcode);
+            groupsCmd.Parameters.AddWithValue("@opcodeValue", (int)patchOpcode.Opcode.Value);
             groupsCmd.Parameters.AddWithValue("@version", patchOpcode.Version);
 
             using SqliteDataReader reader = groupsCmd.ExecuteReader();
@@ -1001,7 +1006,7 @@ public class PatchData
                 {
                     DebugLog.Write(LogChannel.Fields, "PatchData.LoadOptionalFields: unrecognized encoding '"
                         + encodingString + "' for opcode=" + _opcodeNamesByOpcodeHandle[handle]
-                        + " 0x" + patchOpcode.Opcode.ToString("X4")
+                        + " 0x" + patchOpcode.Opcode
                         + " version=" + patchOpcode.Version + " groupId=" + groupId
                         + " fieldName='" + fieldName + "', storing as Unknown");
                     encoding = FieldEncoding.Unknown;
@@ -1204,7 +1209,7 @@ public class PatchData
     // read is returned.  Refactor when that case shows up.
     //
     // Parameters:
-    //   opcodeHandle  - The OpcodeHandle whose optional group to load.
+    //   opcodeHandle  - The Opcode whose optional group to load.
     //   conn    - An open database connection.
     //
     // Returns:
@@ -1212,7 +1217,7 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private OptionalGroup? LoadOptionalGroup(OpcodeHandle handle, SqliteConnection conn)
     {
-        PatchOpcode patchOpcode = _patchOpcodes[handle];
+        PatchOpcode patchOpcode = _patchOpcodeByOpcodeHandle[handle];
         OptionalGroup? result = null;
 
         List<uint> groupIds = new List<uint>();
@@ -1231,7 +1236,7 @@ public class PatchData
                 + " ORDER BY pog.bit_offset";
             groupsCmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
             groupsCmd.Parameters.AddWithValue("@serverType", PatchLevel.ServerType);
-            groupsCmd.Parameters.AddWithValue("@opcodeValue", (int)patchOpcode.Opcode);
+            groupsCmd.Parameters.AddWithValue("@opcodeValue", (int)patchOpcode.Opcode.Value);
             groupsCmd.Parameters.AddWithValue("@version", patchOpcode.Version);
 
             using SqliteDataReader reader = groupsCmd.ExecuteReader();
@@ -1311,7 +1316,7 @@ public class PatchData
     // fields in their original order.
     //
     // Parameters:
-    //   opcodeHandle  - The OpcodeHandle whose field array to reorder and resolve.
+    //   opcodeHandle  - The Opcode whose field array to reorder and resolve.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void ResolveRelativeAnchors(OpcodeHandle handle)
     {
@@ -1814,22 +1819,44 @@ public class PatchData
         return false;
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetBaseOpcode
+    //
+    // Returns the version 1 PatchOpcode for the given opcode name in this patch, or
+    // PatchOpcode.None if the name is not present.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public PatchOpcode GetBaseOpcode(string opcodeName)
+    {
+        OpcodeHandle opcodeHandle;
+        bool found = _opcodeHandlesByName.TryGetValue(opcodeName, out opcodeHandle);
+        if (found == false)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "PatchData.GetBaseOpcode: unknown opcode name '"
+                + opcodeName + "' in patchLevel=" + PatchLevel + ", returning None");
+            return PatchOpcode.None;
+        }
+
+        PatchOpcode loaded = _patchOpcodeByOpcodeHandle[opcodeHandle];
+        PatchOpcode versionOne = new PatchOpcode(loaded.Level, loaded.Opcode, 1);
+        return versionOne;
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeHandle
     //
-    // Returns the OpcodeHandle for the given opcode name in this patch.  Called by handlers
+    // Returns the Opcode for the given opcode name in this patch.  Called by handlers
     // at construction time, once per opcode they care about.  Cold path.
     //
     // Parameters:
     //   opcodeName  - The logical name (e.g. "OP_PlayerProfile").
     //
     // Returns:
-    //   The OpcodeHandle for the named opcode, or OpcodeHandle.None if not in this patch.
+    //   The Opcode for the named opcode, or Opcode.None if not in this patch.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public OpcodeHandle GetOpcodeHandle(string opcodeName)
     {
         OpcodeHandle handle;
-        bool found = _handlesByName.TryGetValue(opcodeName, out handle);
+        bool found = _opcodeHandlesByName.TryGetValue(opcodeName, out handle);
         if (found == false)
         {
             DebugLog.Write(LogChannel.Opcodes, "PatchData.GetOpcodeHandle: unknown opcode name '"
@@ -1842,22 +1869,34 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeHandle
     //
-    // Returns the OpcodeHandle for the given opcode in this patch.  
+    // Returns the Opcode for the given opcode in this patch.  
     //
     // Parameters:
     //   opcode  - The opcode to lookup
     //
     // Returns:
-    //   The OpcodeHandle for the wire value, or OpcodeHandle.None if not in this patch.
+    //   The Opcode for the wire value, or Opcode.None if not in this patch.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public OpcodeHandle GetOpcodeHandle(PatchOpcode opcode)
     {
         OpcodeHandle handle;
-        bool found = _handlesByOpcode.TryGetValue(opcode, out handle);
+        bool found = _opcodeHandlesByPatchOpcode.TryGetValue(opcode, out handle);
         if (found == false)
         {
             return OpcodeHandle.None;
         }
+        return handle;
+    }
+
+    public OpcodeHandle GetOpcodeHandle(OpcodeValue opcodeValue)
+    {
+        OpcodeHandle handle;
+        bool found = _opcodeHandlesByValue.TryGetValue(opcodeValue, out handle);
+        if (found == false)
+        {
+            return OpcodeHandle.None;
+        }
+
         return handle;
     }
 
@@ -1897,10 +1936,10 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeName
     //
-    // Returns the opcode name for the given OpcodeHandle in this patch.
+    // Returns the opcode name for the given Opcode in this patch.
     //
     // Parameters:
-    //   opcodeHandle  - The OpcodeHandle whose name to return.
+    //   opcodeHandle  - The Opcode whose name to return.
     //
     // Returns:
     //   The opcode name (e.g. "OP_PlayerProfile").
@@ -1919,7 +1958,7 @@ public class PatchData
     //
     // opcodeValue:  The wire opcode value to look up.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public string GetOpcodeName(ushort opcodeValue)
+    public string GetOpcodeName(OpcodeValue opcodeValue)
     {
         string name;
         if (_opcodeNamesByValue.TryGetValue(opcodeValue, out name!))
@@ -1932,22 +1971,22 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeValue
     //
-    // Returns the wire opcode value for the given OpcodeHandle in this patch.
+    // Returns the wire opcode value for the given Opcode in this patch.
     //
     // Parameters:
-    //   opcodeHandle  - The OpcodeHandle whose wire opcode value to return.
+    //   opcodeHandle  - The Opcode whose wire opcode value to return.
     //
     // Returns:
     //   The wire opcode value (e.g. 0x6FA1), or 0 if the opcodeHandle is invalid.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public ushort GetOpcodeValue(OpcodeHandle handle)
+    public OpcodeValue GetOpcodeValue(OpcodeHandle handle)
     {
-        if (handle >= _patchOpcodes.Length)
+        if (handle >= _patchOpcodeByOpcodeHandle.Length)
         {
-            return 0;
+            return OpcodeValue.None;
         }
 
-        return _patchOpcodes[handle].Opcode;
+        return _patchOpcodeByOpcodeHandle[handle].Opcode;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1961,17 +2000,17 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////
     public int GetOpcodeCount()
     {
-        return _patchOpcodes.Length;
+        return _patchOpcodeByOpcodeHandle.Length;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetFieldDefinitions
     //
-    // Returns the FieldDefinition array for the given OpcodeHandle, or null if the opcode
+    // Returns the FieldDefinition array for the given Opcode, or null if the opcode
     // has no fields loaded for this patch.
     //
     // Parameters:
-    //   opcodeHandle  - The OpcodeHandle whose field definitions to return.
+    //   opcodeHandle  - The Opcode whose field definitions to return.
     //
     // Returns:
     //   The FieldDefinition array, or null if absent.
@@ -2001,7 +2040,7 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOptionalGroup
     //
-    // Returns the OptionalGroup for the given OpcodeHandle, or null if the opcode has no
+    // Returns the OptionalGroup for the given Opcode, or null if the opcode has no
     // optional block defined for this patch.  Most opcodes have no optional block; null
     // is the common case.
     //
@@ -2009,7 +2048,7 @@ public class PatchData
     // to look up the metadata the optional-block helper needs to walk the sub-fields.
     //
     // Parameters:
-    //   opcodeHandle  - The OpcodeHandle whose optional group to return.
+    //   opcodeHandle  - The Opcode whose optional group to return.
     //
     // Returns:
     //   The OptionalGroup, or null if the opcode has no optional block.
@@ -2049,13 +2088,13 @@ public class PatchData
     // GetFieldBitLength
     //
     // Returns the BitLength of the named field within the FieldDefinition list for the
-    // given OpcodeHandle. 
+    // given Opcode. 
     //
     // Returns 0 if the opcode has no fields loaded for this patch, or if the named field
     // is not present in the loaded definitions.
     //
     // Parameters:
-    //   opcodeHandle    - The OpcodeHandle whose field definitions to search.
+    //   opcodeHandle    - The Opcode whose field definitions to search.
     //   fieldName - The field_name column value to look up.
     //
     // Returns:
@@ -2089,14 +2128,11 @@ public class PatchData
     // IndexOfField
     //
     // Returns the SlotId of the named field within the FieldDefinition list for the
-    // given OpcodeHandle.  Called by handlers at construction time to cache field indices
+    // given Opcode.  Called by handlers at construction time to cache field indices
     // for hot-path reads from FieldBags.  Cold path.
     //
-    // Returns (SlotId)(-1) if the opcode has no fields loaded for this patch, or if
-    // the named field is not present in the loaded definitions.
-    //
     // Parameters:
-    //   opcodeHandle    - The OpcodeHandle whose field definitions to search.
+    //   opcodeHandle - The Opcode whose field definitions to search.
     //   fieldName - The field_name column value to look up.
     //
     // Returns:
@@ -2104,6 +2140,13 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////
     public SlotId IndexOfField(OpcodeHandle opcode, string fieldName)
     {
+        if (! opcode.Exists)
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.IndexOfField: opcode handle '" + opcode +
+                  "' in patchLevel=" + PatchLevel + "), does not exist.  Returning slot.None");
+            return SlotId.None;
+        }
+
         FieldDefinition[]? definitions = _opcodeFields[opcode];
         CollectionHandle collectionHandle = GetCollectionHandleFromOpcode(opcode);
         if (definitions == null)

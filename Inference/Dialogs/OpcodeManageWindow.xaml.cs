@@ -8,6 +8,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
+using Glass.Network.Protocol;
 
 namespace Inference.Dialogs;
 
@@ -58,15 +59,15 @@ public partial class OpcodeManageWindow : Window
         _presenter = presenter;
         _catalog = catalog;
         _rows = new List<OpcodeManageRow>();
-
-        ushort[] knownOpcodes = _catalog.KnownOpcodes();
+        
+        OpcodeValue[] knownOpcodes = _catalog.KnownOpcodes();
         Array.Sort(knownOpcodes);
-        HashSet<ushort> hidden = _presenter.GetHiddenOpcodes();
+        HashSet<OpcodeValue> hidden = _presenter.GetHiddenOpcodes();
 
         for (int i = 0; i < knownOpcodes.Length; i++)
         {
-            ushort opcode = knownOpcodes[i];
-            string opcodeHex = "0x" + opcode.ToString("x4");
+            OpcodeValue opcode = knownOpcodes[i];
+            string opcodeHex = "0x" + opcode;
             string opcodeName = GlassContext.PatchRegistry.GetOpcodeName(
                 GlassContext.CurrentPatchLevel, opcode);
             bool isHidden = hidden.Contains(opcode);

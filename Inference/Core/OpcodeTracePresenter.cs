@@ -34,8 +34,8 @@ public class OpcodeTracePresenter
 {
     private readonly PacketCatalog _catalog;
     private readonly ObservableCollection<OpcodeTraceRow> _rows;
-    private readonly HashSet<ushort> _hiddenOpcodes;
-    private readonly Dictionary<ushort, uint> _colorByOpcode;
+    private readonly HashSet<OpcodeValue> _hiddenOpcodes;
+    private readonly Dictionary<OpcodeValue, uint> _colorByOpcode;
     private readonly Dictionary<uint, uint> _colorByPacketIndex;
     public ObservableCollection<OpcodeTraceRow> Rows => _rows;
     private readonly Dictionary<int, string> _characterNameCache;
@@ -62,8 +62,8 @@ public class OpcodeTracePresenter
     {
         _catalog = catalog;
         _rows = new ObservableCollection<OpcodeTraceRow>();
-        _hiddenOpcodes = new HashSet<ushort>();
-        _colorByOpcode = new Dictionary<ushort, uint>();
+        _hiddenOpcodes = new HashSet<OpcodeValue>();
+        _colorByOpcode = new Dictionary<OpcodeValue, uint>();
         _colorByPacketIndex = new Dictionary<uint, uint>();
         _characterNameCache = new Dictionary<int, string>();
         _characterNameCacheLock = new object();
@@ -172,11 +172,11 @@ public class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     public void Refresh()
     {
-        ushort[] opcodes = _catalog.KnownOpcodes();
+        OpcodeValue[] opcodes = _catalog.KnownOpcodes();
         List<CatalogedPacket> accumulated = new List<CatalogedPacket>();
         for (int i = 0; i < opcodes.Length; i++)
         {
-            ushort opcode = opcodes[i];
+            OpcodeValue opcode = opcodes[i];
             if (_hiddenOpcodes.Contains(opcode))
             {
                 continue;
@@ -249,7 +249,7 @@ public class OpcodeTracePresenter
     // packetIndex:  Arrival index from the originating CatalogedPacket.
     // opcode:       Wire opcode value, used for the per-opcode fallback.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private uint ResolveColor(uint packetIndex, ushort opcode)
+    private uint ResolveColor(uint packetIndex, OpcodeValue opcode)
     {
         uint color;
         if (_colorByPacketIndex.TryGetValue(packetIndex, out color))
@@ -315,21 +315,21 @@ public class OpcodeTracePresenter
     // opcode:  Wire opcode value to apply the override to.
     // argb:    ARGB color value, or 0 to clear the override.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public void SetOpcodeColor(ushort opcode, uint argb)
+    public void SetOpcodeColor(OpcodeValue opcode, uint argb)
     {
         if (argb == 0)
         {
             _colorByOpcode.Remove(opcode);
             DebugLog.Write(LogChannel.InferenceDebug,
                 "OpcodeTracePresenter.SetOpcodeColor: cleared override for opcode=0x"
-                + opcode.ToString("x4"));
+                + opcode);
         }
         else
         {
             _colorByOpcode[opcode] = argb;
             DebugLog.Write(LogChannel.InferenceDebug,
                 "OpcodeTracePresenter.SetOpcodeColor: set opcode=0x"
-                + opcode.ToString("x4") + " color=0x" + argb.ToString("x8"));
+                + opcode + " color=0x" + argb.ToString("x8"));
         }
 
         for (int i = 0; i < _rows.Count; i++)
@@ -372,17 +372,17 @@ public class OpcodeTracePresenter
 
         PacketMetadata metadata = packet.Value.Metadata;
 
-        OpcodeHandle handle = metadata.Handle;
-        if (! handle.Exists)
+        OpcodeHandle opcodeHandle = GlassContext.PatchRegistry.GetOpcodeHandle(metadata.Opcode);
+        if (! opcodeHandle.Exists)
         {
             row.FieldText = string.Empty;
             return;
         }
 
-        FieldBag bag = GlassContext.PatchRegistry.Rent(GlassContext.CurrentPatchLevel, handle);
+        FieldBag bag = GlassContext.PatchRegistry.Rent(GlassContext.CurrentPatchLevel, opcodeHandle);
         try
         {
-            GlassContext.FieldExtractor.Extract(GlassContext.CurrentPatchLevel, handle, payload, bag);
+            GlassContext.FieldExtractor.Extract(GlassContext.CurrentPatchLevel, opcodeHandle, payload, bag);
 
             StringBuilder sb = new StringBuilder();
             BagWalker walker = bag.Walk();
@@ -1041,12 +1041,12 @@ public class OpcodeTracePresenter
     // opcodes:  The wire opcode values to update.
     // hidden:   The target IsHidden value to assign.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public void SetOpcodesHidden(IEnumerable<ushort> opcodes, bool hidden)
+    public void SetOpcodesHidden(IEnumerable<OpcodeValue> opcodes, bool hidden)
     {
-        HashSet<ushort> targetSet = new HashSet<ushort>(opcodes);
+        HashSet<OpcodeValue> targetSet = new HashSet<OpcodeValue>(opcodes);
 
         int setChanged = 0;
-        foreach (ushort opcode in targetSet)
+        foreach (OpcodeValue opcode in targetSet)
         {
             if (hidden)
             {
@@ -1116,9 +1116,9 @@ public class OpcodeTracePresenter
     // the per-opcode hide set.  The caller may iterate or mutate the
     // returned set without affecting the presenter's state.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public HashSet<ushort> GetHiddenOpcodes()
+    public HashSet<OpcodeValue> GetHiddenOpcodes()
     {
-        HashSet<ushort> snapshot = new HashSet<ushort>(_hiddenOpcodes);
+        HashSet<OpcodeValue> snapshot = new HashSet<OpcodeValue>(_hiddenOpcodes);
         DebugLog.Write(LogChannel.InferenceDebug,
             "OpcodeTracePresenter.GetHiddenOpcodes: returned snapshot of "
             + snapshot.Count + " opcode(s)");

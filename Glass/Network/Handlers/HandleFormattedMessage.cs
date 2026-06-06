@@ -16,9 +16,10 @@ namespace Glass.Network.Handlers;
 public class HandleFormattedMessage : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_FormattedMessage";
-    private OpcodeHandle _opcode;
-    private PatchRegistry _registry;
-    private PatchLevel _patchLevel;
+    private readonly PatchOpcode _opcodeHandled;
+    private readonly OpcodeHandle _opcode;
+    private readonly PatchRegistry _registry;
+    private readonly PatchLevel _patchLevel;
 
     private readonly SlotId _messageIdSlot;
 
@@ -39,6 +40,7 @@ public class HandleFormattedMessage : IHandleOpcodes
     {
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
+        _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
         _opcode = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
         _messageIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "msg_text");
@@ -108,6 +110,14 @@ public class HandleFormattedMessage : IHandleOpcodes
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
             + _opcodeName + " length=" + data.Length);
         DebugLog.Write(LogChannel.Opcodes, "Message: " + message);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeHandled
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public PatchOpcode OpcodeHandled
+    {
+        get { return _opcodeHandled; }
     }
 }
 

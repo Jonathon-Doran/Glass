@@ -16,6 +16,7 @@ namespace Glass.Network.Handlers;
 public class HandleCommonMessage : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_CommonMessage";
+    private readonly PatchOpcode _opcodeHandled;
     private OpcodeHandle _opcode;
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
@@ -45,6 +46,7 @@ public class HandleCommonMessage : IHandleOpcodes
     {
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
+        _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _opcode = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
         _senderIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "sender_name");
@@ -172,5 +174,13 @@ public class HandleCommonMessage : IHandleOpcodes
             return "/" + customNumber;
         }
         return "unknown(" + channelId.ToString("x2") + ")";
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeHandled
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public PatchOpcode OpcodeHandled
+    {
+        get { return _opcodeHandled; }
     }
 }

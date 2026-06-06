@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel;
+using Glass.Network.Protocol;
 
 namespace Inference.Models;
 
@@ -27,7 +28,7 @@ public class OpcodeManageRow : INotifyPropertyChanged
     //               "<Unknown>" when the opcode is not in the patch.
     // isHidden:     Initial value of the cell's checkbox.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public OpcodeManageRow(ushort opcodeValue, string opcodeHex,
+    public OpcodeManageRow(OpcodeValue opcodeValue, string opcodeHex,
         string opcodeName, bool isHidden)
     {
         OpcodeValue = opcodeValue;
@@ -36,7 +37,7 @@ public class OpcodeManageRow : INotifyPropertyChanged
         _isHidden = isHidden;
     }
 
-    public ushort OpcodeValue { get; }
+    public OpcodeValue OpcodeValue { get; }
     public string OpcodeHex { get; }
     public string OpcodeName { get; }
 

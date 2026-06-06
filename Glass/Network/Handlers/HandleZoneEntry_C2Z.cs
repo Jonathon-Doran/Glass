@@ -11,45 +11,48 @@ using System.Text;
 namespace Glass.Network.Handlers;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// HandleHpUpdate
+// HandleZoneEntry_C2Z
 //
-// Handles OP_PlayerProfile packets.  
+// Handles OP_ZoneEntry packets.  Client-to-zone
+// packets contain the player's own zone entry with a different layout.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleHpUpdate : IHandleOpcodes
+public class HandleZoneEntry_C2Z: IHandleOpcodes
 {
-    private readonly string _opcodeName = "OP_HpUpdate";
+    private readonly string _opcodeName = "OP_ZoneEntry_C2Z";
     private readonly PatchOpcode _opcodeHandled;
     private readonly OpcodeHandle _handle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
 
-    private readonly SlotId _playerIdSlot;
-    private readonly SlotId _currentHPIdSlot;
-    private readonly SlotId _maxHPIdSlot;
+    private readonly SlotId _nameSlot;
+    private readonly SlotId _spawnIdSlot;
+    private readonly SlotId _levelSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleHpUpdate (constructor)
+    // HandleZoneEntry_Z2C (constructor)
     //
-    // Resolves the wire opcode and loads the field definitions for OP_HpUpdate from
+    // Resolves the wire opcode and loads the field definitions for OP_ZoneEntry from
     // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
     // Caches the index of each field the handler reads so the hot path can access the bag
     // by integer index without name lookup.
     //
-    // If the current patch does not define OP_HpUpdate, GetOpcodeValue returns 0 and
+    // If the current patch does not define OP_ZoneEntry, GetOpcodeValue returns 0 and
     // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
     // with a zero opcode, so this handler simply will not receive packets.  All field
     // index lookups resolve to -1 in that case but are never consulted.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleHpUpdate()
+    public HandleZoneEntry_C2Z()
     {
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
-        _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
+        PatchOpcode baseOpcode = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
+        _opcodeHandled = baseOpcode with { Version = 2 };
         _handle = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
-        _playerIdSlot = _registry.IndexOfField(_patchLevel, _handle, "player_id");
-        _currentHPIdSlot = _registry.IndexOfField(_patchLevel, _handle, "current_hp");
-        _maxHPIdSlot = _registry.IndexOfField(_patchLevel, _handle, "max_hp");
+        DebugLog.Write(LogChannel.Opcodes, "ZoneEntry C2Z registering opcode " + _opcodeHandled);
+        _nameSlot = _registry.IndexOfField(_patchLevel, _handle, "name");
+        _spawnIdSlot = _registry.IndexOfField(_patchLevel, _handle, "spawn_id");
+        _levelSlot = _registry.IndexOfField(_patchLevel, _handle, "level");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -72,61 +75,41 @@ public class HandleHpUpdate : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandlePacket
+    // HandleClientToZone
     //
-    // Dispatches to direction-specific handlers.
+    // Processes client-to-zone OP_ZoneEntry. 
     //
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        switch (metadata.Channel)
-        {
-            case SoeConstants.StreamId.StreamZoneToClient:
-                HandleZoneToClient(data, metadata);
-                break;
-        }
+        DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_C2Z.HandleClientToZone: "
+            + _opcodeName + " length=" + data.Length);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleZoneToClient
+    // ResolveVersion
     //
-    // Processes zone-to-client traffic
+    // Returns the opcode version for a packet.
     //
-    // data:      The application payload
-    // metadata:  Packet metadata (timestamp, source/dest)
+    // data:      The application payload.
+    // metadata:  Packet metadata
+    //
+    // Returns:   The resolved version number.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        Character? character = null;
-
-        FieldBag bag = _registry.Rent(_patchLevel, _handle);
-        try
+        switch (metadata.Channel)
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
+            case SoeConstants.StreamId.StreamZoneToClient:
+                return 1;
 
-            uint playerId = bag.GetUIntAt(_playerIdSlot);
-
-            character = CharacterRepository.Instance.GetById((int) playerId);
-
-            if (character == null)
-            {
-                DebugLog.Write(LogChannel.Opcodes, _opcodeName + ": no Character with ID '" + playerId + "' in repository; fields not stored.");
-                return;
-            }
-
-            character.MaxHP = bag.GetUIntAt(_maxHPIdSlot);
-            character.CurrentHP = bag.GetUIntAt(_currentHPIdSlot);
-        }
-        finally
-        {
-            bag.Release();
+            case SoeConstants.StreamId.StreamClientToZone:
+                return 2;
         }
 
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-            + _opcodeName + " length=" + data.Length);
-        DebugLog.Write(LogChannel.Opcodes, "HP at " + character.CurrentHP + " / " + character.MaxHP);
+        return 0;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -137,5 +120,3 @@ public class HandleHpUpdate : IHandleOpcodes
         get { return _opcodeHandled; }
     }
 }
-
-

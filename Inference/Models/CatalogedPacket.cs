@@ -23,7 +23,7 @@ namespace Inference.Models;
 public readonly struct CatalogedPacket
 {
     public PacketMetadata Metadata { get; }
-    public ushort Opcode { get; }
+    public OpcodeValue Opcode { get; }
     public RetainedBuffer Payload { get; }
     public uint PacketIndex { get; init; }
 
@@ -40,7 +40,7 @@ public readonly struct CatalogedPacket
     // opcode:    Wire opcode value.  Not resolved to a name here.
     // payload:   RetainedBuffer over the long-lived copy of the bytes.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public CatalogedPacket(PacketMetadata metadata, ushort opcode, RetainedBuffer payload)
+    public CatalogedPacket(PacketMetadata metadata, OpcodeValue opcode, RetainedBuffer payload)
     {
         Metadata = metadata;
         Opcode = opcode;

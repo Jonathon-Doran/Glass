@@ -11,9 +11,10 @@ namespace Glass.Network.Handlers;
 public class HandleNpcMoveUpdate : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_NpcMoveUpdate";
-    private OpcodeHandle _handle;
-    private PatchRegistry _registry;
-    private PatchLevel _patchLevel;
+    private readonly PatchOpcode _opcodeHandled;
+    private readonly OpcodeHandle _handle;
+    private readonly PatchRegistry _registry;
+    private readonly PatchLevel _patchLevel;
 
     private readonly SlotId _spawnIdSlot;
     private readonly SlotId _xPosSlot;
@@ -46,7 +47,8 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
     {
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
-        _handle = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
+        _handle = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
         _spawnIdSlot = _registry.IndexOfField(_patchLevel, _handle, "spawn_id");
         _xPosSlot = _registry.IndexOfField(_patchLevel, _handle, "x_pos");
@@ -177,5 +179,13 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
         {
             bag.Release();
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeHandled
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public PatchOpcode OpcodeHandled
+    {
+        get { return _opcodeHandled; }
     }
 }

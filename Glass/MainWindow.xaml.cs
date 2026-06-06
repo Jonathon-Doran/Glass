@@ -873,17 +873,17 @@ public partial class MainWindow : Window
                     DebugLog.Write(LogChannel.Network, "Opcode summary for " + SoeConstants.StreamNames[streamId]
                         + " port " + kvp.Key + ":");
 
-                    List<KeyValuePair<ushort, int>> sorted =
-                        new List<KeyValuePair<ushort, int>>(stream.OpcodeCount);
+                    List<KeyValuePair<OpcodeValue, int>> sorted =
+                        new List<KeyValuePair<OpcodeValue, int>>(stream.OpcodeCount);
                     sorted.Sort((a, b) => a.Key.CompareTo(b.Key));
 
-                    foreach (KeyValuePair<ushort, int> op in sorted)
+                    foreach (KeyValuePair<OpcodeValue, int> op in sorted)
                     {
                         string name = GlassContext.PatchRegistry.GetOpcodeName(patchLevel, op.Key);
 
  //                       string handled = OpcodeDispatch.Instance.IsOpcodeHandled(op.Key)
  //                           ? "+" : " ";
-                        DebugLog.Write(LogChannel.Network, "  " + " 0x" + op.Key.ToString("x4") + " (" + name + ")"
+                        DebugLog.Write(LogChannel.Network, "  " + " 0x" + op.Key + " (" + name + ")"
                             + ": " + op.Value + " times");
                     }
                 }

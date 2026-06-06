@@ -17,9 +17,10 @@ namespace Glass.Network.Handlers;
 public class HandleSetChatServer : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_SetChatServer";
+    private readonly PatchOpcode _opcodeHandled;
     private readonly OpcodeHandle _opcode;
     private readonly PatchRegistry _registry;
-    private PatchLevel _patchLevel;
+    private readonly PatchLevel _patchLevel;
 
     private readonly SlotId _payloadSlot;
     private readonly SlotId _chatServerSlot;
@@ -49,6 +50,7 @@ public class HandleSetChatServer : IHandleOpcodes
     {
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
+        _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _opcode = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
         _payloadSlot =         _registry.IndexOfField(_patchLevel, _opcode, "csv_payload");
@@ -152,8 +154,13 @@ public class HandleSetChatServer : IHandleOpcodes
             + " character=" + characterName
             + " chatServer=" + chatServer
             + " chatPort=" + chatPort);
-
-
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeHandled
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public PatchOpcode OpcodeHandled
+    {
+        get { return _opcodeHandled; }
+    }
 }

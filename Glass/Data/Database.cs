@@ -417,6 +417,10 @@ public class Database
         {
             ApplyMigration(conn, 52, Migration_052);
         }
+        if (version < 53)
+        {
+            ApplyMigration(conn, 53, Migration_053);
+        }
     }
 
     private int GetSchemaVersion()
@@ -1369,12 +1373,16 @@ public class Database
     ";
     
     private const string Migration_051 = @"
-        ALTER TABLE Gate RENAME TO Gate;
+        ALTER TABLE Gate RENAME TO Multiplicity;
     ";
 
     private const string Migration_052 = @"
         ALTER TABLE PacketField ADD COLUMN predicate TEXT;
     ";
+    private const string Migration_053 = @"
+        ALTER TABLE Multiplicity RENAME TO Gate;
+    ";
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"

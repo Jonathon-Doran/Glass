@@ -17,9 +17,10 @@ namespace Glass.Network.Handlers;
 public class HandleClientUpdate : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_ClientUpdate";
-    private OpcodeHandle _opcode;
-    private PatchRegistry _registry;
-    private PatchLevel _patchLevel;
+    private readonly OpcodeHandle _opcode;
+    private readonly PatchOpcode _opcodeHandled;
+    private readonly PatchRegistry _registry;
+    private readonly PatchLevel _patchLevel;
 
     private readonly SlotId _sequenceSlot;
     private readonly SlotId _playerIdSlot;
@@ -44,6 +45,7 @@ public class HandleClientUpdate : IHandleOpcodes
     {
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
+        _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _opcode = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
 
         _sequenceSlot = _registry.IndexOfField(_patchLevel, _opcode, "sequence");
@@ -136,5 +138,13 @@ public class HandleClientUpdate : IHandleOpcodes
         {
             bag.Release();
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeHandled
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public PatchOpcode OpcodeHandled
+    {
+        get { return _opcodeHandled; }
     }
 }

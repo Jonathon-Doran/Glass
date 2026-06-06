@@ -238,7 +238,7 @@ public class PatchRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeHandle
     //
-    // Returns the OpcodeHandle for the given opcode name in the given patch level.  Looks
+    // Returns the Opcode for the given opcode name in the given patch level.  Looks
     // up the patch in the loaded set and delegates to the PatchData.
     //
     // Throws InvalidOperationException if the patch level is not loaded.  Callers must
@@ -250,7 +250,7 @@ public class PatchRegistry
     //   opcodeName  - The logical name (e.g. "OP_PlayerProfile").
     //
     // Returns:
-    //   The OpcodeHandle for the named opcode, or OpcodeHandle.None if not in the patch.
+    //   The Opcode for the named opcode, or Opcode.None if not in the patch.
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     public OpcodeHandle GetOpcodeHandle(PatchLevel patchLevel, string opcodeName)
@@ -262,7 +262,7 @@ public class PatchRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeHandle
     //
-    // Returns the OpcodeHandle for the (patch level, wire opcode value, version) tuple
+    // Returns the Opcode for the (patch level, wire opcode value, version) tuple
     // carried by the supplied PatchOpcode.  Looks up the patch in the loaded set and
     // delegates to the PatchData.
     //
@@ -273,12 +273,34 @@ public class PatchRegistry
     //                  Its Level must already be loaded.
     //
     // Returns:
-    //   The OpcodeHandle for the row, or OpcodeHandle.None if no matching row exists.
+    //   The Opcode for the row, or Opcode.None if no matching row exists.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public OpcodeHandle GetOpcodeHandle(PatchOpcode patchOpcode)
     {
         PatchData patchData = FindPatchData(patchOpcode.Level);
         return patchData.GetOpcodeHandle(patchOpcode);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetOpcodeHandle
+    //
+    // Returns the Opcode for the opcode value.
+    // carried by the supplied PatchOpcode.  Looks up the patch in the loaded set and
+    // delegates to the PatchData.
+    //
+    // Throws InvalidOperationException if the patch level is not loaded.
+    //
+    // Parameters:
+    //   patchOpcode  - The (PatchLevel, Opcode, Version) tuple identifying the row.
+    //                  Its Level must already be loaded.
+    //
+    // Returns:
+    //   The Opcode for the row, or Opcode.None if no matching row exists.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public OpcodeHandle GetOpcodeHandle(PatchLevel patchLevel, OpcodeValue value)
+    {
+        PatchData patchData = FindPatchData(patchLevel);
+        return patchData.GetOpcodeHandle(value);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -324,30 +346,51 @@ public class PatchRegistry
     //   The opcode name (e.g. "OP_PlayerProfile"), or "Unknown" if not in the patch.
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    public string GetOpcodeName(PatchLevel patchLevel, ushort opcodeValue)
+    public string GetOpcodeName(PatchLevel patchLevel, OpcodeValue opcodeValue)
     {
         PatchData patchData = FindPatchData(patchLevel);
         return patchData.GetOpcodeName(opcodeValue);
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetBaseOpcode
+    //
+    // Returns the base PatchOpcode for the given opcode name in the given patch level, or
+    // PatchOpcode.None if the name is not present.  Looks up the patch in the loaded set and
+    // delegates to the PatchData.
+    //
+    // Throws InvalidOperationException if the patch level is not loaded.
+    //
+    // Parameters:
+    //   patchLevel  - The patch identifier.  Must already be loaded.
+    //   opcodeName  - The logical name (e.g. "OP_PlayerProfile").
+    //
+    // Returns:
+    //   The base PatchOpcode for the named opcode, or PatchOpcode.None if not in the patch.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public PatchOpcode GetBaseOpcode(PatchLevel patchLevel, string opcodeName)
+    {
+        PatchData patchData = FindPatchData(patchLevel);
+        return patchData.GetBaseOpcode(opcodeName);
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeValue
     //
-    // Returns the wire opcode value for the given OpcodeHandle in the given patch level.
+    // Returns the wire opcode value for the given Opcode in the given patch level.
     // Looks up the patch in the loaded set and delegates to the PatchData.
     //
     // Throws InvalidOperationException if the patch level is not loaded.
     //
     // Parameters:
     //   patchLevel  - The patch identifier.  Must already be loaded.
-    //   handle      - The OpcodeHandle whose wire opcode value to return.
+    //   handle      - The Opcode whose wire opcode value to return.
     //
     // Returns:
     //   The wire opcode value (e.g. 0x6FA1).
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    public ushort GetOpcodeValue(PatchLevel patchLevel, OpcodeHandle handle)
+    public OpcodeValue GetOpcodeValue(PatchLevel patchLevel, OpcodeHandle handle)
     {
         PatchData patchData = FindPatchData(patchLevel);
         return patchData.GetOpcodeValue(handle);
@@ -405,7 +448,7 @@ public class PatchRegistry
     //
     // Parameters:
     //   patchLevel  - The patch identifier.  Must already be loaded.
-    //   handle      - The OpcodeHandle of the calling handler.  Resolved to an opcode
+    //   handle      - The Opcode of the calling handler.  Resolved to an opcode
     //                 name via the PatchData and stamped on the bag.
     //
     // Returns:
@@ -424,7 +467,7 @@ public class PatchRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////
     // IndexOfField
     //
-    // Returns the SlotId of the named field within the OpcodeHandle's field
+    // Returns the SlotId of the named field within the Opcode's field
     // definitions in the given patch level.  Looks up the patch in the loaded set and
     // delegates to the PatchData.
     //
@@ -432,7 +475,7 @@ public class PatchRegistry
     //
     // Parameters:
     //   patchLevel  - The patch identifier.  Must already be loaded.
-    //   handle      - The OpcodeHandle whose field definitions to search.
+    //   handle      - The Opcode whose field definitions to search.
     //   fieldName   - The field_name column value to look up.
     //
     // Returns:
@@ -469,7 +512,7 @@ public class PatchRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetFields
     //
-    // Returns the FieldDefinition array for the given OpcodeHandle in the given patch
+    // Returns the FieldDefinition array for the given Opcode in the given patch
     // level.  Looks up the patch in the loaded set and delegates to the PatchData.
     //
     // Throws InvalidOperationException if the patch level is not loaded.
@@ -478,7 +521,7 @@ public class PatchRegistry
     //
     // Parameters:
     //   patchLevel  - The patch identifier.  Must already be loaded.
-    //   handle      - The OpcodeHandle whose field definitions to return.
+    //   handle      - The Opcode whose field definitions to return.
     //
     // Returns:
     //   The FieldDefinition array, or null if absent.
@@ -515,7 +558,7 @@ public class PatchRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOptionalGroup
     //
-    // Returns the OptionalGroup for the given OpcodeHandle in the given patch level, or
+    // Returns the OptionalGroup for the given Opcode in the given patch level, or
     // null if the opcode has no optional block defined for this patch.  Most opcodes have
     // no optional block; null is the common case.
     //
@@ -525,7 +568,7 @@ public class PatchRegistry
     //
     // Parameters:
     //   patchLevel  - The patch identifier.  Must already be loaded.
-    //   handle      - The OpcodeHandle whose optional group to return.
+    //   handle      - The Opcode whose optional group to return.
     //
     // Returns:
     //   The OptionalGroup, or null if the opcode has no optional block.

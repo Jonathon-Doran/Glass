@@ -16,9 +16,10 @@ namespace Glass.Network.Handlers;
 public class HandleMovementHistory : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_MovementHistory";
-    private OpcodeHandle _opcode;
-    private PatchRegistry _registry;
-    private PatchLevel _patchLevel;
+    private readonly PatchOpcode _opcodeHandled;
+    private readonly OpcodeHandle _opcode;
+    private readonly PatchRegistry _registry;
+    private readonly PatchLevel _patchLevel;
 
     private bool _tooSmallObserved = false;
     private bool _oddSizeObserved = false;
@@ -48,8 +49,8 @@ public class HandleMovementHistory : IHandleOpcodes
     {
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
+        _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
         _opcode = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, _opcodeName);
-
 
         _xPosSlot = _registry.IndexOfField(_patchLevel, _opcode, "x_pos");
         _yPosSlot = _registry.IndexOfField(_patchLevel, _opcode, "y_pos");
@@ -213,6 +214,14 @@ public class HandleMovementHistory : IHandleOpcodes
             DebugLog.Write(LogChannel.Opcodes, name + " seen at offset " + index
                 + " id=(0x" + spawnId.ToString("x4") + ")");
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeHandled
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public PatchOpcode OpcodeHandled
+    {
+        get { return _opcodeHandled; }
     }
 
     private static readonly Dictionary<ushort, string> _knownSpawns = new Dictionary<ushort, string>

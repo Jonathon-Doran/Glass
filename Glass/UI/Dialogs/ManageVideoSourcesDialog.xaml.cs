@@ -335,7 +335,7 @@ public partial class ManageVideoSourcesDialog : Window
         _activeOverlay.BorderColor = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2AFFD7"));
         _activeOverlay.HandleColor = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2AFFD7"));
 
-        // Handle overlay closure from X button or other means
+        // Opcode overlay closure from X button or other means
         _activeOverlay.Closed += (s, args) =>
         {
             DebugLog.Write(LogChannel.General, "ManageVideoSourcesDialog: overlay closed externally.");

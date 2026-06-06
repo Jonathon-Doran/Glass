@@ -4,6 +4,7 @@ using Inference.Core;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using Glass.Network.Protocol;
 using static Glass.Network.Protocol.SoeConstants;
 
 namespace Inference.Models;
@@ -58,14 +59,14 @@ public class OpcodeTraceRow : INotifyPropertyChanged
     // sourcePort:      UDP source port from the packet's metadata.
     // destPort:        UDP destination port from the packet's metadata.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public OpcodeTraceRow(uint packetIndex, string timestampLocal, ushort opcodeValue,
+    public OpcodeTraceRow(uint packetIndex, string timestampLocal, OpcodeValue opcodeValue,
         string opcodeName, StreamId channel, string characterName, int length,
         RetainedBuffer payload, ushort sourcePort, ushort destPort)
     {
         PacketIndex = packetIndex;
         TimestampLocal = timestampLocal;
         OpcodeValue = opcodeValue;
-        OpcodeHex = "0x" + opcodeValue.ToString("X4");
+        OpcodeHex = "0x" + opcodeValue;
         OpcodeName = opcodeName;
         Channel = channel;
         CharacterName = characterName;
@@ -86,7 +87,7 @@ public class OpcodeTraceRow : INotifyPropertyChanged
     public uint PacketIndex { get; }
     public string TimestampLocal { get; }
     public string OpcodeHex { get; }
-    public ushort OpcodeValue { get; }
+    public OpcodeValue OpcodeValue { get; }
     public string OpcodeName { get; }
     public StreamId Channel { get; }
     public ushort SourcePort { get; }

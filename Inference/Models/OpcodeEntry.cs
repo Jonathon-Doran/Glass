@@ -1,6 +1,6 @@
 using System.ComponentModel;
 using static Glass.Network.Protocol.SoeConstants;
-
+using Glass.Network.Protocol;
 namespace Inference.Models;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -126,5 +126,5 @@ public class OpcodeEntry : INotifyPropertyChanged
     // The numeric opcode value.  Not displayed in the grid, but used for
     // dictionary lookups in the handler.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public ushort RawOpcode { get; init; }
+    public OpcodeValue RawOpcode { get; init; }
 }

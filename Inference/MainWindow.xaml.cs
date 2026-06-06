@@ -164,9 +164,9 @@ public partial class MainWindow : Window
         DebugLog.AddHandler(LogSink.Aux2LogFile, memoryLogHandler);
         DebugLog.Route(LogChannel.Memory, LogSink.Aux2LogFile);
 
-        GlassDebugLogHandler fieldsLogHandler = new GlassDebugLogHandler("fields.log");
+        GlassDebugLogHandler fieldsLogHandler = new GlassDebugLogHandler("low_network.log");
         DebugLog.AddHandler(LogSink.Aux3LogFile, fieldsLogHandler);
-        DebugLog.Route(LogChannel.Fields, LogSink.Aux3LogFile);
+        DebugLog.Route(LogChannel.LowNetwork, LogSink.Aux3LogFile);
 
         // The inference tab, just inference messages
         GlassConsoleLogHandler inferenceTabHandler = new GlassConsoleLogHandler(InferenceLogOutput, InferenceLogScroller);
@@ -2490,7 +2490,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        HashSet<ushort> opcodes = new HashSet<ushort>();
+        HashSet<OpcodeValue> opcodes = new HashSet<OpcodeValue>();
         for (int i = 0; i < selected.Count; i++)
         {
             OpcodeTraceRow? row = selected[i] as OpcodeTraceRow;
@@ -2880,7 +2880,7 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     // HandleISXGlassMessage
     //
-    // Handle a message from the ISXGlass extension.  These are typically session management
+    // Opcode a message from the ISXGlass extension.  These are typically session management
     // notifications that must be passed on.
     //
     // msg:  The text of the message to process
@@ -3033,7 +3033,7 @@ public partial class MainWindow : Window
     // metadata:  Unused by this handler.  PacketCatalog has already recorded
     //            the metadata alongside the retained payload.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleAppPacket(ReadOnlySpan<byte> data, ushort opcode, PacketMetadata metadata)
+    private void HandleAppPacket(ReadOnlySpan<byte> data, OpcodeValue opcode, PacketMetadata metadata)
     {
         Dispatcher.BeginInvoke(() =>
         {
