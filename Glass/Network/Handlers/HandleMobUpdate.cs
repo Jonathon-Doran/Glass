@@ -109,7 +109,7 @@ public class HandleMobUpdate : IHandleOpcodes
         float yPos;
         float zPos;
 
-        FieldBag bag = _registry.Rent(_patchLevel, _opcode);
+        FieldBag bag = _registry.Rent(_opcodeHandled);
         try
         {
             GlassContext.FieldExtractor.Extract(_patchLevel, _opcode, data, bag);

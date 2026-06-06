@@ -64,20 +64,35 @@ public class OpcodeRowPresenter
     //
     // opcode:  Wire opcode value just delivered by the bus.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public void Update(OpcodeValue opcode)
+    public void Update(PacketMetadata metadata)
     {
-        OpcodeStats? snapshot = _catalog.StatsFor(opcode);
+        OpcodeValue wireValue;
+
+        // use the PatchOpcode as the primary ID, but fallback to the wire value for unknown opcodes
+        if (metadata.Opcode.Exists)
+        {
+            wireValue = metadata.Opcode.Value;
+
+            if (wireValue != metadata.WireValue)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "Wirevalue " + metadata.WireValue + 
+                    " != opcode value " + metadata.Opcode.Value);
+            }
+        }
+        else
+        {
+            wireValue = metadata.WireValue;
+        }
+        
+        OpcodeStats? snapshot = _catalog.StatsFor(wireValue);
         if (snapshot == null)
         {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "OpcodeRowPresenter.Update: no stats for opcode=0x"
-                + opcode + ", catalog out of sync");
             return;
         }
         OpcodeStats stats = snapshot.Value;
 
         OpcodeEntry? row;
-        if (_rowByOpcode.TryGetValue(opcode, out row))
+        if (_rowByOpcode.TryGetValue(wireValue, out row))
         {
             row.Count = row.Count + 1;
             row.MinSize = stats.MinSize;
@@ -85,20 +100,20 @@ public class OpcodeRowPresenter
             return;
         }
 
-        string opcodeHex = "0x" + opcode;
+        string opcodeHex = "0x" + wireValue;
+
         PatchLevel currentPatchLevel = GlassContext.CurrentPatchLevel;
-        string name = GlassContext.PatchRegistry.GetOpcodeName(currentPatchLevel, opcode);
+
+        string name = GlassContext.PatchRegistry.GetOpcodeName(currentPatchLevel, metadata.Opcode);
+
         row = new OpcodeEntry(opcodeHex, stats.Channel, stats.MinSize)
         {
-            RawOpcode = opcode,
+            RawOpcode = wireValue,
         };
         row.Name = name;
-        row.Count = _catalog.CountFor(opcode);
+        row.Count = _catalog.CountFor(wireValue);
         _rows.Add(row);
-        _rowByOpcode[opcode] = row;
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "OpcodeRowPresenter.Update: added row for opcode="
-            + opcodeHex + " name=" + name + " channel=" + stats.Channel);
+        _rowByOpcode[wireValue] = row;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

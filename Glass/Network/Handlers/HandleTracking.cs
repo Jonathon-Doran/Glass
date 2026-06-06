@@ -132,7 +132,7 @@ public class HandleTrackingUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleV2Packet(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldBag bag = _registry.Rent(_patchLevel, _handle);
+        FieldBag bag = _registry.Rent(_opcodeHandled);
         try
         {
             GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
@@ -182,7 +182,7 @@ public class HandleTrackingUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private uint GetPayloadVersion(ReadOnlySpan<byte> data)
     {
-        FieldBag bag = _registry.Rent(_patchLevel, _handle);
+        FieldBag bag = _registry.Rent(_opcodeHandled);
 
         try
         {
@@ -234,7 +234,7 @@ public class HandleTrackingUpdate : IHandleOpcodes
 
     public uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldBag bag = _registry.Rent(_patchLevel, _handle);
+        FieldBag bag = _registry.Rent(_opcodeHandled);
 
         try
         {

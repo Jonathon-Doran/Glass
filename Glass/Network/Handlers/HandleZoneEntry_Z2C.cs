@@ -90,7 +90,7 @@ public class HandleZoneEntry_Z2C : IHandleOpcodes
         uint spawn_id;
         uint level;
 
-        FieldBag bag = _registry.Rent(_patchLevel, _handle);
+        FieldBag bag = _registry.Rent(_opcodeHandled);
         try
         {
             GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);

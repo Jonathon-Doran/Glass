@@ -26,13 +26,10 @@ public class PacketBus
     //
     // data:      The application payload, opcode bytes already stripped.  Valid
     //            only for the duration of the call.
-    // opcode:    The wire opcode value.  Subscribers that care about opcode
-    //            identity (name) resolve it via PatchRegistry.
     // metadata:  Source/dest IP and port, timestamp, and frame number from the
     //            underlying UDP packet that the message arrived on.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public delegate void Handler(ReadOnlySpan<byte> data,
-                                  OpcodeValue opcode,
                                   PacketMetadata metadata);
 
     private readonly List<Handler> _subscribers;
@@ -149,7 +146,7 @@ public class PacketBus
 
             try
             {
-                handler(data, opcode, metadata);
+                handler(data, metadata);
             }
             catch (Exception ex)
             {

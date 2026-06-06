@@ -103,7 +103,7 @@ public class HandleClientUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldBag bag = _registry.Rent(_patchLevel, _opcode);
+        FieldBag bag = _registry.Rent(_opcodeHandled);
 
         try
         {

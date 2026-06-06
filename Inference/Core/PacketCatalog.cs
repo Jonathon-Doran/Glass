@@ -79,17 +79,20 @@ public class PacketCatalog
     //
     // data:      Application payload, opcode bytes already stripped.  Valid
     //            only for the duration of this call.
-    // opcode:    Wire opcode value.
     // metadata:  Source/dest IP and port, timestamp, frame number, session,
     //            and channel.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleAppPacket(ReadOnlySpan<byte> data, OpcodeValue opcode, PacketMetadata metadata)
+    private void HandleAppPacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
+        OpcodeValue wireValue = metadata.WireValue;
+
         int length = data.Length;
         RetainedBuffer payload = _retainedBufferPool.Retain(data);
         CatalogedPacket cataloged;
         lock (_lock)
         {
+
+            OpcodeValue opcode = metadata.Opcode.Value;
             cataloged = new CatalogedPacket(metadata, opcode, payload)
             {
                 PacketIndex = (uint)_packets.Count,
@@ -97,24 +100,20 @@ public class PacketCatalog
             _packets.Add(cataloged);
 
             List<CatalogedPacket>? bucket;
-            if (!_byOpcode.TryGetValue(opcode, out bucket))
+            if (!_byOpcode.TryGetValue(wireValue, out bucket))
             {
                 bucket = new List<CatalogedPacket>();
-                _byOpcode[opcode] = bucket;
+                _byOpcode[wireValue] = bucket;
 
                 OpcodeStats stats = new OpcodeStats();
                 stats.Channel = metadata.Channel;
                 stats.MinSize = length;
                 stats.MaxSize = length;
-                _stats[opcode] = stats;
-
-                DebugLog.Write(LogChannel.InferenceDebug,
-                    "PacketCatalog.HandleAppPacket: first packet for opcode=0x"
-                    + opcode + " channel=" + metadata.Channel + " size=" + length);
+                _stats[wireValue] = stats;
             }
             else
             {
-                OpcodeStats stats = _stats[opcode];
+                OpcodeStats stats = _stats[wireValue];
                 if (length < stats.MinSize)
                 {
                     stats.MinSize = length;
@@ -123,7 +122,7 @@ public class PacketCatalog
                 {
                     stats.MaxSize = length;
                 }
-                _stats[opcode] = stats;
+                _stats[wireValue] = stats;
             }
             bucket.Add(cataloged);
         }
@@ -184,12 +183,6 @@ public class PacketCatalog
             }
         }
 
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "PacketCatalog.PacketsFor: opcode=0x" + opcode
-            + " channel=" + (channel?.ToString() ?? "any")
-            + " session=" + (sessionId?.ToString() ?? "any")
-            + " returned=" + results.Count);
-
         return results;
     }
 
@@ -211,9 +204,9 @@ public class PacketCatalog
             OpcodeStats stats;
             if (!_stats.TryGetValue(opcode, out stats))
             {
-                DebugLog.Write(LogChannel.InferenceDebug,
+/*                DebugLog.Write(LogChannel.InferenceDebug,
                     "PacketCatalog.StatsFor: no stats for opcode=0x"
-                    + opcode);
+                    + opcode);*/
                 return null;
             }
             return stats;

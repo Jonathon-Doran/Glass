@@ -64,7 +64,7 @@ public partial class PacketDetailWindow : Window
             + " opcode=" + opcodeHex + " (" + opcodeName + ")"
             + " length=" + payloadLength);
 
-        FieldTextBox.Text = ExtractFieldText((OpcodeValue) packet.Opcode, payload);
+        FieldTextBox.Text = ExtractFieldText(packet.Metadata.Opcode, payload);
         HexDumpTextBox.Text = HexDumpFormatter.Format(payload, int.MaxValue);
     }
 
@@ -106,20 +106,19 @@ public partial class PacketDetailWindow : Window
     // opcode:   Wire opcode value.
     // payload:  Bytes to extract from.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private static string ExtractFieldText(OpcodeValue opcode, ReadOnlySpan<byte> payload)
+    private static string ExtractFieldText(PatchOpcode patchOpcode, ReadOnlySpan<byte> payload)
     {
-        PatchOpcode patchOpcode = new PatchOpcode(GlassContext.CurrentPatchLevel, opcode);
         OpcodeHandle handle = GlassContext.PatchRegistry.GetOpcodeHandle(patchOpcode);
 
         if (! handle.Exists)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "PacketDetailWindow.ExtractFieldText: opcode=0x" + opcode
+                "PacketDetailWindow.ExtractFieldText: opcode=0x" + patchOpcode
                 + " not in active patch, no fields available");
             return string.Empty;
         }
 
-        FieldBag bag = GlassContext.PatchRegistry.Rent(GlassContext.CurrentPatchLevel, handle);
+        FieldBag bag = GlassContext.PatchRegistry.Rent(patchOpcode);
         try
         {
             GlassContext.FieldExtractor.Extract(GlassContext.CurrentPatchLevel, handle, payload, bag);
@@ -140,7 +139,7 @@ public partial class PacketDetailWindow : Window
             }
 
             DebugLog.Write(LogChannel.InferenceDebug,
-                "PacketDetailWindow.ExtractFieldText: opcode=0x" + opcode
+                "PacketDetailWindow.ExtractFieldText: opcode=0x" + patchOpcode
                 + " extracted " + bindingCount + " bindings");
             return sb.ToString();
         }

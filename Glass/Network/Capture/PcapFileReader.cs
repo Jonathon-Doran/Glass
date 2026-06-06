@@ -233,7 +233,8 @@ public class PcapFileReader
         dgram.DestIp = ipPacket.DestinationAddress.ToString();
         dgram.DestPort = udpPacket.DestinationPort;
         dgram.Payload = GlassContext.BufferPool.Rent((uint) payloadBytes.Length);
-       // dgram.Opcode = new PatchOpcode(GlassContext.CurrentPatchLevel, )
+
+        // We do not have the wire opcode yet, that comes in SoeStream when the SoePacket is made
 
         payloadBytes.AsSpan(0, payloadBytes.Length).CopyTo(dgram.Payload.AsSpan());
 

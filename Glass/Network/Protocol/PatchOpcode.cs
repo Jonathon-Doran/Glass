@@ -21,7 +21,7 @@
 // Cold path only.  Hot-path access uses OpcodeHandle, which PatchData issues when an
 // opcode is registered.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public readonly record struct PatchOpcode(PatchLevel Level, OpcodeValue Opcode, uint Version)
+public readonly record struct PatchOpcode(PatchLevel Level, OpcodeValue Value, uint Version)
 {
     // Convenience constructor: most opcodes have only one version (Version = 1).  This
     // overload preserves the old OpcodeId(opcode) ergonomic so two-arg construction
@@ -48,7 +48,7 @@ public readonly record struct PatchOpcode(PatchLevel Level, OpcodeValue Opcode, 
     ///////////////////////////////////////////////////////////////////////////////////////////
     public bool Exists
     {
-        get { return Opcode.Exists; }
+        get { return Value.Exists; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -58,6 +58,6 @@ public readonly record struct PatchOpcode(PatchLevel Level, OpcodeValue Opcode, 
     ///////////////////////////////////////////////////////////////////////////////////////////
     public override string ToString()
     {
-        return Opcode + " v" + Version + " [" + Level + "]";
+        return Value + " v" + Version + " [" + Level + "]";
     }
 }

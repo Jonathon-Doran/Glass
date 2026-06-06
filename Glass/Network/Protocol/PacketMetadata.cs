@@ -19,6 +19,7 @@ public struct PacketMetadata
 {
     public int FrameNumber;
     public PatchOpcode Opcode;
+    public OpcodeValue WireValue;
     public DateTime Timestamp;
     public string SourceIp;
     public int SourcePort;

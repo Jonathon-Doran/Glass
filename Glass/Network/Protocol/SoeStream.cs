@@ -198,7 +198,8 @@ public class SoeStream : IDisposable
         }
 
         SoePacket packet = new SoePacket(rawData, rawData.Length, false);
-        dgram.Opcode = (OpcodeValue) packet.NetOpCode;
+
+        dgram.WireValue = (OpcodeValue) packet.NetOpCode;
 
         DebugLog.Write(LogChannel.LowNetwork,
             "========================================================================");
@@ -294,6 +295,7 @@ public class SoeStream : IDisposable
         metadata.DestPort = dgram.DestPort;
         metadata.SessionId = dgram.SessionId;
         metadata.Channel = dgram.Channel;
+        metadata.WireValue = dgram.WireValue;
  
         PatchLevel currentPatch = GlassContext.CurrentPatchLevel;
 
@@ -373,17 +375,8 @@ public class SoeStream : IDisposable
         DebugLog.Write(LogChannel.LowNetwork, "");
         DebugLog.Write(LogChannel.LowNetwork, "Opcode: 0x" + opcode);
 
-        if (opcode.Value == 0xa5bf)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "Dispatching opcode " + metadata.Opcode + 
-                " stream " + StreamNames[_streamId]);
-        }
         metadata.Opcode = OpcodeDispatch.Instance.ResolvePatchOpcode(opcode, data, metadata);
-        if (opcode.Value == 0xa5bf)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "Updating app opcode to " + metadata.Opcode +
-                " stream " + StreamNames[_streamId]);
-        }
+        metadata.WireValue = opcode;
 
         DebugLog.Write(LogChannel.LowNetwork,
             "          [dispatchPacket] stream=" + StreamNames[_streamId]

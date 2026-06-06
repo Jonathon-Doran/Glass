@@ -4,6 +4,7 @@ using Glass.Data;
 using Glass.Network.Protocol.Fields;
 using Microsoft.Data.Sqlite;
 using System.Reflection.Emit;
+using System.Xml.Linq;
 
 namespace Glass.Network.Protocol;
 
@@ -886,7 +887,7 @@ public class PatchData
                 {
                     DebugLog.Write(LogChannel.Fields, "PatchData.LoadRequiredFields: encoding '"
                         + encodingString + "' for opcode=" + _opcodeNamesByOpcodeHandle[handle]
-                        + " 0x" + patchOpcode.Opcode
+                        + " 0x" + patchOpcode.Value
                         + " version=" + patchOpcode.Version + " fieldName='" + fieldName
                         + "' names optional group id " + resolvedGroupId + ", treating as OptionalGroup");
                     encoding = FieldEncoding.OptionalGroup;
@@ -895,7 +896,7 @@ public class PatchData
                 {
                     DebugLog.Write(LogChannel.Fields, "PatchData.LoadRequiredFields: unrecognized encoding '"
                         + encodingString + "' for opcode=" + _opcodeNamesByOpcodeHandle[handle]
-                        + " 0x" + patchOpcode.Opcode
+                        + " 0x" + patchOpcode.Value
                         + " version=" + patchOpcode.Version + " fieldName='" + fieldName
                         + "', storing as Unknown");
                     encoding = FieldEncoding.Unknown;
@@ -967,7 +968,7 @@ public class PatchData
                 + " ORDER BY pog.bit_offset";
             groupsCmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
             groupsCmd.Parameters.AddWithValue("@serverType", PatchLevel.ServerType);
-            groupsCmd.Parameters.AddWithValue("@opcodeValue", (int)patchOpcode.Opcode.Value);
+            groupsCmd.Parameters.AddWithValue("@opcodeValue", (int)patchOpcode.Value.Value);
             groupsCmd.Parameters.AddWithValue("@version", patchOpcode.Version);
 
             using SqliteDataReader reader = groupsCmd.ExecuteReader();
@@ -1006,7 +1007,7 @@ public class PatchData
                 {
                     DebugLog.Write(LogChannel.Fields, "PatchData.LoadOptionalFields: unrecognized encoding '"
                         + encodingString + "' for opcode=" + _opcodeNamesByOpcodeHandle[handle]
-                        + " 0x" + patchOpcode.Opcode
+                        + " 0x" + patchOpcode.Value
                         + " version=" + patchOpcode.Version + " groupId=" + groupId
                         + " fieldName='" + fieldName + "', storing as Unknown");
                     encoding = FieldEncoding.Unknown;
@@ -1236,7 +1237,7 @@ public class PatchData
                 + " ORDER BY pog.bit_offset";
             groupsCmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
             groupsCmd.Parameters.AddWithValue("@serverType", PatchLevel.ServerType);
-            groupsCmd.Parameters.AddWithValue("@opcodeValue", (int)patchOpcode.Opcode.Value);
+            groupsCmd.Parameters.AddWithValue("@opcodeValue", (int)patchOpcode.Value.Value);
             groupsCmd.Parameters.AddWithValue("@version", patchOpcode.Version);
 
             using SqliteDataReader reader = groupsCmd.ExecuteReader();
@@ -1837,7 +1838,7 @@ public class PatchData
         }
 
         PatchOpcode loaded = _patchOpcodeByOpcodeHandle[opcodeHandle];
-        PatchOpcode versionOne = new PatchOpcode(loaded.Level, loaded.Opcode, 1);
+        PatchOpcode versionOne = new PatchOpcode(loaded.Level, loaded.Value, 1);
         return versionOne;
     }
 
@@ -1944,9 +1945,15 @@ public class PatchData
     // Returns:
     //   The opcode name (e.g. "OP_PlayerProfile").
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public string GetOpcodeName(OpcodeHandle handle)
+    public string GetOpcodeName(PatchOpcode patchOpcode)
     {
-        return _opcodeNamesByOpcodeHandle[handle];
+        OpcodeHandle handle;
+        if (_opcodeHandlesByPatchOpcode.TryGetValue(patchOpcode, out handle))
+        {
+            return _opcodeNamesByOpcodeHandle[handle];
+        }
+
+        return "Unknown";
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1986,7 +1993,7 @@ public class PatchData
             return OpcodeValue.None;
         }
 
-        return _patchOpcodeByOpcodeHandle[handle].Opcode;
+        return _patchOpcodeByOpcodeHandle[handle].Value;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

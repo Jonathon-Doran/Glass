@@ -262,7 +262,7 @@ public class PatchRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeHandle
     //
-    // Returns the Opcode for the (patch level, wire opcode value, version) tuple
+    // Returns the OpcodeHandle for the (patch level, wire opcode value, version) tuple
     // carried by the supplied PatchOpcode.  Looks up the patch in the loaded set and
     // delegates to the PatchData.
     //
@@ -273,10 +273,14 @@ public class PatchRegistry
     //                  Its Level must already be loaded.
     //
     // Returns:
-    //   The Opcode for the row, or Opcode.None if no matching row exists.
+    //   The OpcodeHandle for the row, or OpcodeHandle.None if no matching row exists.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public OpcodeHandle GetOpcodeHandle(PatchOpcode patchOpcode)
     {
+        if (patchOpcode.Exists == false)
+        {
+            return OpcodeHandle.None;
+        }
         PatchData patchData = FindPatchData(patchOpcode.Level);
         return patchData.GetOpcodeHandle(patchOpcode);
     }
@@ -350,6 +354,29 @@ public class PatchRegistry
     {
         PatchData patchData = FindPatchData(patchLevel);
         return patchData.GetOpcodeName(opcodeValue);
+    }
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetOpcodeName
+    //
+    // Returns the logical opcode name for the given opcode in the given patch
+    // level.  Looks up the patch in the loaded set and delegates to the PatchData.
+    //
+    // Throws InvalidOperationException if the patch level is not loaded.
+    //
+    // Returns "Unknown" if the opcode is not in the patch.
+    //
+    // Parameters:
+    //   patchLevel   - The patch identifier.  Must already be loaded.
+    //   opcode       - The versioned opcode to lookup
+    //
+    // Returns:
+    //   The opcode name (e.g. "OP_PlayerProfile"), or "Unknown" if not in the patch.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    ///
+    public string GetOpcodeName(PatchLevel patchLevel, PatchOpcode opcode)
+    {
+        PatchData patchData = FindPatchData(patchLevel);
+        return patchData.GetOpcodeName(opcode);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -447,16 +474,14 @@ public class PatchRegistry
     // Throws InvalidOperationException if the patch level is not loaded.
     //
     // Parameters:
-    //   patchLevel  - The patch identifier.  Must already be loaded.
-    //   handle      - The Opcode of the calling handler.  Resolved to an opcode
-    //                 name via the PatchData and stamped on the bag.
+    //   opcode:   The Opcode to tag the bag for
     //
     // Returns:
     //   A bag with SlotCount == 0 and CurrentOpcodeName set, ready to be filled.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public FieldBag Rent(PatchLevel patchLevel, OpcodeHandle opcode)
+    public FieldBag Rent(PatchOpcode opcode)
     {
-        PatchData patchData = FindPatchData(patchLevel);
+        PatchData patchData = FindPatchData(opcode.Level);
 
         string opcodeName = patchData.GetOpcodeName(opcode);
         FieldBag bag = _bagPool.Rent();

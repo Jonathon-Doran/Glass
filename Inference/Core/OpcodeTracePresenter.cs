@@ -172,6 +172,7 @@ public class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     public void Refresh()
     {
+        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
         OpcodeValue[] opcodes = _catalog.KnownOpcodes();
         List<CatalogedPacket> accumulated = new List<CatalogedPacket>();
         for (int i = 0; i < opcodes.Length; i++)
@@ -190,14 +191,24 @@ public class OpcodeTracePresenter
         _rows.Clear();
         for (int i = 0; i < accumulated.Count; i++)
         {
+            OpcodeValue opcodeToDisplay;
+
             CatalogedPacket packet = accumulated[i];
+            if (packet.Metadata.Opcode.Exists)
+            {
+                opcodeToDisplay = packet.Metadata.Opcode.Value;
+            }
+            else
+            {
+                opcodeToDisplay = packet.Metadata.WireValue;
+            }
             string timestampLocal = packet.Metadata.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff");
-            string opcodeName = GlassContext.PatchRegistry.GetOpcodeName(GlassContext.CurrentPatchLevel, packet.Opcode);
+            string opcodeName = GlassContext.PatchRegistry.GetOpcodeName(patchLevel, packet.Metadata.Opcode);
             string characterName = ResolveCharacterName(packet.Metadata.SessionId);
             int length = packet.Payload.Length;
 
             OpcodeTraceRow row = new OpcodeTraceRow(packet.PacketIndex,
-                            timestampLocal, packet.Opcode, opcodeName, packet.Metadata.Channel,
+                            timestampLocal, opcodeToDisplay, opcodeName, packet.Metadata.Channel,
                             characterName, length, packet.Payload,
                             (ushort)packet.Metadata.SourcePort, (ushort)packet.Metadata.DestPort);
             row.Color = ResolveColor(packet.PacketIndex, packet.Opcode);
@@ -365,7 +376,7 @@ public class OpcodeTracePresenter
 
         if (packet == null)
         {
-            DebugLog.Write(LogChannel.InferenceDebug, "packetindex " + row.PacketIndex + " is no in the catalog");
+            DebugLog.Write(LogChannel.InferenceDebug, "packetindex " + row.PacketIndex + " is not in the catalog");
 
             return;
         }
@@ -379,7 +390,7 @@ public class OpcodeTracePresenter
             return;
         }
 
-        FieldBag bag = GlassContext.PatchRegistry.Rent(GlassContext.CurrentPatchLevel, opcodeHandle);
+        FieldBag bag = GlassContext.PatchRegistry.Rent(metadata.Opcode);
         try
         {
             GlassContext.FieldExtractor.Extract(GlassContext.CurrentPatchLevel, opcodeHandle, payload, bag);

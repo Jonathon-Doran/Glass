@@ -3033,11 +3033,11 @@ public partial class MainWindow : Window
     // metadata:  Unused by this handler.  PacketCatalog has already recorded
     //            the metadata alongside the retained payload.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleAppPacket(ReadOnlySpan<byte> data, OpcodeValue opcode, PacketMetadata metadata)
+    private void HandleAppPacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         Dispatcher.BeginInvoke(() =>
         {
-            _opcodeRowPresenter.Update(opcode);
+            _opcodeRowPresenter.Update(metadata);
         });
     }
 }

@@ -163,10 +163,9 @@ public class OpcodeDispatch : IDisposable
     // version-correct PatchOpcode and calls the registered handler if one exists.
     //
     // data:        The application payload
-    // opcodeValue: The wire opcode value from the application packet header
     // metadata:    Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, OpcodeValue opcodeValue, PacketMetadata metadata)
+    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         if (Volatile.Read(ref _instance) == null)
         {
@@ -174,21 +173,13 @@ public class OpcodeDispatch : IDisposable
             return;
         }
 
-        if (opcodeValue.Value == 0xa5bf)
+        // V0 opcodes are synthetic and not handled.  Silently discard.
+        if (metadata.Opcode.Version == 0)
         {
-            DebugLog.Write(LogChannel.Opcodes, "OpcodeDispatch.Handle sees metadata for " +
-                metadata.Opcode);
+            return;
         }
 
-        PatchOpcode opcode = ResolvePatchOpcode(opcodeValue, data, metadata);
-
-        if (opcodeValue.Value == 0xa5bf)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "OpcodeDispatch.Handle would like to update to " +
-                opcode);
-        }
-
-        if (_handlers.TryGetValue(opcode, out IHandleOpcodes? handler) == true)
+        if (_handlers.TryGetValue(metadata.Opcode, out IHandleOpcodes? handler) == true)
         {
             handler.HandlePacket(data, metadata);
         }

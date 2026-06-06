@@ -66,7 +66,7 @@ public class OpcodeTraceRow : INotifyPropertyChanged
         PacketIndex = packetIndex;
         TimestampLocal = timestampLocal;
         OpcodeValue = opcodeValue;
-        OpcodeHex = "0x" + opcodeValue;
+        OpcodeHex = opcodeValue.ToString();
         OpcodeName = opcodeName;
         Channel = channel;
         CharacterName = characterName;

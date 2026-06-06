@@ -89,7 +89,7 @@ public class HandleSessionResponse : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleClientToWorld(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldBag bag = _registry.Rent(_patchLevel, _handle);
+        FieldBag bag = _registry.Rent(_opcodeHandled);
 
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
     + _opcodeName + " length=" + data.Length);
