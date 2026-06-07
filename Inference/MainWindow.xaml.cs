@@ -3035,9 +3035,11 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void HandleAppPacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
+        uint packetLength = (uint)data.Length;
+
         Dispatcher.BeginInvoke(() =>
         {
-            _opcodeRowPresenter.Update(metadata);
+            _opcodeRowPresenter.Update(metadata, packetLength);
         });
     }
 }

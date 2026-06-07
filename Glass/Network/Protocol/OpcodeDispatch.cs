@@ -190,14 +190,16 @@ public class OpcodeDispatch : IDisposable
     //
     // Resolves a wire opcode value to its versioned PatchOpcode for this patch level.  Finds the
     // version-1 handler for the wire value, asks it for the version this packet decodes to, and
-    // returns the PatchOpcode carrying that version.  Returns PatchOpcode.None when no handler is
-    // registered for the wire value.
+    // returns the PatchOpcode carrying that version.  Returns a synthetic version-0 PatchOpcode
+    // carrying the wire value when no handler is registered, so every observed wire value has a
+    // populated identity that cold-path consumers can key and name uniformly.
     //
     // opcodeValue: The wire opcode value from the application packet header
     // data:        The application payload
     // metadata:    Packet metadata for the packet being resolved
     //
-    // Returns the versioned PatchOpcode, or PatchOpcode.None when the wire value has no handler.
+    // Returns the versioned PatchOpcode, or a synthetic version-0 PatchOpcode when the wire value
+    // has no handler.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public PatchOpcode ResolvePatchOpcode(OpcodeValue opcodeValue, ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
@@ -205,7 +207,7 @@ public class OpcodeDispatch : IDisposable
 
         if (_handlers.TryGetValue(baseOpcode, out IHandleOpcodes? versionResolver) == false)
         {
-            return PatchOpcode.None;
+            return new PatchOpcode(_patchLevel, opcodeValue, 0);
         }
 
         uint version = versionResolver.ResolveVersion(data, metadata);

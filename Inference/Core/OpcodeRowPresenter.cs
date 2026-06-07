@@ -24,7 +24,7 @@ public class OpcodeRowPresenter
 {
     private readonly PacketCatalog _catalog;
     private readonly ObservableCollection<OpcodeEntry> _rows;
-    private readonly Dictionary<OpcodeValue, OpcodeEntry> _rowByOpcode;
+    private readonly Dictionary<PatchOpcode, OpcodeEntry> _rowByOpcode;
     public ObservableCollection<OpcodeEntry> Rows => _rows;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -42,78 +42,53 @@ public class OpcodeRowPresenter
     {
         _catalog = catalog;
         _rows = new ObservableCollection<OpcodeEntry>();
-        _rowByOpcode = new Dictionary<OpcodeValue, OpcodeEntry>();
+        _rowByOpcode = new Dictionary<PatchOpcode, OpcodeEntry>();
         DebugLog.Write(LogChannel.InferenceDebug, "OpcodeRowPresenter.ctor: created");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Update
     //
-    // Updates the row for the given opcode, creating it on first sight.
-    // Must be called on the UI thread.  Reads a snapshot of the catalog's
-    // stats for the opcode and applies them to the row's properties.
+    // Updates the row for the opcode carried in the metadata, creating it on first sight.
+    // Rows are keyed on the full PatchOpcode, so each version of a wire value has its own row.
+    // Count and size statistics are accrued per PatchOpcode.  Must be called on the UI thread.
     //
-    // On first sight: reads the current working patch level from GlassContext,
-    // resolves the opcode name via PatchRegistry against that patch level,
-    // creates an OpcodeEntry from the snapshot, and adds it to the bound
-    // collection and the lookup dictionary.
-    //
-    // On subsequent calls: looks up the existing row, increments Count,
-    // and writes MinSize and MaxSize from the snapshot.  Channel and Name
-    // are immutable after first sight and not touched.
-    //
-    // opcode:  Wire opcode value just delivered by the bus.
+    // metadata:  Packet metadata carrying the resolved PatchOpcode and the channel.
+    // length:    Payload length in bytes for this packet.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public void Update(PacketMetadata metadata)
+    public void Update(PacketMetadata metadata, uint length)
     {
-        OpcodeValue wireValue;
-
-        // use the PatchOpcode as the primary ID, but fallback to the wire value for unknown opcodes
-        if (metadata.Opcode.Exists)
-        {
-            wireValue = metadata.Opcode.Value;
-
-            if (wireValue != metadata.WireValue)
-            {
-                DebugLog.Write(LogChannel.Opcodes, "Wirevalue " + metadata.WireValue + 
-                    " != opcode value " + metadata.Opcode.Value);
-            }
-        }
-        else
-        {
-            wireValue = metadata.WireValue;
-        }
-        
-        OpcodeStats? snapshot = _catalog.StatsFor(wireValue);
-        if (snapshot == null)
-        {
-            return;
-        }
-        OpcodeStats stats = snapshot.Value;
+        PatchOpcode patchOpcode = metadata.Opcode;
 
         OpcodeEntry? row;
-        if (_rowByOpcode.TryGetValue(wireValue, out row))
+        if (_rowByOpcode.TryGetValue(patchOpcode, out row))
         {
             row.Count = row.Count + 1;
-            row.MinSize = stats.MinSize;
-            row.MaxSize = stats.MaxSize;
+            if (length < row.MinSize)
+            {
+                row.MinSize = length;
+            }
+            if (length > row.MaxSize)
+            {
+                row.MaxSize = length;
+            }
             return;
         }
 
-        string opcodeHex = "0x" + wireValue;
-
+        string opcodeHex = "0x" + patchOpcode.Value;
         PatchLevel currentPatchLevel = GlassContext.CurrentPatchLevel;
-
-        string name = GlassContext.PatchRegistry.GetOpcodeName(currentPatchLevel, metadata.Opcode);
-
-        row = new OpcodeEntry(opcodeHex, stats.Channel, stats.MinSize)
+        string name = GlassContext.PatchRegistry.GetOpcodeName(currentPatchLevel, patchOpcode);
+        row = new OpcodeEntry(opcodeHex, metadata.Channel, length)
         {
-            RawOpcode = wireValue,
+            RawOpcode = patchOpcode.Value,
         };
         row.Name = name;
-        row.Count = _catalog.CountFor(wireValue);
+        _rowByOpcode[patchOpcode] = row;
         _rows.Add(row);
-        _rowByOpcode[wireValue] = row;
+        DebugLog.Write(LogChannel.Opcodes,
+            "OpcodeRowPresenter.Update: added row for opcode="
+            + patchOpcode + " name=" + name + " channel=" + metadata.Channel
+            + " length=" + length);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

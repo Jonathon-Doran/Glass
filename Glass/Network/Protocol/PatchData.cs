@@ -100,10 +100,10 @@ public class PatchData
     private Dictionary<string, int>? _optionalGroupIdsByName;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // _handlesByValue
+    // _opcodeHandlesByPatchOpcode
     //
-    // Maps the wire opcode value to the Opcode assigned at load time.  Used on the
-    // hot path by the dispatcher to resolve an incoming wire opcode to the opcodeHandle that
+    // Maps the PatchOpcode to the OpcodeHandle assigned at load time.  Used on the
+    // hot path by the dispatcher to resolve an incoming PatchOpcode to the opcodeHandle that
     // indexes its handler array.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private readonly Dictionary<PatchOpcode, OpcodeHandle> _opcodeHandlesByPatchOpcode;

@@ -13,9 +13,9 @@ namespace Inference.Models;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class OpcodeEntry : INotifyPropertyChanged
 {
-    private int _count;
-    private int _minSize;
-    private int _maxSize;
+    private uint _count;
+    private uint _minSize;
+    private uint _maxSize;
     private string _name;
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -27,7 +27,7 @@ public class OpcodeEntry : INotifyPropertyChanged
     // direction:   "C2Z" or "Z2C"
     // initialSize: Payload length of the first packet seen
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public OpcodeEntry(string opcodeHex, StreamId channel, int initialSize)
+    public OpcodeEntry(string opcodeHex, StreamId channel, uint initialSize)
     {
         Opcode = opcodeHex;
         Channel = channel;
@@ -80,7 +80,7 @@ public class OpcodeEntry : INotifyPropertyChanged
     //
     // Number of packets seen for this opcode + direction.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public int Count
+    public uint Count
     {
         get { return _count; }
         set
@@ -95,7 +95,7 @@ public class OpcodeEntry : INotifyPropertyChanged
     //
     // Smallest payload length seen for this opcode + direction.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public int MinSize
+    public uint MinSize
     {
         get { return _minSize; }
         set
@@ -110,7 +110,7 @@ public class OpcodeEntry : INotifyPropertyChanged
     //
     // Largest payload length seen for this opcode + direction.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public int MaxSize
+    public uint MaxSize
     {
         get { return _maxSize; }
         set
