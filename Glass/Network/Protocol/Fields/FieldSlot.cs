@@ -54,7 +54,7 @@ public struct FieldSlot
     private NameBuffer32 _name;
     private PayloadBuffer80 _payload;
     private byte _nameLength;
-    private byte _payloadLength;
+    private uint _payloadLength;
     private FieldType _type;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -65,6 +65,34 @@ public struct FieldSlot
     public FieldType Type
     {
         get { return _type; }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // WireBitOffset
+    //
+    // Absolute bit offset into the packet payload where this slot's value was read from.
+    // Set by the extractor at decode time.  Reported for any consumer that needs the
+    // field's on-wire position; in practice the extractor reads it to resolve the start
+    // bit of a field anchored relative to this one.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public uint WireBitOffset
+    {
+        get;
+        set;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // WireBitLength
+    //
+    // Number of bits this slot's value occupied on the wire.  Set by the extractor at
+    // decode time, independent of decoded storage size (GetLength).  Zero for a field that
+    // is absent because its predicate did not hold, so a following field anchored on it
+    // resolves to the same start bit the absent field would have yielded.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public uint WireBitLength
+    {
+        get;
+        set;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -79,6 +107,8 @@ public struct FieldSlot
         _type = FieldType.Empty;
         _nameLength = 0;
         _payloadLength = 0;
+        WireBitLength = 0;
+        WireBitOffset = 0;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -141,7 +171,7 @@ public struct FieldSlot
             return 0;
         }
 
-        int visibleLength = _payloadLength - 1;
+        uint visibleLength = _payloadLength - 1;
         if (destination.Length < visibleLength)
         {
             DebugLog.Write(LogChannel.Fields, "FieldSlot.CopyAsciiBytesTo: " + GetName() + " destination length "
@@ -151,8 +181,8 @@ public struct FieldSlot
         }
 
         Span<byte> source = _payload;
-        source.Slice(0, visibleLength).CopyTo(destination);
-        return visibleLength;
+        source.Slice(0, (int) visibleLength).CopyTo(destination);
+        return (int) visibleLength;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -321,7 +351,8 @@ public struct FieldSlot
             return ReadOnlySpan<byte>.Empty;
         }
 
-        return ((ReadOnlySpan<byte>)_payload).Slice(0, _payloadLength - 1);
+        uint visibleLength = _payloadLength - 1;
+        return ((ReadOnlySpan<byte>)_payload).Slice(0, (int) visibleLength);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -357,7 +388,8 @@ public struct FieldSlot
             return SlotReadResult.EmptyPayload;
         }
 
-        value = ((ReadOnlySpan<byte>)_payload).Slice(0, _payloadLength - 1);
+        uint visibleLength = _payloadLength - 1;
+        value = ((ReadOnlySpan<byte>)_payload).Slice(0, (int) visibleLength);
         return SlotReadResult.Success;
     }
 

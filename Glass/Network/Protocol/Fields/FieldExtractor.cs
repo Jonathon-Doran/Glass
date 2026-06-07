@@ -4,6 +4,7 @@ using Glass.Data;
 using Microsoft.Data.Sqlite;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 
 namespace Glass.Network.Protocol.Fields;
@@ -265,6 +266,10 @@ public class FieldExtractor
             SlotId slotId = new SlotId(collection, definitionIndex);
             ref FieldSlot slot = ref bag.TryGetSlotRef(slotId);
 
+            uint effectiveBitOffset = ResolveFieldStartBit(collection, definitions, bag, resolvedStartBits, definitionIndex);
+            slot.WireBitOffset = effectiveBitOffset;
+            slot.WireBitLength = 0;
+
             if (definition.Predicate.Op != PredicateOp.None)
             {
                 if (EvaluatePredicate(bag, definition.Predicate) == false)
@@ -275,10 +280,13 @@ public class FieldExtractor
                 }
             }
 
-            uint effectiveBitOffset = ResolveFieldStartBit(collection, definitions, bag, resolvedStartBits, definitionIndex);
-
+            // Not enough room in the payload for this value.
             if (HasBits(payload, effectiveBitOffset, definition.BitLength) == false)
             {
+                DebugLog.Write(LogChannel.Fields, "FieldExtractor.Extract: field '"
+                    + definition.Name + "' insufficient payload bits at offset "
+                    + effectiveBitOffset + " for length " + definition.BitLength
+                    + ", wire length 0, slot left empty");
                 continue;
             }
 
@@ -372,6 +380,11 @@ public class FieldExtractor
                         + "', slot left empty");
                     break;
             }
+
+            if (slot.Type != FieldType.Empty)
+            {
+                slot.WireBitLength = definition.BitLength;
+            }
         }
     }
 
@@ -381,12 +394,18 @@ public class FieldExtractor
     // Computes the absolute bit position in the payload where the field at definitionIndex
     // begins, stores it into resolvedStartBits[definitionIndex], and returns it.  Absolute
     // fields use their schema BitOffset directly.  Relative fields use the anchor field's
-    // already-resolved start bit plus the anchor slot's length in bits plus the schema
+    // already-resolved start bit plus the anchor slot's wire bit length plus the schema
     // BitOffset.
     //
+    // The anchor's wire bit length is read from the anchor slot's WireBitLength, set when
+    // the anchor was decoded.  An anchor that was absent (predicate did not hold) carries a
+    // wire bit length of zero, so a field relative to it resolves to the same start bit the
+    // absent anchor occupied.
+    //
     // Parameters:
-    //   definitions        - The field definitions for the opcode being decoded.
-    //   bag                - The bag whose slots hold the lengths of already-decoded fields.
+    //   collection         - The collection whose slots hold the wire placement of decoded fields.
+    //   definitions        - The field definitions for the collection being decoded.
+    //   bag                - The bag whose slots hold the wire placement of already-decoded fields.
     //   resolvedStartBits  - Per-packet span of resolved start bits.  This method writes
     //                        the entry for definitionIndex.
     //   definitionIndex    - Index of the field whose start bit to resolve.
@@ -395,7 +414,7 @@ public class FieldExtractor
     //   The resolved start bit, also written to resolvedStartBits[definitionIndex].
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private static uint ResolveFieldStartBit(
-        CollectionHandle collection, 
+        CollectionHandle collection,
         FieldDefinition[] definitions,
         FieldBag bag,
         Span<uint> resolvedStartBits,
@@ -414,7 +433,7 @@ public class FieldExtractor
             uint anchorStartBit = resolvedStartBits[(int)anchorIndex];
             SlotId anchorSlotId = new SlotId(collection, anchorIndex);
             ref FieldSlot anchorSlot = ref bag.TryGetSlotRef(anchorSlotId);
-            uint anchorLengthBits = anchorSlot.GetLength() * 8u;
+            uint anchorLengthBits = anchorSlot.WireBitLength;
             uint anchorEndBit = anchorStartBit + anchorLengthBits;
             startBit = anchorEndBit + definition.BitOffset;
         }
