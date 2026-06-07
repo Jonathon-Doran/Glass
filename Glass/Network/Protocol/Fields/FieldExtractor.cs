@@ -75,11 +75,13 @@ public class FieldExtractor
     //                 definition.
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    public void Extract(PatchLevel patchLevel, OpcodeHandle opcode, ReadOnlySpan<byte> payload,
+    public void Extract(PatchLevel patchLevel, OpcodeHandle opcodeHandle, ReadOnlySpan<byte> payload,
      FieldBag bag)
     {
-        CollectionHandle collection = GlassContext.PatchRegistry.GetCollectionHandle(patchLevel, opcode);
-        FieldDefinition[]? definitions = GlassContext.PatchRegistry.GetFields(patchLevel, opcode);
+        CollectionHandle collection = GlassContext.PatchRegistry.GetCollectionHandle(patchLevel, opcodeHandle);
+        FieldDefinition[]? definitions = GlassContext.PatchRegistry.GetFields(patchLevel, opcodeHandle);
+        OpcodeValue opcodeValue = GlassContext.PatchRegistry.GetOpcodeValue(patchLevel, opcodeHandle);
+
         if (definitions == null)
         {
             return;
@@ -106,6 +108,15 @@ public class FieldExtractor
             ref FieldSlot slot = ref bag.TryGetSlotRef(slotId);
 
             uint effectiveBitOffset = ResolveFieldStartBit(collection, definitions, bag, resolvedStartBits, definitionIndex);
+            slot.WireBitOffset = effectiveBitOffset;
+            slot.WireBitLength = 0;
+
+            if (opcodeValue.Value == 0xa923)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "XXX Field " + definition.Name + " resolves to offset " +
+                    effectiveBitOffset);
+                DebugLog.Write(LogChannel.Opcodes, "This is using collection handle " + collection);
+            }
 
             if (HasBits(payload, effectiveBitOffset, definition.BitLength) == false)
             {
@@ -124,6 +135,7 @@ public class FieldExtractor
                         {
                             slot.SetUInt((uint)raw);
                         }
+                        slot.WireBitLength = definition.BitLength;
                         break;
                     }
 
@@ -135,15 +147,18 @@ public class FieldExtractor
                             int signed = SignExtend(raw, definition.BitLength);
                             slot.SetInt(signed);
                         }
+                        slot.WireBitLength = definition.BitLength;
                         break;
                     }
 
                 case FieldEncoding.UIntMsb:
                     ExtractUIntMsb(payload, effectiveBitOffset, definition.BitLength, ref slot);
+                    slot.WireBitLength = definition.BitLength;
                     break;
 
                 case FieldEncoding.Float:
                     ExtractFloatLE(payload, effectiveBitOffset, definition.BitLength, ref slot);
+                    slot.WireBitLength = definition.BitLength;
                     break;
 
                 case FieldEncoding.UIntMasked:
@@ -153,15 +168,18 @@ public class FieldExtractor
                         {
                             slot.SetUInt((uint)raw);
                         }
+                        slot.WireBitLength = definition.BitLength;
                         break;
                     }
 
                 case FieldEncoding.SignMagnitudeLsb:
                     ExtractSignMagnitudeLsb(payload, effectiveBitOffset, definition.BitLength, definition.Divisor, ref slot);
+                    slot.WireBitLength = definition.BitLength;
                     break;
 
                 case FieldEncoding.SignMagnitudeMsb:
                     ExtractSignMagnitudeMsb(payload, effectiveBitOffset, definition.BitLength, definition.Divisor, ref slot);
+                    slot.WireBitLength = definition.BitLength;
                     break;
 
                 case FieldEncoding.OptSignMagnitudeMsb:
@@ -188,11 +206,12 @@ public class FieldExtractor
                     }
 
                 case FieldEncoding.StringNullTerminated:
-                    ExtractNullTerminatedString(payload, effectiveBitOffset, ref slot);
+                    slot.WireBitLength = ExtractNullTerminatedString(payload, effectiveBitOffset, ref slot) * 8u;
                     break;
 
                 case FieldEncoding.StringLengthPrefixed:
-                    ExtractLengthPrefixedString(payload, effectiveBitOffset, ref slot);
+                    slot.WireBitLength = ExtractLengthPrefixedString(payload, effectiveBitOffset, ref slot) * 8u;
+
                     break;
 
                 default:
@@ -302,6 +321,7 @@ public class FieldExtractor
                         {
                             slot.SetUInt((uint)raw);
                         }
+                        slot.WireBitLength = definition.BitLength;
                         break;
                     }
 
@@ -313,15 +333,18 @@ public class FieldExtractor
                             int signed = SignExtend(raw, definition.BitLength);
                             slot.SetInt(signed);
                         }
+                        slot.WireBitLength = definition.BitLength;
                         break;
                     }
 
                 case FieldEncoding.UIntMsb:
                     ExtractUIntMsb(payload, effectiveBitOffset, definition.BitLength, ref slot);
+                    slot.WireBitLength = definition.BitLength;
                     break;
 
                 case FieldEncoding.Float:
                     ExtractFloatLE(payload, effectiveBitOffset, definition.BitLength, ref slot);
+                    slot.WireBitLength = definition.BitLength;
                     break;
 
                 case FieldEncoding.UIntMasked:
@@ -331,15 +354,18 @@ public class FieldExtractor
                         {
                             slot.SetUInt((uint)raw);
                         }
+                        slot.WireBitLength = definition.BitLength;
                         break;
                     }
 
                 case FieldEncoding.SignMagnitudeLsb:
                     ExtractSignMagnitudeLsb(payload, effectiveBitOffset, definition.BitLength, definition.Divisor, ref slot);
+                    slot.WireBitLength = definition.BitLength;
                     break;
 
                 case FieldEncoding.SignMagnitudeMsb:
                     ExtractSignMagnitudeMsb(payload, effectiveBitOffset, definition.BitLength, definition.Divisor, ref slot);
+                    slot.WireBitLength = definition.BitLength;
                     break;
 
                 case FieldEncoding.OptSignMagnitudeMsb:
@@ -367,11 +393,11 @@ public class FieldExtractor
                     }
 
                 case FieldEncoding.StringNullTerminated:
-                    ExtractNullTerminatedString(payload, effectiveBitOffset, ref slot);
+                    slot.WireBitLength = ExtractNullTerminatedString(payload, effectiveBitOffset, ref slot) * 8u;
                     break;
 
                 case FieldEncoding.StringLengthPrefixed:
-                    ExtractLengthPrefixedString(payload, effectiveBitOffset, ref slot);
+                    slot.WireBitLength = ExtractLengthPrefixedString(payload, effectiveBitOffset, ref slot) * 8u;
                     break;
 
                 default:
@@ -379,11 +405,6 @@ public class FieldExtractor
                         + definition.Encoding + " for field '" + definition.Name
                         + "', slot left empty");
                     break;
-            }
-
-            if (slot.Type != FieldType.Empty)
-            {
-                slot.WireBitLength = definition.BitLength;
             }
         }
     }
@@ -665,14 +686,17 @@ public class FieldExtractor
     //                by 8 to produce the byte offset; non-byte-aligned strings are not
     //                supported and would mis-locate the start of the string.
     //   slot       - The slot to fill.  Already has its name set.  Stays Empty on failure.
+    //
+    // Returns:
+    //    The wire length of the extracted string (in bytes) including the null.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private void ExtractNullTerminatedString(ReadOnlySpan<byte> payload, uint bitOffset,
+    private uint ExtractNullTerminatedString(ReadOnlySpan<byte> payload, uint bitOffset,
         ref FieldSlot slot)
     {
         uint byteOffset = bitOffset / 8u;
         if (byteOffset >= (uint)payload.Length)
         {
-            return;
+            return 0;
         }
 
         ReadOnlySpan<byte> tail = payload.Slice((int)byteOffset);
@@ -683,11 +707,12 @@ public class FieldExtractor
                 + slot.GetName() + "' at byteOffset " + byteOffset
                 + " has no null terminator within remaining " + tail.Length
                 + " bytes, slot left empty");
-            return;
+            return 0;
         }
 
         ReadOnlySpan<byte> stringBytes = tail.Slice(0, nullIndex);
         slot.SetAsciiString(stringBytes);
+        return (uint) stringBytes.Length + 1;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -715,14 +740,17 @@ public class FieldExtractor
     //                by 8 to produce the byte offset; non-byte-aligned length-prefixed
     //                strings are not supported and would mis-locate the prefix.
     //   slot       - The slot to fill.  Already has its name set.  Stays Empty on failure.
+    //
+    // Returns:
+    //   The wire length of the extracted string (in bytes) including the prefix.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private void ExtractLengthPrefixedString(ReadOnlySpan<byte> payload, uint bitOffset,
+    private uint ExtractLengthPrefixedString(ReadOnlySpan<byte> payload, uint bitOffset,
         ref FieldSlot slot)
     {
         uint byteOffset = bitOffset / 8u;
         if (byteOffset + 4u > (uint)payload.Length)
         {
-            return;
+            return 0;
         }
 
         uint declaredLength = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice((int)byteOffset));
@@ -730,11 +758,12 @@ public class FieldExtractor
         uint available = (uint)payload.Length - stringStart;
         if (declaredLength > available)
         {
-            return;
+            return 0;
         }
 
         ReadOnlySpan<byte> stringBytes = payload.Slice((int)stringStart, (int)declaredLength);
         slot.SetAsciiString(stringBytes);
+        return (uint) stringBytes.Length + 4;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
