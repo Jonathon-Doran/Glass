@@ -18,7 +18,7 @@ public class HandleSetChatServer : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_SetChatServer";
     private readonly PatchOpcode _opcodeHandled;
-    private readonly OpcodeHandle _opcode;
+    private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
 
@@ -51,16 +51,16 @@ public class HandleSetChatServer : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _opcode = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
 
-        _payloadSlot =         _registry.IndexOfField(_patchLevel, _opcode, "csv_payload");
-        _chatServerSlot =      _registry.IndexOfField(_patchLevel, _opcode, "chat_server");
-        _chatPortSlot =        _registry.IndexOfField(_patchLevel, _opcode, "chat_port");
-        _serverCharacterIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "server_character");
+        _payloadSlot =         _registry.IndexOfField(_patchLevel, _collectionHandle, "csv_payload");
+        _chatServerSlot =      _registry.IndexOfField(_patchLevel, _collectionHandle, "chat_server");
+        _chatPortSlot =        _registry.IndexOfField(_patchLevel, _collectionHandle, "chat_port");
+        _serverCharacterIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "server_character");
 
-        _serverCsvIndex = _registry.GetFieldPosition(_patchLevel, _opcode, _chatServerSlot);
-        _portCsvIndex = _registry.GetFieldPosition(_patchLevel, _opcode, _chatPortSlot);
-        _characterCsvIndex = _registry.GetFieldPosition(_patchLevel, _opcode, _serverCharacterIdSlot);
+        _serverCsvIndex = _registry.GetFieldPosition(_patchLevel, _collectionHandle, _chatServerSlot);
+        _portCsvIndex = _registry.GetFieldPosition(_patchLevel, _collectionHandle, _chatPortSlot);
+        _characterCsvIndex = _registry.GetFieldPosition(_patchLevel, _collectionHandle, _serverCharacterIdSlot);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -115,7 +115,7 @@ public class HandleSetChatServer : IHandleOpcodes
         FieldBag bag = _registry.Rent(_opcodeHandled);
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _opcode, data, bag);
+            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
 
             ReadOnlySpan<byte> payloadBytes = bag.GetBytesAt(_payloadSlot);
             payload = Encoding.ASCII.GetString(payloadBytes);

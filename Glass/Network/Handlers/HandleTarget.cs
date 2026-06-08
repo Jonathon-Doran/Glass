@@ -18,7 +18,7 @@ public class HandleTarget : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_TargetMouse";
     private readonly PatchOpcode _opcodeHandled;
-    private readonly OpcodeHandle _handle;
+    private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
 
@@ -42,9 +42,9 @@ public class HandleTarget : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _handle = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
 
-        _spawnIdSlot = _registry.IndexOfField(_patchLevel, _handle, "spawn_id");
+        _spawnIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "spawn_id");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -99,7 +99,7 @@ public class HandleTarget : IHandleOpcodes
         FieldBag bag = _registry.Rent(_opcodeHandled);
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
+            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
 
             spawnId = bag.GetUIntAt(_spawnIdSlot);
         }

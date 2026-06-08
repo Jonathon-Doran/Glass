@@ -382,18 +382,22 @@ public class OpcodeTracePresenter
         }
 
         PacketMetadata metadata = packet.Value.Metadata;
+        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
+        PatchRegistry registry = GlassContext.PatchRegistry;
 
-        OpcodeHandle opcodeHandle = GlassContext.PatchRegistry.GetOpcodeHandle(metadata.Opcode);
+        OpcodeHandle opcodeHandle = registry.GetOpcodeHandle(metadata.Opcode);
         if (! opcodeHandle.Exists)
         {
             row.FieldText = string.Empty;
             return;
         }
 
+        string opcodeName = registry.GetOpcodeName(patchLevel, metadata.Opcode);
+        CollectionHandle collectionHandle = registry.GetOpcodeCollection(patchLevel, opcodeName);
         FieldBag bag = GlassContext.PatchRegistry.Rent(metadata.Opcode);
         try
         {
-            GlassContext.FieldExtractor.Extract(GlassContext.CurrentPatchLevel, opcodeHandle, payload, bag);
+            GlassContext.FieldExtractor.Extract(GlassContext.CurrentPatchLevel, collectionHandle, payload, bag);
 
             StringBuilder sb = new StringBuilder();
             BagWalker walker = bag.Walk();

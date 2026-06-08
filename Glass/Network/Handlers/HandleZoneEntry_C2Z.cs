@@ -20,7 +20,7 @@ public class HandleZoneEntry_C2Z: IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_ZoneEntry_C2Z";
     private readonly PatchOpcode _opcodeHandled;
-    private readonly OpcodeHandle _handle;
+    private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
 
@@ -47,12 +47,12 @@ public class HandleZoneEntry_C2Z: IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         PatchOpcode baseOpcode = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _opcodeHandled = baseOpcode with { Version = 2 };
-        _handle = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
 
         DebugLog.Write(LogChannel.Opcodes, "ZoneEntry C2Z registering opcode " + _opcodeHandled);
-        _nameSlot = _registry.IndexOfField(_patchLevel, _handle, "name");
-        _spawnIdSlot = _registry.IndexOfField(_patchLevel, _handle, "spawn_id");
-        _levelSlot = _registry.IndexOfField(_patchLevel, _handle, "level");
+        _nameSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "name");
+        _spawnIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "spawn_id");
+        _levelSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "level");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

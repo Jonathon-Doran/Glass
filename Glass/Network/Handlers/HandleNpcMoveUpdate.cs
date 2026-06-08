@@ -12,7 +12,7 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_NpcMoveUpdate";
     private readonly PatchOpcode _opcodeHandled;
-    private readonly OpcodeHandle _handle;
+    private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
 
@@ -48,21 +48,21 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _handle = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
 
-        _spawnIdSlot = _registry.IndexOfField(_patchLevel, _handle, "spawn_id");
-        _xPosSlot = _registry.IndexOfField(_patchLevel, _handle, "x_pos");
-        _yPosSlot = _registry.IndexOfField(_patchLevel, _handle, "y_pos");
-        _zPosSlot = _registry.IndexOfField(_patchLevel, _handle, "z_pos");
-        _headingSlot = _registry.IndexOfField(_patchLevel, _handle, "heading");
-        _pitchSlot = _registry.IndexOfField(_patchLevel, _handle, "pitch");
-        _headingDeltaSlot = _registry.IndexOfField(_patchLevel, _handle, "heading_delta");
-        _velocitySlot = _registry.IndexOfField(_patchLevel, _handle, "velocity");
-        _dxSlot = _registry.IndexOfField(_patchLevel, _handle, "dx");
-        _dySlot = _registry.IndexOfField(_patchLevel, _handle, "dy");
-        _dzSlot = _registry.IndexOfField(_patchLevel, _handle, "dz");
+        _spawnIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "spawn_id");
+        _xPosSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "x_pos");
+        _yPosSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "y_pos");
+        _zPosSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "z_pos");
+        _headingSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "heading");
+        _pitchSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "pitch");
+        _headingDeltaSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "heading_delta");
+        _velocitySlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "velocity");
+        _dxSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "dx");
+        _dySlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "dy");
+        _dzSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "dz");
 
-        _flagsSlot = _registry.IndexOfField(_patchLevel, _handle, "flags");
+        _flagsSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "flags");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -122,7 +122,7 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
         FieldBag bag = _registry.Rent(_opcodeHandled);
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
+            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
 
             uint spawnId = bag.GetUIntAt(_spawnIdSlot);
             float x = bag.GetFloatAt(_xPosSlot);

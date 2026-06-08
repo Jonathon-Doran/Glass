@@ -238,30 +238,6 @@ public class PatchRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeHandle
     //
-    // Returns the Opcode for the given opcode name in the given patch level.  Looks
-    // up the patch in the loaded set and delegates to the PatchData.
-    //
-    // Throws InvalidOperationException if the patch level is not loaded.  Callers must
-    // invoke LoadPatchLevel (or LoadLatestPatchLevel) for the patch before any code that
-    // reaches this method runs.
-    //
-    // Parameters:
-    //   patchLevel  - The patch identifier.  Must already be loaded.
-    //   opcodeName  - The logical name (e.g. "OP_PlayerProfile").
-    //
-    // Returns:
-    //   The Opcode for the named opcode, or Opcode.None if not in the patch.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-
-    public OpcodeHandle GetOpcodeHandle(PatchLevel patchLevel, string opcodeName)
-    {
-        PatchData patchData = FindPatchData(patchLevel);
-        return patchData.GetOpcodeHandle(opcodeName);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetOpcodeHandle
-    //
     // Returns the OpcodeHandle for the (patch level, wire opcode value, version) tuple
     // carried by the supplied PatchOpcode.  Looks up the patch in the loaded set and
     // delegates to the PatchData.
@@ -285,32 +261,11 @@ public class PatchRegistry
         return patchData.GetOpcodeHandle(patchOpcode);
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetOpcodeHandle
+   ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetOpcodeCollection
     //
-    // Returns the Opcode for the opcode value.
-    // carried by the supplied PatchOpcode.  Looks up the patch in the loaded set and
-    // delegates to the PatchData.
-    //
-    // Throws InvalidOperationException if the patch level is not loaded.
-    //
-    // Parameters:
-    //   patchOpcode  - The (PatchLevel, Opcode, Version) tuple identifying the row.
-    //                  Its Level must already be loaded.
-    //
-    // Returns:
-    //   The Opcode for the row, or Opcode.None if no matching row exists.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public OpcodeHandle GetOpcodeHandle(PatchLevel patchLevel, OpcodeValue value)
-    {
-        PatchData patchData = FindPatchData(patchLevel);
-        return patchData.GetOpcodeHandle(value);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetCollectionHandle
-    //
-    // A CollectionHandle defines a set of named fields in the given patch level.
+    // A CollectionHandle defines a set of named fields in the given patch level.  This returns
+    // the top-level collection for an opcode.  This is where packets begin extraction.
     //
     // Throws InvalidOperationException if the patch level is not loaded.
     //
@@ -321,17 +276,12 @@ public class PatchRegistry
     // Returns:
     //   The CollectionHandle for the named collection, or CollectionHandle.None if absent.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public CollectionHandle GetCollectionHandle(PatchLevel patchLevel, string collectionName)
+    public CollectionHandle GetOpcodeCollection(PatchLevel patchLevel, string opcodeName)
     {
         PatchData patchData = FindPatchData(patchLevel);
-        return patchData.GetCollectionHandle(collectionName);
+        return patchData.GetOpcodeCollection(opcodeName);
     }
 
-    public CollectionHandle GetCollectionHandle(PatchLevel patchLevel, OpcodeHandle opcodeHandle)
-    {
-        PatchData patchData = FindPatchData(patchLevel);
-        return patchData.GetCollectionHandleFromOpcode(opcodeHandle);
-    }
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeName
     //
@@ -372,7 +322,7 @@ public class PatchRegistry
     // Returns:
     //   The opcode name (e.g. "OP_PlayerProfile"), or "Unknown" if not in the patch.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    ///
+  
     public string GetOpcodeName(PatchLevel patchLevel, PatchOpcode opcode)
     {
         PatchData patchData = FindPatchData(patchLevel);
@@ -399,28 +349,6 @@ public class PatchRegistry
     {
         PatchData patchData = FindPatchData(patchLevel);
         return patchData.GetBaseOpcode(opcodeName);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetOpcodeValue
-    //
-    // Returns the wire opcode value for the given Opcode in the given patch level.
-    // Looks up the patch in the loaded set and delegates to the PatchData.
-    //
-    // Throws InvalidOperationException if the patch level is not loaded.
-    //
-    // Parameters:
-    //   patchLevel  - The patch identifier.  Must already be loaded.
-    //   handle      - The Opcode whose wire opcode value to return.
-    //
-    // Returns:
-    //   The wire opcode value (e.g. 0x6FA1).
-    ///////////////////////////////////////////////////////////////////////////////////////////
-
-    public OpcodeValue GetOpcodeValue(PatchLevel patchLevel, OpcodeHandle handle)
-    {
-        PatchData patchData = FindPatchData(patchLevel);
-        return patchData.GetOpcodeValue(handle);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -492,29 +420,6 @@ public class PatchRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////
     // IndexOfField
     //
-    // Returns the SlotId of the named field within the Opcode's field
-    // definitions in the given patch level.  Looks up the patch in the loaded set and
-    // delegates to the PatchData.
-    //
-    // Throws InvalidOperationException if the patch level is not loaded.
-    //
-    // Parameters:
-    //   patchLevel  - The patch identifier.  Must already be loaded.
-    //   handle      - The Opcode whose field definitions to search.
-    //   fieldName   - The field_name column value to look up.
-    //
-    // Returns:
-    //   The SlotId of the named field, or SlotId.None if not found.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public SlotId IndexOfField(PatchLevel patchLevel, OpcodeHandle opcode, string fieldName)
-    {
-        PatchData patchData = FindPatchData(patchLevel);
-        return patchData.IndexOfField(opcode, fieldName);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // IndexOfField
-    //
     // Returns the SlotId of the named field within the CollectionHandle's field
     // definitions in the given patch level.
     //
@@ -532,29 +437,6 @@ public class PatchRegistry
     {
         PatchData patchData = FindPatchData(patchLevel);
         return patchData.IndexOfField(collection, fieldName);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetFields
-    //
-    // Returns the FieldDefinition array for the given Opcode in the given patch
-    // level.  Looks up the patch in the loaded set and delegates to the PatchData.
-    //
-    // Throws InvalidOperationException if the patch level is not loaded.
-    //
-    // Returns null if the opcode has no fields loaded for this patch.
-    //
-    // Parameters:
-    //   patchLevel  - The patch identifier.  Must already be loaded.
-    //   handle      - The Opcode whose field definitions to return.
-    //
-    // Returns:
-    //   The FieldDefinition array, or null if absent.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public FieldDefinition[]? GetFields(PatchLevel patchLevel, OpcodeHandle opcode)
-    {
-        PatchData patchData = FindPatchData(patchLevel);
-        return patchData.GetFieldDefinitions(opcode);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -578,30 +460,6 @@ public class PatchRegistry
     {
         PatchData patchData = FindPatchData(patchLevel);
         return patchData.GetFieldDefinitions(collection);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetOptionalGroup
-    //
-    // Returns the OptionalGroup for the given Opcode in the given patch level, or
-    // null if the opcode has no optional block defined for this patch.  Most opcodes have
-    // no optional block; null is the common case.
-    //
-    // Looks up the patch in the loaded set and delegates to the PatchData.
-    //
-    // Throws InvalidOperationException if the patch level is not loaded.
-    //
-    // Parameters:
-    //   patchLevel  - The patch identifier.  Must already be loaded.
-    //   handle      - The Opcode whose optional group to return.
-    //
-    // Returns:
-    //   The OptionalGroup, or null if the opcode has no optional block.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public OptionalGroup? GetOptionalGroup(PatchLevel patchLevel, OpcodeHandle handle)
-    {
-        PatchData patchData = FindPatchData(patchLevel);
-        return patchData.GetOptionalGroup(handle);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -632,13 +490,13 @@ public class PatchRegistry
     // the token within a comma-separated payload.
     //
     // patchLevel:  The patch level whose PatchData holds the field definitions.
-    // handle:      The opcode handle previously obtained from GetOpcodeHandle.
+    // collection:  The collection containing the field
     // slot:        The slot queried.
     //
     // Returns the field's BitOffset as an int, or -1 if the patch level, handle, or
     // field id cannot be resolved.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public uint GetFieldPosition(PatchLevel patchLevel, OpcodeHandle handle, SlotId slot)
+    public uint GetFieldPosition(PatchLevel patchLevel, CollectionHandle collection, SlotId slot)
     {
         PatchData? patchData = FindPatchData(patchLevel);
 
@@ -649,7 +507,7 @@ public class PatchRegistry
 
         }
 
-        uint position = patchData.GetFieldPosition(handle, slot);
+        uint position = patchData.GetFieldPosition(collection, slot);
 
         return position;
     }

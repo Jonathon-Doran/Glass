@@ -17,7 +17,7 @@ public class HandleCommonMessage : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_CommonMessage";
     private readonly PatchOpcode _opcodeHandled;
-    private OpcodeHandle _opcode;
+    private CollectionHandle _collectionHandle;
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
 
@@ -47,11 +47,11 @@ public class HandleCommonMessage : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _opcode = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
 
-        _senderIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "sender_name");
-        _channelIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "channel_id");
-        _messageIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "message_text");
+        _senderIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "sender_name");
+        _channelIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "channel_id");
+        _messageIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "message_text");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -125,7 +125,7 @@ public class HandleCommonMessage : IHandleOpcodes
         FieldBag bag = _registry.Rent(_opcodeHandled);
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _opcode, data, bag);
+            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
 
             ReadOnlySpan<byte> senderBytes = bag.GetBytesAt(_senderIdSlot);
             sender = Encoding.ASCII.GetString(senderBytes);

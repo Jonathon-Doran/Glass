@@ -18,7 +18,7 @@ public class HandleSessionRequest : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_SessionRequest";
     private readonly PatchOpcode _opcodeHandled;
-    private readonly OpcodeHandle _handle;
+    private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
 
@@ -43,10 +43,10 @@ public class HandleSessionRequest : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
-        _handle = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
 
-        _sessionIdSlot = _registry.IndexOfField(_patchLevel, _handle, "session_id");
-        _maxLengthSlot = _registry.IndexOfField(_patchLevel, _handle, "max_length");
+        _sessionIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "session_id");
+        _maxLengthSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "max_length");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -102,7 +102,7 @@ public class HandleSessionRequest : IHandleOpcodes
 
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
+            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
 
             uint sessionId = bag.GetUIntAt(_sessionIdSlot);
             uint maxLength = bag.GetUIntAt(_maxLengthSlot);

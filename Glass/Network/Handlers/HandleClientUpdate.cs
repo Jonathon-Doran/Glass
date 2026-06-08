@@ -5,6 +5,7 @@ using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using System.Buffers.Binary;
+using System.Printing;
 
 
 namespace Glass.Network.Handlers;
@@ -17,7 +18,7 @@ namespace Glass.Network.Handlers;
 public class HandleClientUpdate : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_ClientUpdate";
-    private readonly OpcodeHandle _opcode;
+    private readonly CollectionHandle _collectionHandle;
     private readonly PatchOpcode _opcodeHandled;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
@@ -46,14 +47,14 @@ public class HandleClientUpdate : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _opcode = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
 
-        _sequenceSlot = _registry.IndexOfField(_patchLevel, _opcode, "sequence");
-        _playerIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "player_id");
-        _xPosSlot = _registry.IndexOfField(_patchLevel, _opcode, "x_pos");
-        _yPosSlot = _registry.IndexOfField(_patchLevel, _opcode, "y_pos");
-        _zPosSlot = _registry.IndexOfField(_patchLevel, _opcode, "z_pos");
-        _headingSlot = _registry.IndexOfField(_patchLevel, _opcode, "heading");
+        _sequenceSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "sequence");
+        _playerIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "player_id");
+        _xPosSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "x_pos");
+        _yPosSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "y_pos");
+        _zPosSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "z_pos");
+        _headingSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "heading");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -107,7 +108,7 @@ public class HandleClientUpdate : IHandleOpcodes
 
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _opcode, data, bag);
+            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
 
             int id = GlassContext.SessionRegistry.GetConnection(metadata).CharacterId;
             Character? character = CharacterRepository.Instance.GetById(id);

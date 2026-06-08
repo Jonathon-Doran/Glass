@@ -21,7 +21,7 @@ public class HandleZoneEntry_Z2C : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_ZoneEntry_Z2C";
     private readonly PatchOpcode _opcodeHandled;
-    private readonly OpcodeHandle _handle;
+    private readonly CollectionHandle _collectionHandle;
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
 
@@ -47,13 +47,13 @@ public class HandleZoneEntry_Z2C : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _handle = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
 
         DebugLog.Write(LogChannel.Opcodes, "ZoneEntry Z2C registering opcode " + _opcodeHandled);
 
-        _nameSlot = _registry.IndexOfField(_patchLevel, _handle, "name");
-        _spawnIdSlot = _registry.IndexOfField(_patchLevel, _handle, "spawn_id");
-        _levelSlot = _registry.IndexOfField(_patchLevel, _handle, "level");
+        _nameSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "name");
+        _spawnIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "spawn_id");
+        _levelSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "level");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -93,7 +93,7 @@ public class HandleZoneEntry_Z2C : IHandleOpcodes
         FieldBag bag = _registry.Rent(_opcodeHandled);
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
+            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
 
             ReadOnlySpan<byte> nameBytes = bag.GetBytesAt(_nameSlot);
             name = Encoding.ASCII.GetString(nameBytes);

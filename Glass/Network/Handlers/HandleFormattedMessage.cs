@@ -17,7 +17,7 @@ public class HandleFormattedMessage : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_FormattedMessage";
     private readonly PatchOpcode _opcodeHandled;
-    private readonly OpcodeHandle _opcode;
+    private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
 
@@ -41,9 +41,9 @@ public class HandleFormattedMessage : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
-        _opcode = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
 
-        _messageIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "msg_text");
+        _messageIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "msg_text");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -97,7 +97,7 @@ public class HandleFormattedMessage : IHandleOpcodes
         FieldBag bag = _registry.Rent(_opcodeHandled);
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _opcode, data, bag);
+            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
 
             ReadOnlySpan<byte> messageBytes = bag.GetBytesAt(_messageIdSlot);
             message = Encoding.ASCII.GetString(messageBytes);

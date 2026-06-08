@@ -18,7 +18,7 @@ public class HandleSessionResponse : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_SessionResponse";
     private readonly PatchOpcode _opcodeHandled;
-    private readonly OpcodeHandle _handle;
+    private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
 
@@ -40,7 +40,7 @@ public class HandleSessionResponse : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _handle = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

@@ -19,7 +19,7 @@ public class HandlePlayerProfile : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_PlayerProfile";
     private readonly PatchOpcode _opcodeHandled;
-    private OpcodeHandle _handle;
+    private CollectionHandle _collectionHandle;
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
 
@@ -59,25 +59,25 @@ public class HandlePlayerProfile : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _handle = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
 
-        _nameSlot = _registry.IndexOfField(_patchLevel, _handle, "name");
-        _levelSlot = _registry.IndexOfField(_patchLevel, _handle, "level");
-        _playerClassSlot = _registry.IndexOfField(_patchLevel, _handle, "player_class");
-        _practicePointsSlot = _registry.IndexOfField(_patchLevel, _handle, "practice_points");
-        _manaSlot = _registry.IndexOfField(_patchLevel, _handle, "mana");
-        _hitpointsSlot = _registry.IndexOfField(_patchLevel, _handle, "max_hitpoints");
-        _strengthSlot = _registry.IndexOfField(_patchLevel, _handle, "strength");
-        _staminaSlot = _registry.IndexOfField(_patchLevel, _handle, "stamina");
-        _charismaSlot = _registry.IndexOfField(_patchLevel, _handle, "charisma");
-        _dexteritySlot =  _registry.IndexOfField(_patchLevel, _handle, "dexterity");
-        _intelligenceSlot = _registry.IndexOfField(_patchLevel, _handle, "intelligence");
-        _agilitySlot = _registry.IndexOfField(_patchLevel, _handle, "agility");
-        _wisdomSlot = _registry.IndexOfField(_patchLevel, _handle, "wisdom");
-        _platinumCarriedSlot = _registry.IndexOfField(_patchLevel, _handle, "platinum_carried");
-        _goldCarriedSlot = _registry.IndexOfField(_patchLevel, _handle, "gold_carried");
-        _silverCarriedSlot = _registry.IndexOfField(_patchLevel, _handle, "silver_carried");
-        _copperCarriedSlot = _registry.IndexOfField(_patchLevel, _handle, "copper_carried");
+        _nameSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "name");
+        _levelSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "level");
+        _playerClassSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "player_class");
+        _practicePointsSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "practice_points");
+        _manaSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "mana");
+        _hitpointsSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "max_hitpoints");
+        _strengthSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "strength");
+        _staminaSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "stamina");
+        _charismaSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "charisma");
+        _dexteritySlot =  _registry.IndexOfField(_patchLevel, _collectionHandle, "dexterity");
+        _intelligenceSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "intelligence");
+        _agilitySlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "agility");
+        _wisdomSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "wisdom");
+        _platinumCarriedSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "platinum_carried");
+        _goldCarriedSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "gold_carried");
+        _silverCarriedSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "silver_carried");
+        _copperCarriedSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "copper_carried");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -134,7 +134,7 @@ public class HandlePlayerProfile : IHandleOpcodes
         FieldBag bag = _registry.Rent(_opcodeHandled);
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
+            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
 
             ReadOnlySpan<byte> nameBytes = bag.GetBytesAt(_nameSlot);
             string name = Encoding.ASCII.GetString(nameBytes);

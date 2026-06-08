@@ -18,7 +18,7 @@ public class HandleSessionDisconnect : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_SessionDisconnect";
     private readonly PatchOpcode _opcodeHandled;
-    private readonly OpcodeHandle _handle;
+    private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
 
@@ -40,7 +40,7 @@ public class HandleSessionDisconnect : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
-        _handle = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

@@ -75,7 +75,7 @@ public class PatchData
     // Allocated once in the constructor sized to the number of rows returned by
     // LoadPatchOpcodes; never resized.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private readonly OptionalGroup?[] _opcodeOptionalGroups;
+
     private readonly Dictionary<uint, OptionalGroup> _optionalGroupsById;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -87,6 +87,7 @@ public class PatchData
     private readonly string[] _collectionNamesByHandle;
     private readonly Dictionary<string, CollectionHandle> _collectionHandleByCollectionName;
     private readonly Dictionary<OpcodeHandle, CollectionHandle> _collectionHandleByOpcodeHandle;
+    private readonly Dictionary<string, CollectionHandle> _collectionHandleByOpcodeName;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // _optionalGroupIdsByName
@@ -126,8 +127,6 @@ public class PatchData
     // construction time.  Cold path — handlers call this once per opcode they register.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private readonly Dictionary<string, OpcodeHandle> _opcodeHandlesByName;
-
-    private readonly Dictionary<OpcodeValue, OpcodeHandle> _opcodeHandlesByValue;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // _pendingRelativeNames
@@ -258,10 +257,8 @@ public class PatchData
         _patchOpcodeByOpcodeHandle = new PatchOpcode[opcodeCount];
         _opcodeFields = new FieldDefinition[opcodeCount][];
         _collectionFields = new FieldDefinition[collectionCount][];
-        _opcodeOptionalGroups = new OptionalGroup?[opcodeCount];
         _opcodeNamesByOpcodeHandle = new string[opcodeCount];
         _opcodeHandlesByName = new Dictionary<string, OpcodeHandle>(opcodeCount);
-        _opcodeHandlesByValue = new Dictionary<OpcodeValue, OpcodeHandle>(opcodeCount);
         _opcodeHandlesByPatchOpcode = new Dictionary<PatchOpcode, OpcodeHandle>(opcodeCount);
         _pendingRelativeNames = new List<string?>();
 
@@ -270,18 +267,22 @@ public class PatchData
         _gate = new Gate[gateCount];
         _nextGateHandle = 0;
         _collectionHandleByOpcodeHandle = new Dictionary<OpcodeHandle, CollectionHandle>(opcodeCount);
-
+        _collectionHandleByOpcodeName = new Dictionary<string, CollectionHandle>(collectionCount);
         LoadOpcodeMap(conn);
         LoadPatchOpcodes(conn);
         LoadPatchCollections(conn);
         LoadOptionalGroupNames(conn);
 
-
+        // may be deprecated
         for (uint handleIndex = 0; handleIndex < opcodeCount; handleIndex++)
         {
             OpcodeHandle handle = (OpcodeHandle) handleIndex;
             PatchOpcode patchOpcode = _patchOpcodeByOpcodeHandle[handle];
-            LoadFields(handle, conn);
+            string name = _opcodeNamesByOpcodeHandle[handle];
+
+            CollectionHandle collectionHandle = CollectionHandleForOpcode(handle, conn);
+            _collectionHandleByOpcodeName[name] = collectionHandle;
+            _collectionHandleByOpcodeHandle[handle] = collectionHandle;
         }
 
         for (uint collectionIndex = 0; collectionIndex < collectionCount; collectionIndex++)
@@ -547,7 +548,6 @@ public class PatchData
             _patchOpcodeByOpcodeHandle[opcodeHandle] = patchOpcode;
             _opcodeNamesByOpcodeHandle[opcodeHandle] = opcodeName;
             _opcodeHandlesByName[opcodeName] = opcodeHandle;
-            _opcodeHandlesByValue[opcodeValue] = opcodeHandle;
             _opcodeHandlesByPatchOpcode[patchOpcode] = opcodeHandle;
 
             handleIndex = handleIndex + 1;
@@ -641,53 +641,6 @@ public class PatchData
 
         DebugLog.Write(LogChannel.Opcodes, "PatchData.LoadOpcodeMap: read " + rowCount
             + " row(s), map now has " + _opcodeValuesByName.Count + " entries");
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // LoadFields
-    //
-    // Builds the field metadata for one opcode and stores it in the opcodeHandle-indexed arrays.
-    // Required field definitions, optional field definitions (slot allocators), and the
-    // OptionalGroup metadata are loaded by helpers that return their results; this method
-    // merges the FieldDefinitions, assigns _opcodeFields[opcodeHandle], then builds the
-    // OptionalGroup once IndexOfField can resolve names against the assigned array.
-    //
-    // Order matters: _opcodeFields[opcodeHandle] must be set before LoadOptionalGroup runs,
-    // because LoadOptionalGroup calls IndexOfField, which reads the array.
-    //
-    // An opcode with no fields at all (no PacketField rows and no PacketOptionalGroup
-    // rows) leaves _opcodeFields[opcodeHandle] and _opcodeOptionalGroups[opcodeHandle] both null.
-    // The extractor treats null _opcodeFields as "opcode known but unsupported" and
-    // skips dispatch.
-    //
-    // Parameters:
-    //   opcodeHandle  - The Opcode whose fields to load.
-    //   conn    - An open database connection, owned by the caller. 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void LoadFields(OpcodeHandle handle, SqliteConnection conn)
-    {
-        List<FieldDefinition> requiredFields = LoadRequiredFields(handle, conn);
-        List<FieldDefinition> optionalFields = LoadOptionalFields(handle, conn);
-
-        int totalCount = requiredFields.Count + optionalFields.Count;
-        if (totalCount == 0)
-        {
-            return;
-        }
-
-        List<FieldDefinition> allFields = new List<FieldDefinition>(totalCount);
-        allFields.AddRange(requiredFields);
-        allFields.AddRange(optionalFields);
-        _opcodeFields[handle] = allFields.ToArray();
-        ResolveRelativeAnchors(handle);
-        _pendingRelativeNames!.Clear();
-
-        OptionalGroup? group = LoadOptionalGroup(handle, conn);
-        if (group != null)
-        {
-            _opcodeOptionalGroups[handle] = group;
-            _optionalGroupsById[group.Id] = group;
-        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -808,226 +761,6 @@ public class PatchData
 
         _pendingRelativeNames!.Clear();
         _pendingFieldPredicates!.Clear();
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // LoadRequiredFields
-    //
-    // Reads PacketField rows for the opcode at the given opcodeHandle, ordered by bit_offset,
-    // and returns them as a list of FieldDefinition entries.
-    //
-    // Unrecognized encoding strings are stored as FieldEncoding.Unknown so the row still
-    // produces a slot; the extractor silently skips Unknown slots.
-    //
-    // The relative_to column is read into a transient parallel list and childCollection to slot
-    // indices by ResolveRelativeAnchors after the caller has merged required and optional
-    // fields into the final array.  Resolution cannot happen here because anchors may name
-    // any sibling slot, including optional-field slots loaded by LoadOptionalFields.
-    //
-    // Parameters:
-    //   opcodeHandle  - The Opcode whose required fields to load.
-    //   conn    - An open database connection.
-    //
-    // Returns:
-    //   The required field definitions, possibly empty if the opcode has no PacketField
-    //   rows for this patch.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private List<FieldDefinition> LoadRequiredFields(OpcodeHandle handle, SqliteConnection conn)
-    {
-        List<FieldDefinition> fields = new List<FieldDefinition>();
-        PatchOpcode patchOpcode = _patchOpcodeByOpcodeHandle[handle];
-
-        CollectionHandle collection = CollectionHandleForOpcode(handle, conn);
-        if (collection.Exists == false)
-        {
-            DebugLog.Write(LogChannel.Fields, "PatchData.LoadRequiredFields: no collection childCollection "
-                + "for opcode '" + _opcodeNamesByOpcodeHandle[handle] + "' in patchLevel=" + PatchLevel
-                + ", returning no fields");
-            return fields;
-        }
-
-        string collectionName = _collectionNamesByHandle[collection];
-
-        using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT field_name, bit_offset, bit_length, encoding, divisor, relative_to"
-            + " FROM PacketField"
-            + " WHERE patch_date = @patchDate"
-            + " AND server_type = @serverType"
-            + " AND collection_name = @collectionName"
-            + " ORDER BY bit_offset";
-        cmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
-        cmd.Parameters.AddWithValue("@serverType", PatchLevel.ServerType);
-        cmd.Parameters.AddWithValue("@collectionName", collectionName);
-
-        using SqliteDataReader reader = cmd.ExecuteReader();
-        while (reader.Read())
-        {
-            string fieldName = reader.GetString(0);
-            uint bitOffset = (uint)reader.GetInt32(1);
-            uint bitLength = (uint)reader.GetInt32(2);
-            string encodingString = reader.GetString(3);
-            float divisor = (float)reader.GetFloat(4);
-            string? relativeToName;
-            if (reader.IsDBNull(5))
-            {
-                relativeToName = null;
-            }
-            else
-            {
-                relativeToName = reader.GetString(5);
-            }
-
-            FieldEncoding encoding;
-            int resolvedGroupId = -1;
-            bool encodingFound = _encodingsByString.TryGetValue(encodingString, out encoding);
-            if (encodingFound == false)
-            {
-                bool isGroupName = _optionalGroupIdsByName!.TryGetValue(encodingString, out resolvedGroupId);
-                if (isGroupName == true)
-                {
-                    DebugLog.Write(LogChannel.Fields, "PatchData.LoadRequiredFields: encoding '"
-                        + encodingString + "' for opcode=" + _opcodeNamesByOpcodeHandle[handle]
-                        + " 0x" + patchOpcode.Value
-                        + " version=" + patchOpcode.Version + " fieldName='" + fieldName
-                        + "' names optional group id " + resolvedGroupId + ", treating as OptionalGroup");
-                    encoding = FieldEncoding.OptionalGroup;
-                }
-                else
-                {
-                    DebugLog.Write(LogChannel.Fields, "PatchData.LoadRequiredFields: unrecognized encoding '"
-                        + encodingString + "' for opcode=" + _opcodeNamesByOpcodeHandle[handle]
-                        + " 0x" + patchOpcode.Value
-                        + " version=" + patchOpcode.Version + " fieldName='" + fieldName
-                        + "', storing as Unknown");
-                    encoding = FieldEncoding.Unknown;
-                }
-            }
-
-            FieldDefinition definition;
-            definition.Name = fieldName;
-            definition.BitOffset = bitOffset;
-            definition.BitLength = bitLength;
-            definition.Encoding = encoding;
-            definition.Divisor = divisor;
-            definition.RelativeToSlot = null;
-            definition.Gate = GateHandle.None;
-            definition.Predicate = default;
-            if (resolvedGroupId >= 0)
-            {
-                definition.OptionalGroupId = (uint)resolvedGroupId;
-            }
-            else
-            {
-                definition.OptionalGroupId = null;
-            }
-            fields.Add(definition);
-            _pendingRelativeNames!.Add(relativeToName);
-        }
-
-        return fields;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // LoadOptionalFields
-    //
-    // Reads PacketOptionalGroup and PacketOptionalField rows for the opcode at the given
-    // opcodeHandle and returns the FieldDefinition entries that allocate slots for each optional
-    // sub-field.  Each entry carries the group's bit_offset (which is unused at extract
-    // time for optional fields) and the row's encoding (an opt_* sentinel that Extract's
-    // main switch skips).
-    //
-    // The OptionalGroup metadata itself is built by LoadOptionalGroup, after
-    // _opcodeFields[opcodeHandle] is assigned.  This method only produces the slot-allocator
-    // FieldDefinitions.
-    //
-    // Parameters:
-    //   opcodeHandle  - The Opcode whose optional fields to load.
-    //   conn    - An open database connection.
-    //
-    // Returns:
-    //   The optional sub-field definitions, possibly empty if the opcode has no
-    //   PacketOptionalGroup rows for this patch.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private List<FieldDefinition> LoadOptionalFields(OpcodeHandle handle, SqliteConnection conn)
-    {
-        PatchOpcode patchOpcode = _patchOpcodeByOpcodeHandle[handle];
-        List<FieldDefinition> fields = new List<FieldDefinition>();
-
-        List<int> groupIds = new List<int>();
-        List<uint> groupBitOffsets = new List<uint>();
-
-        using (SqliteCommand groupsCmd = conn.CreateCommand())
-        {
-            groupsCmd.CommandText = "SELECT pog.id, pog.bit_offset"
-                + " FROM PacketOptionalGroup pog"
-                + " JOIN PatchOpcode po ON pog.patch_opcode_id = po.id"
-                + " WHERE po.patch_date = @patchDate"
-                + " AND po.server_type = @serverType"
-                + " AND po.opcode_value = @opcodeValue"
-                + " AND po.version = @version"
-                + " ORDER BY pog.bit_offset";
-            groupsCmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
-            groupsCmd.Parameters.AddWithValue("@serverType", PatchLevel.ServerType);
-            groupsCmd.Parameters.AddWithValue("@opcodeValue", (int)patchOpcode.Value.Value);
-            groupsCmd.Parameters.AddWithValue("@version", patchOpcode.Version);
-
-            using SqliteDataReader reader = groupsCmd.ExecuteReader();
-            while (reader.Read())
-            {
-                int groupId = reader.GetInt32(0);
-                uint groupBitOffset = (uint)reader.GetInt32(1);
-                groupIds.Add(groupId);
-                groupBitOffsets.Add(groupBitOffset);
-            }
-        }
-
-        for (int groupIndex = 0; groupIndex < groupIds.Count; groupIndex++)
-        {
-            int groupId = groupIds[groupIndex];
-            uint groupBitOffset = groupBitOffsets[groupIndex];
-
-            using SqliteCommand optionalCmd = conn.CreateCommand();
-            optionalCmd.CommandText = "SELECT field_name, bit_length, encoding, divisor"
-                + " FROM PacketOptionalField"
-                + " WHERE group_id = @groupId"
-                + " ORDER BY sequence_order";
-            optionalCmd.Parameters.AddWithValue("@groupId", groupId);
-
-            using SqliteDataReader reader = optionalCmd.ExecuteReader();
-            while (reader.Read())
-            {
-                string fieldName = reader.GetString(0);
-                uint bitLength = (uint)reader.GetInt32(1);
-                string encodingString = reader.GetString(2);
-                float divisor = reader.GetFloat(3);
-
-                FieldEncoding encoding;
-                bool encodingFound = _encodingsByString.TryGetValue(encodingString, out encoding);
-                if (encodingFound == false)
-                {
-                    DebugLog.Write(LogChannel.Fields, "PatchData.LoadOptionalFields: unrecognized encoding '"
-                        + encodingString + "' for opcode=" + _opcodeNamesByOpcodeHandle[handle]
-                        + " 0x" + patchOpcode.Value
-                        + " version=" + patchOpcode.Version + " groupId=" + groupId
-                        + " fieldName='" + fieldName + "', storing as Unknown");
-                    encoding = FieldEncoding.Unknown;
-                }
-
-                FieldDefinition definition;
-                definition.Name = fieldName;
-                definition.BitOffset = groupBitOffset;
-                definition.BitLength = bitLength;
-                definition.Encoding = encoding;
-                definition.Divisor = divisor;
-                definition.OptionalGroupId = null;
-                definition.RelativeToSlot = null;
-                definition.Gate = GateHandle.None;
-                definition.Predicate = default;
-                fields.Add(definition);
-            }
-        }
-
-        return fields;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -1196,275 +929,6 @@ public class PatchData
         DebugLog.Write(LogChannel.Fields, "PatchData.LoadOptionalGroupNames: read " + rowCount
             + " group row(s), map has " + _optionalGroupIdsByName.Count + " named group(s) for patchLevel="
             + PatchLevel);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // LoadOptionalGroup
-    //
-    // Reads PacketOptionalGroup and PacketOptionalField rows for the opcode at the given
-    // opcodeHandle, resolves field names to slot indices via IndexOfField, and returns the
-    // built OptionalGroup.  Must be called after _opcodeFields[opcodeHandle] is assigned.
-    //
-    // Today's schema supports multiple groups per opcode but the in-memory structure
-    // holds one — if a future opcode declares more than one group, only the last one
-    // read is returned.  Refactor when that case shows up.
-    //
-    // Parameters:
-    //   opcodeHandle  - The Opcode whose optional group to load.
-    //   conn    - An open database connection.
-    //
-    // Returns:
-    //   The OptionalGroup, or null if the opcode has no PacketOptionalGroup rows.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private OptionalGroup? LoadOptionalGroup(OpcodeHandle handle, SqliteConnection conn)
-    {
-        PatchOpcode patchOpcode = _patchOpcodeByOpcodeHandle[handle];
-        OptionalGroup? result = null;
-
-        List<uint> groupIds = new List<uint>();
-        List<string> groupFlagFieldNames = new List<string>();
-
-
-        using (SqliteCommand groupsCmd = conn.CreateCommand())
-        {
-            groupsCmd.CommandText = "SELECT pog.id, pog.flag_field_name"
-                + " FROM PacketOptionalGroup pog"
-                + " JOIN PatchOpcode po ON pog.patch_opcode_id = po.id"
-                + " WHERE po.patch_date = @patchDate"
-                + " AND po.server_type = @serverType"
-                + " AND po.opcode_value = @opcodeValue"
-                + " AND po.version = @version"
-                + " ORDER BY pog.bit_offset";
-            groupsCmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
-            groupsCmd.Parameters.AddWithValue("@serverType", PatchLevel.ServerType);
-            groupsCmd.Parameters.AddWithValue("@opcodeValue", (int)patchOpcode.Value.Value);
-            groupsCmd.Parameters.AddWithValue("@version", patchOpcode.Version);
-
-            using SqliteDataReader reader = groupsCmd.ExecuteReader();
-            while (reader.Read())
-            {
-                uint groupId = (uint) reader.GetInt32(0);
-                string flagFieldName = reader.GetString(1);
-                groupIds.Add(groupId);
-                groupFlagFieldNames.Add(flagFieldName);
-            }
-        }
-
-        for (int groupIndex = 0; groupIndex < groupIds.Count; groupIndex++)
-        {
-            uint groupId = groupIds[groupIndex];
-            string flagFieldName = groupFlagFieldNames[groupIndex];
-
-            uint flagsLength = GetFieldBitLength(handle, flagFieldName);
-
-            SlotId flagSlot = IndexOfField(handle, flagFieldName);
-
-
-            List<OptionalSubField> subFields = new List<OptionalSubField>();
-
-            using SqliteCommand optionalCmd = conn.CreateCommand();
-            optionalCmd.CommandText = "SELECT field_name, bit_length, encoding, divisor"
-                + " FROM PacketOptionalField"
-                + " WHERE group_id = @groupId"
-                + " ORDER BY sequence_order";
-            optionalCmd.Parameters.AddWithValue("@groupId", groupId);
-
-            using SqliteDataReader reader = optionalCmd.ExecuteReader();
-            while (reader.Read())
-            {
-                string fieldName = reader.GetString(0);
-                uint bitLength = (uint)reader.GetInt32(1);
-                string encodingString = reader.GetString(2);
-                float divisor = reader.GetFloat(3);
-
-                FieldEncoding encoding;
-                bool encodingFound = _encodingsByString.TryGetValue(encodingString, out encoding);
-                if (encodingFound == false)
-                {
-                    encoding = FieldEncoding.Unknown;
-                }
-
-                SlotId slot = IndexOfField(handle, fieldName);
-
-                OptionalSubField subField;
-                subField.Slot = slot;
-                subField.BitLength = bitLength;
-                subField.Encoding = encoding;
-                subField.Name = fieldName;
-                subField.Divisor = divisor;
-                subFields.Add(subField);
-            }
-
-            result = new OptionalGroup(groupId, flagSlot, flagsLength, subFields.ToArray());
-        }
-
-        return result;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // ResolveRelativeAnchors
-    //
-    // Reorders _opcodeFields[opcodeHandle] so that every relative field appears after the field it
-    // anchors on, then resolves each anchor name to a slot index and writes it into
-    // FieldDefinition.RelativeToSlot.  The ordering is produced by Kahn's algorithm over the
-    // name-anchor graph and handles chains of any depth.
-    //
-    // _pendingRelativeNames supplies the anchor name for each required field, parallel to the
-    // required-field portion of _opcodeFields[opcodeHandle].
-    //
-    // An anchor name not present in the field list logs and leaves RelativeToSlot null on
-    // that field.  A cycle in the graph logs each unresolved field and appends the affected
-    // fields in their original order.
-    //
-    // Parameters:
-    //   opcodeHandle  - The Opcode whose field array to reorder and resolve.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void ResolveRelativeAnchors(OpcodeHandle handle)
-    {
-        FieldDefinition[]? definitions = _opcodeFields[handle];
-        if (definitions == null)
-        {
-            DebugLog.Write(LogChannel.Fields, "PatchData.ResolveRelativeAnchors: no field "
-                + "definitions for opcode='" + _opcodeNamesByOpcodeHandle[handle]
-                + "', nothing to resolve");
-            return;
-        }
-
-        List<string?> pending = _pendingRelativeNames!;
-        int definitionCount = definitions.Length;
-
-        // Build a per-field anchor-name lookup keyed by the field's own name.  The
-        // pending list parallels the required-field portion of definitions; optional
-        // fields sit past pending.Count and never carry an anchor.
-        Dictionary<string, string> anchorNameByFieldName = new Dictionary<string, string>();
-        for (int pendingIndex = 0; pendingIndex < pending.Count; pendingIndex++)
-        {
-            string? anchorName = pending[pendingIndex];
-            if (anchorName == null)
-            {
-                continue;
-            }
-            string ownName = definitions[pendingIndex].Name;
-            anchorNameByFieldName[ownName] = anchorName;
-        }
-
-        // Index field positions in the input array by name so the dependency graph
-        // can be built using name-keyed lookups even though the graph itself is
-        // index-keyed.
-        Dictionary<string, int> indexByName = new Dictionary<string, int>(definitionCount);
-        for (int positionIndex = 0; positionIndex < definitionCount; positionIndex++)
-        {
-            indexByName[definitions[positionIndex].Name] = positionIndex;
-        }
-
-        int[] inDegree = new int[definitionCount];
-        List<int>[] dependents = new List<int>[definitionCount];
-        for (int initIndex = 0; initIndex < definitionCount; initIndex++)
-        {
-            dependents[initIndex] = new List<int>();
-        }
-
-        for (int edgeIndex = 0; edgeIndex < definitionCount; edgeIndex++)
-        {
-            string ownName = definitions[edgeIndex].Name;
-            string anchorName;
-            bool hasAnchor = anchorNameByFieldName.TryGetValue(ownName, out anchorName!);
-            if (hasAnchor == false)
-            {
-                continue;
-            }
-
-            int anchorIndex;
-            bool anchorPresent = indexByName.TryGetValue(anchorName, out anchorIndex);
-            if (anchorPresent == false)
-            {
-                DebugLog.Write(LogChannel.Fields, "PatchData.ResolveRelativeAnchors: opcode='"
-                    + _opcodeNamesByOpcodeHandle[handle] + "' field='" + ownName
-                    + "' references unknown anchor '" + anchorName
-                    + "', will be left absolute");
-                continue;
-            }
-
-            dependents[anchorIndex].Add(edgeIndex);
-            inDegree[edgeIndex] = inDegree[edgeIndex] + 1;
-        }
-
-        Queue<int> ready = new Queue<int>();
-        for (int readyIndex = 0; readyIndex < definitionCount; readyIndex++)
-        {
-            if (inDegree[readyIndex] == 0)
-            {
-                ready.Enqueue(readyIndex);
-            }
-        }
-
-        List<FieldDefinition> ordered = new List<FieldDefinition>(definitionCount);
-        while (ready.Count > 0)
-        {
-            int currentIndex = ready.Dequeue();
-            ordered.Add(definitions[currentIndex]);
-
-            List<int> currentDependents = dependents[currentIndex];
-            for (int dependentSlot = 0; dependentSlot < currentDependents.Count; dependentSlot++)
-            {
-                int dependentIndex = currentDependents[dependentSlot];
-                inDegree[dependentIndex] = inDegree[dependentIndex] - 1;
-                if (inDegree[dependentIndex] == 0)
-                {
-                    ready.Enqueue(dependentIndex);
-                }
-            }
-        }
-
-        if (ordered.Count != definitionCount)
-        {
-            for (int leftoverIndex = 0; leftoverIndex < definitionCount; leftoverIndex++)
-            {
-                if (inDegree[leftoverIndex] > 0)
-                {
-                    DebugLog.Write(LogChannel.Fields, "PatchData.ResolveRelativeAnchors: opcode='"
-                        + _opcodeNamesByOpcodeHandle[handle] + "' field='"
-                        + definitions[leftoverIndex].Name
-                        + "' has unresolved anchor dependency, appending in original order");
-                    ordered.Add(definitions[leftoverIndex]);
-                }
-            }
-        }
-
-        // Build the index lookup against the final order before resolving anchor
-        // slot indices into FieldDefinition.RelativeToSlot.
-        Dictionary<string, uint> finalIndexByName = new Dictionary<string, uint>(definitionCount);
-        for (uint finalIndex = 0; finalIndex < ordered.Count; finalIndex++)
-        {
-            finalIndexByName[ordered[(int)finalIndex].Name] = finalIndex;
-        }
-
-        for (int resolveIndex = 0; resolveIndex < ordered.Count; resolveIndex++)
-        {
-            FieldDefinition entry = ordered[resolveIndex];
-            string anchorName;
-            bool hasAnchor = anchorNameByFieldName.TryGetValue(entry.Name, out anchorName!);
-            if (hasAnchor == false)
-            {
-                continue;
-            }
-
-            uint resolvedIndex;
-            bool resolved = finalIndexByName.TryGetValue(anchorName, out resolvedIndex);
-            if (resolved == false)
-            {
-                DebugLog.Write(LogChannel.Fields, "PatchData.ResolveRelativeAnchors: opcode='"
-                    + _opcodeNamesByOpcodeHandle[handle] + "' field='" + entry.Name
-                    + "' references unknown anchor '" + anchorName
-                    + "', leaving RelativeToSlot null");
-                continue;
-            }
-
-            entry.RelativeToSlot = resolvedIndex;
-            ordered[resolveIndex] = entry;
-        }
-
-        _opcodeFields[handle] = ordered.ToArray();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -1803,7 +1267,6 @@ public class PatchData
     // Returns:
     //   True if a is non-local or defined earlier in a collection
     ///////////////////////////////////////////////////////////////////////////////////////////////
-
     private bool SlotDefinedBefore(SlotId a, SlotId b)
     {
         if (a.Collection != b.Collection)
@@ -1842,31 +1305,6 @@ public class PatchData
         return versionOne;
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GetOpcodeHandle
-    //
-    // Returns the Opcode for the given opcode name in this patch.  Called by handlers
-    // at construction time, once per opcode they care about.  Cold path.
-    //
-    // Parameters:
-    //   opcodeName  - The logical name (e.g. "OP_PlayerProfile").
-    //
-    // Returns:
-    //   The Opcode for the named opcode, or Opcode.None if not in this patch.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public OpcodeHandle GetOpcodeHandle(string opcodeName)
-    {
-        OpcodeHandle handle;
-        bool found = _opcodeHandlesByName.TryGetValue(opcodeName, out handle);
-        if (found == false)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "PatchData.GetOpcodeHandle: unknown opcode name '"
-                + opcodeName + "' in patchLevel=" + PatchLevel + ", returning -1");
-            return OpcodeHandle.None;
-        }
-        return handle;
-    }
-
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeHandle
     //
@@ -1889,49 +1327,20 @@ public class PatchData
         return handle;
     }
 
-    public OpcodeHandle GetOpcodeHandle(OpcodeValue opcodeValue)
-    {
-        OpcodeHandle handle;
-        bool found = _opcodeHandlesByValue.TryGetValue(opcodeValue, out handle);
-        if (found == false)
-        {
-            return OpcodeHandle.None;
-        }
-
-        return handle;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetCollectionHandle
-    //
-    // A CollectionHandle defines a set of named fields in this patch.
-    //
-    // Parameters:
-    //   collectionName  - The FieldCollection name to look up.
-    //
-    // Returns:
-    //   The CollectionHandle for the named collection, or CollectionHandle.None if absent.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public CollectionHandle GetCollectionHandle(string collectionName)
+    public CollectionHandle GetOpcodeCollection(string opcodeName)
     {
         CollectionHandle collectionHandle;
-        bool found = _collectionHandleByCollectionName.TryGetValue(collectionName, out collectionHandle);
+        bool found = _collectionHandleByOpcodeName.TryGetValue(opcodeName, out collectionHandle);
         if (found == false)
         {
-            DebugLog.Write(LogChannel.Fields, "PatchData.GetCollectionHandle: unknown collection name '"
-                + collectionName + "' in patchLevel=" + PatchLevel + ", returning None");
             return CollectionHandle.None;
         }
+
         return collectionHandle;
     }
-
     public CollectionHandle GetCollectionHandleFromOpcode(OpcodeHandle opcodeHandle)
     {
-        string opcodeName = _opcodeNamesByOpcodeHandle[opcodeHandle];
-
-        CollectionHandle collectionHandle = CollectionHandle.None;
-        _collectionHandleByCollectionName.TryGetValue(opcodeName, out collectionHandle);
-        return collectionHandle;
+        return _collectionHandleByOpcodeHandle[opcodeHandle];
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1976,27 +1385,6 @@ public class PatchData
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetOpcodeValue
-    //
-    // Returns the wire opcode value for the given Opcode in this patch.
-    //
-    // Parameters:
-    //   opcodeHandle  - The Opcode whose wire opcode value to return.
-    //
-    // Returns:
-    //   The wire opcode value (e.g. 0x6FA1), or 0 if the opcodeHandle is invalid.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public OpcodeValue GetOpcodeValue(OpcodeHandle handle)
-    {
-        if (handle >= _patchOpcodeByOpcodeHandle.Length)
-        {
-            return OpcodeValue.None;
-        }
-
-        return _patchOpcodeByOpcodeHandle[handle].Value;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeCount
     //
     // Returns the number of opcodes loaded for this patch.  Equal to the length of the
@@ -2008,23 +1396,6 @@ public class PatchData
     public int GetOpcodeCount()
     {
         return _patchOpcodeByOpcodeHandle.Length;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetFieldDefinitions
-    //
-    // Returns the FieldDefinition array for the given Opcode, or null if the opcode
-    // has no fields loaded for this patch.
-    //
-    // Parameters:
-    //   opcodeHandle  - The Opcode whose field definitions to return.
-    //
-    // Returns:
-    //   The FieldDefinition array, or null if absent.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public FieldDefinition[]? GetFieldDefinitions(OpcodeHandle opcode)
-    {
-        return _opcodeFields[opcode];
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -2042,27 +1413,6 @@ public class PatchData
     public FieldDefinition[]? GetFieldDefinitions(CollectionHandle collection)
     {
         return _collectionFields[collection];
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetOptionalGroup
-    //
-    // Returns the OptionalGroup for the given Opcode, or null if the opcode has no
-    // optional block defined for this patch.  Most opcodes have no optional block; null
-    // is the common case.
-    //
-    // Called from FieldExtractor.Extract when it dispatches on the OptionalGroup encoding,
-    // to look up the metadata the optional-block helper needs to walk the sub-fields.
-    //
-    // Parameters:
-    //   opcodeHandle  - The Opcode whose optional group to return.
-    //
-    // Returns:
-    //   The OptionalGroup, or null if the opcode has no optional block.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public OptionalGroup? GetOptionalGroup(OpcodeHandle handle)
-    {
-        return _opcodeOptionalGroups[handle];
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -2088,47 +1438,6 @@ public class PatchData
         DebugLog.Write(LogChannel.Fields, "PatchData.GetOptionalGroup: no group with id "
             + groupId + " in patchLevel=" + PatchLevel + ", returning null");
         return null;
-    }
-
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetFieldBitLength
-    //
-    // Returns the BitLength of the named field within the FieldDefinition list for the
-    // given Opcode. 
-    //
-    // Returns 0 if the opcode has no fields loaded for this patch, or if the named field
-    // is not present in the loaded definitions.
-    //
-    // Parameters:
-    //   opcodeHandle    - The Opcode whose field definitions to search.
-    //   fieldName - The field_name column value to look up.
-    //
-    // Returns:
-    //   The BitLength of the named field, or 0 if not found.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public uint GetFieldBitLength(OpcodeHandle opcode, string fieldName)
-    {
-        FieldDefinition[]? definitions = _opcodeFields[opcode];
-        if (definitions == null)
-        {
-            DebugLog.Write(LogChannel.Fields, "PatchData.GetFieldBitLength: no field definitions for opcode '" +
-                _opcodeNamesByOpcodeHandle[opcode] + "' in patchLevel=" + PatchLevel + ", returning 0");
-            return 0u;
-        }
-
-        for (int fieldIndex = 0; fieldIndex < definitions.Length; fieldIndex++)
-        {
-            if (definitions[fieldIndex].Name == fieldName)
-            {
-                return definitions[fieldIndex].BitLength;
-            }
-        }
-
-        DebugLog.Write(LogChannel.Fields, "PatchData.GetFieldBitLength: field '" + fieldName
-            + "' not in definitions for opcode '" + _opcodeNamesByOpcodeHandle[opcode] +
-            "' in patchLevel=" + PatchLevel + ", returning 0");
-        return 0u;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -2218,7 +1527,6 @@ public class PatchData
         return SlotId.None;
     }
 
-
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetFieldPosition
     //
@@ -2227,25 +1535,24 @@ public class PatchData
     // example, csv_token rows where BitOffset is the 1-based index of the token within
     // a comma-separated payload.
     //
-    // opcodeHandle:   The opcode opcodeHandle previously obtained from GetOpcodeHandle.
+    // collection:   The collection containing the field
     // slot:     The slot to query.
     //
-    // Returns the slot's BitOffset.  Throws if the opcodeHandle or field id cannot be
-    // childCollection.
+    // Returns the slot's BitOffset.  Throws if the collection handle is invalid
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public uint GetFieldPosition(OpcodeHandle handle, SlotId slot)
+    public uint GetFieldPosition(CollectionHandle collectionHandle, SlotId slot)
     {
-        FieldDefinition[]? definitions = _opcodeFields[handle];
+        FieldDefinition[]? definitions = _collectionFields[collectionHandle];
 
         if (definitions == null)
         {
-            throw new InvalidOperationException("PatchData.GetFieldPosition: no fields for opcodeHandle " + handle);
+            throw new InvalidOperationException("PatchData.GetFieldPosition: no fields for collection " + collectionHandle);
         }
 
         if (slot.Index >= definitions.Length)
         {
             throw new ArgumentOutOfRangeException(nameof(slot),
-                "PatchData.GetFieldPosition: field id " + slot.Index + " out of range for opcodeHandle " + handle);
+                "PatchData.GetFieldPosition: field id " + slot.Index + " out of range for collection " + collectionHandle);
         }
 
         FieldDefinition definition = definitions[slot.Index];

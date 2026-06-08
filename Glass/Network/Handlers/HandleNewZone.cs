@@ -19,7 +19,7 @@ public class HandleNewZone : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_NewZone";
     private readonly PatchOpcode _opcodeHandled;
-    private readonly OpcodeHandle _opcode;
+    private readonly CollectionHandle _collection;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
 
@@ -45,11 +45,11 @@ public class HandleNewZone : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
-        _opcode = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _collection = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
 
-        _shortNameSlot = _registry.IndexOfField(_patchLevel, _opcode, "short_name");
-        _longNameSlot = _registry.IndexOfField(_patchLevel, _opcode, "long_name");
-        _zoneIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "zone_id");
+        _shortNameSlot = _registry.IndexOfField(_patchLevel, _collection, "short_name");
+        _longNameSlot = _registry.IndexOfField(_patchLevel, _collection, "long_name");
+        _zoneIdSlot = _registry.IndexOfField(_patchLevel, _collection, "zone_id");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -105,7 +105,7 @@ public class HandleNewZone : IHandleOpcodes
         FieldBag bag = _registry.Rent(_opcodeHandled);
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _opcode, data, bag);
+            GlassContext.FieldExtractor.Extract(_patchLevel, _collection, data, bag);
 
             ReadOnlySpan<byte> snameBytes = bag.GetBytesAt(_shortNameSlot);
             shortName = Encoding.ASCII.GetString(snameBytes);

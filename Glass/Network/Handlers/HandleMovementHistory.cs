@@ -17,7 +17,7 @@ public class HandleMovementHistory : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_MovementHistory";
     private readonly PatchOpcode _opcodeHandled;
-    private readonly OpcodeHandle _opcode;
+    private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
 
@@ -50,13 +50,13 @@ public class HandleMovementHistory : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
-        _opcode = GlassContext.PatchRegistry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
 
-        _xPosSlot = _registry.IndexOfField(_patchLevel, _opcode, "x_pos");
-        _yPosSlot = _registry.IndexOfField(_patchLevel, _opcode, "y_pos");
-        _zPosSlot = _registry.IndexOfField(_patchLevel, _opcode, "z_pos");
-        _timestampSlot = _registry.IndexOfField(_patchLevel, _opcode, "timestamp");
-        _movestateSlot = _registry.IndexOfField(_patchLevel, _opcode, "move_state");
+        _xPosSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "x_pos");
+        _yPosSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "y_pos");
+        _zPosSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "z_pos");
+        _timestampSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "timestamp");
+        _movestateSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "move_state");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -171,7 +171,7 @@ public class HandleMovementHistory : IHandleOpcodes
             {
                 bag.Clear();
                 ReadOnlySpan<byte> entry = data.Slice(i * 17, 17);
-                GlassContext.FieldExtractor.Extract(_patchLevel, _opcode, entry, bag);
+                GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, entry, bag);
 
                 float xPos = bag.GetFloatAt(_xPosSlot);
                 float yPos = bag.GetFloatAt(_yPosSlot);

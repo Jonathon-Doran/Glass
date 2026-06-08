@@ -18,7 +18,7 @@ public class HandleMobUpdate : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_MobUpdate";
     private readonly PatchOpcode _opcodeHandled;
-    private readonly OpcodeHandle _opcode;
+    private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
 
@@ -46,12 +46,12 @@ public class HandleMobUpdate : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _opcode = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
 
-        _spawnIdSlot = _registry.IndexOfField(_patchLevel, _opcode, "spawn_id");
-        _xPosSlot = _registry.IndexOfField(_patchLevel, _opcode, "x_pos");
-        _yPosSlot = _registry.IndexOfField(_patchLevel, _opcode, "y_pos");
-        _zPosSlot = _registry.IndexOfField(_patchLevel, _opcode, "z_pos");
+        _spawnIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "spawn_id");
+        _xPosSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "x_pos");
+        _yPosSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "y_pos");
+        _zPosSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "z_pos");
 
         // Todo:  heading should be 16-bits at byte 12
        // _headingSlot = _fields.IndexOfField("heading");
@@ -112,7 +112,7 @@ public class HandleMobUpdate : IHandleOpcodes
         FieldBag bag = _registry.Rent(_opcodeHandled);
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _opcode, data, bag);
+            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
 
             spawnId = bag.GetUIntAt(_spawnIdSlot);
             xPos = bag.GetFloatAt(_xPosSlot);

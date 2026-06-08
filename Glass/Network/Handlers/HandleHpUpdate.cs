@@ -19,7 +19,7 @@ public class HandleHpUpdate : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_HpUpdate";
     private readonly PatchOpcode _opcodeHandled;
-    private readonly OpcodeHandle _handle;
+    private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
 
@@ -45,11 +45,11 @@ public class HandleHpUpdate : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
-        _handle = _registry.GetOpcodeHandle(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
 
-        _playerIdSlot = _registry.IndexOfField(_patchLevel, _handle, "player_id");
-        _currentHPIdSlot = _registry.IndexOfField(_patchLevel, _handle, "current_hp");
-        _maxHPIdSlot = _registry.IndexOfField(_patchLevel, _handle, "max_hp");
+        _playerIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "player_id");
+        _currentHPIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "current_hp");
+        _maxHPIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "max_hp");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -104,7 +104,7 @@ public class HandleHpUpdate : IHandleOpcodes
         FieldBag bag = _registry.Rent(_opcodeHandled);
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _handle, data, bag);
+            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
 
             uint playerId = bag.GetUIntAt(_playerIdSlot);
 

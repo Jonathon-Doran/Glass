@@ -108,9 +108,13 @@ public partial class PacketDetailWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private static string ExtractFieldText(PatchOpcode patchOpcode, ReadOnlySpan<byte> payload)
     {
-        OpcodeHandle handle = GlassContext.PatchRegistry.GetOpcodeHandle(patchOpcode);
+        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
+        PatchRegistry registry = GlassContext.PatchRegistry;
 
-        if (! handle.Exists)
+        string opcodeName = registry.GetOpcodeName(patchLevel, patchOpcode);
+        CollectionHandle collectionHandle = registry.GetOpcodeCollection(patchLevel, opcodeName);
+
+        if (! collectionHandle.Exists)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "PacketDetailWindow.ExtractFieldText: opcode=0x" + patchOpcode
@@ -121,7 +125,7 @@ public partial class PacketDetailWindow : Window
         FieldBag bag = GlassContext.PatchRegistry.Rent(patchOpcode);
         try
         {
-            GlassContext.FieldExtractor.Extract(GlassContext.CurrentPatchLevel, handle, payload, bag);
+            GlassContext.FieldExtractor.Extract(GlassContext.CurrentPatchLevel, collectionHandle, payload, bag);
 
             StringBuilder sb = new StringBuilder();
             BagWalker walker = bag.Walk();
