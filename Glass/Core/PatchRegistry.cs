@@ -33,12 +33,6 @@ public class PatchRegistry
         _bagPool = new FieldBagPool(FieldBag.DefaultPoolSize, FieldBag.DefaultSlotCount);
     }
 
-    public PatchRegistry(PatchLevel patchLevel)
-        : this()
-    {
-        LoadPatchLevel(patchLevel);
-    }
-
     ///////////////////////////////////////////////////////////////////////////////////////////
     // LoadPatchLevel
     //

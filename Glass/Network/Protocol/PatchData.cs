@@ -31,7 +31,6 @@ namespace Glass.Network.Protocol;
 public class PatchData
 {
     public readonly PatchLevel PatchLevel;
-    private readonly Dictionary<string, OpcodeValue> _opcodeValuesByName;
     private readonly Dictionary<OpcodeValue, string> _opcodeNamesByValue;
     private readonly Dictionary<string, FieldEncoding> _encodingsByString;
 
@@ -44,17 +43,6 @@ public class PatchData
     // only for this PatchData instance.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private readonly PatchOpcode[] _patchOpcodeByOpcodeHandle;
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // _opcodeFields
-    //
-    // Parallel array to _patchOpcodeByOpcodeHandle: _opcodeFields[opcodeHandle] is the FieldDefinition[] for
-    // _patchOpcodeByOpcodeHandle[opcodeHandle], or null if that opcode has no fields defined for this patch
-    //
-    // Allocated once in the constructor sized to the number of rows returned by
-    // LoadPatchOpcodes; never resized.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private readonly FieldDefinition[]?[] _opcodeFields;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // _collectionFields
@@ -234,7 +222,6 @@ public class PatchData
         PatchLevel = patchLevel;
         _encodingsByString = new Dictionary<string, FieldEncoding>();
         BuildEncodingMap();
-        _opcodeValuesByName = new Dictionary<string, OpcodeValue>();
         _opcodeNamesByValue = new Dictionary<OpcodeValue, string>();
         _optionalGroupsById = new Dictionary<uint, OptionalGroup>();
 
@@ -255,7 +242,6 @@ public class PatchData
         }
 
         _patchOpcodeByOpcodeHandle = new PatchOpcode[opcodeCount];
-        _opcodeFields = new FieldDefinition[opcodeCount][];
         _collectionFields = new FieldDefinition[collectionCount][];
         _opcodeNamesByOpcodeHandle = new string[opcodeCount];
         _opcodeHandlesByName = new Dictionary<string, OpcodeHandle>(opcodeCount);
@@ -296,9 +282,6 @@ public class PatchData
         _pendingRelativeNames = null;
         _pendingGateFields = null;
         _pendingFieldPredicates = null;
-
-        DebugLog.Write(LogChannel.Opcodes, "PatchData ctor: loaded " +
-            _opcodeValuesByName.Count + " opcode name(s) and " + _patchOpcodeByOpcodeHandle.Length + " opcode(s) for patch " + PatchLevel);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -634,13 +617,9 @@ public class PatchData
         {
             string opcodeName = reader.GetString(0);
             OpcodeValue opcodeValue = (OpcodeValue) reader.GetInt32(1);
-            _opcodeValuesByName[opcodeName] = opcodeValue;
             _opcodeNamesByValue[opcodeValue] = opcodeName;
             rowCount++;
         }
-
-        DebugLog.Write(LogChannel.Opcodes, "PatchData.LoadOpcodeMap: read " + rowCount
-            + " row(s), map now has " + _opcodeValuesByName.Count + " entries");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -1438,52 +1417,6 @@ public class PatchData
         DebugLog.Write(LogChannel.Fields, "PatchData.GetOptionalGroup: no group with id "
             + groupId + " in patchLevel=" + PatchLevel + ", returning null");
         return null;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // IndexOfField
-    //
-    // Returns the SlotId of the named field within the FieldDefinition list for the
-    // given Opcode.  Called by handlers at construction time to cache field indices
-    // for hot-path reads from FieldBags.  Cold path.
-    //
-    // Parameters:
-    //   opcodeHandle - The Opcode whose field definitions to search.
-    //   fieldName - The field_name column value to look up.
-    //
-    // Returns:
-    //   The SlotId of the named field, or SlotId.None if not found.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public SlotId IndexOfField(OpcodeHandle opcode, string fieldName)
-    {
-        if (! opcode.Exists)
-        {
-            DebugLog.Write(LogChannel.Fields, "PatchData.IndexOfField: opcode handle '" + opcode +
-                  "' in patchLevel=" + PatchLevel + "), does not exist.  Returning slot.None");
-            return SlotId.None;
-        }
-
-        FieldDefinition[]? definitions = _opcodeFields[opcode];
-        CollectionHandle collectionHandle = GetCollectionHandleFromOpcode(opcode);
-        if (definitions == null)
-        {
-            DebugLog.Write(LogChannel.Fields, "PatchData.IndexOfField: no field definitions for opcode '" +
-                _opcodeNamesByOpcodeHandle[opcode] + "' in patchLevel=" + PatchLevel + "), returning -1");
-            return SlotId.None;
-        }
-
-        for (uint fieldIndex = 0; fieldIndex < definitions.Length; fieldIndex++)
-        {
-            if (definitions[fieldIndex].Name == fieldName)
-            {
-                return new SlotId(collectionHandle, fieldIndex);
-            }
-        }
-
-        DebugLog.Write(LogChannel.Fields, "PatchData.IndexOfField: field '" + fieldName
-            + "' not in definitions for opcode '" + _opcodeNamesByOpcodeHandle[opcode] + 
-            "' in patchLevel=" + PatchLevel + "), returning -1");
-        return SlotId.None;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
