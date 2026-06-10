@@ -164,9 +164,9 @@ public partial class MainWindow : Window
         DebugLog.AddHandler(LogSink.Aux2LogFile, memoryLogHandler);
         DebugLog.Route(LogChannel.Memory, LogSink.Aux2LogFile);
 
-        GlassDebugLogHandler fieldsLogHandler = new GlassDebugLogHandler("low_network.log");
+        GlassDebugLogHandler fieldsLogHandler = new GlassDebugLogHandler("fields.log");
         DebugLog.AddHandler(LogSink.Aux3LogFile, fieldsLogHandler);
-        DebugLog.Route(LogChannel.LowNetwork, LogSink.Aux3LogFile);
+        DebugLog.Route(LogChannel.Fields, LogSink.Aux3LogFile);
 
         // The inference tab, just inference messages
         GlassConsoleLogHandler inferenceTabHandler = new GlassConsoleLogHandler(InferenceLogOutput, InferenceLogScroller);
@@ -240,8 +240,9 @@ public partial class MainWindow : Window
         GlassContext.BufferPool.LogStatistics();
 
         DebugLog.Write(LogChannel.InferenceDebug, "Inference application closing");
-      //  InferenceLog.Shutdown();
-       // InferenceDebugLog.Shutdown();
+        GlassContext.PatchRegistry.LogPoolStatistics();
+        //  InferenceLog.Shutdown();
+        // InferenceDebugLog.Shutdown();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1847,11 +1848,11 @@ public partial class MainWindow : Window
     // sender:  The Tools > Patch Data Editor menu item.
     // e:       Standard event args; not inspected.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void MenuItem_PatchDataEditor_Click(object sender, RoutedEventArgs e)
+    private void MenuItem_OpcodeEditor_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.Fields, "MainWindow.MenuItem_PatchDataEditor_Click: opening editor");
+        DebugLog.Write(LogChannel.Fields, "MainWindow.MenuItem_OpcodeEditor_Click: opening editor");
 
-        PatchDataEditor editor = new PatchDataEditor();
+        OpcodeEditor editor = new OpcodeEditor();
         editor.Owner = this;
         editor.Show();
     }
@@ -1869,6 +1870,23 @@ public partial class MainWindow : Window
         DebugLog.Write(LogChannel.Fields, "MainWindow.MenuItem_CollectionEditor_Click: opening editor");
 
         CollectionEditor editor = new CollectionEditor();
+        editor.Owner = this;
+        editor.Show();
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // MenuItem_GateEditor_Click
+    //
+    // Opens the Gate Editor as a modeless window owned by this MainWindow.
+    //
+    // sender:  The Tools > Gate Editor menu item.
+    // e:       Standard event args; not inspected.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void MenuItem_GateEditor_Click(object sender, RoutedEventArgs e)
+    {
+        DebugLog.Write(LogChannel.Fields, "MainWindow.MenuItem_GateEditor_Click: opening editor");
+
+        GateEditor editor = new GateEditor();
         editor.Owner = this;
         editor.Show();
     }

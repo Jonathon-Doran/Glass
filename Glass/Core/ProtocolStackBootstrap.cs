@@ -82,6 +82,8 @@ public static class ProtocolStackBootstrap
         DebugLog.Write(LogChannel.Sessions,
             "ProtocolStackBootstrap.Teardown: GlassVideo clear_all sent");
 
+        GlassContext.PatchRegistry.LogPoolStatistics();
+
         OpcodeDispatch.Instance.Dispose();
         DebugLog.Write(LogChannel.Sessions,
             "ProtocolStackBootstrap.Teardown: OpcodeDispatch disposed");

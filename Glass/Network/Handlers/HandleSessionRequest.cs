@@ -77,28 +77,10 @@ public class HandleSessionRequest : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        switch (metadata.Channel)
-        {
-            case SoeConstants.StreamId.StreamZoneToClient:
-                HandleClientToWorld(data, metadata);
-                break;
-        }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleClientToWorld
-    //
-    // Processes client-to-world traffic
-    //
-    // data:      The application payload
-    // metadata:  Packet metadata (timestamp, source/dest)
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleClientToWorld(ReadOnlySpan<byte> data, PacketMetadata metadata)
-    {
         FieldBag bag = _registry.Rent(_opcodeHandled);
 
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-    + _opcodeName + " length=" + data.Length);
+             + _opcodeName + " length=" + data.Length);
 
         try
         {

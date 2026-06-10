@@ -20,13 +20,15 @@ namespace Glass.Network.Protocol.Fields;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class FieldBag
 {
-    public const int DefaultSlotCount = 64;
+    public const int DefaultSlotCount = 500;
     public const int DefaultPoolSize = 64;
 
     private readonly FieldSlot[] _slots;
     private readonly FieldBagPool _pool;
-    private int _slotCount;
+    private uint _slotsInUse;
     private string _currentOpcodeName = string.Empty;
+    private readonly int[] _displayOrder;
+    private uint _displayOrderCount;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // FieldBag (constructor)
@@ -48,7 +50,9 @@ public class FieldBag
 
         _slots = new FieldSlot[capacity];
         _pool = pool;
-        _slotCount = 0;
+        _slotsInUse = 0;
+        _displayOrder = new int[capacity];
+        _displayOrderCount = 0;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -62,14 +66,14 @@ public class FieldBag
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // SlotCount
+    // SlotsInUse
     //
-    // The number of slots currently populated.  Slots at indices [0, SlotCount) are live;
-    // slots at [SlotCount, Capacity) are unused.
+    // The number of slots currently populated.  Slots at indices [0, SlotsInUse) are live;
+    // slots at [SlotsInUse, Capacity) are unused.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public int SlotCount
+    public uint SlotsInUse
     {
-        get { return _slotCount; }
+        get { return _slotsInUse; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -95,11 +99,12 @@ public class FieldBag
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void Clear()
     {
-        for (int slotIndex = 0; slotIndex < _slotCount; slotIndex++)
+        for (int slotIndex = 0; slotIndex < _slotsInUse; slotIndex++)
         {
             _slots[slotIndex].Clear();
         }
-        _slotCount = 0;
+        _slotsInUse = 0;
+        _displayOrderCount = 0;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -114,16 +119,48 @@ public class FieldBag
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public ref FieldSlot AddSlot()
     {
-        if (_slotCount >= _slots.Length)
+        if (_slotsInUse >= _slots.Length)
         {
             DebugLog.Write(LogChannel.Fields, "FieldBag.AddSlot: capacity " + _slots.Length
                 + " exceeded; returning ref to last slot, field will be overwritten");
             return ref _slots[_slots.Length - 1];
         }
 
-        ref FieldSlot slot = ref _slots[_slotCount];
-        _slotCount++;
+        ref FieldSlot slot = ref _slots[_slotsInUse];
+        _slotsInUse++;
         return ref slot;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // BuildDisplayOrder
+    //
+    // Fills the bag's display-order map with the live slot indices ordered by each slot's
+    // Sequence, ascending, stable so slots with equal Sequence keep their physical order.  Called
+    // once after extraction has finished filling the bag, before the bag is walked.  NextAfter
+    // walks this map so iteration visits slots in Sequence order rather than physical order.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public void BuildDisplayOrder()
+    {
+        for (int slotIndex = 0; slotIndex < _slotsInUse; slotIndex++)
+        {
+            _displayOrder[slotIndex] = slotIndex;
+        }
+        _displayOrderCount = _slotsInUse;
+
+        for (int sortedIndex = 1; sortedIndex < _displayOrderCount; sortedIndex++)
+        {
+            int currentSlot = _displayOrder[sortedIndex];
+            uint currentSequence = _slots[currentSlot].Sequence;
+            int scanIndex = sortedIndex - 1;
+
+            while (scanIndex >= 0 && _slots[_displayOrder[scanIndex]].Sequence > currentSequence)
+            {
+                _displayOrder[scanIndex + 1] = _displayOrder[scanIndex];
+                scanIndex = scanIndex - 1;
+            }
+
+            _displayOrder[scanIndex + 1] = currentSlot;
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -145,10 +182,10 @@ public class FieldBag
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public ref FieldSlot TryGetSlotRef(SlotId slot)
     {
-        if (slot.Index >= _slotCount)
+        if (slot.Index >= _slotsInUse)
         {
             DebugLog.Write(LogChannel.Fields, _currentOpcodeName + " FieldBag.TryGetSlotRef: slot.Index "
-                + slot.Index + " out of range [0, " + _slotCount + "), returning null ref");
+                + slot.Index + " out of range [0, " + _slotsInUse + "), returning null ref");
             return ref Unsafe.NullRef<FieldSlot>();
         }
         return ref _slots[slot.Index];
@@ -167,10 +204,10 @@ public class FieldBag
     ///////////////////////////////////////////////////////////////////////////////////////////
     public int GetIntAt(SlotId slot)
     {
-        if (slot.Index >= _slotCount)
+        if (slot.Index >= _slotsInUse)
         {
             DebugLog.Write(LogChannel.Fields, _currentOpcodeName + " FieldBag.GetIntAt: slot.Index "
-                + slot.Index + " out of range [0, " + _slotCount + "), returning 0");
+                + slot.Index + " out of range [0, " + _slotsInUse + "), returning 0");
             return 0;
         }
 
@@ -210,10 +247,10 @@ public class FieldBag
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public uint GetUIntAt(SlotId slot)
     {
-        if (slot.Index >= _slotCount)
+        if (slot.Index >= _slotsInUse)
         {
             DebugLog.Write(LogChannel.Fields, _currentOpcodeName + " FieldBag.GetUIntAt: slot.Index "
-                + slot.Index + " out of range [0, " + _slotCount + "), returning 0");
+                + slot.Index + " out of range [0, " + _slotsInUse + "), returning 0");
             return 0;
         }
 
@@ -254,10 +291,10 @@ public class FieldBag
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public float GetFloatAt(SlotId slot)
     {
-        if (slot.Index >= _slotCount)
+        if (slot.Index >= _slotsInUse)
         {
             DebugLog.Write(LogChannel.Fields, _currentOpcodeName + " FieldBag.GetFloatAt: slot.Index "
-                + slot.Index + " out of range [0, " + _slotCount + "), returning 0");
+                + slot.Index + " out of range [0, " + _slotsInUse + "), returning 0");
             return 0;
         }
 
@@ -301,10 +338,10 @@ public class FieldBag
 
     public ReadOnlySpan<byte> GetBytesAt(SlotId slot)
     {
-        if (slot.Index >= _slotCount)
+        if (slot.Index >= _slotsInUse)
         {
             DebugLog.Write(LogChannel.Fields, _currentOpcodeName + " FieldBag.GetBytesAt: slot.Index "
-                + slot.Index + " out of range [0, " + _slotCount + "), returning 0");
+                + slot.Index + " out of range [0, " + _slotsInUse + "), returning 0");
             return ReadOnlySpan<byte>.Empty;
         }
 
@@ -344,10 +381,10 @@ public class FieldBag
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public uint GetLengthAt(SlotId slot)
     {
-        if (slot.Index >= _slotCount)
+        if (slot.Index >= _slotsInUse)
         {
             DebugLog.Write(LogChannel.Fields, _currentOpcodeName + " FieldBag.GetLengthAt: slot.Index "
-                + slot.Index + " out of range [0, " + _slotCount + "), returning 0");
+                + slot.Index + " out of range [0, " + _slotsInUse + "), returning 0");
             return 0;
         }
 
@@ -369,10 +406,10 @@ public class FieldBag
     ///////////////////////////////////////////////////////////////////////////////////////////
     public FieldType GetTypeAt(SlotId slot)
     {
-        if (slot.Index >= _slotCount)
+        if (slot.Index >= _slotsInUse)
         {
             DebugLog.Write(LogChannel.Fields, _currentOpcodeName + " FieldBag.GetTypeAt: slot.Index "
-                + slot.Index + " out of range [0, " + _slotCount + "), returning Empty");
+                + slot.Index + " out of range [0, " + _slotsInUse + "), returning Empty");
             return FieldType.Empty;
         }
         return _slots[slot.Index].Type;
@@ -404,7 +441,7 @@ public class FieldBag
     ///////////////////////////////////////////////////////////////////////////////////////////
     public bool IsPresent(SlotId slot)
     {
-        if (slot.Index >= _slotCount)
+        if (slot.Index >= _slotsInUse)
         {
             return false;
         }
@@ -425,18 +462,20 @@ public class FieldBag
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // NextAfter
     //
-    // Advances the caller-owned position past any Empty slots and returns the next filled
-    // slot as a FieldBinding, or null when no more filled slots remain.  Called only by
-    // BagWalker.Next.
+    // Advances the caller-owned position past any Empty slots and returns the next filled slot as
+    // a FieldBinding, or null when no more filled slots remain.  Visits slots in the order set by
+    // BuildDisplayOrder.  Called only by BagWalker.Next.
     //
     // position:  Caller-owned iteration position, advanced as slots are consumed.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     internal FieldBinding? NextAfter(ref int position)
     {
-        while (position < _slotCount)
+        while (position < _displayOrderCount)
         {
-            ref FieldSlot slot = ref _slots[position];
+            int slotIndex = _displayOrder[position];
             position++;
+
+            ref FieldSlot slot = ref _slots[slotIndex];
 
             if (slot.Type == FieldType.Empty)
             {

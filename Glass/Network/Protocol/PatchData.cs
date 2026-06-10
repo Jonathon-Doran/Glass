@@ -631,7 +631,8 @@ public class PatchData
     //
     // Unrecognized encoding strings are stored as FieldEncoding.Unknown.  The relative_to value
     // of each row is appended to _pendingRelativeNames for ResolveRelativeAnchors, which is
-    // cleared before this method returns.
+    // cleared before this method returns.  A row whose sequence column is null takes its database
+    // row position as its sequence so every field carries one.
     //
     // Parameters:
     //   opcodeHandle  - The CollectionHandle whose fields to load.
@@ -643,7 +644,7 @@ public class PatchData
         List<FieldDefinition> fields = new List<FieldDefinition>();
 
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT field_name, bit_offset, bit_length, encoding, divisor, relative_to, predicate"
+        cmd.CommandText = "SELECT field_name, bit_offset, bit_length, encoding, divisor, relative_to, predicate, sequence"
                     + " FROM PacketField"
                     + " WHERE patch_date = @patchDate"
                     + " AND server_type = @serverType"
@@ -652,6 +653,8 @@ public class PatchData
         cmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
         cmd.Parameters.AddWithValue("@serverType", PatchLevel.ServerType);
         cmd.Parameters.AddWithValue("@collectionName", collectionName);
+
+        uint rowPosition = 0;
 
         using (SqliteDataReader reader = cmd.ExecuteReader())
         {
@@ -702,6 +705,16 @@ public class PatchData
                     predicateString = reader.GetString(6);
                 }
 
+                uint sequence;
+                if (reader.IsDBNull(7))
+                {
+                    sequence = rowPosition;
+                }
+                else
+                {
+                    sequence = (uint)reader.GetInt32(7);
+                }
+
                 FieldDefinition definition;
                 definition.Name = fieldName;
                 definition.BitOffset = bitOffset;
@@ -712,6 +725,7 @@ public class PatchData
                 definition.OptionalGroupId = null;
                 definition.Gate = gate;
                 definition.Predicate = default;
+                definition.Sequence = sequence;
                 fields.Add(definition);
                 _pendingRelativeNames!.Add(relativeToName);
 
@@ -725,6 +739,8 @@ public class PatchData
                         + collectionName + "' field='" + fieldName
                         + "' carries predicate '" + predicateString + "', pending resolution");
                 }
+
+                rowPosition = rowPosition + 1;
             }
         }
 
@@ -1228,10 +1244,6 @@ public class PatchData
                             + predicate.SourceSlot + " op=" + predicate.Op + " operand=" + predicate.Operand
                             + " signedOperand=" + predicate.SignedOperand);
         }
-
-        DebugLog.Write(LogChannel.Fields, "PatchData.ResolvePredicates: childCollection "
-            + pending.Count + " pending predicate(s) for collection '"
-            + _collectionNamesByHandle[handle] + "' in patchLevel=" + PatchLevel);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -1690,4 +1702,3 @@ public class PatchData
         return true;
     }
 }
-

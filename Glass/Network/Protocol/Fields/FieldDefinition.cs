@@ -23,11 +23,7 @@
 // means absolute (anchored at packet start).  Resolution from the database string to the
 // slot index happens in a second pass during load.
 //
-// OptionalGroupId, when non-null, is the index of the resolved OptionalGroup this field
-// decodes, within the patch's optional-group list.  Set at load time when the field's
-// encoding string names a substructure rather than a known scalar encoding.  Null means the
-// field is an ordinary scalar field.  Resolution from the encoding-string name to the index
-// happens during load, the same way RelativeToSlot is resolved from the relative_to string.
+// Sequence is the display order of this field within its collection.
 //
 // Gate, when it Exists, is the handle of the gate this field decodes through; the gate
 // names the child collection and the multiplicity rule.  GateHandle.None means the field
@@ -54,4 +50,5 @@ public struct FieldDefinition
     public uint? OptionalGroupId;
     public GateHandle Gate;
     public FieldPredicate Predicate;
+    public uint Sequence;
 }

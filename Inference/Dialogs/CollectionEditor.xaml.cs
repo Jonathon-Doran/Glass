@@ -359,6 +359,8 @@ public partial class CollectionEditor : Window
     // collide with database-assigned ids loaded from PacketField; it is not shown in the grid and
     // exists only to match loaded rows back to their database row at update or delete time.
     //
+    // The sequence column is the field's presentation sort order within the collection.
+    //
     // The gate column is a grid-only expression column; it does not map to a PacketField column
     // directly.  The save path parses it into a Gate row named "Gate_<child>" and writes
     // that name into the field's encoding.  The remaining columns map one-to-one to PacketField.
@@ -372,10 +374,11 @@ public partial class CollectionEditor : Window
     private DataTable CreateFieldsTable()
     {
         DataTable table = new DataTable();
-        DataColumn idColumn = table.Columns.Add("id", typeof(int));
+        DataColumn idColumn = table.Columns.Add("id", typeof(uint));
         idColumn.AutoIncrement = true;
         idColumn.AutoIncrementSeed = -1;
         idColumn.AutoIncrementStep = -1;
+        table.Columns.Add("sequence", typeof(int));
         table.Columns.Add("field_name", typeof(string));
         table.Columns.Add("bit_offset", typeof(int));
         table.Columns.Add("bit_length", typeof(int));
@@ -502,11 +505,12 @@ public partial class CollectionEditor : Window
     // LoadFieldsTable
     //
     // Reads the PacketField rows for the given collection, builds the grid's DataTable, and binds
-    // it to FieldsGrid.  For each row the encoding is inspected: when it names a gate (starts with
+    // it to FieldsGrid.  Rows are ordered by sequence with unassigned (null) sequences last, then
+    // by bit_offset.  For each row the encoding is inspected: when it names a gate (starts with
     // "Gate_") the matching Gate row is read and formatted into the gate column, and the
     // encoding column is left empty so the grid shows the field as a gate rather than a scalar.
-    // Otherwise the encoding is shown as-is and the gate column is left empty.  The relative_to
-    // and predicate columns are shown empty when their database value is null.
+    // Otherwise the encoding is shown as-is and the gate column is left empty.  The sequence,
+    // relative_to, and predicate columns are shown empty when their database value is null.
     //
     // patchLevel:      The patch level whose fields to load.
     // collectionName:  The FieldCollection name whose fields to load.
@@ -517,13 +521,13 @@ public partial class CollectionEditor : Window
 
         using (SqliteCommand cmd = _connection.CreateCommand())
         {
-            cmd.CommandText = "SELECT id, field_name, bit_offset, bit_length, encoding, divisor,"
-                + " relative_to, predicate"
+            cmd.CommandText = "SELECT id, sequence, field_name, bit_offset, bit_length, encoding,"
+                + " divisor, relative_to, predicate"
                 + " FROM PacketField"
                 + " WHERE patch_date = @patchDate"
                 + " AND server_type = @serverType"
                 + " AND collection_name = @collectionName"
-                + " ORDER BY bit_offset";
+                + " ORDER BY sequence IS NULL, sequence, bit_offset";
             cmd.Parameters.AddWithValue("@patchDate", patchLevel.PatchDate);
             cmd.Parameters.AddWithValue("@serverType", patchLevel.ServerType);
             cmd.Parameters.AddWithValue("@collectionName", collectionName);
@@ -533,28 +537,38 @@ public partial class CollectionEditor : Window
             {
                 DataRow row = table.NewRow();
                 row["id"] = reader.GetInt32(0);
-                row["field_name"] = reader.GetString(1);
-                row["bit_offset"] = reader.GetInt32(2);
-                row["bit_length"] = reader.GetInt32(3);
-                string encoding = reader.GetString(4);
-                row["divisor"] = reader.GetDouble(5);
 
-                if (reader.IsDBNull(6) == true)
+                if (reader.IsDBNull(1) == true)
+                {
+                    row["sequence"] = DBNull.Value;
+                }
+                else
+                {
+                    row["sequence"] = (uint)reader.GetInt32(1);
+                }
+
+                row["field_name"] = reader.GetString(2);
+                row["bit_offset"] = reader.GetInt32(3);
+                row["bit_length"] = reader.GetInt32(4);
+                string encoding = reader.GetString(5);
+                row["divisor"] = reader.GetDouble(6);
+
+                if (reader.IsDBNull(7) == true)
                 {
                     row["relative_to"] = DBNull.Value;
                 }
                 else
                 {
-                    row["relative_to"] = reader.GetString(6);
+                    row["relative_to"] = reader.GetString(7);
                 }
 
-                if (reader.IsDBNull(7) == true)
+                if (reader.IsDBNull(8) == true)
                 {
                     row["predicate"] = DBNull.Value;
                 }
                 else
                 {
-                    row["predicate"] = reader.GetString(7);
+                    row["predicate"] = reader.GetString(8);
                 }
 
                 if (encoding.StartsWith("Gate_", StringComparison.Ordinal) == true)
@@ -735,6 +749,7 @@ public partial class CollectionEditor : Window
         }
 
         DataRow newRow = _fieldsTable.NewRow();
+        newRow["sequence"] = DBNull.Value;
         newRow["field_name"] = string.Empty;
         newRow["bit_offset"] = 0;
         newRow["bit_length"] = 0;
@@ -1510,7 +1525,7 @@ public partial class CollectionEditor : Window
     // statements according to each row's RowState, all within the caller's transaction.  Inserted
     // and updated rows carry collectionName as their collection_name; their encoding is resolved by
     // ResolveFieldEncoding, which returns a scalar encoding or a "Gate_<child>" name and upserts the
-    // gate's Gate row when the field is gated.  The relative_to and predicate columns are
+    // gate's Gate row when the field is gated.  The sequence, relative_to, and predicate columns are
     // written as null when their cell is blank.  No-op when the table is null or has no changes.
     //
     // tx:              The transaction within which the writes run.
@@ -1553,14 +1568,15 @@ public partial class CollectionEditor : Window
                 using SqliteCommand cmd = _connection.CreateCommand();
                 cmd.Transaction = tx;
                 cmd.CommandText = "INSERT INTO PacketField"
-                    + " (patch_date, server_type, collection_name, field_name, bit_offset,"
+                    + " (patch_date, server_type, collection_name, field_name, sequence, bit_offset,"
                     + " bit_length, encoding, divisor, relative_to, predicate)"
-                    + " VALUES (@patchDate, @serverType, @collectionName, @fieldName, @bitOffset,"
+                    + " VALUES (@patchDate, @serverType, @collectionName, @fieldName, @sequence, @bitOffset,"
                     + " @bitLength, @encoding, @divisor, @relativeTo, @predicate)";
                 cmd.Parameters.AddWithValue("@patchDate", patchLevel.PatchDate);
                 cmd.Parameters.AddWithValue("@serverType", patchLevel.ServerType);
                 cmd.Parameters.AddWithValue("@collectionName", collectionName);
                 cmd.Parameters.AddWithValue("@fieldName", row["field_name"]);
+                cmd.Parameters.AddWithValue("@sequence", row["sequence"]);
                 cmd.Parameters.AddWithValue("@bitOffset", row["bit_offset"]);
                 cmd.Parameters.AddWithValue("@bitLength", row["bit_length"]);
                 cmd.Parameters.AddWithValue("@encoding", encoding);
@@ -1581,6 +1597,7 @@ public partial class CollectionEditor : Window
                 cmd.CommandText = "UPDATE PacketField"
                     + " SET collection_name = @collectionName,"
                     + "     field_name = @fieldName,"
+                    + "     sequence = @sequence,"
                     + "     bit_offset = @bitOffset,"
                     + "     bit_length = @bitLength,"
                     + "     encoding = @encoding,"
@@ -1591,6 +1608,7 @@ public partial class CollectionEditor : Window
                 cmd.Parameters.AddWithValue("@id", row["id"]);
                 cmd.Parameters.AddWithValue("@collectionName", collectionName);
                 cmd.Parameters.AddWithValue("@fieldName", row["field_name"]);
+                cmd.Parameters.AddWithValue("@sequence", row["sequence"]);
                 cmd.Parameters.AddWithValue("@bitOffset", row["bit_offset"]);
                 cmd.Parameters.AddWithValue("@bitLength", row["bit_length"]);
                 cmd.Parameters.AddWithValue("@encoding", encoding);

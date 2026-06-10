@@ -102,6 +102,12 @@ public class FieldExtractor
 
         Span<uint> resolvedStartBits = stackalloc uint[definitions.Length];
 
+        // TEMPORARY - FOR TESTING ONLY - REMOVE
+        // Tracks whether the first gate in this collection has been passed.  The first gate is
+        // the predicated Once gate, handled by the normal predicate path; the second gate is the
+        // multiplicity gate that has no implementation and must stop the pass.
+        bool firstGateSeen = false;
+
         for (uint definitionIndex = 0; definitionIndex < definitions.Length; definitionIndex++)
         {
             FieldDefinition definition = definitions[definitionIndex];
@@ -111,6 +117,25 @@ public class FieldExtractor
             uint effectiveBitOffset = ResolveFieldStartBit(collection, definitions, bag, resolvedStartBits, definitionIndex);
             slot.WireBitOffset = effectiveBitOffset;
             slot.WireBitLength = 0;
+            slot.Sequence = definition.Sequence;
+
+            // TEMPORARY - FOR TESTING ONLY - REMOVE
+            // The first gate is the predicated Once gate; its presence is governed by the field
+            // predicate already evaluated above, so when absent it contributes no wire bytes and
+            // the following fields chain correctly with no adjustment here.  It is passed over
+            // without stopping.  The second gate is the multiplicity gate, which has no decoding
+            // implementation, so the pass stops there.
+            if (definition.Gate.Exists == true)
+            {
+                if (firstGateSeen == false)
+                {
+                    firstGateSeen = true;
+                    continue;
+                }
+
+               break;
+            }
+
 
             if (definition.Predicate.Op != PredicateOp.None)
             {
@@ -230,6 +255,8 @@ public class FieldExtractor
                     break;
             }
         }
+
+        bag.BuildDisplayOrder();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

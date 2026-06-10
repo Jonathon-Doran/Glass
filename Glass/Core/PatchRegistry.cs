@@ -399,7 +399,7 @@ public class PatchRegistry
     //   opcode:   The Opcode to tag the bag for
     //
     // Returns:
-    //   A bag with SlotCount == 0 and CurrentOpcodeName set, ready to be filled.
+    //   A bag with SlotsInUse == 0 and CurrentOpcodeName set, ready to be filled.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public FieldBag Rent(PatchOpcode opcode)
     {
@@ -504,5 +504,17 @@ public class PatchRegistry
         uint position = patchData.GetFieldPosition(collection, slot);
 
         return position;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // LogPoolStatistics
+    //
+    // Writes the bag pool's lifetime counters to the log by delegating to the pool's
+    // LogStatistics.  The pool is private to this registry, so this is the only path by
+    // which its counters reach the log.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void LogPoolStatistics()
+    {
+        _bagPool.LogStatistics();
     }
 }

@@ -28,6 +28,9 @@ public class FieldBagPool
     private readonly int _slotsPerBag;
     private int _allocatedBagCount;
     private int _exhaustionCount;
+    private uint _inUseCount;
+    private uint _highWaterCount;
+    private uint _peakSlotsUsed;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // FieldBagPool (constructor)
@@ -58,6 +61,9 @@ public class FieldBagPool
         _slotsPerBag = slotsPerBag;
         _allocatedBagCount = 0;
         _exhaustionCount = 0;
+        _inUseCount = 0;
+        _highWaterCount = 0;
+        _peakSlotsUsed = 0;
 
         DebugLog.Write(LogChannel.Fields, "FieldBagPool ctor: pre-allocating "
             + initialBagCount + " bags with " + slotsPerBag + " slots each");
@@ -83,8 +89,11 @@ public class FieldBagPool
     // loudly.  Repeated exhaustion is a sizing bug — increase initialBagCount at construction
     // to eliminate the runtime allocations.
     //
+    // Tracks the number of bags currently rented and the peak concurrent rental count
+    // observed over the pool's lifetime.  Both counters are mutated under the pool lock.
+    //
     // Returns:
-    //   A bag with SlotCount == 0, ready to be filled.  The caller must eventually call
+    //   A bag with SlotsInUse == 0, ready to be filled.  The caller must eventually call
     //   Release on the returned bag to return it to this pool.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public FieldBag Rent()
@@ -100,11 +109,14 @@ public class FieldBagPool
             else
             {
                 _exhaustionCount++;
-                DebugLog.Write(LogChannel.Fields, "FieldBagPool.Rent: pool exhausted, allocating "
-                    + "fresh bag (exhaustion count now " + _exhaustionCount + ", lifetime allocated "
-                    + "before this " + _allocatedBagCount + ")");
                 rentedBag = new FieldBag(_slotsPerBag, this);
                 _allocatedBagCount++;
+            }
+
+            _inUseCount++;
+            if (_inUseCount > _highWaterCount)
+            {
+                _highWaterCount = _inUseCount;
             }
         }
 
@@ -121,6 +133,10 @@ public class FieldBagPool
     // The bag is not cleared here — clearing happens at Rent time so that bags which never
     // get reused do not pay for a clear they will not benefit from.
     //
+    // Decrements the in-use counter under the pool lock.  A return that would drive the
+    // counter below zero means a bag was returned that was never rented, or returned twice;
+    // the count is integrity state, so the process is terminated with the evidence logged.
+    //
     // Parameters:
     //   bag - The bag to return.  Must have been originally rented from this pool.  A null
     //         bag is logged and ignored rather than throwing — a misbehaving caller should
@@ -136,7 +152,45 @@ public class FieldBagPool
 
         lock (_lock)
         {
+            if (_inUseCount == 0)
+            {
+                string message = "FieldBagPool.Return: in-use count is zero, bag returned that "
+                    + "was never rented or returned twice -- pool accounting corrupt, aborting";
+
+                DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                    + Environment.StackTrace);
+
+                Environment.FailFast(message);
+            }
+
+            _inUseCount--;
+            uint slotsUsed = bag.SlotsInUse;
+            if (slotsUsed > _peakSlotsUsed)
+            {
+                _peakSlotsUsed = slotsUsed;
+            }
             _bags.Push(bag);
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // LogStatistics
+    //
+    // Writes one log line to the Fields channel reporting the pool's configuration and
+    // lifetime counters: slots per bag, total bags allocated, bags currently in use, peak
+    // concurrent rental count, and the number of rents that found the pool empty.  Counters
+    // are read under the pool lock so the line is internally consistent.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public void LogStatistics()
+    {
+        lock (_lock)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldBagPool stats: slotsPerBag=" + _slotsPerBag
+                            + " bagsAllocated=" + _allocatedBagCount
+                            + " bagsRentedNow=" + _inUseCount
+                            + " peakBagsRentedAtOnce=" + _highWaterCount
+                            + " peakSlotsUsedInOneBag=" + _peakSlotsUsed
+                            + " rentsThatFoundPoolEmpty=" + _exhaustionCount);
         }
     }
 }

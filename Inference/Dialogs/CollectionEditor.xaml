@@ -108,6 +108,9 @@
                           RowStyle="{StaticResource NoDetailChromeRowStyle}"
                           VerticalAlignment="Top">
                     <DataGrid.Columns>
+                        <DataGridTextColumn Header="#"
+                            Binding="{Binding sequence}"
+                            Width="80" />
                         <DataGridTextColumn Header="Name"
                             Binding="{Binding field_name}"
                             Width="*" />

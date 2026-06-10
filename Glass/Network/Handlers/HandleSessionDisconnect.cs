@@ -22,6 +22,8 @@ public class HandleSessionDisconnect : IHandleOpcodes
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
 
+    private readonly SlotId _sessionIdSlot;
+
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleSessionDisconnect (constructor)
     //
@@ -41,6 +43,8 @@ public class HandleSessionDisconnect : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
         _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
+
+        _sessionIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "session_id");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -71,28 +75,22 @@ public class HandleSessionDisconnect : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        switch (metadata.Channel)
-        {
-            case SoeConstants.StreamId.StreamZoneToClient:
-                HandleClientToWorld(data, metadata);
-                break;
-        }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleClientToWorld
-    //
-    // Processes client-to-world traffic
-    //
-    // data:      The application payload
-    // metadata:  Packet metadata (timestamp, source/dest)
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleClientToWorld(ReadOnlySpan<byte> data, PacketMetadata metadata)
-    {
         FieldBag bag = _registry.Rent(_opcodeHandled);
 
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-    + _opcodeName + " length=" + data.Length);
+        try
+        {
+            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
+
+            uint sessionId = bag.GetUIntAt(_sessionIdSlot);
+
+            DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
+                + _opcodeName + " length=" + data.Length);
+            DebugLog.Write(LogChannel.Opcodes, "sessionId=" + sessionId);
+        }
+        finally
+        {
+            bag.Release();
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
