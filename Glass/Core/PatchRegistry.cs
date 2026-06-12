@@ -477,24 +477,6 @@ public class PatchRegistry
         return patchData.GetFieldDefinitions(collection);
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetOptionalGroup
-    //
-    // Returns the OptionalGroup for the given PacketOptionalGroup id in the given patch
-    // level, or null if no group with that id was loaded for this patch.
-    //
-    // Parameters:
-    //   patchLevel  - The patch identifier.  Must already be loaded.
-    //   groupId     - The PacketOptionalGroup id, as carried on FieldDefinition.OptionalGroupId.
-    //
-    // Returns:
-    //   The OptionalGroup, or null if no group with that id is loaded.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public OptionalGroup? GetOptionalGroup(PatchLevel patchLevel, uint groupId)
-    {
-        PatchData patchData = FindPatchData(patchLevel);
-        return patchData.GetOptionalGroup(groupId);
-    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetFieldPosition

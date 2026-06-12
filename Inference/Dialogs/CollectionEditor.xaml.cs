@@ -6,6 +6,7 @@ using Glass.Network.Protocol.Fields;
 using Microsoft.Data.Sqlite;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Data;
 using System.Windows;
 using System.Windows.Controls;
@@ -51,6 +52,16 @@ public partial class CollectionEditor : Window
     // the form is armed to create a new collection.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private string _loadedCollectionName = string.Empty;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // KnownGateNames
+    //
+    // The gate expressions for every Gate row in the selected patch level, formatted by
+    // FormatGateExpression, bound as the ItemsSource of the gate combobox in the fields grid's
+    // row details.  The collection instance is created once and only ever mutated, so bindings
+    // established when a row's details render remain valid across repopulation.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public ObservableCollection<string> KnownGateNames { get; } = new ObservableCollection<string>();
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // GateExpression
@@ -200,6 +211,40 @@ public partial class CollectionEditor : Window
             + (items.Count - 1) + " collection(s) plus sentinel for patchLevel=" + patchLevel);
 
         CollectionComboBox.ItemsSource = items;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // PopulateGatesDropdown
+    //
+    // Replaces the contents of KnownGateNames with the name of every Gate row for the given
+    // patch level, ordered by name.  KnownGateNames is the ItemsSource of the gate combobox in
+    // the fields grid's row details.
+    //
+    // patchLevel:  The patch level whose Gate rows to load.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void PopulateGatesDropdown(PatchLevel patchLevel)
+    {
+        KnownGateNames.Clear();
+
+        using (SqliteCommand cmd = _connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT name"
+                + " FROM Gate"
+                + " WHERE patch_date = @patchDate"
+                + " AND server_type = @serverType"
+                + " ORDER BY name";
+            cmd.Parameters.AddWithValue("@patchDate", patchLevel.PatchDate);
+            cmd.Parameters.AddWithValue("@serverType", patchLevel.ServerType);
+
+            using SqliteDataReader reader = cmd.ExecuteReader();
+            while (reader.Read() == true)
+            {
+                KnownGateNames.Add(reader.GetString(0));
+            }
+        }
+
+        DebugLog.Write(LogChannel.Fields, "CollectionEditor.PopulateGatesDropdown: "
+            + KnownGateNames.Count + " gate name(s) for patchLevel=" + patchLevel);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -627,6 +672,7 @@ public partial class CollectionEditor : Window
             + "selected " + patchLevel);
 
         PopulateCollectionDropdown(patchLevel);
+        PopulateGatesDropdown(patchLevel);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

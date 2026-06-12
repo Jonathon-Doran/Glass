@@ -53,19 +53,6 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private readonly FieldDefinition[]?[] _collectionFields;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // _opcodeOptionalGroups
-    //
-    // Parallel array to _patchOpcodeByOpcodeHandle: _opcodeOptionalGroups[opcodeHandle] is the OptionalGroup
-    // for the opcode at that opcodeHandle, or null if the opcode has no optional block defined
-    // for this patch.  Most opcodes have no optional block; those slots stay null.
-    //
-    // Allocated once in the constructor sized to the number of rows returned by
-    // LoadPatchOpcodes; never resized.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    private readonly Dictionary<uint, OptionalGroup> _optionalGroupsById;
-
     ///////////////////////////////////////////////////////////////////////////////////////////
     // _collectionNamesByHandle
     //
@@ -76,17 +63,6 @@ public class PatchData
     private readonly Dictionary<string, CollectionHandle> _collectionHandleByCollectionName;
     private readonly Dictionary<OpcodeHandle, CollectionHandle> _collectionHandleByOpcodeHandle;
     private readonly Dictionary<string, CollectionHandle> _collectionHandleByOpcodeName;
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // _optionalGroupIdsByName
-    //
-    // Maps an optional group's name to its PacketOptionalGroup id.  Built once before the
-    // per-opcode field loop from every PacketOptionalGroup row for this patch.  Consulted
-    // during field loading when a PacketField encoding string is not a known scalar
-    // encoding: the string is looked up here to resolve it to a group id.  Cold path only;
-    // not used after construction.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private Dictionary<string, int>? _optionalGroupIdsByName;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // _opcodeHandlesByPatchOpcode
@@ -132,36 +108,31 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////
     // _gate
     //
-    // Flat array of childCollection Gate structures for this patch level, indexed by GateHandle.
+    // Flat array of childCollection GateDefinition structures for this patch level, indexed by GateHandle.
     // Sized by CountGates and filled incrementally as each gate is childCollection at its
     // referrer's load time, in resolution order.  A GateHandle is a position in this array.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private readonly Gate[] _gate;
+    private readonly GateDefinition[] _gate;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // _nextGateHandle
+    // _gateHandlesByName
     //
-    // The next GateHandle to assign, advanced by one each time a gate is childCollection and stored
-    // in _gate.
+    // Maps a gate's name to the GateHandle assigned at load time.  Built once by
+    // LoadGateDefinitions; the reverse lookup is the definition's Name member via the
+    // _gate array.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private uint _nextGateHandle;
+    private readonly Dictionary<string, GateHandle> _gateHandlesByName;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // PendingGateField
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // _gateFieldNamesByHandle
     //
-    // Load-time record pairing a gate awaiting field resolution with the field name to resolve
-    // and the collection that name resolves against.  Created when a gate carrying a field name
-    // is loaded and consumed by the gate field-resolution pass, which looks the name up within
-    // the parent collection's fields and writes the resulting SlotId onto the gate.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    internal struct PendingGateField
-    {
-        public GateHandle Gate;
-        public string FieldName;
-        public CollectionHandle ParentCollection;
-    }
-
-    private List<PendingGateField>? _pendingGateFields;
+    // Load-time map from a GateHandle to the raw field_name string its Gate row carries,
+    // for gates whose multiplicity reads a count field.  Populated by LoadGateDefinitions
+    // and consumed by the field-loading pass, which pairs the name with the referencing
+    // collection to build the pending entries ResolveGates resolves.  Set to null by the
+    // constructor after loading completes.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private Dictionary<GateHandle, string>? _gateFieldNamesByHandle;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // PendingFieldPredicate
@@ -173,11 +144,36 @@ public class PatchData
     // read-loop position; the resolve step looks the name up against the finalized array to find
     // the element to write.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    internal struct PendingFieldPredicate
+    private struct PendingFieldPredicate
     {
         public string OwnerFieldName;
         public string RawPredicate;
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeRecord
+    //
+    // Everything loaded for one PatchOpcode row, stored at its OpcodeHandle in _opcodes.
+    // PatchOpcode is the opcode's identity (patch level, wire value, version); Name is its
+    // opcode_name string; Gate is the handle of its top-level gate, the entry point for
+    // extracting its payload, or GateHandle.None when the row named no loaded gate.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private struct OpcodeRecord
+    {
+        public PatchOpcode PatchOpcode;
+        public string Name;
+        public GateHandle Gate;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // _opcodes
+    //
+    // Flat array of every OpcodeRecord for this patch level, indexed by OpcodeHandle.
+    // Allocated once in the constructor sized by CountPatchOpcodes and fully populated by
+    // LoadPatchOpcodes in database row order; never resized.  An OpcodeHandle is a position
+    // in this array, valid only for this PatchData instance.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private readonly OpcodeRecord[] _opcodes;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // _pendingFieldPredicates
@@ -223,9 +219,7 @@ public class PatchData
         _encodingsByString = new Dictionary<string, FieldEncoding>();
         BuildEncodingMap();
         _opcodeNamesByValue = new Dictionary<OpcodeValue, string>();
-        _optionalGroupsById = new Dictionary<uint, OptionalGroup>();
 
-        _pendingGateFields = new List<PendingGateField>();
         _pendingFieldPredicates = new List<PendingFieldPredicate>();
 
         using SqliteConnection conn = Database.Instance.Connect();
@@ -248,16 +242,19 @@ public class PatchData
         _opcodeHandlesByPatchOpcode = new Dictionary<PatchOpcode, OpcodeHandle>(opcodeCount);
         _pendingRelativeNames = new List<string?>();
 
+        _opcodes = new OpcodeRecord[opcodeCount];
         _collectionNamesByHandle = new string[collectionCount];
         _collectionHandleByCollectionName = new Dictionary<string, CollectionHandle>(collectionCount);
-        _gate = new Gate[gateCount];
-        _nextGateHandle = 0;
+        _gate = new GateDefinition[gateCount];
+        _gateHandlesByName = new Dictionary<string, GateHandle>((int)gateCount);
+        _gateFieldNamesByHandle = new Dictionary<GateHandle, string>();
         _collectionHandleByOpcodeHandle = new Dictionary<OpcodeHandle, CollectionHandle>(opcodeCount);
         _collectionHandleByOpcodeName = new Dictionary<string, CollectionHandle>(collectionCount);
+
         LoadOpcodeMap(conn);
-        LoadPatchOpcodes(conn);
         LoadPatchCollections(conn);
-        LoadOptionalGroupNames(conn);
+        LoadGateDefinitions(conn);
+        LoadPatchOpcodes(conn);
 
         // may be deprecated
         for (uint handleIndex = 0; handleIndex < opcodeCount; handleIndex++)
@@ -281,8 +278,8 @@ public class PatchData
         }
         ResolveGates();
         _pendingRelativeNames = null;
-        _pendingGateFields = null;
         _pendingFieldPredicates = null;
+        _gateFieldNamesByHandle = null;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -491,25 +488,29 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // LoadPatchOpcodes
     //
-    // Reads every PatchOpcode row for this patch level and populates the opcodeHandle-indexed
-    // structures: _patchOpcodeByOpcodeHandle, _opcodeNamesByOpcodeHandle, and _opcodeHandlesByName.  Row order from the
-    // database determines opcodeHandle assignment — the first row read becomes opcodeHandle 0, the
-    // second opcodeHandle 1, and so on.
+    // Reads every PatchOpcode row for this patch level and populates _opcodes and the
+    // handle-lookup dictionaries _opcodeHandlesByName and _opcodeHandlesByPatchOpcode.  Row
+    // order from the database determines opcodeHandle assignment — the first row read becomes
+    // opcodeHandle 0, the second opcodeHandle 1, and so on.
     //
-    // The arrays and dictionary must be allocated by the constructor before this method
+    // Each row's gate_name is resolved to a GateHandle through _gateHandlesByName, so the
+    // gate definitions must be loaded before this method runs.  A null gate_name or a name
+    // that resolves to no loaded gate stores GateHandle.None and is logged.
+    //
+    // The array and dictionaries must be allocated by the constructor before this method
     // runs.  The size is determined by CountPatchOpcodes, which uses the same WHERE clause
     // and so produces a count consistent with what this method will read.
     //
     // Parameters:
-    //   conn    - An open database connection, owned by the caller. 
+    //   conn    - An open database connection, owned by the caller.
     //
-    // Returns
-    //   The number of opcodes read
+    // Returns:
+    //   The number of opcodes read.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private uint LoadPatchOpcodes(SqliteConnection conn)
     {
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT opcode_value, version, opcode_name"
+        cmd.CommandText = "SELECT opcode_value, version, opcode_name, gate_name"
             + " FROM PatchOpcode"
             + " WHERE patch_date = @patchDate"
             + " AND server_type = @serverType";
@@ -518,21 +519,48 @@ public class PatchData
 
         using SqliteDataReader reader = cmd.ExecuteReader();
         uint handleIndex = 0;
-        while (reader.Read())
+        while (reader.Read() == true)
         {
             int opcodeValueRaw = reader.GetInt32(0);
-            uint version = (uint) reader.GetInt32(1);
+            uint version = (uint)reader.GetInt32(1);
             string opcodeName = reader.GetString(2);
-            OpcodeValue opcodeValue = (OpcodeValue) opcodeValueRaw;
+            OpcodeValue opcodeValue = (OpcodeValue)opcodeValueRaw;
             OpcodeHandle opcodeHandle = (OpcodeHandle)handleIndex;
-            PatchLevel currentPatch = GlassContext.CurrentPatchLevel;
-            PatchOpcode patchOpcode = new PatchOpcode(currentPatch, opcodeValue, version);
-            DebugLog.Write(LogChannel.Opcodes, "Register opcode " + patchOpcode +
-                " as handle " + opcodeHandle);
-            _patchOpcodeByOpcodeHandle[opcodeHandle] = patchOpcode;
-            _opcodeNamesByOpcodeHandle[opcodeHandle] = opcodeName;
+            PatchOpcode patchOpcode = new PatchOpcode(PatchLevel, opcodeValue, version);
+
+            GateHandle gateHandle = GateHandle.None;
+            if (reader.IsDBNull(3) == false)
+            {
+                string gateName = reader.GetString(3);
+                bool gateFound = _gateHandlesByName.TryGetValue(gateName, out gateHandle);
+                if (gateFound == false)
+                {
+                    gateHandle = GateHandle.None;
+                    DebugLog.Write(LogChannel.Opcodes, "PatchData.LoadPatchOpcodes: opcode '"
+                        + opcodeName + "' version " + version + " names gate '" + gateName
+                        + "' that is not loaded, storing GateHandle.None");
+                }
+            }
+            else
+            {
+                DebugLog.Write(LogChannel.Opcodes, "PatchData.LoadPatchOpcodes: opcode '"
+                    + opcodeName + "' version " + version + " has no gate_name");
+            }
+
+            OpcodeRecord record;
+            record.PatchOpcode = patchOpcode;
+            record.Name = opcodeName;
+            record.Gate = gateHandle;
+            _opcodes[opcodeHandle] = record;
+
+            DebugLog.Write(LogChannel.Opcodes, "Register opcode " + patchOpcode
+                + " as handle " + opcodeHandle + " with gate handle " + gateHandle);
+
             _opcodeHandlesByName[opcodeName] = opcodeHandle;
             _opcodeHandlesByPatchOpcode[patchOpcode] = opcodeHandle;
+
+            _patchOpcodeByOpcodeHandle[opcodeHandle] = patchOpcode;
+            _opcodeNamesByOpcodeHandle[opcodeHandle] = opcodeName;
 
             handleIndex = handleIndex + 1;
         }
@@ -585,6 +613,108 @@ public class PatchData
 
         DebugLog.Write(LogChannel.Fields, "PatchData.LoadPatchCollections: loaded "
             + handleIndex + " FieldCollection(s) for patchLevel=" + PatchLevel);
+        return handleIndex;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // LoadGateDefinitions
+    //
+    // Reads every Gate row for this patch level and populates _gate and _gateHandlesByName.
+    // Row order from the database determines GateHandle assignment — the first row read
+    // becomes handle 0, the second handle 1, and so on.  Each row's kind is parsed to a
+    // MultiplicityKind and its child_collection is resolved to a CollectionHandle through the
+    // collection name map, which must be populated before this method runs.  A row carrying a
+    // field_name has that name recorded in _gateFieldNamesByHandle for the field-loading pass;
+    // FieldSlot is stored as None until resolution.
+    //
+    // An unparsable kind is stored as Once and logged.  A child_collection naming no loaded
+    // collection is stored as CollectionHandle.None and logged.
+    //
+    // Parameters:
+    //   conn    - An open database connection, owned by the caller.
+    //
+    // Returns:
+    //   The number of gate definitions read.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private uint LoadGateDefinitions(SqliteConnection conn)
+    {
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT name, kind, child_collection, field_name, count"
+            + " FROM Gate"
+            + " WHERE patch_date = @patchDate"
+            + " AND server_type = @serverType";
+        cmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
+        cmd.Parameters.AddWithValue("@serverType", PatchLevel.ServerType);
+
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        uint handleIndex = 0;
+        while (reader.Read() == true)
+        {
+            string gateName = reader.GetString(0);
+            string kindString = reader.GetString(1);
+            string childCollectionName = reader.GetString(2);
+
+            MultiplicityKind kind;
+            bool kindParsed = Enum.TryParse<MultiplicityKind>(kindString, out kind);
+            if (kindParsed == false)
+            {
+                DebugLog.Write(LogChannel.Fields, "PatchData.LoadGateDefinitions: gate '" + gateName
+                    + "' has unparsable kind '" + kindString + "', storing as Once");
+                kind = MultiplicityKind.Once;
+            }
+
+            CollectionHandle childCollection = CollectionHandle.None;
+            if (childCollectionName.Length > 0)
+            {
+                bool collectionFound = _collectionHandleByCollectionName.TryGetValue(
+                    childCollectionName, out childCollection);
+                if (collectionFound == false)
+                {
+                    DebugLog.Write(LogChannel.Fields, "PatchData.LoadGateDefinitions: gate '" + gateName
+                        + "' names child collection '" + childCollectionName
+                        + "' that is not loaded for patchLevel=" + PatchLevel
+                        + ", storing CollectionHandle.None");
+                    childCollection = CollectionHandle.None;
+                }
+            }
+
+            GateHandle handle = (GateHandle) handleIndex;
+
+            GateDefinition definition;
+            definition.Name = gateName;
+            definition.Kind = kind;
+            definition.ChildCollection = childCollection;
+            definition.FieldSlot = SlotId.None;
+            definition.FieldSlotLocal = true;
+            definition.Count = 0;
+
+            if (reader.IsDBNull(4) == false)
+            {
+                definition.Count = (uint)reader.GetInt32(4);
+                DebugLog.Write(LogChannel.Fields, "PatchData.LoadGateDefinitions: gate '" + gateName
+                    + "' carries constant count " + definition.Count);
+            }
+
+            _gate[handle] = definition;
+            _gateHandlesByName[gateName] = handle;
+
+            if (reader.IsDBNull(3) == false)
+            {
+                string fieldName = reader.GetString(3);
+                _gateFieldNamesByHandle![handle] = fieldName;
+                DebugLog.Write(LogChannel.Fields, "PatchData.LoadGateDefinitions: gate '" + gateName
+                    + "' carries count field '" + fieldName + "', pending resolution at reference time");
+            }
+
+            DebugLog.Write(LogChannel.Fields, "PatchData.LoadGateDefinitions: loaded gate '" + gateName
+                + "' kind=" + kind + " childCollection=" + (uint)childCollection
+                + " at handle " + (uint)handle);
+
+            handleIndex = handleIndex + 1;
+        }
+
+        DebugLog.Write(LogChannel.Fields, "PatchData.LoadGateDefinitions: loaded " + handleIndex
+            + " gate definition(s) for patchLevel=" + PatchLevel);
         return handleIndex;
     }
 
@@ -679,9 +809,16 @@ public class PatchData
                 FieldEncoding encoding;
                 GateHandle gate = GateHandle.None;
 
-                if (encodingString.StartsWith("Gate") == true)
+                if (encodingString.StartsWith("Gate", StringComparison.Ordinal) == true)
                 {
-                    gate = LoadGate(encodingString, handle, conn);
+                    bool gateFound = _gateHandlesByName.TryGetValue(encodingString, out gate);
+                    if (gateFound == false)
+                    {
+                        gate = GateHandle.None;
+                        DebugLog.Write(LogChannel.Fields, "PatchData.LoadFields: collection='"
+                            + collectionName + "' field='" + fieldName + "' references gate '"
+                            + encodingString + "' that is not loaded, storing GateHandle.None");
+                    }
                     encoding = FieldEncoding.Gate;
                 }
                 else
@@ -757,174 +894,6 @@ public class PatchData
 
         _pendingRelativeNames!.Clear();
         _pendingFieldPredicates!.Clear();
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // LoadGate
-    //
-    // Reads the single Gate row named by gateField for this patch level, builds its Gate
-    // struct, stores it at the next GateHandle, and returns that opcodeHandle.  The child_collection
-    // name is looked up to a CollectionHandle; kind is parsed to MultiplicityKind.  When the row's
-    // field_name is non-null, a PendingGateField is appended pairing this gate with that name
-    // and the parent collection, for the field-resolution step to resolve to a SlotId.
-    //
-    // An unparsable kind is stored as Always and logged.  A child_collection naming no loaded
-    // collection stores CollectionHandle.None and logs.  A missing gate row logs and stores a
-    // gate with CollectionHandle.None so the returned opcodeHandle stays valid.
-    //
-    // Parameters:
-    //   gateField         - The Gate name to read.
-    //   parentCollection  - The collection this gate is referenced from, recorded on any
-    //                       PendingGateField for later field resolution.
-    //   conn              - An open database connection, owned by the caller.
-    //
-    // Returns:
-    //   The GateHandle assigned to the loaded gate.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private GateHandle LoadGate(string gateField, CollectionHandle parentCollection, SqliteConnection conn)
-    {
-        string kindString = "";
-        string childCollectionName = "";
-        string? fieldName = null;
-        bool rowFound = false;
-
-        using (SqliteCommand cmd = conn.CreateCommand())
-        {
-            cmd.CommandText = "SELECT kind, child_collection, field_name"
-                + " FROM Gate"
-                + " WHERE patch_date = @patchDate"
-                + " AND server_type = @serverType"
-                + " AND name = @name";
-            cmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
-            cmd.Parameters.AddWithValue("@serverType", PatchLevel.ServerType);
-            cmd.Parameters.AddWithValue("@name", gateField);
-
-            using SqliteDataReader reader = cmd.ExecuteReader();
-            if (reader.Read())
-            {
-                rowFound = true;
-                kindString = reader.GetString(0);
-                childCollectionName = reader.GetString(1);
-                if (reader.IsDBNull(2) == false)
-                {
-                    fieldName = reader.GetString(2);
-                }
-            }
-        }
-
-        if (rowFound == false)
-        {
-            DebugLog.Write(LogChannel.Fields, "PatchData.LoadGate: no Gate row named '"
-                + gateField + "' for patchLevel=" + PatchLevel + ", storing gate with no child collection");
-        }
-
-        MultiplicityKind kind = MultiplicityKind.Once;
-        if (rowFound == true)
-        {
-            bool kindParsed = Enum.TryParse<MultiplicityKind>(kindString, out kind);
-            if (kindParsed == false)
-            {
-                DebugLog.Write(LogChannel.Fields, "PatchData.LoadGate: gate '" + gateField
-                    + "' has unparsable kind '" + kindString + "', storing as Always");
-                kind = MultiplicityKind.Once;
-            }
-        }
-
-        CollectionHandle childCollection = CollectionHandle.None;
-        if (childCollectionName.Length > 0)
-        {
-            bool collectionFound = _collectionHandleByCollectionName.TryGetValue(childCollectionName, out childCollection);
-            if (collectionFound == false)
-            {
-                DebugLog.Write(LogChannel.Fields, "PatchData.LoadGate: gate '" + gateField
-                    + "' names child collection '" + childCollectionName
-                    + "' that is not loaded for patchLevel=" + PatchLevel + ", storing CollectionHandle.None");
-            }
-        }
-
-        GateHandle handle = (GateHandle)_nextGateHandle;
-        _nextGateHandle = _nextGateHandle + 1;
-
-        Gate gate;
-        gate.Name = gateField;
-        gate.Kind = kind;
-        gate.ChildCollection = childCollection;
-        gate.FieldSlot = SlotId.None;
-
-        _gate[handle] = gate;
-
-        if (fieldName != null)
-        {
-            PendingGateField pending;
-            pending.Gate = handle;
-            pending.FieldName = fieldName;
-            pending.ParentCollection = parentCollection;
-            _pendingGateFields!.Add(pending);
-            DebugLog.Write(LogChannel.Fields, "PatchData.LoadGate: gate '" + gateField
-                + "' field '" + fieldName + "' pending resolution against collection opcodeHandle "
-                + (uint)parentCollection);
-        }
-
-        DebugLog.Write(LogChannel.Fields, "PatchData.LoadGate: loaded gate '" + gateField
-            + "' kind=" + kind + " childCollection=" + (uint)childCollection
-            + " at opcodeHandle " + (uint)handle + " for patchLevel=" + PatchLevel);
-
-        return handle;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // LoadOptionalGroupNames
-    //
-    // Reads every PacketOptionalGroup row for this patch level and builds the name-to-id
-    // map used during field loading to resolve a PacketField encoding string that names a
-    // substructure.  Rows with an empty name are skipped and logged; an unnamed group
-    // cannot be referenced by a field.  A duplicate name is logged and the first occurrence
-    // is kept.
-    //
-    // Parameters:
-    //   conn    - An open database connection, owned by the caller.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private void LoadOptionalGroupNames(SqliteConnection conn)
-    {
-        _optionalGroupIdsByName = new Dictionary<string, int>();
-
-        using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT pog.id, pog.name"
-            + " FROM PacketOptionalGroup pog"
-            + " JOIN PatchOpcode po ON pog.patch_opcode_id = po.id"
-            + " WHERE po.patch_date = @patchDate"
-            + " AND po.server_type = @serverType";
-        cmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
-        cmd.Parameters.AddWithValue("@serverType", PatchLevel.ServerType);
-
-        using SqliteDataReader reader = cmd.ExecuteReader();
-        int rowCount = 0;
-        while (reader.Read())
-        {
-            int groupId = reader.GetInt32(0);
-            string groupName = reader.GetString(1);
-            rowCount++;
-
-            if (groupName.Length == 0)
-            {
-                DebugLog.Write(LogChannel.Fields, "PatchData.LoadOptionalGroupNames: group id "
-                    + groupId + " has empty name, skipping; it cannot be referenced by a field");
-                continue;
-            }
-
-            if (_optionalGroupIdsByName.ContainsKey(groupName) == true)
-            {
-                DebugLog.Write(LogChannel.Fields, "PatchData.LoadOptionalGroupNames: duplicate group "
-                    + "name '" + groupName + "' (id " + groupId + "), keeping first occurrence");
-                continue;
-            }
-
-            _optionalGroupIdsByName[groupName] = groupId;
-        }
-
-        DebugLog.Write(LogChannel.Fields, "PatchData.LoadOptionalGroupNames: read " + rowCount
-            + " group row(s), map has " + _optionalGroupIdsByName.Count + " named group(s) for patchLevel="
-            + PatchLevel);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -1088,26 +1057,99 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ResolveGates
     //
-    // Resolves each pending gate field name to a SlotId within its parent collection and
-    // writes it onto the gate's FieldSlot.  Run once after every collection's fields are loaded,
-    // so a name can resolve against any parent collection.
+    // Resolves each gate's count field expression to a SlotId and writes it onto the gate's
+    // FieldSlot.  Run once after every collection's fields are loaded.  The expression has
+    // two forms: a bare field name ("count"), which resolves against the collection whose
+    // field references the gate, found by scanning the loaded field definitions; and a
+    // qualified name ("collection.count"), which resolves against the named collection.
     //
-    // A name not present in its parent collection is a broken patch definition: the failure is
-    // logged with a stack trace and the process is terminated, since a gate decoding against a
-    // field its collection does not define must never run.
+    // A qualified name naming an unknown collection, a bare name on a gate that no loaded
+    // field references, or a field name that does not resolve in its collection is a broken
+    // patch definition: the failure is logged with a stack trace and the process is
+    // terminated.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void ResolveGates()
     {
-        List<PendingGateField> pending = _pendingGateFields!;
-        for (int pendingIndex = 0; pendingIndex < pending.Count; pendingIndex++)
+        uint resolvedCount = 0;
+
+        foreach (KeyValuePair<GateHandle, string> entry in _gateFieldNamesByHandle!)
         {
-            PendingGateField entry = pending[pendingIndex];
-            SlotId slot = IndexOfField(entry.ParentCollection, entry.FieldName);
+            GateHandle gateHandle = entry.Key;
+            string expression = entry.Value;
+
+            CollectionHandle sourceCollection = CollectionHandle.None;
+            string countFieldName;
+
+            int dotIndex = expression.IndexOf('.');
+
+            // Qualified field name, search ancestor collections
+            if (dotIndex >= 0)
+            {
+                string collectionName = expression.Substring(0, dotIndex).Trim();
+                countFieldName = expression.Substring(dotIndex + 1).Trim();
+
+                bool collectionFound = _collectionHandleByCollectionName.TryGetValue(
+                    collectionName, out sourceCollection);
+                if (collectionFound == false)
+                {
+                    string message = "PatchData.ResolveGates: gate '" + _gate[gateHandle].Name
+                        + "' count expression '" + expression + "' names collection '"
+                        + collectionName + "' that is not loaded for patchLevel=" + PatchLevel
+                        + " -- broken patch definition, aborting";
+
+                    DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                        + Environment.StackTrace);
+
+                    Environment.FailFast(message);
+                }
+            }
+            else    // base case of a local field
+            {
+                countFieldName = expression.Trim();
+
+                for (uint collectionIndex = 0; collectionIndex < _collectionFields.Length; collectionIndex++)
+                {
+                    FieldDefinition[]? definitions = _collectionFields[collectionIndex];
+                    if (definitions == null)
+                    {
+                        continue;
+                    }
+
+                    for (uint fieldIndex = 0; fieldIndex < definitions.Length; fieldIndex++)
+                    {
+                        if (definitions[fieldIndex].Gate == gateHandle)
+                        {
+                            sourceCollection = (CollectionHandle)collectionIndex;
+                            break;
+                        }
+                    }
+
+                    if (sourceCollection.Exists == true)
+                    {
+                        break;
+                    }
+                }
+
+                if (sourceCollection.Exists == false)
+                {
+                    string message = "PatchData.ResolveGates: gate '" + _gate[gateHandle].Name
+                        + "' carries count field '" + countFieldName
+                        + "' but no loaded field references the gate for patchLevel=" + PatchLevel
+                        + " -- broken patch definition, aborting";
+
+                    DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                        + Environment.StackTrace);
+
+                    Environment.FailFast(message);
+                }
+            }
+
+            SlotId slot = IndexOfField(sourceCollection, countFieldName);
             if (slot.Exists == false)
             {
-                string message = "PatchData.ResolveGates: gate opcodeHandle " + (uint)entry.Gate
-                    + " references field '" + entry.FieldName + "' not present in collection '"
-                    + _collectionNamesByHandle[entry.ParentCollection] + "' for patchLevel="
+                string message = "PatchData.ResolveGates: gate '" + _gate[gateHandle].Name
+                    + "' count field '" + countFieldName + "' not present in collection '"
+                    + _collectionNamesByHandle[sourceCollection] + "' for patchLevel="
                     + PatchLevel + " -- broken patch definition, aborting";
 
                 DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
@@ -1115,11 +1157,19 @@ public class PatchData
 
                 Environment.FailFast(message);
             }
-            _gate[entry.Gate].FieldSlot = slot;
+
+            _gate[gateHandle].FieldSlot = slot;
+            _gate[gateHandle].FieldSlotLocal = dotIndex < 0;
+            resolvedCount = resolvedCount + 1;
+
+            DebugLog.Write(LogChannel.Fields, "PatchData.ResolveGates: gate '"
+                + _gate[gateHandle].Name + "' count expression '" + expression
+                + "' resolved to slot " + slot + " in collection '"
+                + _collectionNamesByHandle[sourceCollection] + "'");
         }
 
-        DebugLog.Write(LogChannel.Fields, "PatchData.ResolveGates: childCollection "
-            + pending.Count + " pending gate field(s) for patchLevel=" + PatchLevel);
+        DebugLog.Write(LogChannel.Fields, "PatchData.ResolveGates: resolved " + resolvedCount
+            + " gate count field(s) for patchLevel=" + PatchLevel);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1330,10 +1380,6 @@ public class PatchData
 
         return collectionHandle;
     }
-    public CollectionHandle GetCollectionHandleFromOpcode(OpcodeHandle opcodeHandle)
-    {
-        return _collectionHandleByOpcodeHandle[opcodeHandle];
-    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetCollectionName
@@ -1421,31 +1467,6 @@ public class PatchData
     public FieldDefinition[]? GetFieldDefinitions(CollectionHandle collection)
     {
         return _collectionFields[collection];
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetOptionalGroup
-    //
-    // Returns the OptionalGroup for the given PacketOptionalGroup id, or null if no group
-    // with that id was loaded for this patch.
-    //
-    // Parameters:
-    //   groupId  - The PacketOptionalGroup id, as carried on FieldDefinition.OptionalGroupId.
-    //
-    // Returns:
-    //   The OptionalGroup, or null if no group with that id is loaded.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public OptionalGroup? GetOptionalGroup(uint groupId)
-    {
-        OptionalGroup? group;
-        if (_optionalGroupsById.TryGetValue(groupId, out group) == true)
-        {
-            return group;
-        }
-
-        DebugLog.Write(LogChannel.Fields, "PatchData.GetOptionalGroup: no group with id "
-            + groupId + " in patchLevel=" + PatchLevel + ", returning null");
-        return null;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

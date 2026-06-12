@@ -83,7 +83,7 @@
                             Orientation="Horizontal"
                             Margin="0,4,0,4">
                     <ComboBox x:Name="KindComboBox"
-                              Width="160"
+                              Width="200"
                               SelectionChanged="KindComboBox_SelectionChanged" />
 
                     <TextBlock x:Name="CountFieldLabel"
@@ -110,7 +110,7 @@
                 <ComboBox Grid.Row="2" Grid.Column="1"
                           x:Name="ChildCollectionComboBox"
                           IsEditable="True"
-                          Width="160"
+                          Width="200"
                           Margin="0,4,0,4" />
             </Grid>
         </GroupBox>

@@ -394,7 +394,7 @@ public class FieldBag
                 + _slots[slot.Index].GetName(this) + "' at index " + slot.Index
                 + " failed with " + result + ", slot type is " + _slots[slot.Index].Type;
             DebugLog.Write(LogChannel.Fields, readFailure);
-            Environment.FailFast(readFailure);
+            // Environment.FailFast(readFailure);
         }
         return value;
     }

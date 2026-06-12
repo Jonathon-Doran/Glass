@@ -42,4 +42,18 @@ public readonly record struct OpcodeHandle(uint Value)
     {
         get { return Value != NoneValue; }
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ToString
+    //
+    // Renders the handle as its numeric value, or "None" for the sentinel.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public override string ToString()
+    {
+        if (Exists == false)
+        {
+            return "None";
+        }
+        return Value.ToString();
+    }
 }
