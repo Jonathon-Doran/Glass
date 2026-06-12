@@ -22,6 +22,7 @@ public class HandleClientUpdate : IHandleOpcodes
     private readonly PatchOpcode _opcodeHandled;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
+    private readonly GateDefinition _top_level_gate;
 
     private readonly SlotId _sequenceSlot;
     private readonly SlotId _playerIdSlot;
@@ -48,6 +49,9 @@ public class HandleClientUpdate : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
+
+        _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
+        DebugLog.Write(LogChannel.Fields, "top level gate: " + _top_level_gate);
 
         _sequenceSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "sequence");
         _playerIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "player_id");

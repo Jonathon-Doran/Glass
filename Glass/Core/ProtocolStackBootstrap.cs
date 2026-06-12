@@ -84,7 +84,7 @@ public static class ProtocolStackBootstrap
 
         GlassContext.PatchRegistry.LogPoolStatistics();
 
-        OpcodeDispatch.Instance.Dispose();
+        OpcodeDispatch.DisposeInstance();
         DebugLog.Write(LogChannel.Sessions,
             "ProtocolStackBootstrap.Teardown: OpcodeDispatch disposed");
 

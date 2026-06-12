@@ -19,7 +19,7 @@ namespace Glass.Network.Protocol;
 // Exposes HandlePacket matching the AppPacketHandler delegate so it can be
 // wired directly to SoeStream.OnAppPacket.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class OpcodeDispatch : IDisposable
+public class OpcodeDispatch
 {
     private static OpcodeDispatch? _instance = null;
     private readonly PatchLevel _patchLevel;
@@ -110,24 +110,29 @@ public class OpcodeDispatch : IDisposable
             + _handlers.Count + " handlers registered");
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Dispose
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // DisposeInstance
     //
-    // Disposes every registered handler and tears down the singleton.  Called from the
-    // session-disconnected path, after all sessions are confirmed disconnected and no
-    // more packets will arrive.  Cold-path; handlers may log freely from their own
-    // Dispose methods.
-    //
-    // Clears _instance so that any subsequent access to OpcodeDispatch builds a fresh
-    // singleton with a fresh assembly scan.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void Dispose()
+    // Shuts down the singleton if one exists, without constructing one: unsubscribes its
+    // packet handler from the bus and clears _instance.  Safe to call when no instance
+    // exists and safe to call repeatedly.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public static void DisposeInstance()
     {
         lock (_instanceLock)
         {
-            GlassContext.PacketBus.Unsubscribe(HandlePacket);
+            if (_instance == null)
+            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "OpcodeDispatch.DisposeInstance: no instance, nothing to dispose");
+                return;
+            }
+
+            GlassContext.PacketBus.Unsubscribe(_instance.HandlePacket);
+            GC.SuppressFinalize(_instance);
             _instance = null;
-            GC.SuppressFinalize(this);
+
+            DebugLog.Write(LogChannel.Opcodes, "OpcodeDispatch.DisposeInstance: disposed");
         }
     }
 
@@ -147,7 +152,7 @@ public class OpcodeDispatch : IDisposable
             {
                 DebugLog.Write(LogChannel.Opcodes,
                     "OpcodeDispatch.RebuildForCurrentPatchLevel: disposing prior instance");
-                _instance.Dispose();
+                OpcodeDispatch.DisposeInstance();
             }
 
             OpcodeDispatch fresh = Instance;

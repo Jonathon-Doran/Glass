@@ -86,6 +86,8 @@ public static class GcMonitor
             _timer.Dispose();
             _timer = null;
 
+            OnTick(null);
+
             DebugLog.Write(LogChannel.Memory, "GcMonitor.Stop: stopped");
         }
     }
@@ -123,13 +125,16 @@ public static class GcMonitor
             lohSize = memoryInfo.GenerationInfo[3].SizeAfterBytes;
         }
 
+        long workingSet = Environment.WorkingSet;
+
         DebugLog.Write(LogChannel.Memory,
             "GcMonitor: alloc_delta=" + allocatedDelta
             + " gen0_delta=" + gen0Delta
             + " gen1_delta=" + gen1Delta
             + " gen2_delta=" + gen2Delta
             + " heap=" + heapSize
-            + " loh=" + lohSize);
+            + " loh=" + lohSize
+            + " ws=" + workingSet);
 
         _lastAllocatedBytes = allocatedNow;
         _lastGen0Count = gen0Now;

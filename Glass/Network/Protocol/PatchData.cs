@@ -682,6 +682,7 @@ public class PatchData
 
             GateDefinition definition;
             definition.Name = gateName;
+            definition.PatchLevel = PatchLevel;
             definition.Kind = kind;
             definition.ChildCollection = childCollection;
             definition.FieldSlot = SlotId.None;
@@ -1369,6 +1370,19 @@ public class PatchData
         return handle;
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetOpcodeCollection
+    //
+    // Returns the top-level CollectionHandle for the named opcode in this patch.
+    //
+    // Parameters:
+    //   opcodeName  - The opcode name to look up (e.g. "OP_PlayerProfile").
+    //
+    // Returns:
+    //   The CollectionHandle for the opcode, or CollectionHandle.None when the name is not
+    //   in this patch.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
     public CollectionHandle GetOpcodeCollection(string opcodeName)
     {
         CollectionHandle collectionHandle;
@@ -1382,6 +1396,73 @@ public class PatchData
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetGate
+    //
+    // Returns the GateDefinition for the given GateHandle in this patch, by value.
+    //
+    // The handle must be a real handle issued by this PatchData instance.  GateHandle.None
+    // and any value outside the gate array are schema or programming corruption and bring
+    // the process down with the evidence preserved.
+    //
+    // Parameters:
+    //   gateHandle  - The gate to look up.
+    //
+    // Returns:
+    //   The GateDefinition stored at the handle.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public GateDefinition GetGate(GateHandle gateHandle)
+    {
+        if (gateHandle.Exists == false)
+        {
+            string noneFailure = "PatchData.GetGate: GateHandle.None passed for patchLevel="
+                + PatchLevel;
+            DebugLog.Write(LogChannel.Fields, noneFailure);
+            Environment.FailFast(noneFailure);
+        }
+
+        if (gateHandle >= _gate.Length)
+        {
+            string rangeFailure = "PatchData.GetGate: gate handle " + gateHandle
+                + " out of range, " + _gate.Length + " gate(s) loaded for patchLevel="
+                + PatchLevel;
+            DebugLog.Write(LogChannel.Fields, rangeFailure);
+            Environment.FailFast(rangeFailure);
+        }
+
+        DebugLog.Write(LogChannel.Fields, "PatchData.GetGate: handle " + gateHandle
+            + " resolves to gate '" + _gate[gateHandle].Name + "'");
+        return _gate[gateHandle];
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetOpcodeGateDefinition
+    //
+    // Resolves the given opcode's top-level gate directly to its GateDefinition, by value.
+    //
+    // An opcode that is not in this patch, or whose row named no loaded gate, is schema
+    // corruption and brings the process down with the evidence preserved.
+    //
+    // Parameters:
+    //   opcode  - The opcode whose top-level gate to resolve.
+    //
+    // Returns:
+    //   The GateDefinition of the opcode's top-level gate.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public GateDefinition GetOpcodeGateDefinition(PatchOpcode opcode)
+    {
+        GateHandle gateHandle = GetOpcodeGate(opcode);
+        if (gateHandle.Exists == false)
+        {
+            string failure = "PatchData.GetOpcodeGateDefinition: opcode " + opcode
+                + " has no top-level gate in patchLevel=" + PatchLevel;
+            DebugLog.Write(LogChannel.Fields, failure);
+            Environment.FailFast(failure);
+        }
+
+        return GetGate(gateHandle);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // GetCollectionName
     //
     // Returns the collection name for the given CollectionHandle in this patch.
@@ -1392,9 +1473,14 @@ public class PatchData
     // Returns:
     //   The collection name (e.g. "OP_PlayerProfile").
     ///////////////////////////////////////////////////////////////////////////////////////////
-    ///
+    
     public string GetCollectionNameFromHandle(CollectionHandle collectionHandle)
     {
+        if (collectionHandle.Exists == false)
+        {
+            return "Unknown";
+        }
+
         return _collectionNamesByHandle[collectionHandle];
     }
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1467,6 +1553,36 @@ public class PatchData
     public FieldDefinition[]? GetFieldDefinitions(CollectionHandle collection)
     {
         return _collectionFields[collection];
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetOpcodeGate
+    //
+    // Returns the top-level GateHandle for the given opcode in this patch.  The gate is the
+    // entry point for extracting the opcode's payload.
+    //
+    // Parameters:
+    //   opcode  - The opcode whose top-level gate to look up.
+    //
+    // Returns:
+    //   The opcode's top-level GateHandle, or GateHandle.None when the opcode is not in this
+    //   patch or its row named no loaded gate.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public GateHandle GetOpcodeGate(PatchOpcode opcode)
+    {
+        OpcodeHandle opcodeHandle;
+        bool found = _opcodeHandlesByPatchOpcode.TryGetValue(opcode, out opcodeHandle);
+        if (found == false)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "PatchData.GetOpcodeGate: opcode "
+                + opcode + " not in patchLevel=" + PatchLevel + ", returning GateHandle.None");
+            return GateHandle.None;
+        }
+
+        GateHandle gate = _opcodes[opcodeHandle].Gate;
+        DebugLog.Write(LogChannel.Opcodes, "PatchData.GetOpcodeGate: opcode "
+            + opcode + " resolves to gate handle " + gate);
+        return gate;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

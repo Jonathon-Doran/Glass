@@ -255,7 +255,84 @@ public class PatchRegistry
         return patchData.GetOpcodeHandle(patchOpcode);
     }
 
-   ///////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetOpcodeGate
+    //
+    // Returns the top-level GateHandle for the given opcode in its patch level.  Looks the
+    // patch up in the loaded set and delegates to its PatchData.
+    //
+    // Throws InvalidOperationException if the patch level is not loaded.
+    //
+    // Parameters:
+    //   patchOpcode  - The opcode whose top-level gate to look up.  Its Level names the
+    //                  patch.  Must be a real opcode.
+    //
+    // Returns:
+    //   The opcode's top-level GateHandle, or GateHandle.None when the opcode does not
+    //   exist or is not in its patch.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public GateHandle GetOpcodeGate(PatchOpcode patchOpcode)
+    {
+        if (patchOpcode.Exists == false)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PatchRegistry.GetOpcodeGate: PatchOpcode.None passed, returning GateHandle.None");
+            return GateHandle.None;
+        }
+
+        PatchData patchData = FindPatchData(patchOpcode.Level);
+        return patchData.GetOpcodeGate(patchOpcode);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetGate
+    //
+    // Returns the GateDefinition for the given GateHandle in the given patch level, by
+    // value.  Looks the patch up in the loaded set and delegates to its PatchData.
+    //
+    // Throws InvalidOperationException if the patch level is not loaded.
+    //
+    // Parameters:
+    //   patchLevel  - The patch identifier.  Must already be loaded.
+    //   gateHandle  - The gate to look up.  Must be a real handle issued by that patch's
+    //                 PatchData.
+    //
+    // Returns:
+    //   The GateDefinition stored at the handle.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public GateDefinition GetGate(PatchLevel patchLevel, GateHandle gateHandle)
+    {
+        PatchData patchData = FindPatchData(patchLevel);
+        return patchData.GetGate(gateHandle);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetOpcodeGateDefinition
+    //
+    // Resolves the given opcode's top-level gate directly to its GateDefinition, by value.
+    //
+    // An opcode that is not in this patch, or whose row named no loaded gate, is schema
+    // corruption and brings the process down with the evidence preserved.
+    //
+    // Parameters:
+    //   opcode  - The opcode whose top-level gate to resolve.
+    //
+    // Returns:
+    //   The GateDefinition of the opcode's top-level gate.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public GateDefinition GetOpcodeGateDefinition(PatchOpcode patchOpcode)
+    {
+        if (patchOpcode.Exists == false)
+        {
+            string failure = "PatchRegistry.GetOpcodeGateDefinition: PatchOpcode.None passed";
+            DebugLog.Write(LogChannel.Fields, failure + Environment.NewLine + Environment.StackTrace);
+            Environment.FailFast(failure);
+        }
+
+        PatchData patchData = FindPatchData(patchOpcode.Level);
+        return patchData.GetOpcodeGateDefinition(patchOpcode);
+    }
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeCollection
     //
     // A CollectionHandle defines a set of named fields in the given patch level.  This returns

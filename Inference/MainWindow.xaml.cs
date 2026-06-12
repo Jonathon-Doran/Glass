@@ -172,6 +172,9 @@ public partial class MainWindow : Window
         GlassConsoleLogHandler inferenceTabHandler = new GlassConsoleLogHandler(InferenceLogOutput, InferenceLogScroller);
         DebugLog.AddHandler(LogSink.InferenceTab, inferenceTabHandler);
         DebugLog.Route(LogChannel.Inference, LogSink.InferenceTab);
+
+     //   DebugLog.DisableAllChannels();
+     //   DebugLog.Enable(LogChannel.Memory);
     }
 
     private void AddDummyCandidates()
@@ -241,8 +244,7 @@ public partial class MainWindow : Window
 
         DebugLog.Write(LogChannel.InferenceDebug, "Inference application closing");
         GlassContext.PatchRegistry.LogPoolStatistics();
-        //  InferenceLog.Shutdown();
-        // InferenceDebugLog.Shutdown();
+        DebugLog.Shutdown();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

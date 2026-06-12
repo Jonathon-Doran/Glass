@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Reflection.PortableExecutable;
 using System.Text;
+using System.Threading.Channels;
 
 namespace Glass.Core.Logging;
 
@@ -112,6 +113,13 @@ public static class DebugLog
         for (int i = 0; i < ChannelCount; i++)
         {
             _enabled |= (1UL << i);
+        }
+    }
+    public static void DisableAllChannels()
+    {
+        for (int i = 0; i < ChannelCount; i++)
+        {
+            _enabled &= ~(1UL << i);
         }
     }
 
@@ -345,9 +353,9 @@ public static class DebugLog
             return;
         }
 
+        GcMonitor.Stop();
         _shutdown = true;
 
-        GcMonitor.Stop();
 
         for (int i = 0; i < ChannelCount; i++)
         {

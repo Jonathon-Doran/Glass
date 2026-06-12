@@ -1,4 +1,6 @@
-﻿namespace Glass.Network.Protocol.Fields;
+﻿using Glass.Core;
+
+namespace Glass.Network.Protocol.Fields;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // MultiplicityKind
@@ -28,9 +30,38 @@ public enum MultiplicityKind
 public struct GateDefinition
 {
     public string Name;
+    public PatchLevel PatchLevel;
     public MultiplicityKind Kind;
     public uint Count;
     public CollectionHandle ChildCollection;
     public SlotId FieldSlot;
     public bool FieldSlotLocal;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ToString
+    //
+    // Renders the gate as a single log-friendly line: name, multiplicity kind, count,
+    // child collection, and the consulted field slot with its scope.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public override string ToString()
+    {
+        string scope;
+        if (FieldSlotLocal == true)
+        {
+            scope = "local";
+        }
+        else
+        {
+            scope = "parent";
+        }
+
+        PatchRegistry registry = GlassContext.PatchRegistry;
+
+        return "Gate '" + Name
+            + "' kind=" + Kind
+            + " count=" + Count
+            + " child=" + registry.GetCollectionName(PatchLevel, ChildCollection)
+            + " fieldSlot=" + FieldSlot
+            + " (" + scope + ")";
+    }
 }
