@@ -49,4 +49,18 @@ public readonly record struct SlotId
     {
         get { return Index != NoneValue; }
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ToString
+    //
+    // Renders the slot as "collection:index", or "None" for the sentinel.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public override string ToString()
+    {
+        if (Exists == false)
+        {
+            return "None";
+        }
+        return Collection.ToString() + ":" + Index;
+    }
 }

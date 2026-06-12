@@ -707,8 +707,8 @@ public class PatchData
             }
 
             DebugLog.Write(LogChannel.Fields, "PatchData.LoadGateDefinitions: loaded gate '" + gateName
-                + "' kind=" + kind + " childCollection=" + (uint)childCollection
-                + " at handle " + (uint)handle);
+                + "' kind=" + kind + " childCollection=" + childCollection
+                + " at handle " + handle);
 
             handleIndex = handleIndex + 1;
         }
