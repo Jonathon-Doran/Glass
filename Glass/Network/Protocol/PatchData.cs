@@ -273,9 +273,10 @@ public class PatchData
 
         for (uint collectionIndex = 0; collectionIndex < collectionCount; collectionIndex++)
         {
-            CollectionHandle handle = (CollectionHandle)collectionIndex;
-            DebugLog.Write(LogChannel.Fields, "PatchData ctor: loading fields for collection opcodeHandle="
-                + collectionIndex + " name=" + _collectionNamesByHandle[handle]);
+            DebugLog.Write(LogChannel.Fields, "collection " + _collectionNamesByHandle[collectionIndex] +
+                " has handle " + collectionIndex);
+
+            CollectionHandle handle = (CollectionHandle) collectionIndex;
             LoadFields(handle, conn);
         }
         ResolveGates();
@@ -1238,11 +1239,11 @@ public class PatchData
             // This is a local reference, so mutates the stored structure in place.
             definitions[ownerSlot.Index].Predicate = predicate;
 
-            DebugLog.Write(LogChannel.Fields, "PatchData.ResolvePredicates: collection '"
+/*            DebugLog.Write(LogChannel.Fields, "PatchData.ResolvePredicates: collection '"
                             + _collectionNamesByHandle[handle] + "' field '" + entry.OwnerFieldName
                             + "' (slot " + ownerSlot + ") predicate childCollection to source slot "
                             + predicate.SourceSlot + " op=" + predicate.Op + " operand=" + predicate.Operand
-                            + " signedOperand=" + predicate.SignedOperand);
+                            + " signedOperand=" + predicate.SignedOperand);*/
         }
     }
 
@@ -1334,6 +1335,22 @@ public class PatchData
         return _collectionHandleByOpcodeHandle[opcodeHandle];
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetCollectionName
+    //
+    // Returns the collection name for the given CollectionHandle in this patch.
+    //
+    // Parameters:
+    //   CollectionHandle  - The Collection whose name to return.
+    //
+    // Returns:
+    //   The collection name (e.g. "OP_PlayerProfile").
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    ///
+    public string GetCollectionNameFromHandle(CollectionHandle collectionHandle)
+    {
+        return _collectionNamesByHandle[collectionHandle];
+    }
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeName
     //
@@ -1696,9 +1713,9 @@ public class PatchData
         predicate.Operand = parsedOperand;
         predicate.SignedOperand = parsedSignedOperand;
 
-        DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: parsed '" + trimmed
+/*        DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: parsed '" + trimmed
             + "' to source='" + sourceName + "' op=" + predicate.Op + " operand=" + predicate.Operand
-            + " signedOperand=" + predicate.SignedOperand);
+            + " signedOperand=" + predicate.SignedOperand);*/
         return true;
     }
 }

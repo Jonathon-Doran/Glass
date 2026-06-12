@@ -14,6 +14,5 @@ public enum FieldType : byte
     UInt = 2,
     Float = 3,
     AsciiString = 4,
-    Bytes = 5,
-    Gate = 6
+    Gate = 5
 }

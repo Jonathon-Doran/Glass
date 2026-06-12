@@ -288,9 +288,6 @@ public partial class PacketDetailWindow : Window
 
             if (runHasSpace == true)
             {
-                DebugLog.Write(LogChannel.InferenceDebug,
-                    "PacketDetailWindow.FindNextItemString: 16-char run at 0x"
-                    + scanOffset.ToString("x") + " contains a space, treating as name not item key, skipping");
                 scanOffset = scanOffset + 1;
                 continue;
             }

@@ -97,7 +97,7 @@ public class FieldExtractor
         for (int definitionIndex = 0; definitionIndex < definitions.Length; definitionIndex++)
         {
             ref FieldSlot newSlot = ref bag.AddSlot();
-            newSlot.SetName(definitions[definitionIndex].Name);
+            newSlot.SetName(bag, definitions[definitionIndex].Name);
         }
 
         Span<uint> resolvedStartBits = stackalloc uint[definitions.Length];
@@ -117,7 +117,7 @@ public class FieldExtractor
             uint effectiveBitOffset = ResolveFieldStartBit(collection, definitions, bag, resolvedStartBits, definitionIndex);
             slot.WireBitOffset = effectiveBitOffset;
             slot.WireBitLength = 0;
-            slot.Sequence = definition.Sequence;
+            slot.Sequence = (ushort) definition.Sequence;
 
             // TEMPORARY - FOR TESTING ONLY - REMOVE
             // The first gate is the predicated Once gate; its presence is governed by the field
@@ -136,13 +136,10 @@ public class FieldExtractor
                break;
             }
 
-
             if (definition.Predicate.Op != PredicateOp.None)
             {
                 if (EvaluatePredicate(bag, definition.Predicate) == false)
                 {
-                    DebugLog.Write(LogChannel.Fields, "FieldExtractor.Extract: field '"
-                        + definition.Name + "' predicate did not hold, field absent, slot left empty");
                     continue;
                 }
             }
@@ -169,7 +166,7 @@ public class FieldExtractor
                         {
                             slot.SetUInt((uint)raw);
                         }
-                        slot.WireBitLength = definition.BitLength;
+                        slot.WireBitLength = (ushort)definition.BitLength;
                         break;
                     }
 
@@ -181,18 +178,18 @@ public class FieldExtractor
                             int signed = SignExtend(raw, definition.BitLength);
                             slot.SetInt(signed);
                         }
-                        slot.WireBitLength = definition.BitLength;
+                        slot.WireBitLength = (ushort)definition.BitLength;
                         break;
                     }
 
                 case FieldEncoding.UIntMsb:
                     ExtractUIntMsb(payload, effectiveBitOffset, definition.BitLength, ref slot);
-                    slot.WireBitLength = definition.BitLength;
+                    slot.WireBitLength = (ushort)definition.BitLength;
                     break;
 
                 case FieldEncoding.Float:
                     ExtractFloatLE(payload, effectiveBitOffset, definition.BitLength, ref slot);
-                    slot.WireBitLength = definition.BitLength;
+                    slot.WireBitLength = (ushort)definition.BitLength;
                     break;
 
                 case FieldEncoding.UIntMasked:
@@ -202,18 +199,18 @@ public class FieldExtractor
                         {
                             slot.SetUInt((uint)raw);
                         }
-                        slot.WireBitLength = definition.BitLength;
+                        slot.WireBitLength = (ushort)definition.BitLength;
                         break;
                     }
 
                 case FieldEncoding.SignMagnitudeLsb:
                     ExtractSignMagnitudeLsb(payload, effectiveBitOffset, definition.BitLength, definition.Divisor, ref slot);
-                    slot.WireBitLength = definition.BitLength;
+                    slot.WireBitLength = (ushort)definition.BitLength;
                     break;
 
                 case FieldEncoding.SignMagnitudeMsb:
                     ExtractSignMagnitudeMsb(payload, effectiveBitOffset, definition.BitLength, definition.Divisor, ref slot);
-                    slot.WireBitLength = definition.BitLength;
+                    slot.WireBitLength = (ushort)definition.BitLength;
                     break;
 
                 case FieldEncoding.OptSignMagnitudeMsb:
@@ -222,36 +219,19 @@ public class FieldExtractor
                 case FieldEncoding.CsvToken:
                     break;
 
-                case FieldEncoding.OptionalGroup:
-                    {
-                        if (definition.OptionalGroupId == null)
-                        {
-                            DebugLog.Write(LogChannel.Fields, "FieldExtractor.Extract: field '"
-                                + definition.Name + "' has OptionalGroup encoding but no OptionalGroupId, slot left empty");
-                            break;
-                        }
-
-                        OptionalGroup? group = GlassContext.PatchRegistry.GetOptionalGroup(patchLevel,
-                            definition.OptionalGroupId.Value);
-                        if (group != null)
-                        {
-                            ExtractOptionalGroup(payload, effectiveBitOffset, group, bag);
-                        }
-                        break;
-                    }
-
                 case FieldEncoding.StringNullTerminated:
-                    slot.WireBitLength = ExtractNullTerminatedString(payload, effectiveBitOffset, ref slot) * 8u;
+                    slot.WireBitLength = (ushort) (ExtractNullTerminatedString(payload, effectiveBitOffset, bag, ref slot) * 8u);
                     break;
 
                 case FieldEncoding.StringLengthPrefixed:
-                    slot.WireBitLength = ExtractLengthPrefixedString(payload, effectiveBitOffset, ref slot) * 8u;
+                    slot.WireBitLength = (ushort) (ExtractLengthPrefixedString(payload, effectiveBitOffset, bag, ref slot) * 8u);
                     break;
 
                 default:
-                    DebugLog.Write(LogChannel.Fields, "FieldExtractor.Extract: unhandled encoding "
-                        + definition.Encoding + " for field '" + definition.Name
-                        + "', slot left empty");
+                    string failure = "FieldExtractor.Extract: unhandled encoding "
+                        + definition.Encoding + " for field '" + definition.Name + "'";
+                    DebugLog.Write(LogChannel.Fields, failure);
+                    Environment.FailFast(failure);
                     break;
             }
         }
@@ -515,54 +495,43 @@ public class FieldExtractor
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ExtractNullTerminatedString
     //
-    // Reads an ASCII string starting at the given byte offset (derived from the bit
-    // offset), terminated by a null byte.  BitLength is not used by this encoding; the
-    // null byte determines the string length.
+    // Decodes a null-terminated ASCII string beginning at the given bit offset, which must
+    // be byte-aligned.  The wire bytes up to but not including the terminator are stored
+    // in the slot.  If the offset lies past the payload, or no terminator exists in the
+    // remaining payload, the slot is left unset.
     //
-    // If no null byte is found in the payload from the byte offset onward, the slot is left
-    // in its default Empty state and the event is logged.  A missing null terminator is a
-    // real anomaly — either the payload is truncated or the field has been misidentified —
-    // not a routine miss-by-handler, so the log is appropriate here even when other failure
-    // paths in the extractor are silent.
+    // payload:    The application payload being decoded.
+    // bitOffset:  Bit offset into the payload where the string begins.
+    // bag:        The bag that owns the slot; receives the string bytes into its arena.
+    // slot:       The slot to receive the decoded string.
     //
-    // If the byte offset is at or past the end of the payload, the slot is left Empty
-    // without logging; this is the routine-miss case (the field doesn't fit) and follows
-    // the same silent-failure rule as the bounds-check helpers.
-    //
-    // Parameters:
-    //   payload    - The packet payload being decoded.
-    //   bitOffset  - The bit offset to read from.  Caller-computed: definition.BitOffset
-    //                for required fields, the running offset for optional fields.  Divided
-    //                by 8 to produce the byte offset; non-byte-aligned strings are not
-    //                supported and would mis-locate the start of the string.
-    //   slot       - The slot to fill.  Already has its name set.  Stays Empty on failure.
-    //
-    // Returns:
-    //    The wire length of the extracted string (in bytes) including the null.
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Returns:    Number of bytes consumed including the terminator, or 0 if no string
+    //             was decoded.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     private uint ExtractNullTerminatedString(ReadOnlySpan<byte> payload, uint bitOffset,
-        ref FieldSlot slot)
+        FieldBag bag, ref FieldSlot slot)
     {
         uint byteOffset = bitOffset / 8u;
         if (byteOffset >= (uint)payload.Length)
         {
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExtractNullTerminatedString: field '"
+                + slot.GetName(bag) + "' byteOffset " + byteOffset + " is at or past payload length "
+                + payload.Length + ", slot left empty");
             return 0;
         }
-
         ReadOnlySpan<byte> tail = payload.Slice((int)byteOffset);
         int nullIndex = tail.IndexOf((byte)0x00);
         if (nullIndex < 0)
         {
             DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExtractNullTerminatedString: field '"
-                + slot.GetName() + "' at byteOffset " + byteOffset
+                + slot.GetName(bag) + "' at byteOffset " + byteOffset
                 + " has no null terminator within remaining " + tail.Length
                 + " bytes, slot left empty");
             return 0;
         }
-
         ReadOnlySpan<byte> stringBytes = tail.Slice(0, nullIndex);
-        slot.SetAsciiString(stringBytes);
-        return (uint) stringBytes.Length + 1;
+        slot.SetAsciiString(bag, stringBytes);
+        return (uint)stringBytes.Length + 1;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -589,93 +558,37 @@ public class FieldExtractor
     //                for required fields, the running offset for optional fields.  Divided
     //                by 8 to produce the byte offset; non-byte-aligned length-prefixed
     //                strings are not supported and would mis-locate the prefix.
+    //   bag:       - The bag that owns the slot; receives the string bytes into its arena.
     //   slot       - The slot to fill.  Already has its name set.  Stays Empty on failure.
     //
     // Returns:
     //   The wire length of the extracted string (in bytes) including the prefix.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private uint ExtractLengthPrefixedString(ReadOnlySpan<byte> payload, uint bitOffset,
-        ref FieldSlot slot)
+        FieldBag bag, ref FieldSlot slot)
     {
         uint byteOffset = bitOffset / 8u;
         if (byteOffset + 4u > (uint)payload.Length)
         {
+            DebugLog.Write(LogChannel.Fields,
+                $"ExtractLengthPrefixedString: length prefix at byte {byteOffset} " +
+                $"exceeds payload length {(uint)payload.Length}, slot not set");
             return 0;
         }
-
         uint declaredLength = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice((int)byteOffset));
         uint stringStart = byteOffset + 4u;
         uint available = (uint)payload.Length - stringStart;
         if (declaredLength > available)
         {
+            DebugLog.Write(LogChannel.Fields,
+                $"ExtractLengthPrefixedString: declared length {declaredLength} at byte {byteOffset} " +
+                $"exceeds available {available}, slot not set");
             return 0;
         }
 
         ReadOnlySpan<byte> stringBytes = payload.Slice((int)stringStart, (int)declaredLength);
-        slot.SetAsciiString(stringBytes);
-        return (uint) stringBytes.Length + 4;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // ExtractOptionalGroup
-    //
-    // Decodes an optional block at the given bit offset.  The flag word is read from a
-    // slot already populated earlier in this packet's extraction; its name is on the
-    // OptionalGroup.  The flag word is bit-reversed across its known width before use,
-    // because the standard uint encoding decodes LSB-first while the surrounding packet
-    // is MSB-first.  Sub-fields are walked in array order; sub-field at index N is
-    // gated by flag bit N of the corrected value.  Present sub-fields are decoded at
-    // the running offset and the offset advances by the sub-field's bit length; absent
-    // sub-fields are skipped and the offset does not advance.
-    //
-    // Failures (missing flag slot, missing sub-field slot, decode error) leave the
-    // affected slot empty.  When a sub-field's slot is missing the running offset still
-    // advances, so subsequent sub-fields decode at the correct positions.
-    //
-    // Parameters:
-    //   payload    - The packet payload being decoded.
-    //   bitOffset  - The bit offset at which the optional block starts.
-    //   group      - The OptionalGroup metadata for this opcode.  Must not be null.
-    //   bag        - The bag the caller is filling.  Flag word and sub-field slots are
-    //                looked up by name.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void ExtractOptionalGroup(ReadOnlySpan<byte> payload, uint bitOffset,
-        OptionalGroup group, FieldBag bag)
-    {
-        uint flags = bag.GetUIntAt(group.FlagSlotId);
-
-        uint runningBitOffset = bitOffset;
-
-        for (int subFieldIndex = 0; subFieldIndex < group.SubFields.Length; subFieldIndex++)
-        {
-            OptionalSubField subField = group.SubFields[subFieldIndex];
-            uint flagBit = 1u << subFieldIndex;
-            bool isPresent = (flags & flagBit) != 0u;
-            DebugLog.Write(LogChannel.Opcodes, "subfield " + subFieldIndex + " (" +
-                subField.Name + ") with mask 0x" + flagBit.ToString("x2") + " is " + (isPresent ? "present" : "not present") +
-                " and has " + subField.BitLength + " bits");
-            if (isPresent == false)
-            {
-                continue;
-            }
-            ref FieldSlot slot = ref bag.TryGetSlotRef(subField.Slot);
-            if (Unsafe.IsNullRef(ref slot) == true)
-            {
-                runningBitOffset = runningBitOffset + subField.BitLength;
-                continue;
-            }
-            switch (subField.Encoding)
-            {
-                case FieldEncoding.OptSignMagnitudeMsb:
-                    ExtractSignMagnitudeMsb(payload, runningBitOffset, subField.BitLength, subField.Divisor, ref slot);
-                    break;
-                default:
-                    DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExtractOptionalGroup: unhandled sub-field encoding "
-                        + subField.Encoding);
-                    break;
-            }
-            runningBitOffset = runningBitOffset + subField.BitLength;
-        }
+        slot.SetAsciiString(bag, stringBytes);
+        return (uint)stringBytes.Length + 4;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -831,8 +744,6 @@ public class FieldExtractor
     private void ExtractSignMagnitudeLsb(ReadOnlySpan<byte> payload, uint bitOffset,
         uint bitLength, float divisor, ref FieldSlot slot)
     {
-        DebugLog.Write(LogChannel.Opcodes, "ExtractSignExtendedDiv8, offset = " + bitOffset +
-            " length = " + bitLength);
         ulong raw;
         if (TryReadBitsLE(payload, bitOffset, bitLength, out raw) == false)
         {
@@ -842,57 +753,40 @@ public class FieldExtractor
         int signedValue = SignExtend(raw, bitLength);
         float fValue = signedValue / divisor;
         slot.SetFloat(fValue);
-
-        DebugLog.Write(LogChannel.Opcodes, "signedValue = " + signedValue +
-             " floatValue = " + fValue);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // EvaluatePredicate
     //
-    // Decides whether a predicated field is present by testing the value of its source field,
-    // already decoded into the bag earlier in this pass.  Reads the source slot in its own
-    // type — a signed source as a signed int compared against SignedOperand, an unsigned source
-    // as an unsigned int compared against Operand — so the comparison preserves the field's
-    // sign and never reinterprets bits across the sign boundary.
+    // Evaluates the predicate against its source slot in the given bag.  The source slot
+    // must hold an integer type; any other type means the gating field is absent or
+    // mistyped, which is a schema or extraction integrity violation and halts the process
+    // via FailFast with the failure details preserved in the Fields log channel.
     //
-    // The source slot must hold an integer value.  The load-time order check guarantees the
-    // source is decoded before any field that gates on it, so an absent source here means the
-    // source's own decode failed and the packet is corrupt.  A non-integer source type means a
-    // field was gated on a Float or string, which the predicate cannot test.  Both are
-    // unrecoverable: the failure is logged with a stack trace and the process is terminated.
+    // bag:        The bag containing the predicate's source slot.
+    // predicate:  The predicate to evaluate.
     //
-    // Parameters:
-    //   bag        - The bag being filled; holds the already-decoded source slot.
-    //   predicate  - The resolved predicate carrying the source slot, operator, and operands.
-    //
-    // Returns:
-    //   true   - The predicate holds; the gated field is present and should be decoded.
-    //   false  - The predicate does not hold; the gated field is absent and its slot stays Empty.
+    // Returns:    The predicate result.  Does not return if the source slot is not an
+    //             integer type.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private bool EvaluatePredicate(FieldBag bag, FieldPredicate predicate)
     {
         FieldType sourceType = bag.GetTypeAt(predicate.SourceSlot);
-
         if (sourceType == FieldType.UInt)
         {
             uint sourceValue = bag.GetUIntAt(predicate.SourceSlot);
             return EvaluateUnsigned(sourceValue, predicate);
         }
-
         if (sourceType == FieldType.Int)
         {
             int sourceValue = bag.GetIntAt(predicate.SourceSlot);
             return EvaluateSigned(sourceValue, predicate);
         }
-
         string message = "FieldExtractor.EvaluatePredicate: source slot " + predicate.SourceSlot
             + " has type " + sourceType + ", which is not an integer the predicate can test; "
             + "the gating field is absent or mistyped, packet or schema is broken -- aborting";
-
         DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
             + Environment.StackTrace);
-
         Environment.FailFast(message);
         return false;
     }
@@ -958,9 +852,6 @@ public class FieldExtractor
                 }
         }
 
-        DebugLog.Write(LogChannel.Fields, "FieldExtractor.EvaluateUnsigned: source " + sourceValue
-            + " op " + predicate.Op + " operand " + predicate.Operand + " -> "
-            + (result ? "present" : "absent"));
         return result;
     }
 
@@ -1036,9 +927,6 @@ public class FieldExtractor
                 }
         }
 
-        DebugLog.Write(LogChannel.Fields, "FieldExtractor.EvaluateSigned: source " + sourceValue
-            + " op " + predicate.Op + " signedOperand " + predicate.SignedOperand + " -> "
-            + (result ? "present" : "absent"));
         return result;
     }
 }

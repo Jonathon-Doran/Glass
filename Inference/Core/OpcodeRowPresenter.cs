@@ -43,7 +43,6 @@ public class OpcodeRowPresenter
         _catalog = catalog;
         _rows = new ObservableCollection<OpcodeEntry>();
         _rowByOpcode = new Dictionary<PatchOpcode, OpcodeEntry>();
-        DebugLog.Write(LogChannel.InferenceDebug, "OpcodeRowPresenter.ctor: created");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -85,10 +84,6 @@ public class OpcodeRowPresenter
         row.Name = name;
         _rowByOpcode[patchOpcode] = row;
         _rows.Add(row);
-        DebugLog.Write(LogChannel.Opcodes,
-            "OpcodeRowPresenter.Update: added row for opcode="
-            + patchOpcode + " name=" + name + " channel=" + metadata.Channel
-            + " length=" + length);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -101,6 +96,5 @@ public class OpcodeRowPresenter
     {
         _rows.Clear();
         _rowByOpcode.Clear();
-        DebugLog.Write(LogChannel.InferenceDebug, "OpcodeRowPresenter.Clear: cleared");
     }
 }

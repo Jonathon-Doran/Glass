@@ -20,17 +20,23 @@ CharacterId standardization would be a good thhing
 The OpcodeRowPresenter logs are very verbose.
 
 Does PatchRegistry.Rent really need an opcodehandle?
+	Takes a PatchOpcode, but I think this is wrong.  We rent bags for collections.  The collection handle makes more sense.
+	Think about who rents Bags.
 
 Inference/Core/InferenceDebugLog and InferenceLog need to go away 
 
 Inference should check that New/Open/Recent patches all load data correctly.
 
 I don't believe that handlers are handling arrays of items well.  Certainly the opcode trace is not automatically doing this.
+	** multiplicity on gates should address this
 
 FieldSlot should be refactored to allow null references.  Some sentinel value.
 	(Empty type indicates an unused slot)
 
 PatchData.SlotDefinedBefore needs an ancestor check to validate collection handles.
+
+Slot accessors were refactored to keep TryGet... when they probably should have had Get... with fastfail if the slot does not exist.
+
 
 ISXGlass:
 

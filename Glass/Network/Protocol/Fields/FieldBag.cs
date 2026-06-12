@@ -1,4 +1,5 @@
 ﻿using Glass.Core.Logging;
+using Glass.Core;
 using System.Runtime.CompilerServices;
 
 namespace Glass.Network.Protocol.Fields;
@@ -22,8 +23,11 @@ public class FieldBag
 {
     public const int DefaultSlotCount = 500;
     public const int DefaultPoolSize = 64;
+    public const uint ArenaCapacity = 65535;
 
     private readonly FieldSlot[] _slots;
+    private readonly byte[] _arena;
+    private uint _arenaCursor;
     private readonly FieldBagPool _pool;
     private uint _slotsInUse;
     private string _currentOpcodeName = string.Empty;
@@ -49,6 +53,8 @@ public class FieldBag
         }
 
         _slots = new FieldSlot[capacity];
+        _arena = new byte[ArenaCapacity];
+        _arenaCursor = 0;
         _pool = pool;
         _slotsInUse = 0;
         _displayOrder = new int[capacity];
@@ -105,6 +111,7 @@ public class FieldBag
         }
         _slotsInUse = 0;
         _displayOrderCount = 0;
+        _arenaCursor = 0;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -129,6 +136,138 @@ public class FieldBag
         ref FieldSlot slot = ref _slots[_slotsInUse];
         _slotsInUse++;
         return ref slot;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // InsertIntoArena
+    //
+    // Copies the given bytes into the bag's arena at the current cursor and returns the
+    // arena index where they begin, advancing the cursor past them.  The arena stores raw
+    // concatenated bytes with no prefixes or terminators; the caller is responsible for
+    // recording the returned index and the byte count.  An empty input inserts nothing and
+    // returns the current cursor position.
+    //
+    // A request that would advance the cursor past ArenaCapacity is an integrity failure:
+    // the condition is logged with the request size and cursor position, then the process
+    // is brought down via Environment.FailFast.
+    //
+    // bytes:    The bytes to copy into the arena.
+    //
+    // Returns:  The arena index of the first copied byte.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    internal ushort InsertIntoArena(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length == 0)
+        {
+            DebugLog.Write(LogChannel.Fields, _currentOpcodeName
+                + " FieldBag.InsertIntoArena: empty input, returning cursor "
+                + _arenaCursor + " with no insertion");
+            return (ushort)_arenaCursor;
+        }
+
+        if (_arenaCursor + (uint)bytes.Length > ArenaCapacity)
+        {
+            string failure = _currentOpcodeName
+                + " FieldBag.InsertIntoArena: insertion of " + bytes.Length
+                + " bytes at cursor " + _arenaCursor
+                + " would exceed ArenaCapacity " + ArenaCapacity;
+            DebugLog.Write(LogChannel.Fields, failure);
+            Environment.FailFast(failure);
+        }
+
+        ushort insertionIndex = (ushort)_arenaCursor;
+        bytes.CopyTo(_arena.AsSpan((int)_arenaCursor));
+        _arenaCursor += (uint)bytes.Length;
+        return insertionIndex;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // SliceArena
+    //
+    // Returns a read-only span over the given range of the bag's arena.  A valid range
+    // lies entirely within the written region [0, cursor).  A range that starts at the
+    // NoArenaData sentinel, has zero length, or extends past the cursor is logged and
+    // yields an empty span.
+    //
+    // The returned span is valid only until the bag is cleared or released; after that the
+    // arena bytes may belong to a new tenant.
+    //
+    // offset:   Arena index of the first byte of the range.
+    // length:   Number of bytes in the range.
+    //
+    // Returns:  A read-only span over the range, or an empty span on any invalid range.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    internal ReadOnlySpan<byte> SliceArena(ushort offset, uint length)
+    {
+        if (offset == FieldSlot.NoArenaData)
+        {
+            DebugLog.Write(LogChannel.Fields, _currentOpcodeName
+                + " FieldBag.SliceArena: offset is the NoArenaData sentinel, returning empty span");
+            return ReadOnlySpan<byte>.Empty;
+        }
+
+        if (length == 0)
+        {
+            DebugLog.Write(LogChannel.Fields, _currentOpcodeName
+                + " FieldBag.SliceArena: zero length at offset " + offset
+                + ", returning empty span");
+            return ReadOnlySpan<byte>.Empty;
+        }
+
+        if ((ulong) offset + length > _arenaCursor)
+        {
+            DebugLog.Write(LogChannel.Fields, _currentOpcodeName
+                + " FieldBag.SliceArena: range [" + offset + ", " + (offset + length)
+                + ") extends past cursor " + _arenaCursor + ", returning empty span");
+            return ReadOnlySpan<byte>.Empty;
+        }
+
+        return new ReadOnlySpan<byte>(_arena, offset, (int)length);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // SliceArenaString
+    //
+    // Returns a read-only span over the null-terminated string beginning at the given
+    // arena offset, with the terminator excluded.  The string's extent is found by
+    // scanning for the null byte within the written region [offset, cursor).  A
+    // zero-length result is a stored empty string (the terminator is the first byte).
+    //
+    // An offset at or past the cursor, or a scan that reaches the cursor without finding
+    // a terminator, is an integrity failure: every string stored in the arena is
+    // guaranteed null-terminated, so a missing terminator means the offset is wrong or
+    // the arena is corrupt.  The condition is logged with the offset and cursor, then the
+    // process is brought down via Environment.FailFast.
+    //
+    // offset:   Arena index of the first byte of the string.
+    //
+    // Returns:  A read-only span over the string's bytes, terminator excluded; empty for
+    //           a stored empty string.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    internal ReadOnlySpan<byte> SliceArenaString(ushort offset)
+    {
+        if (offset >= _arenaCursor)
+        {
+            string positionFailure = _currentOpcodeName
+                + " FieldBag.SliceArenaString: offset " + offset
+                + " is at or past cursor " + _arenaCursor + ", arena reference is corrupt";
+            DebugLog.Write(LogChannel.Fields, positionFailure);
+            Environment.FailFast(positionFailure);
+        }
+
+        ReadOnlySpan<byte> writtenRegion = new ReadOnlySpan<byte>(_arena, offset,
+            (int)(_arenaCursor - offset));
+        int terminatorIndex = writtenRegion.IndexOf((byte)0);
+        if (terminatorIndex < 0)
+        {
+            string terminatorFailure = _currentOpcodeName
+                + " FieldBag.SliceArenaString: no terminator found from offset " + offset
+                + " to cursor " + _arenaCursor + ", arena is corrupt";
+            DebugLog.Write(LogChannel.Fields, terminatorFailure);
+            Environment.FailFast(terminatorFailure);
+        }
+
+        return writtenRegion.Slice(0, terminatorIndex);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -194,190 +333,156 @@ public class FieldBag
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetIntAt
     //
-    // Reads the slot at the given index as a 32-bit signed integer.  Logs and returns 0 if
-    // the index is out of range or the slot's type does not match.  Used by handlers that
-    // have cached field indices at construction time.
+    // Reads the slot at the given index as a 32-bit signed integer.  The slot is required:
+    // any failure to read it is a schema or extraction integrity violation and halts the
+    // process via FailFast with the failure details preserved in the Fields log channel.
     //
-    // slot.Index:  The cached index of the field, typically resolved via
-    //             FieldDefinitionExtensions.IndexOfField at handler construction.  A value
-    //             of -1 (the "field not found" sentinel) returns 0.
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // slot:     The slot identifier; slot.Index is typically resolved via
+    //           FieldDefinitionExtensions.IndexOfField at handler construction.
+    //
+    // Returns:  The slot's value.  Does not return on failure.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     public int GetIntAt(SlotId slot)
     {
         if (slot.Index >= _slotsInUse)
         {
-            DebugLog.Write(LogChannel.Fields, _currentOpcodeName + " FieldBag.GetIntAt: slot.Index "
-                + slot.Index + " out of range [0, " + _slotsInUse + "), returning 0");
-            return 0;
+            string rangeFailure = _currentOpcodeName + " FieldBag.GetIntAt: slot.Index "
+                + slot.Index + " out of range [0, " + _slotsInUse + ")";
+            DebugLog.Write(LogChannel.Fields, rangeFailure);
+            Environment.FailFast(rangeFailure);
         }
-
         int value;
         SlotReadResult result = _slots[slot.Index].TryGetInt(out value);
-        switch (result)
+        if (result != SlotReadResult.Success)
         {
-            case SlotReadResult.Success:
-                return value;
-
-            case SlotReadResult.TypeMismatch:
-                DebugLog.Write(LogChannel.Fields, _currentOpcodeName
-                    + " FieldBag.GetIntAt: type mismatch reading '"
-                    + _slots[slot.Index].GetName() + "' at index " + slot.Index
-                    + ", slot type is " + _slots[slot.Index].Type + ", returning 0");
-                return 0;
-
-            default:
-                DebugLog.Write(LogChannel.Fields, _currentOpcodeName
-                    + " FieldBag.GetIntAt: unhandled SlotReadResult " + result
-                    + " for '" + _slots[slot.Index].GetName() + "' at index " + slot.Index
-                    + ", returning 0");
-                return 0;
+            string readFailure = _currentOpcodeName + " FieldBag.GetIntAt: required slot '"
+                + _slots[slot.Index].GetName(this) + "' at index " + slot.Index
+                + " failed with " + result + ", slot type is " + _slots[slot.Index].Type;
+            DebugLog.Write(LogChannel.Fields, readFailure);
+            Environment.FailFast(readFailure);
         }
+        return value;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetUIntAt
     //
-    // Reads the slot at the given index as a 32-bit unsigned integer.  Logs and returns 0
-    // if the index is out of range.  Used by handlers that have cached field indices at
-    // construction time.
+    // Reads the slot at the given index as a 32-bit unsigned integer.  The slot is required:
+    // an out-of-range index or a failed slot-level read is a schema or extraction integrity
+    // violation and halts the process via FailFast with the failure details preserved in the
+    // Fields log channel.
     //
-    // slot.Index:  The cached index of the field, typically resolved via
-    //             FieldDefinitionExtensions.IndexOfField at handler construction.  A value
-    //             of -1 (the "field not found" sentinel) returns 0.
+    // slot:     The slot identifier; slot.Index is typically resolved via
+    //           FieldDefinitionExtensions.IndexOfField at handler construction.
+    //
+    // Returns:  The slot's value.  Does not return on failure.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public uint GetUIntAt(SlotId slot)
     {
         if (slot.Index >= _slotsInUse)
         {
-            DebugLog.Write(LogChannel.Fields, _currentOpcodeName + " FieldBag.GetUIntAt: slot.Index "
-                + slot.Index + " out of range [0, " + _slotsInUse + "), returning 0");
-            return 0;
+            string rangeFailure = _currentOpcodeName + " FieldBag.GetUIntAt: slot.Index "
+                + slot.Index + " out of range [0, " + _slotsInUse + ")";
+            DebugLog.Write(LogChannel.Fields, rangeFailure);
+            Environment.FailFast(rangeFailure);
         }
-
         uint value;
         SlotReadResult result = _slots[slot.Index].TryGetUInt(out value);
-        switch (result)
+        if (result != SlotReadResult.Success)
         {
-            case SlotReadResult.Success:
-                return value;
-
-            case SlotReadResult.TypeMismatch:
-                DebugLog.Write(LogChannel.Fields, _currentOpcodeName
-                    + " FieldBag.GetUIntAt: type mismatch reading '"
-                    + _slots[slot.Index].GetName() + "' at index " + slot.Index
-                    + ", slot type is " + _slots[slot.Index].Type + ", returning 0");
-                return 0;
-
-            default:
-                DebugLog.Write(LogChannel.Fields, _currentOpcodeName
-                    + " FieldBag.GetUIntAt: unhandled SlotReadResult " + result
-                    + " for '" + _slots[slot.Index].GetName() + "' at index " + slot.Index
-                    + ", returning 0");
-                return 0;
+            string readFailure = _currentOpcodeName + " FieldBag.GetUIntAt: required slot '"
+                + _slots[slot.Index].GetName(this) + "' at index " + slot.Index
+                + " failed with " + result + ", slot type is " + _slots[slot.Index].Type;
+            DebugLog.Write(LogChannel.Fields, readFailure);
+            Environment.FailFast(readFailure);
         }
+        return value;
     }
-
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetFloatAt
     //
-    // Reads the slot at the given index as a 32-bit IEEE float.  Logs and returns 0.0f if
-    // the index is out of range.  Used by handlers that have cached field indices at
-    // construction time.
+    // Reads the slot at the given index as a 32-bit float.  The slot is required: an
+    // out-of-range index or a failed slot-level read is a schema or extraction integrity
+    // violation and halts the process via FailFast with the failure details preserved in the
+    // Fields log channel.
     //
-    // slot.Index:  The cached index of the field, typically resolved via
-    //             FieldDefinitionExtensions.IndexOfField at handler construction.  A value
-    //             of -1 (the "field not found" sentinel) returns 0.0f.
+    // slot:     The slot identifier; slot.Index is typically resolved via
+    //           FieldDefinitionExtensions.IndexOfField at handler construction.
+    //
+    // Returns:  The slot's value.  Does not return on failure.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public float GetFloatAt(SlotId slot)
     {
         if (slot.Index >= _slotsInUse)
         {
-            DebugLog.Write(LogChannel.Fields, _currentOpcodeName + " FieldBag.GetFloatAt: slot.Index "
-                + slot.Index + " out of range [0, " + _slotsInUse + "), returning 0");
-            return 0;
+            string rangeFailure = _currentOpcodeName + " FieldBag.GetFloatAt: slot.Index "
+                + slot.Index + " out of range [0, " + _slotsInUse + ")";
+            DebugLog.Write(LogChannel.Fields, rangeFailure);
+            Environment.FailFast(rangeFailure);
         }
-
         float value;
         SlotReadResult result = _slots[slot.Index].TryGetFloat(out value);
-        switch (result)
+        if (result != SlotReadResult.Success)
         {
-            case SlotReadResult.Success:
-                return value;
-
-            case SlotReadResult.TypeMismatch:
-                DebugLog.Write(LogChannel.Fields, _currentOpcodeName
-                    + " FieldBag.GetFloatAt: type mismatch reading '"
-                    + _slots[slot.Index].GetName() + "' at index " + slot.Index
-                    + ", slot type is " + _slots[slot.Index].Type + ", returning 0");
-                return 0;
-
-            default:
-                DebugLog.Write(LogChannel.Fields, _currentOpcodeName
-                    + " FieldBag.GetFloatAt: unhandled SlotReadResult " + result
-                    + " for '" + _slots[slot.Index].GetName() + "' at index " + slot.Index
-                    + ", returning 0");
-                return 0;
+            string readFailure = _currentOpcodeName + " FieldBag.GetFloatAt: required slot '"
+                + _slots[slot.Index].GetName(this) + "' at index " + slot.Index
+                + " failed with " + result + ", slot type is " + _slots[slot.Index].Type;
+            DebugLog.Write(LogChannel.Fields, readFailure);
+            Environment.FailFast(readFailure);
         }
+        return value;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetBytesAt
     //
-    // Returns a read-only span over the ASCII string bytes stored in the slot at the given
-    // index.  Logs and returns an empty span if the index is out of range.  Used by handlers
-    // that have cached field indices at construction time.
+    // Reads the slot at the given index as a span over its ASCII string bytes, resolved
+    // from this bag's arena.  The slot is required: an out-of-range index or a failed
+    // slot-level read is a schema or extraction integrity violation and halts the process
+    // via FailFast with the failure details preserved in the Fields log channel.
     //
-    // The returned span is valid only while this bag is rented.  After Release the bag's
-    // slots may be reused; callers that need the bytes past Release must copy them out
-    // (e.g. via Encoding.ASCII.GetString or span.CopyTo).
+    // The returned span is valid only until this bag is cleared or released; after that
+    // the arena bytes may belong to a new tenant.
     //
-    // slot.Index:  The cached index of the field, typically resolved via
-    //             FieldDefinitionExtensions.IndexOfField at handler construction. 
+    // slot:     The slot identifier carrying the index of the slot to read.
+    //
+    // Returns:  The span over the slot's string bytes.  Does not return on failure.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-
     public ReadOnlySpan<byte> GetBytesAt(SlotId slot)
     {
         if (slot.Index >= _slotsInUse)
         {
-            DebugLog.Write(LogChannel.Fields, _currentOpcodeName + " FieldBag.GetBytesAt: slot.Index "
-                + slot.Index + " out of range [0, " + _slotsInUse + "), returning 0");
-            return ReadOnlySpan<byte>.Empty;
+            string rangeFailure = _currentOpcodeName + " FieldBag.GetBytesAt: slot.Index "
+                + slot.Index + " out of range [0, " + _slotsInUse + ")";
+            DebugLog.Write(LogChannel.Fields, rangeFailure);
+            Environment.FailFast(rangeFailure);
         }
-
         ReadOnlySpan<byte> value;
-        SlotReadResult result = _slots[slot.Index].TryGetAsciiBytes(out value);
-        switch (result)
+        SlotReadResult result = _slots[slot.Index].TryGetAsciiBytes(this, out value);
+        if (result != SlotReadResult.Success)
         {
-            case SlotReadResult.Success:
-                return value;
-
-            case SlotReadResult.TypeMismatch:
-                DebugLog.Write(LogChannel.Fields, _currentOpcodeName
-                    + " FieldBag.GetBytesAt: type mismatch reading '"
-                    + _slots[slot.Index].GetName() + "' at index " + slot.Index
-                    + ", slot type is " + _slots[slot.Index].Type + ", returning 0");
-                return ReadOnlySpan<byte>.Empty;
-
-            default:
-                DebugLog.Write(LogChannel.Fields, _currentOpcodeName
-                    + " FieldBag.GetBytesAt: unhandled SlotReadResult " + result
-                    + " for '" + _slots[slot.Index].GetName() + "' at index " + slot.Index
-                    + ", returning 0");
-                return ReadOnlySpan<byte>.Empty;
+            string readFailure = _currentOpcodeName + " FieldBag.GetBytesAt: required slot '"
+                + _slots[slot.Index].GetName(this) + "' at index " + slot.Index
+                + " in collection '" + GetCollectionForSlot(slot) + "' failed with " + result
+                + ", slot type is " + _slots[slot.Index].Type;
+            DebugLog.Write(LogChannel.Fields, readFailure);
+            Environment.FailFast(readFailure);
         }
+        return value;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetLengthAt
     //
-    // Returns the payload length in bytes of the slot at the given index.  For variable-length
-    // types such as null-terminated strings, this is the actual stored byte count.  For
-    // fixed-width types this is the width of the type.  Empty slots report zero.
+    // Returns the stored byte count of the slot at the given index.
+    // AsciiString slots report their exact stored byte count with no terminator
+    // included; all other slot types report zero.
     //
-    // slot.Index:  Index of the slot to query.
+    // slot:     The slot identifier carrying the index of the slot to query.
     //
-    // Returns: Payload length in bytes of the slot, or 0 if the slot is invalid
+    // Returns:  Stored byte count for arena-backed slots; zero for all other types or if
+    //           the index is out of range.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public uint GetLengthAt(SlotId slot)
     {
@@ -388,7 +493,11 @@ public class FieldBag
             return 0;
         }
 
-        return _slots[slot.Index].GetLength();
+        CollectionHandle collectionHandle = slot.Collection;
+        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
+        string name = GlassContext.PatchRegistry.GetCollectionName(patchLevel,  collectionHandle);
+
+        return _slots[slot.Index].GetLength(this);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -399,8 +508,7 @@ public class FieldBag
     // for example, predicate evaluation, which reads a signed source field as signed and an
     // unsigned source field as unsigned so the comparison preserves the field's sign.
     //
-    // slot.Index:  The cached index of the field, typically resolved via IndexOfField at
-    //             construction. 
+    // slot:  The slot to query
     //
     // Returns:  The slot's FieldType, or FieldType.Empty if the index is out of range.
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -415,6 +523,22 @@ public class FieldBag
         return _slots[slot.Index].Type;
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetCollectionForSlot
+    //
+    // Returns the name of the collection containing the specified slot.
+    //
+    // slot:  The ID of the slot to query
+    //
+    // Returns:  The slot's name
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public string GetCollectionForSlot(SlotId slot)
+    {
+        CollectionHandle collectionHandle = slot.Collection;
+        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
+        string name = GlassContext.PatchRegistry.GetCollectionName(patchLevel, collectionHandle);
+        return name;
+    }
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // IsPresent
     //
@@ -482,7 +606,7 @@ public class FieldBag
                 continue;
             }
 
-            return new FieldBinding(slot.GetName(), slot.AsString());
+            return new FieldBinding(slot.GetName(this), slot.AsString(this));
         }
 
         return null;

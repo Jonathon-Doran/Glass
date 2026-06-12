@@ -346,6 +346,27 @@ public class PatchRegistry
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetCollectionName
+    //
+    // Returns the number of opcodes loaded for the given patch level.  Looks up the patch
+    // in the loaded set and delegates to the PatchData.
+    //
+    // Throws InvalidOperationException if the patch level is not loaded.
+    //
+    // Parameters:
+    //   patchLevel  - The patch identifier.  Must already be loaded.
+    //
+    // Returns:
+    //   The number of opcodes in the patch.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    public string GetCollectionName(PatchLevel patchLevel, CollectionHandle collectionHandle)
+    {
+        PatchData patchData = FindPatchData(patchLevel);
+        return patchData.GetCollectionNameFromHandle(collectionHandle);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeCount
     //
     // Returns the number of opcodes loaded for the given patch level.  Looks up the patch

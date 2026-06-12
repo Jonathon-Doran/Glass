@@ -11,5 +11,6 @@ public enum SlotReadResult
 {
     Success,
     TypeMismatch,
-    EmptyPayload
+    EmptyPayload,
+    InvalidSlot
 }

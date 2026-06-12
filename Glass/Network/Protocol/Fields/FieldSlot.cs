@@ -3,58 +3,39 @@ using System;
 using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Glass.Network.Protocol.Fields;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// NameBuffer32
-//
-// Inline 32-byte buffer used to hold a field name without heap allocation.
-// Exists only because [InlineArray] requires a wrapper struct with exactly one field.
-// Accessed via implicit Span<byte> / ReadOnlySpan<byte> conversions.
-///////////////////////////////////////////////////////////////////////////////////////////////
-[InlineArray(32)]
-public struct NameBuffer32
-{
-    private byte _element0;
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////
-// PayloadBuffer80
-//
-// Inline 80-byte buffer used to hold a field's value without heap allocation.
-// Numeric values occupy the first N bytes; string and byte values use up to all 80.
-// Exists only because [InlineArray] requires a wrapper struct with exactly one field.
-///////////////////////////////////////////////////////////////////////////////////////////////
-[InlineArray(80)]
-public struct PayloadBuffer80
-{
-    private byte _element0;
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////
 // FieldSlot
 //
-// One named field value, stored inline with no heap allocation.  A FieldBag holds an
-// array of these.  The slot's Type tag determines how the payload bytes are interpreted.
+// One named field value, stored as a 18-byte packed record.  A FieldBag holds an array of
+// these.  Numeric payloads live in the 64-bit value field.  Variable-length payloads
+// (strings, byte runs) live in the owning bag's arena; the slot holds a 16-bit arena
+// offset and carries the byte length in the value field.  The field name's bytes likewise
+// live in the arena, referenced by a separate 16-bit offset and an 8-bit length.  The
+// slot's Type tag determines how the value field is interpreted.
 //
-// The setter methods (SetName, SetInt, etc.) are used by the extractor when filling a
-// bag.  The getter methods (GetInt32, GetAsciiSpan, etc.) are called by FieldBag during
-// handler-driven lookups.  Handlers do not access slots directly.
+// The slot holds no reference to the arena.  Setters and getters that touch arena-backed
+// data take the arena as a span parameter supplied by the owning bag.
 //
 // On any type mismatch in a getter, the slot logs and returns a default value rather than
 // throwing — a misconfigured field definition should not crash the dispatch loop.
 ///////////////////////////////////////////////////////////////////////////////////////////////
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 18)]
 public struct FieldSlot
 {
-    public const int NameCapacity = 32;
-    public const int PayloadCapacity = 80;
-
-    private NameBuffer32 _name;
-    private PayloadBuffer80 _payload;
-    private byte _nameLength;
-    private uint _payloadLength;
+    public const ushort NoArenaData = 0xFFFF;
+     
+    private uint   _value;
+    private uint   _wireBitOffset;
+    private ushort _wireBitLength;
+    private ushort _sequence;
+    private ushort _arenaOffset;
+    private ushort _nameOffset;
+    private byte   _nameLength;
     private FieldType _type;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -77,8 +58,8 @@ public struct FieldSlot
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public uint WireBitOffset
     {
-        get;
-        set;
+        get { return _wireBitOffset; }
+        set { _wireBitOffset = value; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -89,10 +70,10 @@ public struct FieldSlot
     // is absent because its predicate did not hold, so a following field anchored on it
     // resolves to the same start bit the absent field would have yielded.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public uint WireBitLength
+    public ushort WireBitLength
     {
-        get;
-        set;
+        get { return _wireBitLength; }
+        set { _wireBitLength = value; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -100,173 +81,145 @@ public struct FieldSlot
     //
     // The field's display order within its collection.  Set by the extractor at decode time.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public uint Sequence
+    public ushort Sequence
     {
-        get;
-        set;
+        get { return _sequence; }
+        set { _sequence = value; }
     }
+
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Clear
     //
-    // Resets the slot to the Empty state.  Does not zero the inline buffers — the type tag
-    // and length fields are sufficient to mark the slot unused.  Called by FieldBag when
-    // returning a bag to the pool.
+    // Resets the slot to the Empty state.  Arena offsets are set to the NoArenaData
+    // sentinel so a cleared slot can never alias bytes left in the arena by a prior
+    // tenant.  Called by FieldBag when a bag is recycled.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void Clear()
     {
         _type = FieldType.Empty;
+        _value = 0;
+        _wireBitOffset = 0;
+        _wireBitLength = 0;
+        _sequence = 0;
+        _arenaOffset = NoArenaData;
+        _nameOffset = NoArenaData;
         _nameLength = 0;
-        _payloadLength = 0;
-        WireBitLength = 0;
-        WireBitOffset = 0;
-        Sequence = 0;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // SetName
     //
-    // Stores the field name in the inline name buffer.  Names longer than NameCapacity are
-    // truncated and logged — field-name truncation is a configuration bug worth surfacing.
+    // Stores the field name's ASCII bytes in the owning bag's arena, null-terminated, and
+    // records the arena offset of the first byte in the slot.  The name's identity is the
+    // arena offset alone; its extent is the terminator.  Names longer than 255 characters
+    // are truncated and logged.  A null or empty name stores nothing and records the
+    // NoArenaData sentinel.
     //
+    // bag:   The bag that owns this slot; receives the name bytes into its arena.
     // name:  The field name (e.g. "hp", "level"); ASCII expected.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void SetName(string name)
+    public void SetName(FieldBag bag, string name)
     {
-        if (name == null)
+        if (bag == null)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.SetName: null name, treating as empty");
-            _nameLength = 0;
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.SetName: null bag, name not stored");
+            _nameOffset = NoArenaData;
             return;
         }
 
-        int byteCount = Encoding.ASCII.GetByteCount(name);
-        if (byteCount > NameCapacity)
+        if (string.IsNullOrEmpty(name))
         {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.SetName: name '" + name
-                + "' length " + byteCount + " exceeds NameCapacity " + NameCapacity
-                + ", truncating");
-            byteCount = NameCapacity;
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.SetName: null or empty name, treating as unnamed");
+            _nameOffset = NoArenaData;
+            return;
         }
 
-        Span<byte> destination = _name;
-        Encoding.ASCII.GetBytes(name.AsSpan(0, Math.Min(name.Length, byteCount)), destination);
-        _nameLength = (byte)byteCount;
+        int characterCount = name.Length;
+        if (characterCount > 255)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.SetName: name '" + name
+                + "' length " + characterCount + " exceeds 255, truncating");
+            characterCount = 255;
+        }
+
+        Span<byte> encoded = stackalloc byte[256];
+        int byteCount = Encoding.ASCII.GetBytes(name.AsSpan(0, characterCount), encoded);
+        encoded[byteCount] = 0;
+
+        _nameOffset = bag.InsertIntoArena(encoded.Slice(0, byteCount + 1));
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // CopyAsciiBytesTo
+    // GetName
     //
-    // Copies the slot's ASCII string bytes into the caller-provided destination buffer,
-    // with the trailing null terminator excluded.  The caller owns the destination; the
-    // slot holds no reference to it after the copy.  Logs and returns 0 if the slot's
-    // type is not AsciiString or if the destination is too small to hold the visible bytes.
+    // Returns the slot's field name, resolved from the owning bag's arena by scanning to
+    // the name's null terminator, as an ASCII string.  Returns "(unnamed)" if the bag is
+    // null or no name has been set.
     //
-    // destination:  Caller-owned buffer to receive the bytes; must be at least
-    //               (PayloadLength - 1) bytes.
+    // bag:      The bag that owns this slot; supplies the arena bytes.
     //
-    // Returns:      The number of bytes copied, or 0 on type mismatch or undersized destination.
+    // Returns:  The field name, or "(unnamed)" as described above.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public int CopyAsciiBytesTo(Span<byte> destination)
+    public string GetName(FieldBag bag)
     {
-        if (_type != FieldType.AsciiString)
+        if (bag == null)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.CopyAsciiBytesTo: type mismatch, slot type is "
-                + _type + ", returning 0");
-            return 0;
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.GetName: null bag, returning placeholder");
+            return "(unnamed)";
         }
 
-        if (_payloadLength == 0)
+        if (_nameOffset == NoArenaData)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.CopyAsciiBytesTo: " + GetName()
-                + " payload length is zero, returning 0");
-            return 0;
+            return "(unnamed)";
         }
 
-        uint visibleLength = _payloadLength - 1;
-        if (destination.Length < visibleLength)
-        {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.CopyAsciiBytesTo: " + GetName() + " destination length "
-                + destination.Length + " is smaller than visible length " + visibleLength
-                + ", returning 0");
-            return 0;
-        }
-
-        Span<byte> source = _payload;
-        source.Slice(0, (int) visibleLength).CopyTo(destination);
-        return (int) visibleLength;
+        ReadOnlySpan<byte> nameBytes = bag.SliceArenaString(_nameOffset);
+        return Encoding.ASCII.GetString(nameBytes);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // SetInt
     //
-    // Stores a 32-bit signed integer in machine byte order in the payload buffer.
+    // Stores a signed integer in the slot's value field, sign-extended to 64 bits.  The
+    // arena offset is set to the NoArenaData sentinel — numeric slots own no arena bytes.
     //
     // value:  The integer to store.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void SetInt(int value)
     {
-        Span<byte> destination = _payload;
-        BinaryPrimitives.WriteInt32LittleEndian(destination, value);
-        _payloadLength = 4;
+        _value = (uint) value;
+        _arenaOffset = NoArenaData;
         _type = FieldType.Int;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // SetUInt
     //
-    // Stores a 32-bit unsigned integer in the payload buffer.
+    // Stores an unsigned integer in the slot's value field.  The arena offset is set to
+    // the NoArenaData sentinel — numeric slots own no arena bytes.
     //
     // value:  The unsigned integer to store.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void SetUInt(uint value)
     {
-        Span<byte> destination = _payload;
-        BinaryPrimitives.WriteUInt32LittleEndian(destination, value);
-        _payloadLength = 4;
+        _value = value;
+        _arenaOffset = NoArenaData;
         _type = FieldType.UInt;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // SetAsciiString
-    //
-    // Stores ASCII string bytes in the payload buffer, followed by a single null terminator.
-    // _payloadLength counts the stored bytes including the null, so it reflects the on-wire
-    // byte count for a null-terminated string field.  Consumer-facing getters slice the
-    // null off; only the extractor reads the full length (via GetLength) when computing
-    // anchor end positions for relative-anchored fields.
-    //
-    // Source longer than (PayloadCapacity - 1) are truncated and the truncation is logged.
-    //
-    // Parameters:
-    //   bytes:  The ASCII bytes to store; should not include a trailing null — this
-    //           method appends one.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void SetAsciiString(ReadOnlySpan<byte> bytes)
-    {
-        int maxPayload = PayloadCapacity - 1;
-        int copyCount = bytes.Length;
-        if (copyCount > maxPayload)
-        {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.SetAsciiString: " + GetName() + " length " + copyCount
-                + " exceeds max payload " + maxPayload + " (PayloadCapacity " + PayloadCapacity
-                + " minus null terminator), truncating");
-            copyCount = maxPayload;
-        }
-
-        Span<byte> destination = _payload;
-        bytes.Slice(0, copyCount).CopyTo(destination);
-        destination[copyCount] = 0;
-        _payloadLength = (byte)(copyCount + 1);
-        _type = FieldType.AsciiString;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // TryGetInt
     //
-    // Reads the slot as a 32-bit signed integer.  Returns SlotReadResult.Success and the
-    // value on success, SlotReadResult.TypeMismatch and zero on type mismatch.
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Reads the slot as a 64-bit signed integer.  Accepts slots of type Int or UInt; the
+    // stored 64 bits are reinterpreted as signed, so an unsigned value with the high bit
+    // set reads back negative.
+    //
+    // value:    Receives the slot's value on success, zero on type mismatch.
+    //
+    // Returns:  SlotReadResult.Success on success, SlotReadResult.TypeMismatch if the
+    //           slot's type is neither Int nor UInt.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     public SlotReadResult TryGetInt(out int value)
     {
         if ((_type != FieldType.UInt) && (_type != FieldType.Int))
@@ -275,17 +228,20 @@ public struct FieldSlot
             return SlotReadResult.TypeMismatch;
         }
 
-        ReadOnlySpan<byte> source = _payload;
-        value = BinaryPrimitives.ReadInt32LittleEndian(source);
+        value = (int) _value;
         return SlotReadResult.Success;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // TryGetUInt
     //
-    // Reads the slot as a 32-bit unsigned integer.  Returns SlotReadResult.Success and the
-    // value on success, SlotReadResult.TypeMismatch and zero on type mismatch.
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Reads the slot as a 64-bit unsigned integer.  Accepts only slots of type UInt.
+    //
+    // value:    Receives the slot's value on success, zero on type mismatch.
+    //
+    // Returns:  SlotReadResult.Success on success, SlotReadResult.TypeMismatch if the
+    //           slot's type is not UInt.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     public SlotReadResult TryGetUInt(out uint value)
     {
         if (_type != FieldType.UInt)
@@ -294,34 +250,39 @@ public struct FieldSlot
             return SlotReadResult.TypeMismatch;
         }
 
-        ReadOnlySpan<byte> source = _payload;
-        value = BinaryPrimitives.ReadUInt32LittleEndian(source);
+        value = _value;
         return SlotReadResult.Success;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // SetFloat
     //
-    // Stores a 32-bit IEEE float in the payload buffer in machine byte order.  The encoding
-    // (LE or BE) of the source bytes is the extractor's concern; by the time the value
-    // reaches this setter the bits have already been interpreted into a host-order float.
+    // Stores a 32-bit IEEE float in the slot's value field as its raw bit pattern, widened
+    // to 64 bits.  The encoding (LE or BE) of the source bytes is the extractor's concern;
+    // by the time the value reaches this setter the bits have already been interpreted
+    // into a host-order float.  The arena offset is set to the NoArenaData sentinel —
+    // numeric slots own no arena bytes.
     //
     // value:  The float to store.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void SetFloat(float value)
     {
-        Span<byte> destination = _payload;
-        BinaryPrimitives.WriteSingleLittleEndian(destination, value);
-        _payloadLength = 4;
+        _value = BitConverter.SingleToUInt32Bits(value);
+        _arenaOffset = NoArenaData;
         _type = FieldType.Float;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // TryGetFloat
     //
-    // Reads the slot as a 32-bit IEEE float.  Returns SlotReadResult.Success and the
-    // value on success, SlotReadResult.TypeMismatch and zero on type mismatch.
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Reads the slot as a 32-bit IEEE float, reconstructed from the raw bit pattern in the
+    // low 32 bits of the value field.  Accepts only slots of type Float.
+    //
+    // value:    Receives the slot's value on success, zero on type mismatch.
+    //
+    // Returns:  SlotReadResult.Success on success, SlotReadResult.TypeMismatch if the
+    //           slot's type is not Float.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     public SlotReadResult TryGetFloat(out float value)
     {
         if (_type != FieldType.Float)
@@ -330,125 +291,181 @@ public struct FieldSlot
             return SlotReadResult.TypeMismatch;
         }
 
-        ReadOnlySpan<byte> source = _payload;
-        value = BinaryPrimitives.ReadSingleLittleEndian(source);
+        value = BitConverter.UInt32BitsToSingle(_value);
         return SlotReadResult.Success;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GetAsciiBytes
+    // SetAsciiString
     //
-    // Returns a read-only span over the slot's stored ASCII string bytes, with the trailing
-    // null terminator excluded.  Logs and returns an empty span if the slot's type is not
-    // AsciiString.
+    // Stores ASCII string bytes in the owning bag's arena, guaranteed null-terminated, and
+    // records the arena offset of the first byte in the slot.  If the given bytes do not
+    // already end with a null, a single null byte is appended in the arena immediately
+    // after them.  The string's identity is the arena offset alone; the value field is not
+    // touched.  An empty input stores just a terminator, so an empty string occupies one
+    // arena byte at a real offset, distinguishable from an absent field.
     //
-    // The returned span is valid only while the slot's storage is stable — practically, until
-    // the bag containing this slot is released.  Callers that need to keep the bytes past
-    // that point must copy them out (e.g. via Encoding.ASCII.GetString or span.CopyTo).
+    // bag:    The bag that owns this slot; receives the string bytes into its arena.
+    // bytes:  The ASCII bytes to store, with or without a trailing null.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    [UnscopedRef]
-    public ReadOnlySpan<byte> GetAsciiBytes()
+    public void SetAsciiString(FieldBag bag, ReadOnlySpan<byte> bytes)
     {
-        if (_type != FieldType.AsciiString)
+        if (bag == null)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.GetAsciiBytes: " + GetName() + " type mismatch, slot type is "
-                + _type + ", returning empty span");
-            return ReadOnlySpan<byte>.Empty;
+            DebugLog.Write(LogChannel.Fields,
+                "FieldSlot.SetAsciiString: null bag, value not stored");
+            _arenaOffset = NoArenaData;
+            return;
         }
 
-        if (_payloadLength == 0)
+        bool alreadyTerminated = (bytes.Length > 0) && (bytes[bytes.Length - 1] == 0);
+
+        if (alreadyTerminated == true)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.GetAsciiBytes: " + GetName()
-                + " payload length is zero, returning empty span");
-            return ReadOnlySpan<byte>.Empty;
+            _arenaOffset = bag.InsertIntoArena(bytes);
+        }
+        else
+        {
+            Span<byte> terminator = stackalloc byte[1];
+            terminator[0] = 0;
+            if (bytes.Length > 0)
+            {
+                _arenaOffset = bag.InsertIntoArena(bytes);
+                bag.InsertIntoArena(terminator);
+            }
+            else
+            {
+                _arenaOffset = bag.InsertIntoArena(terminator);
+            }
         }
 
-        uint visibleLength = _payloadLength - 1;
-        return ((ReadOnlySpan<byte>)_payload).Slice(0, (int) visibleLength);
+        _type = FieldType.AsciiString;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // TryGetAsciiBytes
     //
-    // Returns a read-only span over the slot's stored ASCII string bytes, with the trailing
-    // null terminator excluded.  Logs and returns an empty span if the slot's type is not
-    // AsciiString, or if the payload is empty.
+    // Returns a read-only span over the slot's ASCII string bytes, resolved from the
+    // owning bag's arena by scanning to the string's null terminator, which is excluded
+    // from the span.  A stored empty string yields Success with an empty span.  
     //
-    // The returned span is valid only while the slot's storage is stable — practically, until
-    // the bag containing this slot is released.  Callers that need to keep the bytes past
-    // that point must copy them out (e.g. via Encoding.ASCII.GetString or span.CopyTo).
+    // The returned span is valid only until the bag is cleared or released; after that the
+    // arena bytes may belong to a new tenant.
     //
-    // Returns SlotReadResult.Success and the value on success,
-    // SlotReadResult.TypeMismatch and an empty span on type mismatch,
-    // SlotReadResult.EmptyPayload and an empty span when the slot is AsciiString but
-    // has no stored bytes.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    [UnscopedRef]
-    public SlotReadResult TryGetAsciiBytes(out ReadOnlySpan<byte> value)
+    // bag:      The bag that owns this slot; supplies the arena bytes.
+    // value:    Receives the span on success, an empty span otherwise.
+    //
+    // Returns:  SlotReadResult.Success on success, SlotReadResult.TypeMismatch if the
+    //           slot's type is not AsciiString or the bag is null,
+    //           SlotReadResult.EmptyPayload if no string was ever stored in the slot.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public SlotReadResult TryGetAsciiBytes(FieldBag bag, out ReadOnlySpan<byte> value)
     {
+        if (bag == null)
+        {
+            DebugLog.Write(LogChannel.Fields,
+                "FieldSlot.TryGetAsciiBytes: null bag, returning empty span");
+            value = ReadOnlySpan<byte>.Empty;
+            return SlotReadResult.TypeMismatch;
+        }
+
         if (_type != FieldType.AsciiString)
         {
             value = ReadOnlySpan<byte>.Empty;
             return SlotReadResult.TypeMismatch;
         }
 
-        if (_payloadLength == 0)
+        if (_arenaOffset == NoArenaData)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.TryGetAsciiBytes: " + GetName()
-                + " payload length is zero, returning empty span");
+            DebugLog.Write(LogChannel.Fields,
+                "FieldSlot.TryGetAsciiBytes: " + GetName(bag)
+                + " has no stored string, returning empty span");
             value = ReadOnlySpan<byte>.Empty;
             return SlotReadResult.EmptyPayload;
         }
 
-        uint visibleLength = _payloadLength - 1;
-        value = ((ReadOnlySpan<byte>)_payload).Slice(0, (int) visibleLength);
+        value = bag.SliceArenaString(_arenaOffset);
         return SlotReadResult.Success;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GetName
-    //
-    // Returns the slot's stored field name as an ASCII string.  Returns "(unnamed)" if no
-    // name has been set on the slot.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public string GetName()
-    {
-        if (_nameLength == 0)
-        {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.GetName: name is empty, returning placeholder");
-            return "(unnamed)";
-        }
-
-        ReadOnlySpan<byte> nameBytes = _name;
-        ReadOnlySpan<byte> activeName = nameBytes.Slice(0, _nameLength);
-        string result = Encoding.ASCII.GetString(activeName);
-        return result;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetLength
     //
-    // Returns the payload length in bytes for this slot.  For variable-length types such as
-    // null-terminated strings, this is the actual stored byte count.  For fixed-width types
-    // this is the width of the type.  Empty slots report zero.
+    // Returns the decoded payload length in bytes for this slot.  Numeric types (Int,
+    // UInt, Float) report 4, the decoded width of a 32-bit value.  AsciiString reports
+    // the stored byte count including the null terminator, resolved by scanning the
+    // string in the owning bag's arena.  An AsciiString slot with no stored string
+    // reports zero.  Empty slots report zero.
     //
-    // Returns: Payload length in bytes.
+    // bag:      The bag that owns this slot; supplies the arena bytes for string slots.
+    //
+    // Returns:  Payload length in bytes.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public uint GetLength()
+    public uint GetLength(FieldBag bag)
     {
-        return _payloadLength;
+        switch (_type)
+        {
+            case FieldType.Int:
+            case FieldType.UInt:
+            case FieldType.Float:
+                return 4;
+
+            case FieldType.AsciiString:
+                {
+                    if (bag == null)
+                    {
+                        DebugLog.Write(LogChannel.Fields,
+                            "FieldSlot.GetLength: null bag, returning 0");
+                        return 0;
+                    }
+
+                    if (_arenaOffset == NoArenaData)
+                    {
+                        DebugLog.Write(LogChannel.Fields, "FieldSlot.GetLength: " + GetName(bag)
+                            + " has no stored string, returning 0");
+                        return 0;
+                    }
+
+                    return (uint)bag.SliceArenaString(_arenaOffset).Length + 1u;
+                }
+
+            default:
+                return 0;
+        }
     }
 
+    public void debugDump()
+    {
+        DebugLog.Write(LogChannel.Fields, "value = 0x" + _value.ToString("x8"));
+        DebugLog.Write(LogChannel.Fields, "type = " + _type);
+        DebugLog.Write(LogChannel.Fields, "nameOffset = " + _nameOffset + ", length = " + _nameLength);
+        DebugLog.Write(LogChannel.Fields, "arenaOffset = " + _arenaOffset);
+        DebugLog.Write(LogChannel.Fields, "wireBitOffset = " + _wireBitOffset + ", length = " + _wireBitLength);
+    }
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // AsString
     //
     // Returns the slot's value formatted as a string according to its current type.
-    // Integer types render in hex with a "0x" prefix and width-appropriate zero padding.
-    // Float renders as decimal with three digits after the radix.  AsciiString renders
-    // as the stored characters.
+    // Integer types render in hex with a "0x" prefix and eight-digit zero padding,
+    // followed by the decimal value in parentheses.  Float renders as decimal with three
+    // digits after the radix.  AsciiString renders as the stored characters, resolved
+    // from the owning bag's arena; an empty stored string renders as an empty string.
+    // Any read failure or unconvertible type is logged and renders as an empty string.
+    //
+    // bag:      The bag that owns this slot; supplies the arena bytes for the name and
+    //           for AsciiString values.
+    //
+    // Returns:  The formatted value, or an empty string on any failure described above.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    internal string AsString()
+    internal string AsString(FieldBag bag)
     {
+        if (bag == null)
+        {
+            DebugLog.Write(LogChannel.Fields,
+                "FieldSlot.AsString: null bag, returning empty string");
+            return string.Empty;
+        }
+
         switch (_type)
         {
             case FieldType.Int:
@@ -459,7 +476,7 @@ public struct FieldSlot
                     {
                         return "0x" + value.ToString("X8") + " (" + value + ")";
                     }
-                    DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName()
+                    DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName(bag)
                         + " Int read failed: " + result);
                     return string.Empty;
                 }
@@ -472,7 +489,7 @@ public struct FieldSlot
                     {
                         return "0x" + value.ToString("X8") + " (" + value + ")";
                     }
-                    DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName()
+                    DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName(bag)
                         + " UInt read failed: " + result);
                     return string.Empty;
                 }
@@ -485,20 +502,31 @@ public struct FieldSlot
                     {
                         return value.ToString("F3");
                     }
-                    DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName()
+                    DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName(bag)
                         + " Float read failed: " + result);
                     return string.Empty;
                 }
 
             case FieldType.AsciiString:
                 {
-                    ReadOnlySpan<byte> bytes = GetAsciiBytes();
-                    return Encoding.ASCII.GetString(bytes);
+                    ReadOnlySpan<byte> bytes;
+                    SlotReadResult result = TryGetAsciiBytes(bag, out bytes);
+                    if (result == SlotReadResult.Success)
+                    {
+                        return Encoding.ASCII.GetString(bytes);
+                    }
+                    if (result == SlotReadResult.EmptyPayload)
+                    {
+                        return string.Empty;
+                    }
+                    DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName(bag)
+                        + " AsciiString read failed: " + result);
+                    return string.Empty;
                 }
 
             default:
                 {
-                    DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName()
+                    DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName(bag)
                         + " type " + _type + " has no string conversion");
                     return string.Empty;
                 }
