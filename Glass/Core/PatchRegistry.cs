@@ -19,7 +19,6 @@ namespace Glass.Core;
 public class PatchRegistry
 {
     private readonly List<PatchData> _loadedPatches;
-    private readonly FieldBagPool _bagPool;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // PatchRegistry (constructor)
@@ -30,7 +29,6 @@ public class PatchRegistry
     public PatchRegistry()
     {
         _loadedPatches = new List<PatchData>();
-        _bagPool = new FieldBagPool(FieldBag.DefaultPoolSize, FieldBag.DefaultSlotCount);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -504,7 +502,9 @@ public class PatchRegistry
         PatchData patchData = FindPatchData(opcode.Level);
 
         string opcodeName = patchData.GetOpcodeName(opcode);
-        FieldBag bag = _bagPool.Rent();
+        // FIXME
+        FieldBag bag = new FieldBag(500);
+
         // TODO:  fix this.  We should take a Gate in and store a collection handle
         // bag.CurrentOpcodeName = opcodeName;
         return bag;
@@ -596,6 +596,5 @@ public class PatchRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////
     public void LogPoolStatistics()
     {
-        _bagPool.LogStatistics();
     }
 }

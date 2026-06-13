@@ -161,7 +161,8 @@ public partial class PacketDetailWindow : Window
         }
         finally
         {
-            bag.Release();
+            // FIXME
+            // bag.Release();
         }
     }
 
@@ -202,6 +203,7 @@ public partial class PacketDetailWindow : Window
             sb.Append(" ----\n");
 
             ReadOnlySpan<byte> itemSlice = payload.Slice(anchorOffset);
+
             FieldBag bag = GlassContext.PatchRegistry.Rent(patchOpcode);
             try
             {
@@ -221,7 +223,8 @@ public partial class PacketDetailWindow : Window
             }
             finally
             {
-                bag.Release();
+                // FIXME
+                // bag.Release();
             }
 
             itemOrdinal++;

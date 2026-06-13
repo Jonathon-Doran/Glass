@@ -28,7 +28,6 @@ public class FieldBag
     private readonly FieldSlot[] _slots;
     private readonly byte[] _arena;
     private uint _arenaCursor;
-    private readonly FieldBagPool _pool;
     private uint _slotsInUse;
     private string _currentOpcodeName = string.Empty;
     private readonly int[] _displayOrder;
@@ -43,7 +42,7 @@ public class FieldBag
     // capacity:  Number of slots in the bag.
     // pool:      The pool this bag returns to on Release.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public FieldBag(int capacity, FieldBagPool pool)
+    public FieldBag(int capacity)
     {
         if (capacity <= 0)
         {
@@ -55,7 +54,6 @@ public class FieldBag
         _slots = new FieldSlot[capacity];
         _arena = new byte[ArenaCapacity];
         _arenaCursor = 0;
-        _pool = pool;
         _slotsInUse = 0;
         _displayOrder = new int[capacity];
         _displayOrderCount = 0;
@@ -619,13 +617,5 @@ public class FieldBag
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void Release()
     {
-        _currentOpcodeName = string.Empty;
-
-        if (_pool == null)
-        {
-            DebugLog.Write(LogChannel.Fields, "FieldBag.Release: no pool to return to, dropping bag");
-            return;
-        }
-        _pool.Return(this);
     }
 }
