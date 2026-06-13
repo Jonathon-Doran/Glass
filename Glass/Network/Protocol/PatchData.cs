@@ -108,31 +108,31 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////
     // _gate
     //
-    // Flat array of childCollection GateDefinition structures for this patch level, indexed by GateHandle.
+    // Flat array of childCollection GateDefinition structures for this patch level, indexed by GateDefinitionHandle.
     // Sized by CountGates and filled incrementally as each gate is childCollection at its
-    // referrer's load time, in resolution order.  A GateHandle is a position in this array.
+    // referrer's load time, in resolution order.  A GateDefinitionHandle is a position in this array.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private readonly GateDefinition[] _gate;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // _gateHandlesByName
     //
-    // Maps a gate's name to the GateHandle assigned at load time.  Built once by
+    // Maps a gate's name to the GateDefinitionHandle assigned at load time.  Built once by
     // LoadGateDefinitions; the reverse lookup is the definition's Name member via the
     // _gate array.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private readonly Dictionary<string, GateHandle> _gateHandlesByName;
+    private readonly Dictionary<string, GateDefinitionHandle> _gateHandlesByName;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // _gateFieldNamesByHandle
     //
-    // Load-time map from a GateHandle to the raw field_name string its Gate row carries,
+    // Load-time map from a GateDefinitionHandle to the raw field_name string its Gate row carries,
     // for gates whose multiplicity reads a count field.  Populated by LoadGateDefinitions
     // and consumed by the field-loading pass, which pairs the name with the referencing
     // collection to build the pending entries ResolveGates resolves.  Set to null by the
     // constructor after loading completes.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private Dictionary<GateHandle, string>? _gateFieldNamesByHandle;
+    private Dictionary<GateDefinitionHandle, string>? _gateFieldNamesByHandle;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // PendingFieldPredicate
@@ -156,13 +156,13 @@ public class PatchData
     // Everything loaded for one PatchOpcode row, stored at its OpcodeHandle in _opcodes.
     // PatchOpcode is the opcode's identity (patch level, wire value, version); Name is its
     // opcode_name string; Gate is the handle of its top-level gate, the entry point for
-    // extracting its payload, or GateHandle.None when the row named no loaded gate.
+    // extracting its payload, or GateDefinitionHandle.None when the row named no loaded gate.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private struct OpcodeRecord
     {
         public PatchOpcode PatchOpcode;
         public string Name;
-        public GateHandle Gate;
+        public GateDefinitionHandle Gate;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -246,8 +246,8 @@ public class PatchData
         _collectionNamesByHandle = new string[collectionCount];
         _collectionHandleByCollectionName = new Dictionary<string, CollectionHandle>(collectionCount);
         _gate = new GateDefinition[gateCount];
-        _gateHandlesByName = new Dictionary<string, GateHandle>((int)gateCount);
-        _gateFieldNamesByHandle = new Dictionary<GateHandle, string>();
+        _gateHandlesByName = new Dictionary<string, GateDefinitionHandle>((int)gateCount);
+        _gateFieldNamesByHandle = new Dictionary<GateDefinitionHandle, string>();
         _collectionHandleByOpcodeHandle = new Dictionary<OpcodeHandle, CollectionHandle>(opcodeCount);
         _collectionHandleByOpcodeName = new Dictionary<string, CollectionHandle>(collectionCount);
 
@@ -493,9 +493,9 @@ public class PatchData
     // order from the database determines opcodeHandle assignment — the first row read becomes
     // opcodeHandle 0, the second opcodeHandle 1, and so on.
     //
-    // Each row's gate_name is resolved to a GateHandle through _gateHandlesByName, so the
+    // Each row's gate_name is resolved to a GateDefinitionHandle through _gateHandlesByName, so the
     // gate definitions must be loaded before this method runs.  A null gate_name or a name
-    // that resolves to no loaded gate stores GateHandle.None and is logged.
+    // that resolves to no loaded gate stores GateDefinitionHandle.None and is logged.
     //
     // The array and dictionaries must be allocated by the constructor before this method
     // runs.  The size is determined by CountPatchOpcodes, which uses the same WHERE clause
@@ -528,17 +528,17 @@ public class PatchData
             OpcodeHandle opcodeHandle = (OpcodeHandle)handleIndex;
             PatchOpcode patchOpcode = new PatchOpcode(PatchLevel, opcodeValue, version);
 
-            GateHandle gateHandle = GateHandle.None;
+            GateDefinitionHandle gateHandle = GateDefinitionHandle.None;
             if (reader.IsDBNull(3) == false)
             {
                 string gateName = reader.GetString(3);
                 bool gateFound = _gateHandlesByName.TryGetValue(gateName, out gateHandle);
                 if (gateFound == false)
                 {
-                    gateHandle = GateHandle.None;
+                    gateHandle = GateDefinitionHandle.None;
                     DebugLog.Write(LogChannel.Opcodes, "PatchData.LoadPatchOpcodes: opcode '"
                         + opcodeName + "' version " + version + " names gate '" + gateName
-                        + "' that is not loaded, storing GateHandle.None");
+                        + "' that is not loaded, storing GateDefinitionHandle.None");
                 }
             }
             else
@@ -620,7 +620,7 @@ public class PatchData
     // LoadGateDefinitions
     //
     // Reads every Gate row for this patch level and populates _gate and _gateHandlesByName.
-    // Row order from the database determines GateHandle assignment — the first row read
+    // Row order from the database determines GateDefinitionHandle assignment — the first row read
     // becomes handle 0, the second handle 1, and so on.  Each row's kind is parsed to a
     // MultiplicityKind and its child_collection is resolved to a CollectionHandle through the
     // collection name map, which must be populated before this method runs.  A row carrying a
@@ -678,7 +678,7 @@ public class PatchData
                 }
             }
 
-            GateHandle handle = (GateHandle) handleIndex;
+            GateDefinitionHandle handle = (GateDefinitionHandle) handleIndex;
 
             GateDefinition definition;
             definition.Name = gateName;
@@ -808,17 +808,17 @@ public class PatchData
                 }
 
                 FieldEncoding encoding;
-                GateHandle gate = GateHandle.None;
+                GateDefinitionHandle gate = GateDefinitionHandle.None;
 
                 if (encodingString.StartsWith("Gate", StringComparison.Ordinal) == true)
                 {
                     bool gateFound = _gateHandlesByName.TryGetValue(encodingString, out gate);
                     if (gateFound == false)
                     {
-                        gate = GateHandle.None;
+                        gate = GateDefinitionHandle.None;
                         DebugLog.Write(LogChannel.Fields, "PatchData.LoadFields: collection='"
                             + collectionName + "' field='" + fieldName + "' references gate '"
-                            + encodingString + "' that is not loaded, storing GateHandle.None");
+                            + encodingString + "' that is not loaded, storing GateDefinitionHandle.None");
                     }
                     encoding = FieldEncoding.Gate;
                 }
@@ -1073,9 +1073,9 @@ public class PatchData
     {
         uint resolvedCount = 0;
 
-        foreach (KeyValuePair<GateHandle, string> entry in _gateFieldNamesByHandle!)
+        foreach (KeyValuePair<GateDefinitionHandle, string> entry in _gateFieldNamesByHandle!)
         {
-            GateHandle gateHandle = entry.Key;
+            GateDefinitionHandle gateHandle = entry.Key;
             string expression = entry.Value;
 
             CollectionHandle sourceCollection = CollectionHandle.None;
@@ -1398,9 +1398,9 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetGate
     //
-    // Returns the GateDefinition for the given GateHandle in this patch, by value.
+    // Returns the GateDefinition for the given GateDefinitionHandle in this patch, by value.
     //
-    // The handle must be a real handle issued by this PatchData instance.  GateHandle.None
+    // The handle must be a real handle issued by this PatchData instance.  GateDefinitionHandle.None
     // and any value outside the gate array are schema or programming corruption and bring
     // the process down with the evidence preserved.
     //
@@ -1410,11 +1410,11 @@ public class PatchData
     // Returns:
     //   The GateDefinition stored at the handle.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public GateDefinition GetGate(GateHandle gateHandle)
+    public GateDefinition GetGate(GateDefinitionHandle gateHandle)
     {
         if (gateHandle.Exists == false)
         {
-            string noneFailure = "PatchData.GetGate: GateHandle.None passed for patchLevel="
+            string noneFailure = "PatchData.GetGate: GateDefinitionHandle.None passed for patchLevel="
                 + PatchLevel;
             DebugLog.Write(LogChannel.Fields, noneFailure);
             Environment.FailFast(noneFailure);
@@ -1450,7 +1450,7 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////
     public GateDefinition GetOpcodeGateDefinition(PatchOpcode opcode)
     {
-        GateHandle gateHandle = GetOpcodeGate(opcode);
+        GateDefinitionHandle gateHandle = GetOpcodeGate(opcode);
         if (gateHandle.Exists == false)
         {
             string failure = "PatchData.GetOpcodeGateDefinition: opcode " + opcode
@@ -1558,28 +1558,28 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeGate
     //
-    // Returns the top-level GateHandle for the given opcode in this patch.  The gate is the
+    // Returns the top-level GateDefinitionHandle for the given opcode in this patch.  The gate is the
     // entry point for extracting the opcode's payload.
     //
     // Parameters:
     //   opcode  - The opcode whose top-level gate to look up.
     //
     // Returns:
-    //   The opcode's top-level GateHandle, or GateHandle.None when the opcode is not in this
+    //   The opcode's top-level GateDefinitionHandle, or GateDefinitionHandle.None when the opcode is not in this
     //   patch or its row named no loaded gate.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public GateHandle GetOpcodeGate(PatchOpcode opcode)
+    public GateDefinitionHandle GetOpcodeGate(PatchOpcode opcode)
     {
         OpcodeHandle opcodeHandle;
         bool found = _opcodeHandlesByPatchOpcode.TryGetValue(opcode, out opcodeHandle);
         if (found == false)
         {
             DebugLog.Write(LogChannel.Opcodes, "PatchData.GetOpcodeGate: opcode "
-                + opcode + " not in patchLevel=" + PatchLevel + ", returning GateHandle.None");
-            return GateHandle.None;
+                + opcode + " not in patchLevel=" + PatchLevel + ", returning GateDefinitionHandle.None");
+            return GateDefinitionHandle.None;
         }
 
-        GateHandle gate = _opcodes[opcodeHandle].Gate;
+        GateDefinitionHandle gate = _opcodes[opcodeHandle].Gate;
         DebugLog.Write(LogChannel.Opcodes, "PatchData.GetOpcodeGate: opcode "
             + opcode + " resolves to gate handle " + gate);
         return gate;

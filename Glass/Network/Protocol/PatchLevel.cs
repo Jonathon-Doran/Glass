@@ -16,17 +16,42 @@
 public readonly record struct PatchLevel(string PatchDate, string ServerType)
 {
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // None
+    //
+    // The distinguished value identifying no patch.  Both strings are empty.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public static readonly PatchLevel None = new PatchLevel(string.Empty, string.Empty);
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // IsNone
+    //
+    // True when this PatchLevel does not identify a patch: either string is null or empty.
+    // Covers both the explicit None value and a default-initialized PatchLevel, whose
+    // strings are null.  This is the correct test for "no patch"; equality against None
+    // does not match the default-initialized case.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public bool IsNone
+    {
+        get { return string.IsNullOrEmpty(PatchDate) || string.IsNullOrEmpty(ServerType); }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // ToString
     //
-    // Compact, log-friendly representation: "patchDate/serverType" (e.g. "2026-04-15/live").
-    // Overrides the record struct's default verbose form so that log lines and exception
-    // messages stay readable without each call site formatting the two fields by hand.
+    // Compact, log-friendly representation: "patchDate/serverType" (e.g. "2026-04-15/live"),
+    // or "None" when this PatchLevel does not identify a patch.  Overrides the record
+    // struct's default verbose form so that log lines and exception messages stay readable
+    // without each call site formatting the two fields by hand.
     //
     // Returns:
-    //   The patch level as "PatchDate/ServerType".
+    //   The patch level as "PatchDate/ServerType", or "None".
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public override string ToString()
     {
+        if (IsNone)
+        {
+            return "None";
+        }
         return PatchDate + "/" + ServerType;
     }
 }

@@ -26,7 +26,7 @@
 // Sequence is the display order of this field within its collection.
 //
 // Gate, when it Exists, is the handle of the gate this field decodes through; the gate
-// names the child collection and the multiplicity rule.  GateHandle.None means the field
+// names the child collection and the multiplicity rule.  GateDefinitionHandle.None means the field
 // is an ordinary scalar, not a gate reference.
 //
 // Predicate is the field-level presence condition.  When its Op is PredicateOp.None the field is
@@ -48,7 +48,7 @@ public struct FieldDefinition
     public uint? RelativeToSlot;
     public FieldEncoding Encoding;
     public uint? OptionalGroupId;
-    public GateHandle Gate;
+    public GateDefinitionHandle Gate;
     public FieldPredicate Predicate;
     public uint Sequence;
 }

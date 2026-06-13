@@ -1,9 +1,9 @@
 ﻿namespace Glass.Network.Protocol.Fields;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// GateHandle
+// GateDefinitionHandle
 //
-// Handle into a PatchData's per-patch gate array, identifying the Gate of
+// Handle into a PatchData's per-patch gate definition array, identifying the Gate of
 // a child collection.  Gates take us from one collection to another.
 //
 // Wraps a uint so method signatures and field definitions distinguish a handle from
@@ -15,10 +15,10 @@
 // Handles are assigned by PatchData at load time and are valid only for the PatchData
 // instance that issued them.  They are not interchangeable across patch levels.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public readonly record struct GateHandle(uint Value)
+public readonly record struct GateDefinitionHandle(uint Value)
 {
-    public static implicit operator uint(GateHandle handle) => handle.Value;
-    public static explicit operator GateHandle(uint value) => new(value);
+    public static implicit operator uint(GateDefinitionHandle handle) => handle.Value;
+    public static explicit operator GateDefinitionHandle(uint value) => new(value);
     public const uint NoneValue = uint.MaxValue;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -26,9 +26,9 @@ public readonly record struct GateHandle(uint Value)
     //
     // The reserved handle meaning "no gate".
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public static GateHandle None
+    public static GateDefinitionHandle None
     {
-        get { return new GateHandle(NoneValue); }
+        get { return new GateDefinitionHandle(NoneValue); }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

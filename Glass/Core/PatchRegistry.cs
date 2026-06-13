@@ -258,7 +258,7 @@ public class PatchRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeGate
     //
-    // Returns the top-level GateHandle for the given opcode in its patch level.  Looks the
+    // Returns the top-level GateDefinitionHandle for the given opcode in its patch level.  Looks the
     // patch up in the loaded set and delegates to its PatchData.
     //
     // Throws InvalidOperationException if the patch level is not loaded.
@@ -268,16 +268,16 @@ public class PatchRegistry
     //                  patch.  Must be a real opcode.
     //
     // Returns:
-    //   The opcode's top-level GateHandle, or GateHandle.None when the opcode does not
+    //   The opcode's top-level GateDefinitionHandle, or GateDefinitionHandle.None when the opcode does not
     //   exist or is not in its patch.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public GateHandle GetOpcodeGate(PatchOpcode patchOpcode)
+    public GateDefinitionHandle GetOpcodeGate(PatchOpcode patchOpcode)
     {
         if (patchOpcode.Exists == false)
         {
             DebugLog.Write(LogChannel.Opcodes,
-                "PatchRegistry.GetOpcodeGate: PatchOpcode.None passed, returning GateHandle.None");
-            return GateHandle.None;
+                "PatchRegistry.GetOpcodeGate: PatchOpcode.None passed, returning GateDefinitionHandle.None");
+            return GateDefinitionHandle.None;
         }
 
         PatchData patchData = FindPatchData(patchOpcode.Level);
@@ -287,7 +287,7 @@ public class PatchRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetGate
     //
-    // Returns the GateDefinition for the given GateHandle in the given patch level, by
+    // Returns the GateDefinition for the given GateDefinitionHandle in the given patch level, by
     // value.  Looks the patch up in the loaded set and delegates to its PatchData.
     //
     // Throws InvalidOperationException if the patch level is not loaded.
@@ -300,7 +300,7 @@ public class PatchRegistry
     // Returns:
     //   The GateDefinition stored at the handle.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public GateDefinition GetGate(PatchLevel patchLevel, GateHandle gateHandle)
+    public GateDefinition GetGate(PatchLevel patchLevel, GateDefinitionHandle gateHandle)
     {
         PatchData patchData = FindPatchData(patchLevel);
         return patchData.GetGate(gateHandle);
@@ -505,7 +505,8 @@ public class PatchRegistry
 
         string opcodeName = patchData.GetOpcodeName(opcode);
         FieldBag bag = _bagPool.Rent();
-        bag.CurrentOpcodeName = opcodeName;
+        // TODO:  fix this.  We should take a Gate in and store a collection handle
+        // bag.CurrentOpcodeName = opcodeName;
         return bag;
     }
 
