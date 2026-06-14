@@ -121,13 +121,6 @@ public struct FieldSlot
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void SetName(FieldBag bag, string name)
     {
-        if (bag == null)
-        {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.SetName: null bag, name not stored");
-            _nameOffset = NoArenaData;
-            return;
-        }
-
         if (string.IsNullOrEmpty(name))
         {
             DebugLog.Write(LogChannel.Fields, "FieldSlot.SetName: null or empty name, treating as unnamed");
@@ -163,12 +156,6 @@ public struct FieldSlot
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public string GetName(FieldBag bag)
     {
-        if (bag == null)
-        {
-            DebugLog.Write(LogChannel.Fields, "FieldSlot.GetName: null bag, returning placeholder");
-            return "(unnamed)";
-        }
-
         if (_nameOffset == NoArenaData)
         {
             return "(unnamed)";
@@ -310,14 +297,6 @@ public struct FieldSlot
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void SetAsciiString(FieldBag bag, ReadOnlySpan<byte> bytes)
     {
-        if (bag == null)
-        {
-            DebugLog.Write(LogChannel.Fields,
-                "FieldSlot.SetAsciiString: null bag, value not stored");
-            _arenaOffset = NoArenaData;
-            return;
-        }
-
         bool alreadyTerminated = (bytes.Length > 0) && (bytes[bytes.Length - 1] == 0);
 
         if (alreadyTerminated == true)
@@ -361,14 +340,6 @@ public struct FieldSlot
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public SlotReadResult TryGetAsciiBytes(FieldBag bag, out ReadOnlySpan<byte> value)
     {
-        if (bag == null)
-        {
-            DebugLog.Write(LogChannel.Fields,
-                "FieldSlot.TryGetAsciiBytes: null bag, returning empty span");
-            value = ReadOnlySpan<byte>.Empty;
-            return SlotReadResult.TypeMismatch;
-        }
-
         if (_type != FieldType.AsciiString)
         {
             value = ReadOnlySpan<byte>.Empty;
@@ -412,13 +383,6 @@ public struct FieldSlot
 
             case FieldType.AsciiString:
                 {
-                    if (bag == null)
-                    {
-                        DebugLog.Write(LogChannel.Fields,
-                            "FieldSlot.GetLength: null bag, returning 0");
-                        return 0;
-                    }
-
                     if (_arenaOffset == NoArenaData)
                     {
                         DebugLog.Write(LogChannel.Fields, "FieldSlot.GetLength: " + GetName(bag)
@@ -459,13 +423,6 @@ public struct FieldSlot
     ///////////////////////////////////////////////////////////////////////////////////////////////
     internal string AsString(FieldBag bag)
     {
-        if (bag == null)
-        {
-            DebugLog.Write(LogChannel.Fields,
-                "FieldSlot.AsString: null bag, returning empty string");
-            return string.Empty;
-        }
-
         switch (_type)
         {
             case FieldType.Int:

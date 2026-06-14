@@ -163,7 +163,7 @@ public class HandleMovementHistory : IHandleOpcodes
 
         int entryCount = (data.Length - 1) / 17;
         byte trailingByte = data[data.Length - 1];
-        FieldBag bag = _registry.Rent(_opcodeHandled);
+        FieldBag bag = _registry.Rent(_collectionHandle);
 
         try
         {

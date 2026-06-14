@@ -132,7 +132,8 @@ public class HandleTrackingUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleV2Packet(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldBag bag = _registry.Rent(_opcodeHandled);
+        /*
+        FieldBag bag = _registry.Rent(_collectionHandle);
         try
         {
             GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
@@ -171,6 +172,7 @@ public class HandleTrackingUpdate : IHandleOpcodes
         {
             bag.Release();
         }
+        */
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -182,7 +184,7 @@ public class HandleTrackingUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private uint GetPayloadVersion(ReadOnlySpan<byte> data)
     {
-        FieldBag bag = _registry.Rent(_opcodeHandled);
+        FieldBag bag = _registry.Rent(_collectionHandle);
 
         try
         {
@@ -218,6 +220,7 @@ public class HandleTrackingUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private uint ReadEntry(ReadOnlySpan<byte> data, FieldBag bag)
     {
+        /*
         GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
 
         uint spawnId = bag.GetUIntAt(_spawnIdSlot);
@@ -230,11 +233,13 @@ public class HandleTrackingUpdate : IHandleOpcodes
             + " level=" + level + " name='" + name + "'");
 
         return _fixedEntryLength + nameLength;
+        */
+        return 0;
     }
 
     public uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldBag bag = _registry.Rent(_opcodeHandled);
+        FieldBag bag = _registry.Rent(_collectionHandle);
 
         try
         {

@@ -119,7 +119,7 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldBag bag = _registry.Rent(_opcodeHandled);
+        FieldBag bag = _registry.Rent(_collectionHandle);
         try
         {
             GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);

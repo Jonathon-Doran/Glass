@@ -395,7 +395,7 @@ public class OpcodeTracePresenter
         string opcodeName = registry.GetOpcodeName(patchLevel, metadata.Opcode);
         CollectionHandle collectionHandle = registry.GetOpcodeCollection(patchLevel, opcodeName);
 
-        FieldBag bag = GlassContext.PatchRegistry.Rent(metadata.Opcode);
+        FieldBag bag = GlassContext.PatchRegistry.Rent(collectionHandle);
         try
         {
             GlassContext.FieldExtractor.Extract(GlassContext.CurrentPatchLevel, collectionHandle, payload, bag);
@@ -416,7 +416,7 @@ public class OpcodeTracePresenter
         }
         finally
         {
-           // FIXME bag.Release();
+           bag.Release();
         }
     }
 

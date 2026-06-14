@@ -1,4 +1,5 @@
 ﻿using Glass.Core.Logging;
+using Glass.Core.Memory;
 using Glass.Data;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
@@ -307,7 +308,7 @@ public class PatchRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeGateDefinition
     //
-    // Resolves the given opcode's top-level gate directly to its GateDefinition, by value.
+    // Resolves the given opcode's top-level gate directly to its GateDefinitionHandle, by value.
     //
     // An opcode that is not in this patch, or whose row named no loaded gate, is schema
     // corruption and brings the process down with the evidence preserved.
@@ -316,9 +317,9 @@ public class PatchRegistry
     //   opcode  - The opcode whose top-level gate to resolve.
     //
     // Returns:
-    //   The GateDefinition of the opcode's top-level gate.
+    //   The handle of the opcode's top-level gate definition.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public GateDefinition GetOpcodeGateDefinition(PatchOpcode patchOpcode)
+    public GateDefinitionHandle GetOpcodeGateDefinition(PatchOpcode patchOpcode)
     {
         if (patchOpcode.Exists == false)
         {
@@ -442,6 +443,48 @@ public class PatchRegistry
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetSlotCount
+    //
+    // Returns the slot capacity a bag for the given collection requires.  Looks up the
+    // patch in the loaded set and delegates to the PatchData.
+    //
+    // Throws InvalidOperationException if the patch level is not loaded.
+    //
+    // Parameters:
+    //   patchLevel        - The patch identifier.  Must already be loaded.
+    //   collectionHandle  - The collection to query.
+    //
+    // Returns:
+    //   The collection's slot count.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public ushort GetSlotCount(PatchLevel patchLevel, CollectionHandle collectionHandle)
+    {
+        PatchData patchData = FindPatchData(patchLevel);
+        return patchData.GetSlotCount(collectionHandle);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetArenaCapacity
+    //
+    // Returns the recommended arena capacity in bytes for a bag for the given collection.
+    // Looks up the patch in the loaded set and delegates to the PatchData.
+    //
+    // Throws InvalidOperationException if the patch level is not loaded.
+    //
+    // Parameters:
+    //   patchLevel        - The patch identifier.  Must already be loaded.
+    //   collectionHandle  - The collection to query.
+    //
+    // Returns:
+    //   The collection's recommended arena capacity.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public uint GetArenaCapacity(PatchLevel patchLevel, CollectionHandle collectionHandle)
+    {
+        PatchData patchData = FindPatchData(patchLevel);
+        return patchData.GetArenaCapacity(collectionHandle);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeCount
     //
     // Returns the number of opcodes loaded for the given patch level.  Looks up the patch
@@ -497,16 +540,19 @@ public class PatchRegistry
     // Returns:
     //   A bag with SlotsInUse == 0 and CurrentOpcodeName set, ready to be filled.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public FieldBag Rent(PatchOpcode opcode)
+    public FieldBag Rent(CollectionHandle collectionHandle)
     {
-        PatchData patchData = FindPatchData(opcode.Level);
+        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
+        ushort slotCapacity = GlassContext.PatchRegistry.GetSlotCount(patchLevel, collectionHandle);
+        uint arenaCapacity = GlassContext.PatchRegistry.GetArenaCapacity(patchLevel, collectionHandle);
+        uint required = FieldBag.BytesNeeded(slotCapacity, arenaCapacity);
 
-        string opcodeName = patchData.GetOpcodeName(opcode);
-        // FIXME
-        FieldBag bag = new FieldBag(500);
+        // FIXME bag rental moves to Extract; interim stub with a fixed arena.
+        DebugLog.Write(LogChannel.Fields, "PatchRegistry.Rent: STUB for collection " + collectionHandle);
+        FieldBag bag = new FieldBag();
 
-        // TODO:  fix this.  We should take a Gate in and store a collection handle
-        // bag.CurrentOpcodeName = opcodeName;
+        BufferLease lease = GlassContext.BufferPool.Rent(required);
+        bag.Initialize(lease, collectionHandle, slotCapacity, arenaCapacity);
         return bag;
     }
 

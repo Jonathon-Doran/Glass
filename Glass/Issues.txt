@@ -37,6 +37,8 @@ PatchData.SlotDefinedBefore needs an ancestor check to validate collection handl
 
 Slot accessors were refactored to keep TryGet... when they probably should have had Get... with fastfail if the slot does not exist.
 
+The BufferPool determines the size class to allocate and blocks even if bigger buffers are available.
+
 
 ISXGlass:
 

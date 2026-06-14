@@ -134,7 +134,7 @@ public partial class PacketDetailWindow : Window
             return ExtractInventoryItems(patchLevel, collectionHandle, patchOpcode, payload);
         }
 
-        FieldBag bag = registry.Rent(patchOpcode);
+        FieldBag bag = registry.Rent(collectionHandle);
         try
         {
             GlassContext.FieldExtractor.Extract(patchLevel, collectionHandle, payload, bag);
@@ -161,8 +161,7 @@ public partial class PacketDetailWindow : Window
         }
         finally
         {
-            // FIXME
-            // bag.Release();
+            bag.Release();
         }
     }
 
@@ -204,7 +203,7 @@ public partial class PacketDetailWindow : Window
 
             ReadOnlySpan<byte> itemSlice = payload.Slice(anchorOffset);
 
-            FieldBag bag = GlassContext.PatchRegistry.Rent(patchOpcode);
+            FieldBag bag = GlassContext.PatchRegistry.Rent(collection);
             try
             {
                 GlassContext.FieldExtractor.Extract(patchLevel, collection, itemSlice, bag);
@@ -223,8 +222,7 @@ public partial class PacketDetailWindow : Window
             }
             finally
             {
-                // FIXME
-                // bag.Release();
+                bag.Release();
             }
 
             itemOrdinal++;

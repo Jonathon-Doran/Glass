@@ -1,49 +1,57 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Core.Memory;
 using Glass.Data;
 using Microsoft.Data.Sqlite;
+using PacketDotNet;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Glass.Network.Protocol.Fields;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // FieldExtractor
 //
-// Decodes typed field values from a raw packet payload according to a list of
-// FieldDefinitions, writing results into a caller-provided FieldBag.  Stateless apart from
-// an internal string table that maps database encoding strings (e.g. "uint16_le") to the
-// FieldEncoding enum.
+// Decodes a packet payload into a tree of collection instances.  Owns two stores for the
+// extraction in progress: a Gate forest (_gates), whose nodes link the collection instances
+// and reference their decoded bags, and a bag store (_bags), whose records hold each
+// instance's slots and arena.  Gates are addressed by GateHandle and bags by BagHandle,
+// each handle being an index into its store.
 //
-// Lifetime: one instance is constructed at application startup and shared by all handlers.
-// The string table is built once in the constructor and never modified afterward, so the
-// extractor is safe to use from any thread without locking.
-//
-// Usage pattern:
-//   - At handler construction: read FieldDefinition rows from the database; for each row,
-//     call GetEncodingId(encodingString) to resolve the encoding to its enum value, then
-//     store the resulting FieldDefinition in an array owned by the handler.
-//   - In the hot path: call Extract(definitions, payload, bag) to fill the bag.  The bag
-//     is rented from a FieldBagPool by the caller and released when reading is complete.
+// Lifetime and threading: the extractor holds per-extraction state, so it decodes one tree
+// at a time and is not shared across threads.  Concurrent extraction is achieved by
+// constructing one FieldExtractor per thread.  One instance is constructed in
+// ProtocolStackBootstrap.Initialize and reached through GlassContext.
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class FieldExtractor
 {
+    // The Gate forest for the extraction in progress, indexed by GateHandle.  Reset between
+    // extractions.
+    private readonly List<Gate> _gates;
+
+    // The bag store for the extraction in progress, indexed by BagHandle.  Reset between
+    // extractions.
+    private readonly List<FieldBag> _bags;
+
+    // Idle FieldBag objects available for reuse.
+    private readonly Stack<FieldBag> _freeBags;
+
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // FieldExtractor (constructor)
     //
-    // Builds the empty patch-data cache and the bag pool.  Both are owned by this instance
-    // for its lifetime; no per-patch state is loaded here.  Callers must invoke
-    // LoadPatchLevel or LoadLatestPatchLevel before any handler is constructed, since
-    // handlers consult their patch's data through this extractor in their constructors.
-    //
-    // The extractor itself is patch-independent.  The bag pool is reusable across patches
-    // and the cache simply maps PatchLevel identifiers to fully-loaded PatchData objects.
-    // Adding more patches at runtime is supported via additional LoadPatchLevel calls.
+    // Constructs the Gate forest and bag store the extractor fills during a single
+    // extraction.  Both are empty until an extraction populates them and are reset between
+    // extractions.  One FieldExtractor is constructed in ProtocolStackBootstrap.Initialize
+    // and reached through GlassContext; it extracts one tree at a time.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public FieldExtractor()
     {
+        _gates = new List<Gate>();
+        _bags = new List<FieldBag>();
+        _freeBags = new Stack<FieldBag>();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -77,7 +85,7 @@ public class FieldExtractor
     //   payload     - The raw payload bytes.  Bit offsets in definitions are relative to the
     //                 start of this span.
     //   bag         - The bag to fill.  Must have enough capacity to hold one slot per
-    //                 definition.
+    //                 definition.  Mutated in place; the caller sees every slot this pass adds.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public void Extract(PatchLevel patchLevel, CollectionHandle collection, ReadOnlySpan<byte> payload,
         FieldBag bag)
@@ -85,12 +93,6 @@ public class FieldExtractor
         FieldDefinition[]? definitions = GlassContext.PatchRegistry.GetFields(patchLevel, collection);
         if (definitions == null)
         {
-            return;
-        }
-
-        if (bag == null)
-        {
-            DebugLog.Write(LogChannel.Fields, "FieldExtractor.Extract: null bag, nothing to extract");
             return;
         }
 
@@ -235,8 +237,53 @@ public class FieldExtractor
                     break;
             }
         }
+    }
 
-        bag.BuildDisplayOrder();
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // CreateBag
+    //
+    // Creates one bag for the given collection: computes the collection's slot and arena
+    // capacities from the registry, rents a lease large enough to hold both regions, takes a
+    // FieldBag from the free list or constructs one, initializes it over the lease, appends
+    // it to the bag store, and returns the handle that addresses it.  The returned handle's
+    // value is the bag's index in the store.
+    //
+    // collection:   The collection this bag decodes.
+    //
+    // Returns:  A BagHandle addressing the newly created bag.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private BagHandle CreateBag(CollectionHandle collection)
+    {
+        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
+        ushort slotCapacity = GlassContext.PatchRegistry.GetSlotCount(patchLevel, collection);
+        uint arenaCapacity = GlassContext.PatchRegistry.GetArenaCapacity(patchLevel, collection);
+        uint required = FieldBag.BytesNeeded(slotCapacity, arenaCapacity);
+
+        BufferLease lease = GlassContext.BufferPool.Rent(required);
+
+        FieldBag bag;
+        if (_freeBags.Count > 0)
+        {
+            bag = _freeBags.Pop();
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.CreateBag: reused bag from free list, "
+                + (_freeBags.Count) + " remaining");
+        }
+        else
+        {
+            bag = new FieldBag();
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.CreateBag: free list empty, constructed new bag");
+        }
+
+        bag.Initialize(lease, collection, slotCapacity, arenaCapacity);
+
+        BagHandle handle = (BagHandle)(uint)_bags.Count;
+        _bags.Add(bag);
+
+        DebugLog.Write(LogChannel.Fields, "FieldExtractor.CreateBag: bag " + handle
+            + " for collection " + collection + ", slotCapacity " + slotCapacity
+            + ", arenaCapacity " + arenaCapacity + ", lease length " + lease.Length);
+
+        return handle;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -586,6 +633,13 @@ public class FieldExtractor
             return 0;
         }
 
+        if (declaredLength > 63)
+        {
+            declaredLength = 63;
+            DebugLog.Write(LogChannel.Fields, "truncating long string:");
+            DebugLog.Write(LogChannel.Fields, 
+                SoeHexDump.Format(payload.Slice((int)stringStart, (int)declaredLength)));
+        }
         ReadOnlySpan<byte> stringBytes = payload.Slice((int)stringStart, (int)declaredLength);
         slot.SetAsciiString(bag, stringBytes);
         return (uint)stringBytes.Length + 4;
@@ -928,5 +982,31 @@ public class FieldExtractor
         }
 
         return result;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Release
+    //
+    // Ends the current extraction: releases each active bag's lease back to the pool, returns
+    // each bag object to the free list for reuse, and empties the bag and gate stores.  The
+    // consumer calls this when done reading an extraction's results; handles from that
+    // extraction must not be used afterward.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public void Release()
+    {
+        DebugLog.Write(LogChannel.Fields, "FieldExtractor.Release: releasing " + _bags.Count
+            + " bags, " + _gates.Count + " gates; free list before " + _freeBags.Count);
+
+        for (int bagIndex = 0; bagIndex < _bags.Count; bagIndex++)
+        {
+            FieldBag bag = _bags[bagIndex];
+            bag.Release();
+            _freeBags.Push(bag);
+        }
+
+        _bags.Clear();
+        _gates.Clear();
+
+        DebugLog.Write(LogChannel.Fields, "FieldExtractor.Release: free list after " + _freeBags.Count);
     }
 }

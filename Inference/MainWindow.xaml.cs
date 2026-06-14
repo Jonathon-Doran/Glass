@@ -117,8 +117,8 @@ public partial class MainWindow : Window
         OpcodeTraceList.ItemsSource = _opcodeTracePresenter.Rows;
 
         GlassContext.BufferPool = new BufferPool(
-            new uint[] { 16, 64, 256, 512, 1024, 2048, 16384, 65536, 262144, 524288 },
-            new uint[] { 64, 32, 16, 16, 16, 8, 8, 4, 2, 1 });
+            new uint[] { 16, 64, 256, 512, 1024, 2048, 4096, 16384, 65536, 262144, 524288 },
+            new uint[] { 64, 32, 16, 16, 16, 10, 10, 10, 4, 2, 1 });
         GcMonitor.Start(5);
     }
 

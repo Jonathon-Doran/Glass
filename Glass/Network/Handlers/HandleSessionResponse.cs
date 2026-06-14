@@ -79,7 +79,7 @@ public class HandleSessionResponse : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldBag bag = _registry.Rent(_opcodeHandled);
+        FieldBag bag = _registry.Rent(_collectionHandle);
 
         try
         {

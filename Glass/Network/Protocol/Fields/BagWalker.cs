@@ -20,7 +20,7 @@ public struct BagWalker
     internal BagWalker(FieldBag bag)
     {
         _bag = bag;
-        _position = 0;
+        _position = -1;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

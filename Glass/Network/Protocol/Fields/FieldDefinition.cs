@@ -7,15 +7,6 @@
 // these once at construction time from the PacketField table and pass an array of them to
 // FieldExtractor.Extract on every packet.
 //
-// Encoding is stored as the resolved FieldEncoding enum, not the database string.  The
-// resolution happens once during the handler's load routine via FieldExtractor.GetEncodingId.
-// The hot path dispatches on the enum directly with no string comparison.
-//
-// BitOffset and BitLength are unsigned because they are non-negative by definition.  The
-// database column type (SQLite INTEGER, signed under the hood) is cast to uint at load
-// time in the handler's load routine.  Within the extractor, no defensive checks for
-// negative values are needed.
-//
 // Divisor is used to scale integer values to create sign-magnitude floats.
 //
 // RelativeToSlot, when non-null, names another field's slot index.  This field's BitOffset
@@ -25,7 +16,7 @@
 //
 // Sequence is the display order of this field within its collection.
 //
-// Gate, when it Exists, is the handle of the gate this field decodes through; the gate
+// Gate, when it Exists, is the handle of the gate definition this field decodes through; the gate
 // names the child collection and the multiplicity rule.  GateDefinitionHandle.None means the field
 // is an ordinary scalar, not a gate reference.
 //

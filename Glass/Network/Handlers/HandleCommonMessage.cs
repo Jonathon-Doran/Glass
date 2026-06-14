@@ -122,7 +122,7 @@ public class HandleCommonMessage : IHandleOpcodes
         uint channel;
         string message;
 
-        FieldBag bag = _registry.Rent(_opcodeHandled);
+        FieldBag bag = _registry.Rent(_collectionHandle);
         try
         {
             GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);

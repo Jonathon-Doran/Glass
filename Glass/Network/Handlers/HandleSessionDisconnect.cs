@@ -75,7 +75,7 @@ public class HandleSessionDisconnect : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldBag bag = _registry.Rent(_opcodeHandled);
+        FieldBag bag = _registry.Rent(_collectionHandle);
 
         try
         {

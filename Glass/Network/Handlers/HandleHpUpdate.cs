@@ -101,7 +101,7 @@ public class HandleHpUpdate : IHandleOpcodes
     {
         Character? character = null;
 
-        FieldBag bag = _registry.Rent(_opcodeHandled);
+        FieldBag bag = _registry.Rent(_collectionHandle);
         try
         {
             GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);

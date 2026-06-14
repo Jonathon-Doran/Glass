@@ -1,137 +1,154 @@
-﻿using Glass.Core.Logging;
-using Glass.Core;
+﻿using Glass.Core;
+using Glass.Core.Logging;
+using Glass.Core.Memory;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Glass.Network.Protocol.Fields;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // FieldBag
 //
-// A pooled container of named field values.  The extractor fills bags during decode;
-// handlers read fields by name and release the bag when finished.  All storage is inline
-// in the bag's slot array — no per-field allocation occurs during fill or read.
+// Holds the decoded fields of one collection instance: an array of FieldSlots followed by
+// a byte arena for variable-length payloads, both living in a single BufferPool lease.
+// The slot region begins at lease offset zero; the arena region follows it.  Slots are
+// accessed by reinterpreting the slot region as a span of FieldSlot.  Arena bytes are
+// appended at the cursor and referenced by the offsets recorded in slots.
 //
-// Lifetime: a bag is rented from a FieldBagPool, filled by the extractor, handed to a
-// handler, read by the handler, and released back to the pool.  A bag must not be retained
-// past Release.  Spans returned by the bag are valid only until Release.
-//
-// Thread safety: a single bag instance is single-threaded by convention.  The pool that
-// owns it is thread-safe; bags themselves are not.  A bag must not be shared across
-// threads while in use.
+// A reference type: callers hold a reference to one bag and mutate it in place through its
+// methods, with no copying.  The bag's storage is the lease it owns; Release returns that
+// lease to the pool, after which the bag must not be accessed.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class FieldBag
+public sealed class FieldBag
 {
-    public const int DefaultSlotCount = 500;
-    public const int DefaultPoolSize = 64;
-    public const uint ArenaCapacity = 65535;
+    public const uint SlotSizeBytes = 18;
 
-    private readonly FieldSlot[] _slots;
-    private readonly byte[] _arena;
+    private BufferLease _lease;
+    private uint _arenaOffset;
+    private uint _arenaCapacity;
     private uint _arenaCursor;
-    private uint _slotsInUse;
-    private string _currentOpcodeName = string.Empty;
-    private readonly int[] _displayOrder;
-    private uint _displayOrderCount;
+    private ushort _slotCapacity;
+    private ushort _slotsInUse;
+    private CollectionHandle _collectionHandle;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // FieldBag (constructor)
-    //
-    // Creates a bag with the given slot capacity, owned by the given pool.  Called by the
-    // pool during pre-warm; not called from the hot path.
-    //
-    // capacity:  Number of slots in the bag.
-    // pool:      The pool this bag returns to on Release.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public FieldBag(int capacity)
-    {
-        if (capacity <= 0)
-        {
-            DebugLog.Write(LogChannel.Fields, "FieldBag ctor: invalid capacity " + capacity
-                + ", clamping to 1");
-            capacity = 1;
-        }
-
-        _slots = new FieldSlot[capacity];
-        _arena = new byte[ArenaCapacity];
-        _arenaCursor = 0;
-        _slotsInUse = 0;
-        _displayOrder = new int[capacity];
-        _displayOrderCount = 0;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Capacity
-    //
-    // The maximum number of slots this bag can hold.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public int Capacity
-    {
-        get { return _slots.Length; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // SlotsInUse
-    //
-    // The number of slots currently populated.  Slots at indices [0, SlotsInUse) are live;
-    // slots at [SlotsInUse, Capacity) are unused.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public uint SlotsInUse
-    {
-        get { return _slotsInUse; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // CurrentOpcodeName
-    //
-    // The opcode name of the handler currently using this bag.  Set by FieldExtractor.Rent
-    // immediately before returning the bag to the handler.  The bag's accessor methods
-    // include this name in any log lines they produce, so type mismatches and other slot
-    // read failures are attributable to a specific opcode.  Cleared on Release.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public string CurrentOpcodeName
+    // Initialize
+    //
+    // Prepares the bag for one use over the given lease: slots at offset zero, arena
+    // immediately after.  The lease must be at least large enough for both regions; a
+    // shorter lease is an integrity failure and halts the process via FailFast.  Called each
+    // time a bag is created or taken from the free list, since a recycled bag carries the
+    // prior use's lease and counts until this resets them.
+    //
+    // lease:          Pooled storage for the slot and arena regions.  The bag holds the
+    //                 lease until Release returns it.
+    // collection:     The collection this bag decodes.
+    // slotCapacity:   Number of FieldSlots in the slot region.
+    // arenaCapacity:  Byte length of the arena region.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void Initialize(BufferLease lease, CollectionHandle collection,
+        ushort slotCapacity, uint arenaCapacity)
     {
-        get { return _currentOpcodeName; }
-        set { _currentOpcodeName = value; }
+        _lease = lease;
+        _arenaOffset = slotCapacity * SlotSizeBytes;
+        _arenaCapacity = arenaCapacity;
+        _arenaCursor = 0;
+        _slotCapacity = slotCapacity;
+        _slotsInUse = 0;
+        _collectionHandle = collection;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // CollectionName
+    //
+    // The collection name associated with this bag. The bag's accessor methods
+    // include this name in any log lines they produce, so type mismatches and other slot
+    // read failures are attributable to a specific collection.  Cleared on Release.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public string CollectionName
+    {
+        get 
+        {
+            PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
+            return GlassContext.PatchRegistry.GetCollectionName(patchLevel, _collectionHandle); 
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Slots
+    //
+    // Returns a span of FieldSlot over the slot region of the lease, reinterpreting the
+    // region's bytes in place.  The span covers the full slot capacity; live slots occupy
+    // indices [0, _slotsInUse).  Private — all slot access goes through the bag's own
+    // methods, which index into this span by ref.
+    //
+    // The returned span is valid only for the caller's synchronous scope, per the lease's
+    // own span rules.
+    //
+    // Returns:  A span over all slotCapacity FieldSlots in the slot region.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private Span<FieldSlot> Slots()
+    {
+        return MemoryMarshal.Cast<byte, FieldSlot>(
+            _lease.AsSpan().Slice(0, (int)(_slotCapacity * SlotSizeBytes)));
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // BytesNeeded
+    //
+    // Returns the lease size required for a bag with the given slot and arena capacities:
+    // the slot region's bytes followed by the arena's.  Callers pass the result to
+    // BufferPool.Rent before constructing the bag over the returned lease.
+    //
+    // slotCapacity:   Number of FieldSlots in the slot region.
+    // arenaCapacity:  Byte length of the arena region.
+    //
+    // Returns:  Total bytes the bag requires from its lease.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public static uint BytesNeeded(ushort slotCapacity, uint arenaCapacity)
+    {
+        return (slotCapacity * SlotSizeBytes) + arenaCapacity;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // Clear
     //
-    // Resets all populated slots to the Empty state and zeroes the slot count.  Called by
-    // the pool when a bag is rented out, ensuring the bag starts fresh regardless of its
-    // prior tenant's state.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Resets all populated slots to the Empty state and zeroes the slot and arena cursors.
+    ///////////////////////////////////////////////////////////////////////////////////////////
     public void Clear()
     {
+        Span<FieldSlot> slots = Slots();
         for (int slotIndex = 0; slotIndex < _slotsInUse; slotIndex++)
         {
-            _slots[slotIndex].Clear();
+            slots[slotIndex].Clear();
         }
         _slotsInUse = 0;
-        _displayOrderCount = 0;
         _arenaCursor = 0;
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // AddSlot
     //
     // Returns a ref to the next available slot, advancing the populated-slot count.  The
     // extractor calls SetName and one of the SetX methods on the returned ref to populate
-    // the slot.  Logs and returns a ref to the last slot if the bag is at capacity — this
-    // is a sizing bug that should be fixed by increasing capacity, not handled at runtime.
+    // the slot.  Exceeding the bag's slot capacity is an integrity failure — capacity is
+    // the collection's field count, so an overflow means more slots were added than the
+    // collection has fields — and halts the process via FailFast.
     //
-    // Returns:  A ref to the newly-allocated slot, or to the last slot on overflow.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Returns:  A ref to the newly-allocated slot.
+    ///////////////////////////////////////////////////////////////////////////////////////////
     public ref FieldSlot AddSlot()
     {
-        if (_slotsInUse >= _slots.Length)
+        if (_slotsInUse >= _slotCapacity)
         {
-            DebugLog.Write(LogChannel.Fields, "FieldBag.AddSlot: capacity " + _slots.Length
-                + " exceeded; returning ref to last slot, field will be overwritten");
-            return ref _slots[_slots.Length - 1];
+            string failure = CollectionName + " FieldBag.AddSlot: slot capacity "
+                + _slotCapacity + " exceeded";
+            DebugLog.Write(LogChannel.Fields, failure);
+            Environment.FailFast(failure);
         }
 
-        ref FieldSlot slot = ref _slots[_slotsInUse];
+        ref FieldSlot slot = ref Slots()[_slotsInUse];
+        slot.Clear();
         _slotsInUse++;
         return ref slot;
     }
@@ -157,70 +174,24 @@ public class FieldBag
     {
         if (bytes.Length == 0)
         {
-            DebugLog.Write(LogChannel.Fields, _currentOpcodeName
+            DebugLog.Write(LogChannel.Fields, CollectionName
                 + " FieldBag.InsertIntoArena: empty input, returning cursor "
                 + _arenaCursor + " with no insertion");
             return (ushort)_arenaCursor;
         }
-
-        if (_arenaCursor + (uint)bytes.Length > ArenaCapacity)
+        if (_arenaCursor + (uint)bytes.Length > _arenaCapacity)
         {
-            string failure = _currentOpcodeName
+            string failure = CollectionName
                 + " FieldBag.InsertIntoArena: insertion of " + bytes.Length
                 + " bytes at cursor " + _arenaCursor
-                + " would exceed ArenaCapacity " + ArenaCapacity;
+                + " would exceed arena capacity " + _arenaCapacity;
             DebugLog.Write(LogChannel.Fields, failure);
             Environment.FailFast(failure);
         }
-
         ushort insertionIndex = (ushort)_arenaCursor;
-        bytes.CopyTo(_arena.AsSpan((int)_arenaCursor));
+        bytes.CopyTo(_lease.AsSpan().Slice((int)(_arenaOffset + _arenaCursor)));
         _arenaCursor += (uint)bytes.Length;
         return insertionIndex;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // SliceArena
-    //
-    // Returns a read-only span over the given range of the bag's arena.  A valid range
-    // lies entirely within the written region [0, cursor).  A range that starts at the
-    // NoArenaData sentinel, has zero length, or extends past the cursor is logged and
-    // yields an empty span.
-    //
-    // The returned span is valid only until the bag is cleared or released; after that the
-    // arena bytes may belong to a new tenant.
-    //
-    // offset:   Arena index of the first byte of the range.
-    // length:   Number of bytes in the range.
-    //
-    // Returns:  A read-only span over the range, or an empty span on any invalid range.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    internal ReadOnlySpan<byte> SliceArena(ushort offset, uint length)
-    {
-        if (offset == FieldSlot.NoArenaData)
-        {
-            DebugLog.Write(LogChannel.Fields, _currentOpcodeName
-                + " FieldBag.SliceArena: offset is the NoArenaData sentinel, returning empty span");
-            return ReadOnlySpan<byte>.Empty;
-        }
-
-        if (length == 0)
-        {
-            DebugLog.Write(LogChannel.Fields, _currentOpcodeName
-                + " FieldBag.SliceArena: zero length at offset " + offset
-                + ", returning empty span");
-            return ReadOnlySpan<byte>.Empty;
-        }
-
-        if ((ulong) offset + length > _arenaCursor)
-        {
-            DebugLog.Write(LogChannel.Fields, _currentOpcodeName
-                + " FieldBag.SliceArena: range [" + offset + ", " + (offset + length)
-                + ") extends past cursor " + _arenaCursor + ", returning empty span");
-            return ReadOnlySpan<byte>.Empty;
-        }
-
-        return new ReadOnlySpan<byte>(_arena, offset, (int)length);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -246,19 +217,19 @@ public class FieldBag
     {
         if (offset >= _arenaCursor)
         {
-            string positionFailure = _currentOpcodeName
+            string positionFailure = CollectionName
                 + " FieldBag.SliceArenaString: offset " + offset
                 + " is at or past cursor " + _arenaCursor + ", arena reference is corrupt";
             DebugLog.Write(LogChannel.Fields, positionFailure);
             Environment.FailFast(positionFailure);
         }
 
-        ReadOnlySpan<byte> writtenRegion = new ReadOnlySpan<byte>(_arena, offset,
-            (int)(_arenaCursor - offset));
+        ReadOnlySpan<byte> writtenRegion = _lease.AsReadOnlySpan().Slice(
+                    (int)(_arenaOffset + offset), (int)(_arenaCursor - offset));
         int terminatorIndex = writtenRegion.IndexOf((byte)0);
         if (terminatorIndex < 0)
         {
-            string terminatorFailure = _currentOpcodeName
+            string terminatorFailure = CollectionName
                 + " FieldBag.SliceArenaString: no terminator found from offset " + offset
                 + " to cursor " + _arenaCursor + ", arena is corrupt";
             DebugLog.Write(LogChannel.Fields, terminatorFailure);
@@ -266,38 +237,6 @@ public class FieldBag
         }
 
         return writtenRegion.Slice(0, terminatorIndex);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // BuildDisplayOrder
-    //
-    // Fills the bag's display-order map with the live slot indices ordered by each slot's
-    // Sequence, ascending, stable so slots with equal Sequence keep their physical order.  Called
-    // once after extraction has finished filling the bag, before the bag is walked.  NextAfter
-    // walks this map so iteration visits slots in Sequence order rather than physical order.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void BuildDisplayOrder()
-    {
-        for (int slotIndex = 0; slotIndex < _slotsInUse; slotIndex++)
-        {
-            _displayOrder[slotIndex] = slotIndex;
-        }
-        _displayOrderCount = _slotsInUse;
-
-        for (int sortedIndex = 1; sortedIndex < _displayOrderCount; sortedIndex++)
-        {
-            int currentSlot = _displayOrder[sortedIndex];
-            uint currentSequence = _slots[currentSlot].Sequence;
-            int scanIndex = sortedIndex - 1;
-
-            while (scanIndex >= 0 && _slots[_displayOrder[scanIndex]].Sequence > currentSequence)
-            {
-                _displayOrder[scanIndex + 1] = _displayOrder[scanIndex];
-                scanIndex = scanIndex - 1;
-            }
-
-            _displayOrder[scanIndex + 1] = currentSlot;
-        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -321,11 +260,11 @@ public class FieldBag
     {
         if (slot.Index >= _slotsInUse)
         {
-            DebugLog.Write(LogChannel.Fields, _currentOpcodeName + " FieldBag.TryGetSlotRef: slot.Index "
+            DebugLog.Write(LogChannel.Fields, CollectionName + " FieldBag.TryGetSlotRef: slot.Index "
                 + slot.Index + " out of range [0, " + _slotsInUse + "), returning null ref");
             return ref Unsafe.NullRef<FieldSlot>();
         }
-        return ref _slots[slot.Index];
+        return ref Slots()[(int) slot.Index];
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -344,18 +283,20 @@ public class FieldBag
     {
         if (slot.Index >= _slotsInUse)
         {
-            string rangeFailure = _currentOpcodeName + " FieldBag.GetIntAt: slot.Index "
+            string rangeFailure = CollectionName + " FieldBag.GetIntAt: slot.Index "
                 + slot.Index + " out of range [0, " + _slotsInUse + ")";
             DebugLog.Write(LogChannel.Fields, rangeFailure);
             Environment.FailFast(rangeFailure);
         }
+
+        ref FieldSlot fieldSlot = ref Slots()[(int)slot.Index];
         int value;
-        SlotReadResult result = _slots[slot.Index].TryGetInt(out value);
+        SlotReadResult result = fieldSlot.TryGetInt(out value);
         if (result != SlotReadResult.Success)
         {
-            string readFailure = _currentOpcodeName + " FieldBag.GetIntAt: required slot '"
-                + _slots[slot.Index].GetName(this) + "' at index " + slot.Index
-                + " failed with " + result + ", slot type is " + _slots[slot.Index].Type;
+            string readFailure = CollectionName + " FieldBag.GetIntAt: required slot '"
+                + fieldSlot.GetName(this) + "' at index " + slot.Index
+                + " failed with " + result + ", slot type is " + fieldSlot.Type;
             DebugLog.Write(LogChannel.Fields, readFailure);
             Environment.FailFast(readFailure);
         }
@@ -379,19 +320,21 @@ public class FieldBag
     {
         if (slot.Index >= _slotsInUse)
         {
-            string rangeFailure = _currentOpcodeName + " FieldBag.GetUIntAt: slot.Index "
+            string rangeFailure = CollectionName + " FieldBag.GetUIntAt: slot.Index "
                 + slot.Index + " out of range [0, " + _slotsInUse + ")";
             DebugLog.Write(LogChannel.Fields, rangeFailure);
             Environment.FailFast(rangeFailure);
         }
+        ref FieldSlot fieldSlot = ref Slots()[(int)slot.Index];
         uint value;
-        SlotReadResult result = _slots[slot.Index].TryGetUInt(out value);
+        SlotReadResult result = fieldSlot.TryGetUInt(out value);
         if (result != SlotReadResult.Success)
         {
-            string readFailure = _currentOpcodeName + " FieldBag.GetUIntAt: required slot '"
-                + _slots[slot.Index].GetName(this) + "' at index " + slot.Index
-                + " failed with " + result + ", slot type is " + _slots[slot.Index].Type;
+            string readFailure = CollectionName + " FieldBag.GetUIntAt: required slot '"
+                + fieldSlot.GetName(this) + "' at index " + slot.Index
+                + " failed with " + result + ", slot type is " + fieldSlot.Type;
             DebugLog.Write(LogChannel.Fields, readFailure);
+            // FIXME -- here to keep us from crashing until Tracking fully implemented
             // Environment.FailFast(readFailure);
         }
         return value;
@@ -414,18 +357,19 @@ public class FieldBag
     {
         if (slot.Index >= _slotsInUse)
         {
-            string rangeFailure = _currentOpcodeName + " FieldBag.GetFloatAt: slot.Index "
+            string rangeFailure = CollectionName + " FieldBag.GetFloatAt: slot.Index "
                 + slot.Index + " out of range [0, " + _slotsInUse + ")";
             DebugLog.Write(LogChannel.Fields, rangeFailure);
             Environment.FailFast(rangeFailure);
         }
+        ref FieldSlot fieldSlot = ref Slots()[(int)slot.Index];
         float value;
-        SlotReadResult result = _slots[slot.Index].TryGetFloat(out value);
+        SlotReadResult result = fieldSlot.TryGetFloat(out value);
         if (result != SlotReadResult.Success)
         {
-            string readFailure = _currentOpcodeName + " FieldBag.GetFloatAt: required slot '"
-                + _slots[slot.Index].GetName(this) + "' at index " + slot.Index
-                + " failed with " + result + ", slot type is " + _slots[slot.Index].Type;
+            string readFailure = CollectionName + " FieldBag.GetFloatAt: required slot '"
+                + fieldSlot.GetName(this) + "' at index " + slot.Index
+                + " failed with result " + result + ", slot type expected " + fieldSlot.Type;
             DebugLog.Write(LogChannel.Fields, readFailure);
             Environment.FailFast(readFailure);
         }
@@ -451,51 +395,24 @@ public class FieldBag
     {
         if (slot.Index >= _slotsInUse)
         {
-            string rangeFailure = _currentOpcodeName + " FieldBag.GetBytesAt: slot.Index "
+            string rangeFailure = CollectionName + " FieldBag.GetBytesAt: slot.Index "
                 + slot.Index + " out of range [0, " + _slotsInUse + ")";
             DebugLog.Write(LogChannel.Fields, rangeFailure);
             Environment.FailFast(rangeFailure);
         }
+        ref FieldSlot fieldSlot = ref Slots()[(int) slot.Index];
         ReadOnlySpan<byte> value;
-        SlotReadResult result = _slots[slot.Index].TryGetAsciiBytes(this, out value);
+        SlotReadResult result = fieldSlot.TryGetAsciiBytes(this, out value);
         if (result != SlotReadResult.Success)
         {
-            string readFailure = _currentOpcodeName + " FieldBag.GetBytesAt: required slot '"
-                + _slots[slot.Index].GetName(this) + "' at index " + slot.Index
-                + " in collection '" + GetCollectionForSlot(slot) + "' failed with " + result
-                + ", slot type is " + _slots[slot.Index].Type;
+            string readFailure = CollectionName + " FieldBag.GetBytesAt: required slot '"
+                + fieldSlot.GetName(this) + "' at index " + slot.Index
+                + " in collection '" + CollectionName + "' failed with " + result
+                + ", slot type is " + fieldSlot.Type;
             DebugLog.Write(LogChannel.Fields, readFailure);
             Environment.FailFast(readFailure);
         }
         return value;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GetLengthAt
-    //
-    // Returns the stored byte count of the slot at the given index.
-    // AsciiString slots report their exact stored byte count with no terminator
-    // included; all other slot types report zero.
-    //
-    // slot:     The slot identifier carrying the index of the slot to query.
-    //
-    // Returns:  Stored byte count for arena-backed slots; zero for all other types or if
-    //           the index is out of range.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public uint GetLengthAt(SlotId slot)
-    {
-        if (slot.Index >= _slotsInUse)
-        {
-            DebugLog.Write(LogChannel.Fields, _currentOpcodeName + " FieldBag.GetLengthAt: slot.Index "
-                + slot.Index + " out of range [0, " + _slotsInUse + "), returning 0");
-            return 0;
-        }
-
-        CollectionHandle collectionHandle = slot.Collection;
-        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
-        string name = GlassContext.PatchRegistry.GetCollectionName(patchLevel,  collectionHandle);
-
-        return _slots[slot.Index].GetLength(this);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -514,29 +431,15 @@ public class FieldBag
     {
         if (slot.Index >= _slotsInUse)
         {
-            DebugLog.Write(LogChannel.Fields, _currentOpcodeName + " FieldBag.GetTypeAt: slot.Index "
+            DebugLog.Write(LogChannel.Fields, CollectionName + " FieldBag.GetTypeAt: slot.Index "
                 + slot.Index + " out of range [0, " + _slotsInUse + "), returning Empty");
             return FieldType.Empty;
         }
-        return _slots[slot.Index].Type;
+
+        ref FieldSlot fieldSlot = ref Slots()[(int)slot.Index];
+        return fieldSlot.Type;
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetCollectionForSlot
-    //
-    // Returns the name of the collection containing the specified slot.
-    //
-    // slot:  The ID of the slot to query
-    //
-    // Returns:  The slot's name
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string GetCollectionForSlot(SlotId slot)
-    {
-        CollectionHandle collectionHandle = slot.Collection;
-        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
-        string name = GlassContext.PatchRegistry.GetCollectionName(patchLevel, collectionHandle);
-        return name;
-    }
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // IsPresent
     //
@@ -567,7 +470,8 @@ public class FieldBag
         {
             return false;
         }
-        return _slots[slot.Index].Type != FieldType.Empty;
+        ref FieldSlot fieldSlot = ref Slots()[(int)slot.Index];
+        return fieldSlot.Type != FieldType.Empty;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -584,30 +488,53 @@ public class FieldBag
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // NextAfter
     //
-    // Advances the caller-owned position past any Empty slots and returns the next filled slot as
-    // a FieldBinding, or null when no more filled slots remain.  Visits slots in the order set by
-    // BuildDisplayOrder.  Called only by BagWalker.Next.
+    // Returns the next filled slot in Sequence order as a FieldBinding, or null when no
+    // filled slots remain.  Selects, among all filled slots, the one with the smallest
+    // Sequence strictly greater than the position, then advances the position to that
+    // Sequence.  Empty slots are never returned.  Called only by BagWalker.Next.
     //
-    // position:  Caller-owned iteration position, advanced as slots are consumed.
+    // position:  Caller-owned iteration position holding the last-returned slot's Sequence.
+    //            Must start below any real Sequence (-1) so the first call visits the
+    //            lowest-Sequence filled slot; advanced to the returned slot's Sequence on
+    //            each call.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     internal FieldBinding? NextAfter(ref int position)
     {
-        while (position < _displayOrderCount)
+        Span<FieldSlot> slots = Slots();
+
+        int bestIndex = -1;
+        uint bestSequence = 0;
+
+        for (int slotIndex = 0; slotIndex < _slotsInUse; slotIndex++)
         {
-            int slotIndex = _displayOrder[position];
-            position++;
-
-            ref FieldSlot slot = ref _slots[slotIndex];
-
-            if (slot.Type == FieldType.Empty)
+            ref FieldSlot candidate = ref slots[slotIndex];
+            if (candidate.Type == FieldType.Empty)
             {
                 continue;
             }
 
-            return new FieldBinding(slot.GetName(this), slot.AsString(this));
+            uint candidateSequence = candidate.Sequence;
+            if ((int)candidateSequence <= position)
+            {
+                continue;
+            }
+
+            if ((bestIndex < 0) || (candidateSequence < bestSequence))
+            {
+                bestIndex = slotIndex;
+                bestSequence = candidateSequence;
+            }
         }
 
-        return null;
+        if (bestIndex < 0)
+        {
+            return null;
+        }
+
+        position = (int)bestSequence;
+
+        ref FieldSlot slot = ref slots[bestIndex];
+        return new FieldBinding(slot.GetName(this), slot.AsString(this));
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -617,5 +544,6 @@ public class FieldBag
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void Release()
     {
+        _lease.Dispose();
     }
 }
