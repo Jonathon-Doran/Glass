@@ -43,10 +43,10 @@ public class HandleSessionRequest : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
-        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_SessionRequest");
 
-        _sessionIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "session_id");
-        _maxLengthSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "max_length");
+        _sessionIdSlot = _registry.IndexOfField(_collectionHandle, "session_id");
+        _maxLengthSlot = _registry.IndexOfField(_collectionHandle, "max_length");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -77,14 +77,14 @@ public class HandleSessionRequest : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldBag bag = _registry.Rent(_collectionHandle);
+/*        FieldBag bag = _registry.Rent(_collectionHandle);
 
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
              + _opcodeName + " length=" + data.Length);
 
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
+            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
 
             uint sessionId = bag.GetUIntAt(_sessionIdSlot);
             uint maxLength = bag.GetUIntAt(_maxLengthSlot);
@@ -95,7 +95,7 @@ public class HandleSessionRequest : IHandleOpcodes
         finally
         {
             bag.Release();
-        }
+        }*/
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

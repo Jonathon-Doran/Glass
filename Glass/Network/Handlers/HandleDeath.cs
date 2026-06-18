@@ -41,10 +41,10 @@ public class HandleDeath : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
-        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_Death");
 
-        _spawnIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "spawn_id");
-        _killerIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "killer_id");
+        _spawnIdSlot = _registry.IndexOfField(_collectionHandle, "spawn_id");
+        _killerIdSlot = _registry.IndexOfField(_collectionHandle, "killer_id");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -94,13 +94,14 @@ public class HandleDeath : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {   
+        /*
         uint spawnId;
         uint killerId;
 
         FieldBag bag = _registry.Rent(_collectionHandle);
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
+            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
 
             spawnId = bag.GetUIntAt(_spawnIdSlot);
             killerId = bag.GetUIntAt(_killerIdSlot);
@@ -114,6 +115,7 @@ public class HandleDeath : IHandleOpcodes
             + _opcodeName + " length=" + data.Length);
         DebugLog.Write(LogChannel.Opcodes, "Dead=" + spawnId + " (0x" + spawnId.ToString("x4") + ")");
         DebugLog.Write(LogChannel.Opcodes, "Killer=" + killerId + " (0x" + killerId.ToString("x4") + ")");
+  */
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

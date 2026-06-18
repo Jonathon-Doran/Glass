@@ -6,6 +6,7 @@ using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using System.Buffers.Binary;
 using System.Printing;
+using System.Xml.Linq;
 
 
 namespace Glass.Network.Handlers;
@@ -23,6 +24,8 @@ public class HandleClientUpdate : IHandleOpcodes
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
     private readonly GateDefinitionHandle _top_level_gate;
+
+    private readonly CollectionHandle _collectionClientUpdate;
 
     private readonly SlotId _sequenceSlot;
     private readonly SlotId _playerIdSlot;
@@ -48,16 +51,17 @@ public class HandleClientUpdate : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
-
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
-        _sequenceSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "sequence");
-        _playerIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "player_id");
-        _xPosSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "x_pos");
-        _yPosSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "y_pos");
-        _zPosSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "z_pos");
-        _headingSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "heading");
+        // handles of collections that we expect
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_ClientUpdate");
+
+        _sequenceSlot = _registry.IndexOfField(_collectionHandle, "sequence");
+        _playerIdSlot = _registry.IndexOfField(_collectionHandle, "player_id");
+        _xPosSlot = _registry.IndexOfField(_collectionHandle, "x_pos");
+        _yPosSlot = _registry.IndexOfField(_collectionHandle, "y_pos");
+        _zPosSlot = _registry.IndexOfField(_collectionHandle, "z_pos");
+        _headingSlot = _registry.IndexOfField(_collectionHandle, "heading");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -84,63 +88,54 @@ public class HandleClientUpdate : IHandleOpcodes
     //
     // Dispatches to direction-specific handlers.
     //
-    // data:       The application payload
+    // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        switch (metadata.Channel)
-        {
-            case SoeConstants.StreamId.StreamClientToZone:
-                HandleClientToZone(data, metadata);
-                break;
-        }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleClientToZone
-    //
-    // Processes client-to-zone
-    //
-    // data:    The application payload
-    // metadata:  Packet metadata (timestamp, source/dest)
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
-    {
-        FieldBag bag = _registry.Rent(_collectionHandle);
+        FieldExtractor extractor = GlassContext.FieldExtractor;
 
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
 
+            // look up the character associated with the session receiving the packet
             int id = GlassContext.SessionRegistry.GetConnection(metadata).CharacterId;
             Character? character = CharacterRepository.Instance.GetById(id);
+
+            string characterName = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
+
+            uint bagCount = extractor.BagCount(rootGate);
+
+            DebugLog.Write(LogChannel.Opcodes, "CU rootgate is " + rootGate + ", bags = " +
+                bagCount);
             if (character == null)
             {
                 DebugLog.Write(LogChannel.Opcodes, _opcodeName + ": no Character with id '" + id + "' in repository; fields not stored.");
                 return;
             }
+            for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
+            {
+                extractor.EnterGate(rootGate, bagIndex);
+                character.XPos = extractor.GetFloatAt(_xPosSlot);
+                character.YPos = extractor.GetFloatAt(_yPosSlot);
+                character.ZPos = extractor.GetFloatAt(_zPosSlot);
 
-            character.XPos = bag.GetFloatAt(_xPosSlot);
-            character.YPos = bag.GetFloatAt(_yPosSlot);
-            character.ZPos = bag.GetFloatAt(_zPosSlot);
+                uint sequence = extractor.GetUIntAt(_sequenceSlot);
+                uint playerId = extractor.GetUIntAt(_playerIdSlot);
 
-            uint sequence = bag.GetUIntAt(_sequenceSlot);
-            uint playerId = bag.GetUIntAt(_playerIdSlot);
-
-            // Note on heading:  measured as 160-degrees per second to within 0.2%.  One degree is 6.25ms of keypress.  
-            character.Heading = bag.GetUIntAt(_headingSlot) / 8192.0f * 360.0f;
-
-            string name = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
-
-            DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName);
-            DebugLog.Write(LogChannel.Opcodes, "Player " + playerId + " (" + name + ", 0x" + playerId.ToString("x4") + ") sequence " + sequence);
-            DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + " ID: " + playerId.ToString("x4") + " Position:  (" + character.XPos + "," + character.YPos + "," + character.ZPos + ")");
-            DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + " Heading is " + character.Heading.ToString() + " degrees");
+                // Note on heading:  measured as 160-degrees per second to within 0.2%.  One degree is 6.25ms of keypress.  
+                character.Heading = extractor.GetUIntAt(_headingSlot) / 8192.0f * 360.0f;
+            
+                DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName);
+                DebugLog.Write(LogChannel.Opcodes, "Player " + playerId + " (" + characterName + ", 0x" + playerId.ToString("x4") + ") sequence " + sequence);
+                DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + " ID: " + playerId.ToString("x4") + " Position:  (" + character.XPos + "," + character.YPos + "," + character.ZPos + ")");
+                DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + " Heading is " + character.Heading.ToString() + " degrees");
+            }
         }
         finally
         {
-            bag.Release();
+            extractor.Release();
         }
     }
 

@@ -5,7 +5,7 @@
 //
 // One row of metadata describing a single field within a packet's payload.  Handlers load
 // these once at construction time from the PacketField table and pass an array of them to
-// FieldExtractor.Extract on every packet.
+// FieldExtractor.ExtractCollection on every packet.
 //
 // Divisor is used to scale integer values to create sign-magnitude floats.
 //

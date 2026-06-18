@@ -75,8 +75,7 @@ public class OpcodeRowPresenter
         }
 
         string opcodeHex = "0x" + patchOpcode.Value;
-        PatchLevel currentPatchLevel = GlassContext.CurrentPatchLevel;
-        string name = GlassContext.PatchRegistry.GetOpcodeName(currentPatchLevel, patchOpcode);
+        string name = GlassContext.PatchRegistry.GetOpcodeName(patchOpcode);
         row = new OpcodeEntry(opcodeHex, metadata.Channel, length)
         {
             RawOpcode = patchOpcode.Value,

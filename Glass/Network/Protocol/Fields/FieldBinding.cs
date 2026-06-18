@@ -3,28 +3,37 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // FieldBinding
 //
-// One name/value pair returned by FieldBag's iterator.  Produced by the bag
-// for each filled slot when a caller walks the bag for display.  The bag
-// formats slot values internally; callers receive already-formatted
-// strings and compose their own layout.
+// One name/value pair returned by FieldBag's iterator.  Produced by the bag for each filled
+// slot when a caller walks the bag for display.  The bag formats slot values internally;
+// callers receive already-formatted strings and compose their own layout.
 //
-// Held by value.  Name and Value are non-null; the bag never yields a
-// binding for an unfilled slot.
+// Held by value.  A binding that exists carries a non-null Name and Value.  The None binding
+// is the absence of a pair, returned by the iterator when no filled slot remains; its Exists
+// is false and its Name and Value are null.  Callers test Exists before reading Name or Value.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public readonly struct FieldBinding
+public readonly record struct FieldBinding(string Name, string Value)
 {
-    public string Name { get; }
-    public string Value { get; }
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Exists
+    //
+    // True when this binding holds a field.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public bool Exists
+    {
+        get { return Name != null; }
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // FieldBinding (constructor)
+    // ToString
     //
-    // name:   Field name from the slot's definition.
-    // value:  Formatted string representation of the slot's value.
+    // Renders the binding as "Name = Value", or "None" for the sentinel.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public FieldBinding(string name, string value)
+    public override string ToString()
     {
-        Name = name;
-        Value = value;
+        if (Exists == false)
+        {
+            return "None";
+        }
+        return Name + " = " + Value;
     }
 }

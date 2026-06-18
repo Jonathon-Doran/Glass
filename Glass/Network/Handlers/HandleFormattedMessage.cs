@@ -41,9 +41,9 @@ public class HandleFormattedMessage : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
-        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_FormattedMessage");
 
-        _messageIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "msg_text");
+        _messageIdSlot = _registry.IndexOfField(_collectionHandle, "msg_text");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -92,12 +92,12 @@ public class HandleFormattedMessage : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        string message;
+/*        string message;
 
         FieldBag bag = _registry.Rent(_collectionHandle);
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
+            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
 
             ReadOnlySpan<byte> messageBytes = bag.GetBytesAt(_messageIdSlot);
             message = Encoding.ASCII.GetString(messageBytes);
@@ -109,7 +109,7 @@ public class HandleFormattedMessage : IHandleOpcodes
 
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
             + _opcodeName + " length=" + data.Length);
-        DebugLog.Write(LogChannel.Opcodes, "Message: " + message);
+        DebugLog.Write(LogChannel.Opcodes, "Message: " + message);*/
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

@@ -5,6 +5,7 @@ using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using Inference.Models;
 using Inference.UI;
+using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -203,7 +204,7 @@ public class OpcodeTracePresenter
                 opcodeToDisplay = packet.Metadata.WireValue;
             }
             string timestampLocal = packet.Metadata.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff");
-            string opcodeName = GlassContext.PatchRegistry.GetOpcodeName(patchLevel, packet.Metadata.Opcode);
+            string opcodeName = GlassContext.PatchRegistry.GetOpcodeName(packet.Metadata.Opcode);
             string characterName = ResolveCharacterName(packet.Metadata.SessionId);
             int length = packet.Payload.Length;
 
@@ -385,38 +386,42 @@ public class OpcodeTracePresenter
         PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
         PatchRegistry registry = GlassContext.PatchRegistry;
 
-        OpcodeHandle opcodeHandle = registry.GetOpcodeHandle(metadata.Opcode);
-        if (! opcodeHandle.Exists)
-        {
-            row.FieldText = string.Empty;
-            return;
-        }
+        CollectionHandle collectionHandle = registry.GetOpcodeCollection(metadata.Opcode);
+        GateDefinitionHandle top_level_gate = registry.GetOpcodeGateDefinition(metadata.Opcode);
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        StringBuilder sb = new StringBuilder();
 
-        string opcodeName = registry.GetOpcodeName(patchLevel, metadata.Opcode);
-        CollectionHandle collectionHandle = registry.GetOpcodeCollection(patchLevel, opcodeName);
-
-        FieldBag bag = GlassContext.PatchRegistry.Rent(collectionHandle);
         try
         {
-            GlassContext.FieldExtractor.Extract(GlassContext.CurrentPatchLevel, collectionHandle, payload, bag);
+            GateHandle rootGate = extractor.Extract(top_level_gate, payload);
+            uint bagCount = extractor.BagCount(rootGate);
 
-            StringBuilder sb = new StringBuilder();
-            BagWalker walker = bag.Walk();
-            FieldBinding? binding = walker.Next();
-            while (binding != null)
-            {
-                FieldBinding b = binding.Value;
-                sb.Append(b.Name);
-                sb.Append(" = ");
-                sb.Append(b.Value);
-                sb.Append('\n');
-                binding = walker.Next();
+            for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
+            { 
+                extractor.EnterGate(rootGate,  bagIndex);
+
+                CollectionHandle collection = extractor.CollectionOf();
+                sb.Append('[');
+                sb.Append(GlassContext.PatchRegistry.GetCollectionName(collection));
+                sb.Append("]\n");
+
+                BagWalker walker = extractor.WalkBag();
+                FieldBinding? binding = walker.Next();
+                while (binding != null)
+                {
+                    FieldBinding b = binding.Value;
+                    sb.Append(b.Name);
+                    sb.Append(" = ");
+                    sb.Append(b.Value);
+                    sb.Append('\n');
+                    binding = walker.Next();
+                }
             }
             row.FieldText = sb.ToString();
         }
         finally
         {
-           bag.Release();
+            extractor.Release();
         }
     }
 

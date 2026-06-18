@@ -44,11 +44,11 @@ public class HandleSessionResponse : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_SessionResponse");
 
-        _sessionIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "session_id");
-        _sessionKeySlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "session_key");
-        _maxLengthSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "max_length");
+        _sessionIdSlot = _registry.IndexOfField(_collectionHandle, "session_id");
+        _sessionKeySlot = _registry.IndexOfField(_collectionHandle, "session_key");
+        _maxLengthSlot = _registry.IndexOfField(_collectionHandle, "max_length");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -79,11 +79,11 @@ public class HandleSessionResponse : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldBag bag = _registry.Rent(_collectionHandle);
+/*        FieldBag bag = _registry.Rent(_collectionHandle);
 
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
+            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
 
             uint sessionId = bag.GetUIntAt(_sessionIdSlot);
             uint sessionKey = bag.GetUIntAt(_sessionKeySlot);
@@ -97,8 +97,7 @@ public class HandleSessionResponse : IHandleOpcodes
         finally
         {
             bag.Release();
-        }
-
+        }*/
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

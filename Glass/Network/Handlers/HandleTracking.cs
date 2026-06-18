@@ -49,13 +49,13 @@ public class HandleTrackingUpdate : IHandleOpcodes
         _registry =   GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_Tracking");
 
-        _magicSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "magic");
-        _spawnIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "spawn_id");
-        _countSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "count");
-        _nameSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "name");
-        _levelSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "level");
+        _magicSlot = _registry.IndexOfField(_collectionHandle, "magic");
+        _spawnIdSlot = _registry.IndexOfField(_collectionHandle, "spawn_id");
+        _countSlot = _registry.IndexOfField(_collectionHandle, "count");
+        _nameSlot = _registry.IndexOfField(_collectionHandle, "name");
+        _levelSlot = _registry.IndexOfField(_collectionHandle, "level");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -136,7 +136,7 @@ public class HandleTrackingUpdate : IHandleOpcodes
         FieldBag bag = _registry.Rent(_collectionHandle);
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
+            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
             uint recordCount = bag.GetUIntAt(_countSlot);
             DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
                 + _opcodeName + ",  " + recordCount + " entries");
@@ -184,11 +184,11 @@ public class HandleTrackingUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private uint GetPayloadVersion(ReadOnlySpan<byte> data)
     {
-        FieldBag bag = _registry.Rent(_collectionHandle);
+/*        FieldBag bag = _registry.Rent(_collectionHandle);
 
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
+            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
 
             uint magic = bag.GetUIntAt(_magicSlot);
 
@@ -200,7 +200,7 @@ public class HandleTrackingUpdate : IHandleOpcodes
         finally
         {
             bag.Release();
-        }
+        }*/
 
         return 2;
     }
@@ -221,7 +221,7 @@ public class HandleTrackingUpdate : IHandleOpcodes
     private uint ReadEntry(ReadOnlySpan<byte> data, FieldBag bag)
     {
         /*
-        GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
+        GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
 
         uint spawnId = bag.GetUIntAt(_spawnIdSlot);
         uint level = bag.GetUIntAt(_levelSlot);
@@ -239,11 +239,11 @@ public class HandleTrackingUpdate : IHandleOpcodes
 
     public uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldBag bag = _registry.Rent(_collectionHandle);
+/*        FieldBag bag = _registry.Rent(_collectionHandle);
 
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
+            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
 
             uint magic = bag.GetUIntAt(_magicSlot);
 
@@ -255,7 +255,7 @@ public class HandleTrackingUpdate : IHandleOpcodes
         finally
         {
             bag.Release();
-        }
+        }*/
 
         return 2;
     }

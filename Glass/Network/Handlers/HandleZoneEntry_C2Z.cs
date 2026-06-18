@@ -47,12 +47,12 @@ public class HandleZoneEntry_C2Z: IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         PatchOpcode baseOpcode = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _opcodeHandled = baseOpcode with { Version = 2 };
-        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_ZoneEntryV2");
 
         DebugLog.Write(LogChannel.Opcodes, "ZoneEntry C2Z registering opcode " + _opcodeHandled);
-        _nameSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "name");
-        _spawnIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "spawn_id");
-        _levelSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "level");
+        _nameSlot = _registry.IndexOfField(_collectionHandle, "name");
+        _spawnIdSlot = _registry.IndexOfField(_collectionHandle, "spawn_id");
+        _levelSlot = _registry.IndexOfField(_collectionHandle, "level");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

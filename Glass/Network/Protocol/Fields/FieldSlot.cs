@@ -283,6 +283,45 @@ public struct FieldSlot
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // SetGate
+    //
+    // Stores a GateHandle in the slot's value field as its raw uint.  The arena offset is
+    // set to the NoArenaData sentinel — a gate slot owns no arena bytes.  The handle
+    // addresses the gate whose instance bags this field decoded through.
+    //
+    // value:  The gate handle to store.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public void SetGate(GateHandle value)
+    {
+        _value = (uint)value;
+        _arenaOffset = NoArenaData;
+        _type = FieldType.Gate;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // TryGetGate
+    //
+    // Reads the slot as a GateHandle, reconstructed from the raw uint in the value field.
+    // Accepts only slots of type Gate.
+    //
+    // value:    Receives the slot's gate handle on success, GateHandle.None on type
+    //           mismatch.
+    //
+    // Returns:  SlotReadResult.Success on success, SlotReadResult.TypeMismatch if the
+    //           slot's type is not Gate.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public SlotReadResult TryGetGate(out GateHandle value)
+    {
+        if (_type != FieldType.Gate)
+        {
+            value = GateHandle.None;
+            return SlotReadResult.TypeMismatch;
+        }
+        value = (GateHandle)_value;
+        return SlotReadResult.Success;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // SetAsciiString
     //
     // Stores ASCII string bytes in the owning bag's arena, guaranteed null-terminated, and

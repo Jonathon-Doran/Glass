@@ -22,6 +22,28 @@ public class PatchRegistry
     private readonly List<PatchData> _loadedPatches;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // CollectionEntry
+    //
+    // Resolves a system-unique CollectionHandle to the PatchData that owns the collection and
+    // the CollectionIndex of that collection within the owner's local collection array.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private struct CollectionEntry
+    {
+        public PatchData Owner;
+        public CollectionIndex Index;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // _collectionEntries
+    //
+    // Resolves a system-unique CollectionHandle to its owning PatchData and the CollectionIndex
+    // of the collection within that owner.  A CollectionHandle is a position in this list,
+    // assigned in registration order across every PatchData that registers a collection.
+    // Append-only over the registry's lifetime.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private readonly List<CollectionEntry> _collectionEntries;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // PatchRegistry (constructor)
     //
     // Builds an empty cache.  No patches are loaded here; callers invoke LoadPatchLevel or
@@ -30,6 +52,7 @@ public class PatchRegistry
     public PatchRegistry()
     {
         _loadedPatches = new List<PatchData>();
+        _collectionEntries = new List<CollectionEntry>();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -168,6 +191,12 @@ public class PatchRegistry
         return patchLevels;
     }
 
+    public CollectionHandle GetCollectionHandle(PatchLevel patchLevel, string collectionName)
+    {
+        PatchData patchData = FindPatchData(patchLevel);
+        return patchData.GetCollectionHandleFromName(collectionName);
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // TryFindPatchData
     //
@@ -229,62 +258,7 @@ public class PatchRegistry
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetOpcodeHandle
-    //
-    // Returns the OpcodeHandle for the (patch level, wire opcode value, version) tuple
-    // carried by the supplied PatchOpcode.  Looks up the patch in the loaded set and
-    // delegates to the PatchData.
-    //
-    // Throws InvalidOperationException if the patch level is not loaded.
-    //
-    // Parameters:
-    //   patchOpcode  - The (PatchLevel, Opcode, Version) tuple identifying the row.
-    //                  Its Level must already be loaded.
-    //
-    // Returns:
-    //   The OpcodeHandle for the row, or OpcodeHandle.None if no matching row exists.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public OpcodeHandle GetOpcodeHandle(PatchOpcode patchOpcode)
-    {
-        if (patchOpcode.Exists == false)
-        {
-            return OpcodeHandle.None;
-        }
-        PatchData patchData = FindPatchData(patchOpcode.Level);
-        return patchData.GetOpcodeHandle(patchOpcode);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetOpcodeGate
-    //
-    // Returns the top-level GateDefinitionHandle for the given opcode in its patch level.  Looks the
-    // patch up in the loaded set and delegates to its PatchData.
-    //
-    // Throws InvalidOperationException if the patch level is not loaded.
-    //
-    // Parameters:
-    //   patchOpcode  - The opcode whose top-level gate to look up.  Its Level names the
-    //                  patch.  Must be a real opcode.
-    //
-    // Returns:
-    //   The opcode's top-level GateDefinitionHandle, or GateDefinitionHandle.None when the opcode does not
-    //   exist or is not in its patch.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public GateDefinitionHandle GetOpcodeGate(PatchOpcode patchOpcode)
-    {
-        if (patchOpcode.Exists == false)
-        {
-            DebugLog.Write(LogChannel.Opcodes,
-                "PatchRegistry.GetOpcodeGate: PatchOpcode.None passed, returning GateDefinitionHandle.None");
-            return GateDefinitionHandle.None;
-        }
-
-        PatchData patchData = FindPatchData(patchOpcode.Level);
-        return patchData.GetOpcodeGate(patchOpcode);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetGate
+    // GetGateDefinition
     //
     // Returns the GateDefinition for the given GateDefinitionHandle in the given patch level, by
     // value.  Looks the patch up in the loaded set and delegates to its PatchData.
@@ -299,10 +273,10 @@ public class PatchRegistry
     // Returns:
     //   The GateDefinition stored at the handle.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public GateDefinition GetGate(PatchLevel patchLevel, GateDefinitionHandle gateHandle)
+    public GateDefinition GetGateDefinition(PatchLevel patchLevel, GateDefinitionHandle gateHandle)
     {
         PatchData patchData = FindPatchData(patchLevel);
-        return patchData.GetGate(gateHandle);
+        return patchData.GetGateDefinition(gateHandle);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -329,8 +303,35 @@ public class PatchRegistry
         }
 
         PatchData patchData = FindPatchData(patchOpcode.Level);
-        return patchData.GetOpcodeGateDefinition(patchOpcode);
+        return patchData.GetOpcodeGate(patchOpcode);
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // RegisterCollection
+    //
+    // Mints a system-unique CollectionHandle for a collection owned by the given PatchData at
+    // the given local CollectionIndex, recording the owner and index for later resolution.
+    //
+    // Parameters:
+    //   owner  - The PatchData that owns the collection.
+    //   index  - The collection's CollectionIndex within the owner's local collection array.
+    //
+    // Returns:
+    //   The newly minted CollectionHandle.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public CollectionHandle RegisterCollection(PatchData owner, CollectionIndex index)
+    {
+        CollectionEntry entry;
+        entry.Owner = owner;
+        entry.Index = index;
+        _collectionEntries.Add(entry);
+
+        CollectionHandle handle = (CollectionHandle)(uint)(_collectionEntries.Count - 1);
+        DebugLog.Write(LogChannel.Fields, "PatchRegistry.RegisterCollection: minted handle "
+            + handle + " for collection index " + index + " in patchLevel=" + owner.PatchLevel);
+        return handle;
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetOpcodeCollection
     //
@@ -340,16 +341,16 @@ public class PatchRegistry
     // Throws InvalidOperationException if the patch level is not loaded.
     //
     // Parameters:
-    //   patchLevel      - The patch identifier.  Must already be loaded.
-    //   collectionName  - The FieldCollection name to look up.
+    //   patchOpcode:  The opcode to query
     //
     // Returns:
     //   The CollectionHandle for the named collection, or CollectionHandle.None if absent.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public CollectionHandle GetOpcodeCollection(PatchLevel patchLevel, string opcodeName)
+    public CollectionHandle GetOpcodeCollection(PatchOpcode patchOpcode)
     {
-        PatchData patchData = FindPatchData(patchLevel);
-        return patchData.GetOpcodeCollection(opcodeName);
+        PatchData patchData = FindPatchData(patchOpcode.Level);
+
+        return patchData.GetOpcodeCollection(patchOpcode);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -370,33 +371,10 @@ public class PatchRegistry
     //   The opcode name (e.g. "OP_PlayerProfile"), or "Unknown" if not in the patch.
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    public string GetOpcodeName(PatchLevel patchLevel, OpcodeValue opcodeValue)
+    public string GetOpcodeName(PatchOpcode patchOpcode)
     {
-        PatchData patchData = FindPatchData(patchLevel);
-        return patchData.GetOpcodeName(opcodeValue);
-    }
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetOpcodeName
-    //
-    // Returns the logical opcode name for the given opcode in the given patch
-    // level.  Looks up the patch in the loaded set and delegates to the PatchData.
-    //
-    // Throws InvalidOperationException if the patch level is not loaded.
-    //
-    // Returns "Unknown" if the opcode is not in the patch.
-    //
-    // Parameters:
-    //   patchLevel   - The patch identifier.  Must already be loaded.
-    //   opcode       - The versioned opcode to lookup
-    //
-    // Returns:
-    //   The opcode name (e.g. "OP_PlayerProfile"), or "Unknown" if not in the patch.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-  
-    public string GetOpcodeName(PatchLevel patchLevel, PatchOpcode opcode)
-    {
-        PatchData patchData = FindPatchData(patchLevel);
-        return patchData.GetOpcodeName(opcode);
+        PatchData patchData = FindPatchData(patchOpcode.Level);
+        return patchData.GetOpcodeName(patchOpcode);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -405,6 +383,8 @@ public class PatchRegistry
     // Returns the base PatchOpcode for the given opcode name in the given patch level, or
     // PatchOpcode.None if the name is not present.  Looks up the patch in the loaded set and
     // delegates to the PatchData.
+    //
+    // Note:  Callers typically obtain the base and modify the version number separately.
     //
     // Throws InvalidOperationException if the patch level is not loaded.
     //
@@ -436,10 +416,17 @@ public class PatchRegistry
     //   The number of opcodes in the patch.
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    public string GetCollectionName(PatchLevel patchLevel, CollectionHandle collectionHandle)
+    public string GetCollectionName(CollectionHandle collectionHandle)
     {
-        PatchData patchData = FindPatchData(patchLevel);
-        return patchData.GetCollectionNameFromHandle(collectionHandle);
+        if (collectionHandle.Exists == false || collectionHandle.Value >= _collectionEntries.Count)
+        {
+            throw new InvalidOperationException("PatchRegistry.GetCollectionName: invalid collection handle " + collectionHandle);
+
+        }
+
+        CollectionIndex index = _collectionEntries[(int)collectionHandle.Value].Index;
+
+        return _collectionEntries[(int) collectionHandle.Value].Owner.GetCollectionNameFromIndex(index);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -451,16 +438,21 @@ public class PatchRegistry
     // Throws InvalidOperationException if the patch level is not loaded.
     //
     // Parameters:
-    //   patchLevel        - The patch identifier.  Must already be loaded.
     //   collectionHandle  - The collection to query.
     //
     // Returns:
     //   The collection's slot count.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public ushort GetSlotCount(PatchLevel patchLevel, CollectionHandle collectionHandle)
+    public ushort GetSlotCount(CollectionHandle collectionHandle)
     {
-        PatchData patchData = FindPatchData(patchLevel);
-        return patchData.GetSlotCount(collectionHandle);
+        if (collectionHandle.Exists == false || collectionHandle.Value >= _collectionEntries.Count)
+        {
+            throw new InvalidOperationException("PatchRegistry.GetCollectionName: invalid collection handle " + collectionHandle);
+
+        }
+
+        CollectionIndex index = _collectionEntries[(int)collectionHandle.Value].Index;
+        return _collectionEntries[(int)collectionHandle.Value].Owner.GetSlotCount(index);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -472,7 +464,6 @@ public class PatchRegistry
     // Throws InvalidOperationException if the patch level is not loaded.
     //
     // Parameters:
-    //   patchLevel        - The patch identifier.  Must already be loaded.
     //   collectionHandle  - The collection to query.
     //
     // Returns:
@@ -480,8 +471,14 @@ public class PatchRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////
     public uint GetArenaCapacity(PatchLevel patchLevel, CollectionHandle collectionHandle)
     {
-        PatchData patchData = FindPatchData(patchLevel);
-        return patchData.GetArenaCapacity(collectionHandle);
+        if (collectionHandle.Exists == false || collectionHandle.Value >= _collectionEntries.Count)
+        {
+            throw new InvalidOperationException("PatchRegistry.GetCollectionName: invalid collection handle " + collectionHandle);
+
+        }
+
+        CollectionIndex index = _collectionEntries[(int)collectionHandle.Value].Index;
+        return _collectionEntries[(int)collectionHandle.Value].Owner.GetArenaCapacity(index);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -543,11 +540,11 @@ public class PatchRegistry
     public FieldBag Rent(CollectionHandle collectionHandle)
     {
         PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
-        ushort slotCapacity = GlassContext.PatchRegistry.GetSlotCount(patchLevel, collectionHandle);
+        ushort slotCapacity = GlassContext.PatchRegistry.GetSlotCount(collectionHandle);
         uint arenaCapacity = GlassContext.PatchRegistry.GetArenaCapacity(patchLevel, collectionHandle);
         uint required = FieldBag.BytesNeeded(slotCapacity, arenaCapacity);
 
-        // FIXME bag rental moves to Extract; interim stub with a fixed arena.
+        // FIXME bag rental moves to ExtractCollection; interim stub with a fixed arena.
         DebugLog.Write(LogChannel.Fields, "PatchRegistry.Rent: STUB for collection " + collectionHandle);
         FieldBag bag = new FieldBag();
 
@@ -572,10 +569,16 @@ public class PatchRegistry
     // Returns:
     //   The SlotId of the named field, or SlotId.None if not found.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public SlotId IndexOfField(PatchLevel patchLevel, CollectionHandle collection, string fieldName)
+    public SlotId IndexOfField(CollectionHandle collectionHandle, string fieldName)
     {
-        PatchData patchData = FindPatchData(patchLevel);
-        return patchData.IndexOfField(collection, fieldName);
+        if (collectionHandle.Exists == false || collectionHandle.Value >= _collectionEntries.Count)
+        {
+            throw new InvalidOperationException("PatchRegistry.GetCollectionName: invalid collection handle " + collectionHandle);
+
+        }
+
+        CollectionIndex index = _collectionEntries[(int)collectionHandle.Value].Index;
+        return _collectionEntries[(int)collectionHandle.Value].Owner.IndexOfField(index, fieldName);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -589,24 +592,28 @@ public class PatchRegistry
     // Returns null if the collection has no fields loaded for this patch.
     //
     // Parameters:
-    //   patchLevel  - The patch identifier.  Must already be loaded.
     //   collection  - The CollectionHandle whose field definitions to return.
     //
     // Returns:
     //   The FieldDefinition array, or null if absent.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public FieldDefinition[]? GetFields(PatchLevel patchLevel, CollectionHandle collection)
+    public FieldDefinition[]? GetFields(CollectionHandle collectionHandle)
     {
-        PatchData patchData = FindPatchData(patchLevel);
-        return patchData.GetFieldDefinitions(collection);
-    }
+        if (collectionHandle.Exists == false || collectionHandle.Value >= _collectionEntries.Count)
+        {
+            throw new InvalidOperationException("PatchRegistry.GetCollectionName: invalid collection handle " + collectionHandle);
 
+        }
+
+        CollectionIndex index = _collectionEntries[(int)collectionHandle.Value].Index;
+        return _collectionEntries[(int)collectionHandle.Value].Owner.GetFieldDefinitions(index);
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetFieldPosition
     //
     // Returns the position value stored on a field's definition (its BitOffset).  Used by
-    // handlers that need a position-like value from a field row that Extract does not
+    // handlers that need a position-like value from a field row that ExtractCollection does not
     // process — for example, csv_token rows where BitOffset carries the 1-based index of
     // the token within a comma-separated payload.
     //
@@ -617,20 +624,15 @@ public class PatchRegistry
     // Returns the field's BitOffset as an int, or -1 if the patch level, handle, or
     // field id cannot be resolved.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public uint GetFieldPosition(PatchLevel patchLevel, CollectionHandle collection, SlotId slot)
+    public uint GetFieldPosition(CollectionHandle collectionHandle, SlotId slot)
     {
-        PatchData? patchData = FindPatchData(patchLevel);
-
-        if (patchData == null)
+        if (collectionHandle.Exists == false || collectionHandle.Value >= _collectionEntries.Count)
         {
-            throw new InvalidOperationException("PatchRegistry.GetFieldPosition: patchLevel " + patchLevel +
-                     " not loaded");
-
+            throw new InvalidOperationException("PatchRegistry.GetFieldPosition: invalid collection handle " + collectionHandle);
         }
 
-        uint position = patchData.GetFieldPosition(collection, slot);
-
-        return position;
+        CollectionIndex index = _collectionEntries[(int)collectionHandle.Value].Index;
+        return _collectionEntries[(int)collectionHandle.Value].Owner.GetFieldPosition(index, slot);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

@@ -45,11 +45,11 @@ public class HandleNewZone : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
-        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_NewZone");
 
-        _shortNameSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "short_name");
-        _longNameSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "long_name");
-        _zoneIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "zone_id");
+        _shortNameSlot = _registry.IndexOfField(_collectionHandle, "short_name");
+        _longNameSlot = _registry.IndexOfField(_collectionHandle, "long_name");
+        _zoneIdSlot = _registry.IndexOfField(_collectionHandle, "zone_id");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -98,14 +98,14 @@ public class HandleNewZone : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        string shortName;
+/*        string shortName;
         string longName;
         uint zoneId;
 
         FieldBag bag = _registry.Rent(_collectionHandle);
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
+            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
 
             ReadOnlySpan<byte> snameBytes = bag.GetBytesAt(_shortNameSlot);
             shortName = Encoding.ASCII.GetString(snameBytes);
@@ -122,7 +122,7 @@ public class HandleNewZone : IHandleOpcodes
         }
 
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-            + _opcodeName + " length=" + data.Length);
+            + _opcodeName + " length=" + data.Length);*/
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

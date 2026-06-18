@@ -42,9 +42,9 @@ public class HandleSessionDisconnect : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
-        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_SessionDisconnect");
 
-        _sessionIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "session_id");
+        _sessionIdSlot = _registry.IndexOfField(_collectionHandle, "session_id");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -75,11 +75,11 @@ public class HandleSessionDisconnect : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldBag bag = _registry.Rent(_collectionHandle);
+/*        FieldBag bag = _registry.Rent(_collectionHandle);
 
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
+            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
 
             uint sessionId = bag.GetUIntAt(_sessionIdSlot);
 
@@ -90,7 +90,7 @@ public class HandleSessionDisconnect : IHandleOpcodes
         finally
         {
             bag.Release();
-        }
+        }*/
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

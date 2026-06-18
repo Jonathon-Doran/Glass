@@ -47,11 +47,10 @@ public class HandleCommonMessage : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
-
-        _senderIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "sender_name");
-        _channelIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "channel_id");
-        _messageIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "message_text");
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_CommonMessage");
+        _senderIdSlot = _registry.IndexOfField(_collectionHandle, "sender_name");
+        _channelIdSlot = _registry.IndexOfField(_collectionHandle, "channel_id");
+        _messageIdSlot = _registry.IndexOfField(_collectionHandle, "message_text");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -118,6 +117,7 @@ public class HandleCommonMessage : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
+        /*
         string sender;
         uint channel;
         string message;
@@ -125,7 +125,7 @@ public class HandleCommonMessage : IHandleOpcodes
         FieldBag bag = _registry.Rent(_collectionHandle);
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
+            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
 
             ReadOnlySpan<byte> senderBytes = bag.GetBytesAt(_senderIdSlot);
             sender = Encoding.ASCII.GetString(senderBytes);
@@ -143,6 +143,7 @@ public class HandleCommonMessage : IHandleOpcodes
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
             + _opcodeName + " sender = " + sender + ", channel = " +
             channel + "(" + channelName + "), message = '" + message + "'");
+        */
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

@@ -66,10 +66,14 @@ public partial class OpcodeManageWindow : Window
 
         for (int i = 0; i < knownOpcodes.Length; i++)
         {
+            // note on version:  This usage is ok because we do not need to know the exact version
+            // when obtaining the opcode name.  V1's output is identical to all other versions.
+
+            PatchOpcode patchOpcode = new PatchOpcode(GlassContext.CurrentPatchLevel, knownOpcodes[i]);
+
             OpcodeValue opcode = knownOpcodes[i];
             string opcodeHex = "0x" + opcode;
-            string opcodeName = GlassContext.PatchRegistry.GetOpcodeName(
-                GlassContext.CurrentPatchLevel, opcode);
+            string opcodeName = GlassContext.PatchRegistry.GetOpcodeName(patchOpcode);
             bool isHidden = hidden.Contains(opcode);
 
             OpcodeManageRow row = new OpcodeManageRow(opcode, opcodeHex, opcodeName, isHidden);

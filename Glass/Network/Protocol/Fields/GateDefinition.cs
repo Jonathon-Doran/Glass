@@ -19,7 +19,7 @@ public enum MultiplicityKind
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// Gate -- data structure that takes us from one Collection to another
+// GateDefinition -- data structure that takes us from one Collection to another
 //
 // Static policy describing how a field references a child FieldCollection and the
 // multiplicity rule applied to it.  Built once at load time and read-only thereafter.
@@ -35,13 +35,14 @@ public struct GateDefinition
     public uint Count;
     public CollectionHandle ChildCollection;
     public SlotId FieldSlot;
-    public bool FieldSlotLocal;
+    public Boolean FieldSlotLocal;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // ToString
     //
     // Renders the gate as a single log-friendly line: name, multiplicity kind, count,
-    // child collection, and the consulted field slot with its scope.
+    // child collection, and the consulted field slot with its scope.  Scope is local when
+    // the slot's collection is None and ancestor-qualified otherwise.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public override string ToString()
     {
@@ -60,7 +61,7 @@ public struct GateDefinition
         return "Gate '" + Name
             + "' kind=" + Kind
             + " count=" + Count
-            + " child=" + registry.GetCollectionName(PatchLevel, ChildCollection)
+            + " child=" + registry.GetCollectionName(ChildCollection)
             + " fieldSlot=" + FieldSlot
             + " (" + scope + ")";
     }

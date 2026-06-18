@@ -45,8 +45,11 @@ public partial class PacketDetailWindow : Window
         ReadOnlySpan<byte> payload = packet.Payload.AsReadOnlySpan();
         int payloadLength = payload.Length;
 
-        string opcodeName = GlassContext.PatchRegistry.GetOpcodeName(
-            GlassContext.CurrentPatchLevel, (OpcodeValue) packet.Opcode);
+        // note on version:  This usage is ok because we do not need to know the exact version
+        // when obtaining the opcode name.  V1's output is identical to all other versions.
+
+        PatchOpcode patchOpcode = new PatchOpcode(GlassContext.CurrentPatchLevel, packet.Opcode);
+        string opcodeName = GlassContext.PatchRegistry.GetOpcodeName(patchOpcode);
         string opcodeHex = "0x" + packet.Opcode;
         string characterName = ResolveCharacterName(packet.Metadata.SessionId);
 
@@ -116,8 +119,8 @@ public partial class PacketDetailWindow : Window
         PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
         PatchRegistry registry = GlassContext.PatchRegistry;
 
-        string opcodeName = registry.GetOpcodeName(patchLevel, patchOpcode);
-        CollectionHandle collectionHandle = registry.GetOpcodeCollection(patchLevel, opcodeName);
+        string opcodeName = registry.GetOpcodeName(patchOpcode);
+        CollectionHandle collectionHandle = registry.GetOpcodeCollection(patchOpcode);
 
         if (!collectionHandle.Exists)
         {
@@ -134,35 +137,38 @@ public partial class PacketDetailWindow : Window
             return ExtractInventoryItems(patchLevel, collectionHandle, patchOpcode, payload);
         }
 
-        FieldBag bag = registry.Rent(collectionHandle);
-        try
-        {
-            GlassContext.FieldExtractor.Extract(patchLevel, collectionHandle, payload, bag);
+        /*
+                FieldBag bag = registry.Rent(collectionHandle);
+                try
+                {
+                    GlassContext.FieldExtractor.ExtractCollection(patchLevel, collectionHandle, payload, bag);
 
-            StringBuilder sb = new StringBuilder();
-            BagWalker walker = bag.Walk();
-            FieldBinding? binding = walker.Next();
-            int bindingCount = 0;
-            while (binding != null)
-            {
-                FieldBinding b = binding.Value;
-                sb.Append(b.Name);
-                sb.Append(" = ");
-                sb.Append(b.Value);
-                sb.Append('\n');
-                binding = walker.Next();
-                bindingCount++;
-            }
+                    StringBuilder sb = new StringBuilder();
+                    BagWalker walker = bag.Walk();
+                    FieldBinding? binding = walker.Next();
+                    int bindingCount = 0;
+                    while (binding != null)
+                    {
+                        FieldBinding b = binding.Value;
+                        sb.Append(b.Name);
+                        sb.Append(" = ");
+                        sb.Append(b.Value);
+                        sb.Append('\n');
+                        binding = walker.Next();
+                        bindingCount++;
+                    }
 
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "PacketDetailWindow.ExtractFieldText: opcode=0x" + patchOpcode
-                + " extracted " + bindingCount + " bindings");
-            return sb.ToString();
-        }
-        finally
-        {
-            bag.Release();
-        }
+                    DebugLog.Write(LogChannel.InferenceDebug,
+                        "PacketDetailWindow.ExtractFieldText: opcode=0x" + patchOpcode
+                        + " extracted " + bindingCount + " bindings");
+                    return sb.ToString();
+                }
+                finally
+                {
+                    bag.Release();
+                }
+        */
+        return "";
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -183,6 +189,7 @@ public partial class PacketDetailWindow : Window
     private static string ExtractInventoryItems(PatchLevel patchLevel, CollectionHandle collection,
         PatchOpcode patchOpcode, ReadOnlySpan<byte> payload)
     {
+        /*
         StringBuilder sb = new StringBuilder();
         int itemOrdinal = 0;
         int scanOffset = 0;
@@ -206,7 +213,7 @@ public partial class PacketDetailWindow : Window
             FieldBag bag = GlassContext.PatchRegistry.Rent(collection);
             try
             {
-                GlassContext.FieldExtractor.Extract(patchLevel, collection, itemSlice, bag);
+                GlassContext.FieldExtractor.ExtractCollection(patchLevel, collection, itemSlice, bag);
 
                 BagWalker walker = bag.Walk();
                 FieldBinding? binding = walker.Next();
@@ -232,6 +239,9 @@ public partial class PacketDetailWindow : Window
         DebugLog.Write(LogChannel.InferenceDebug,
             "PacketDetailWindow.ExtractInventoryItems: segmented " + itemOrdinal + " items");
         return sb.ToString();
+        */
+
+        return "";
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

@@ -46,12 +46,12 @@ public class HandleMobUpdate : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_MobUpdate");
 
-        _spawnIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "spawn_id");
-        _xPosSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "x_pos");
-        _yPosSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "y_pos");
-        _zPosSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "z_pos");
+        _spawnIdSlot = _registry.IndexOfField(_collectionHandle, "spawn_id");
+        _xPosSlot = _registry.IndexOfField(_collectionHandle, "x_pos");
+        _yPosSlot = _registry.IndexOfField(_collectionHandle, "y_pos");
+        _zPosSlot = _registry.IndexOfField(_collectionHandle, "z_pos");
 
         // Todo:  heading should be 16-bits at byte 12
        // _headingSlot = _fields.IndexOfField("heading");
@@ -104,7 +104,7 @@ public class HandleMobUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        uint spawnId;
+        /*uint spawnId;
         float xPos;
         float yPos;
         float zPos;
@@ -112,7 +112,7 @@ public class HandleMobUpdate : IHandleOpcodes
         FieldBag bag = _registry.Rent(_collectionHandle);
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
+            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
 
             spawnId = bag.GetUIntAt(_spawnIdSlot);
             xPos = bag.GetFloatAt(_xPosSlot);
@@ -129,7 +129,7 @@ public class HandleMobUpdate : IHandleOpcodes
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
             + _opcodeName + " spawnid: " + spawnId.ToString("x4") + " at ("
             + xPos.ToString("F2") + "," + yPos.ToString("F2") + "," + zPos.ToString("F2") + ")");
-    }
+ */   }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeHandled

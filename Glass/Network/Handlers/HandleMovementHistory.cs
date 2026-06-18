@@ -50,13 +50,13 @@ public class HandleMovementHistory : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
-        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_MovementHistory");
 
-        _xPosSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "x_pos");
-        _yPosSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "y_pos");
-        _zPosSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "z_pos");
-        _timestampSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "timestamp");
-        _movestateSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "move_state");
+        _xPosSlot = _registry.IndexOfField(_collectionHandle, "x_pos");
+        _yPosSlot = _registry.IndexOfField(_collectionHandle, "y_pos");
+        _zPosSlot = _registry.IndexOfField(_collectionHandle, "z_pos");
+        _timestampSlot = _registry.IndexOfField(_collectionHandle, "timestamp");
+        _movestateSlot = _registry.IndexOfField(_collectionHandle, "move_state");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -141,7 +141,7 @@ public class HandleMovementHistory : IHandleOpcodes
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+    /*    Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
 
         if (character == null)
         {
@@ -171,7 +171,7 @@ public class HandleMovementHistory : IHandleOpcodes
             {
                 bag.Clear();
                 ReadOnlySpan<byte> entry = data.Slice(i * 17, 17);
-                GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, entry, bag);
+                GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, entry, bag);
 
                 float xPos = bag.GetFloatAt(_xPosSlot);
                 float yPos = bag.GetFloatAt(_yPosSlot);
@@ -192,7 +192,7 @@ public class HandleMovementHistory : IHandleOpcodes
         finally
         {
             bag.Release();
-        }
+        }*/
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

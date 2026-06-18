@@ -44,11 +44,11 @@ public class HandleManaUpdate : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_ManaUpdate");
 
-        _playerIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "player_id");
-        _currentManaSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "current_mana");
-        _maxManaSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "max_mana");
+        _playerIdSlot = _registry.IndexOfField(_collectionHandle, "player_id");
+        _currentManaSlot = _registry.IndexOfField(_collectionHandle, "current_mana");
+        _maxManaSlot = _registry.IndexOfField(_collectionHandle, "max_mana");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -97,12 +97,12 @@ public class HandleManaUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        Character? character = null;
+/*        Character? character = null;
 
         FieldBag bag = _registry.Rent(_collectionHandle);
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
+            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
 
             uint playerId = bag.GetUIntAt(_playerIdSlot);
 
@@ -125,7 +125,7 @@ public class HandleManaUpdate : IHandleOpcodes
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
             + _opcodeName + " length=" + data.Length);
         DebugLog.Write(LogChannel.Opcodes, "Mana at " + character.CurrentMana + " / " + character.MaxMana);
-    }
+*/    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeHandled

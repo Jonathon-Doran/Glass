@@ -74,7 +74,7 @@ public partial class MainWindow : Window
         GlassContext.GlassVideoPipe.Start();
         GlassContext.BufferPool = new BufferPool(
             new uint[] { 16, 64, 256, 512, 1024, 2048, 16384, 65536, 262144, 524288 },
-            new uint[] { 64, 32, 16, 16, 16, 8, 8, 4, 2, 1 });
+            new uint[] { 1000, 1000, 1000, 1000, 1000, 1000, 1000, 20, 20, 20 });
 
         GlassContext.SignalBus = new SignalBus();
         GlassContext.PacketBus = new PacketBus();
@@ -879,7 +879,8 @@ public partial class MainWindow : Window
 
                     foreach (KeyValuePair<OpcodeValue, int> op in sorted)
                     {
-                        string name = GlassContext.PatchRegistry.GetOpcodeName(patchLevel, op.Key);
+                        PatchOpcode patchOpcode = new PatchOpcode(patchLevel, op.Key);
+                        string name = GlassContext.PatchRegistry.GetOpcodeName(patchOpcode);
 
  //                       string handled = OpcodeDispatch.Instance.IsOpcodeHandled(op.Key)
  //                           ? "+" : " ";

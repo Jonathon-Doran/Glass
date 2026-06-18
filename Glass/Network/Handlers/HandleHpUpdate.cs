@@ -45,11 +45,11 @@ public class HandleHpUpdate : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
-        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_HpUpdate");
 
-        _playerIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "player_id");
-        _currentHPIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "current_hp");
-        _maxHPIdSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "max_hp");
+        _playerIdSlot = _registry.IndexOfField(_collectionHandle, "player_id");
+        _currentHPIdSlot = _registry.IndexOfField(_collectionHandle, "current_hp");
+        _maxHPIdSlot = _registry.IndexOfField(_collectionHandle, "max_hp");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -99,12 +99,12 @@ public class HandleHpUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        Character? character = null;
+/*        Character? character = null;
 
         FieldBag bag = _registry.Rent(_collectionHandle);
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
+            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
 
             uint playerId = bag.GetUIntAt(_playerIdSlot);
 
@@ -126,7 +126,7 @@ public class HandleHpUpdate : IHandleOpcodes
 
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
             + _opcodeName + " length=" + data.Length);
-        DebugLog.Write(LogChannel.Opcodes, "HP at " + character.CurrentHP + " / " + character.MaxHP);
+        DebugLog.Write(LogChannel.Opcodes, "HP at " + character.CurrentHP + " / " + character.MaxHP);*/
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

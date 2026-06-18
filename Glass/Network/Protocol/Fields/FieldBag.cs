@@ -30,6 +30,10 @@ public sealed class FieldBag
     private ushort _slotCapacity;
     private ushort _slotsInUse;
     private CollectionHandle _collectionHandle;
+    private BagHandle _nextBag;
+    private GateHandle _parentGate;
+    private GateHandle _firstChildGate;
+    private GateHandle _lastChildGate;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Initialize
@@ -56,6 +60,10 @@ public sealed class FieldBag
         _slotCapacity = slotCapacity;
         _slotsInUse = 0;
         _collectionHandle = collection;
+        _nextBag = BagHandle.None;
+        _parentGate = GateHandle.None;
+        _firstChildGate = GateHandle.None;
+        _lastChildGate = GateHandle.None;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -70,27 +78,103 @@ public sealed class FieldBag
         get 
         {
             PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
-            return GlassContext.PatchRegistry.GetCollectionName(patchLevel, _collectionHandle); 
+            return GlassContext.PatchRegistry.GetCollectionName(_collectionHandle); 
         }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // Slots
+    // Collection
     //
-    // Returns a span of FieldSlot over the slot region of the lease, reinterpreting the
-    // region's bytes in place.  The span covers the full slot capacity; live slots occupy
-    // indices [0, _slotsInUse).  Private — all slot access goes through the bag's own
-    // methods, which index into this span by ref.
-    //
-    // The returned span is valid only for the caller's synchronous scope, per the lease's
-    // own span rules.
-    //
-    // Returns:  A span over all slotCapacity FieldSlots in the slot region.
+    // The handle of the collection this bag decodes.  The spine walk reads it to find, among
+    // a bag's ancestors, the instance whose collection matches a referenced field's
+    // collection — the bag that holds a non-local count or predicate source.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private Span<FieldSlot> Slots()
+    public CollectionHandle Collection
     {
-        return MemoryMarshal.Cast<byte, FieldSlot>(
+        get { return _collectionHandle; }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // NextBag
+    //
+    // The handle of the next bag in the instance chain its gate owns, or BagHandle.None when
+    // this bag is the chain's tail.  The chain is woven by the extractor as it appends each
+    // decoded instance at the gate's tail; the gate holds the chain's head and tail and each
+    // bag holds its own forward link here.  Set by the extractor when chaining, read when the
+    // chain is walked.  Reset to None on each Initialize so a recycled bag carries no link
+    // from its prior use.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public BagHandle NextBag
+    {
+        get { return _nextBag; }
+        set { _nextBag = value; }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ParentGate
+    //
+    // The gate this bag is an instance of — the gate whose child collection this bag decodes.
+    // It is the bag's upward step on the resolution spine: from a bag, ParentGate reaches the
+    // spawning gate, and that gate's ParentBag reaches the enclosing instance, alternating to
+    // the root.  Set by the extractor when the bag is created to hold one instance of a gate's
+    // child collection; read when the spine is walked to resolve a non-local count or predicate.
+    // Reset to None on each Initialize so a recycled bag carries no link from its prior use.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public GateHandle ParentGate
+    {
+        get { return _parentGate; }
+        set { _parentGate = value; }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FirstChildGate
+    //
+    // The head of the chain of gates spawned while this bag was being filled, or
+    // GateHandle.None when this bag spawned no gates.  Each gate field reached during the
+    // bag's decode appends a gate to this chain; the gates link forward through their own
+    // NextSibling.  Set by the extractor as it appends each child gate; read when the bag's
+    // child gates are walked.  Reset to None on each Initialize.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public GateHandle FirstChildGate
+    {
+        get { return _firstChildGate; }
+        set { _firstChildGate = value; }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // LastChildGate
+    //
+    // The tail of the chain of gates spawned while this bag was being filled, or
+    // GateHandle.None when this bag spawned no gates.  Held so the extractor appends each new
+    // child gate at the tail in constant time rather than walking from the head.  Set by the
+    // extractor as it appends each child gate; reset to None on each Initialize.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public GateHandle LastChildGate
+    {
+        get { return _lastChildGate; }
+        set { _lastChildGate = value; }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // SlotAt
+    //
+    // Returns a ref to the FieldSlot at the given index, reinterpreting the slot region's
+    // bytes in place.  Private — all slot access goes through the bag's own methods, which
+    // index by this accessor.  The index must be within the slot capacity; the callers are
+    // the bag's own methods, which bound-check against _slotsInUse before indexing.
+    //
+    // The returned ref is valid only for the caller's synchronous scope, per the lease's own
+    // span rules.
+    //
+    // index:    The slot index, within [0, _slotCapacity).
+    //
+    // Returns:  A ref to the FieldSlot at the index.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private ref FieldSlot SlotAt(uint index)
+    {
+        Span<FieldSlot> slots = MemoryMarshal.Cast<byte, FieldSlot>(
             _lease.AsSpan().Slice(0, (int)(_slotCapacity * SlotSizeBytes)));
+        return ref slots[(int)index];
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -117,10 +201,9 @@ public sealed class FieldBag
     ///////////////////////////////////////////////////////////////////////////////////////////
     public void Clear()
     {
-        Span<FieldSlot> slots = Slots();
-        for (int slotIndex = 0; slotIndex < _slotsInUse; slotIndex++)
+        for (uint slotIndex = 0; slotIndex < _slotsInUse; slotIndex++)
         {
-            slots[slotIndex].Clear();
+            SlotAt(slotIndex).Clear();
         }
         _slotsInUse = 0;
         _arenaCursor = 0;
@@ -147,7 +230,7 @@ public sealed class FieldBag
             Environment.FailFast(failure);
         }
 
-        ref FieldSlot slot = ref Slots()[_slotsInUse];
+        ref FieldSlot slot = ref SlotAt(_slotsInUse);
         slot.Clear();
         _slotsInUse++;
         return ref slot;
@@ -264,7 +347,7 @@ public sealed class FieldBag
                 + slot.Index + " out of range [0, " + _slotsInUse + "), returning null ref");
             return ref Unsafe.NullRef<FieldSlot>();
         }
-        return ref Slots()[(int) slot.Index];
+        return ref SlotAt(slot.Index);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -289,7 +372,8 @@ public sealed class FieldBag
             Environment.FailFast(rangeFailure);
         }
 
-        ref FieldSlot fieldSlot = ref Slots()[(int)slot.Index];
+        ref FieldSlot fieldSlot = ref SlotAt(slot.Index);
+
         int value;
         SlotReadResult result = fieldSlot.TryGetInt(out value);
         if (result != SlotReadResult.Success)
@@ -325,7 +409,7 @@ public sealed class FieldBag
             DebugLog.Write(LogChannel.Fields, rangeFailure);
             Environment.FailFast(rangeFailure);
         }
-        ref FieldSlot fieldSlot = ref Slots()[(int)slot.Index];
+        ref FieldSlot fieldSlot = ref SlotAt(slot.Index);
         uint value;
         SlotReadResult result = fieldSlot.TryGetUInt(out value);
         if (result != SlotReadResult.Success)
@@ -362,7 +446,7 @@ public sealed class FieldBag
             DebugLog.Write(LogChannel.Fields, rangeFailure);
             Environment.FailFast(rangeFailure);
         }
-        ref FieldSlot fieldSlot = ref Slots()[(int)slot.Index];
+        ref FieldSlot fieldSlot = ref SlotAt(slot.Index);
         float value;
         SlotReadResult result = fieldSlot.TryGetFloat(out value);
         if (result != SlotReadResult.Success)
@@ -370,6 +454,41 @@ public sealed class FieldBag
             string readFailure = CollectionName + " FieldBag.GetFloatAt: required slot '"
                 + fieldSlot.GetName(this) + "' at index " + slot.Index
                 + " failed with result " + result + ", slot type expected " + fieldSlot.Type;
+            DebugLog.Write(LogChannel.Fields, readFailure);
+          //  Environment.FailFast(readFailure);
+        }
+        return value;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetGateAt
+    //
+    // Reads the slot at the given index as a GateHandle.  The slot is required: an
+    // out-of-range index or a failed slot-level read is a schema or extraction integrity
+    // violation and halts the process via FailFast with the failure details preserved in the
+    // Fields log channel.
+    //
+    // slot:     The slot identifier to read
+    //
+    // Returns:  The slot's gate handle.  Does not return on failure.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public GateHandle GetGateAt(SlotId slot)
+    {
+        if (slot.Index >= _slotsInUse)
+        {
+            string rangeFailure = CollectionName + " FieldBag.GetGateAt: slot.Index "
+                + slot.Index + " out of range [0, " + _slotsInUse + ")";
+            DebugLog.Write(LogChannel.Fields, rangeFailure);
+            Environment.FailFast(rangeFailure);
+        }
+        ref FieldSlot fieldSlot = ref SlotAt(slot.Index);
+        GateHandle value;
+        SlotReadResult result = fieldSlot.TryGetGate(out value);
+        if (result != SlotReadResult.Success)
+        {
+            string readFailure = CollectionName + " FieldBag.GetGateAt: required slot '"
+                + fieldSlot.GetName(this) + "' at index " + slot.Index
+                + " failed with " + result + ", slot type is " + fieldSlot.Type;
             DebugLog.Write(LogChannel.Fields, readFailure);
             Environment.FailFast(readFailure);
         }
@@ -400,7 +519,7 @@ public sealed class FieldBag
             DebugLog.Write(LogChannel.Fields, rangeFailure);
             Environment.FailFast(rangeFailure);
         }
-        ref FieldSlot fieldSlot = ref Slots()[(int) slot.Index];
+        ref FieldSlot fieldSlot = ref SlotAt(slot.Index);
         ReadOnlySpan<byte> value;
         SlotReadResult result = fieldSlot.TryGetAsciiBytes(this, out value);
         if (result != SlotReadResult.Success)
@@ -436,7 +555,7 @@ public sealed class FieldBag
             return FieldType.Empty;
         }
 
-        ref FieldSlot fieldSlot = ref Slots()[(int)slot.Index];
+        ref FieldSlot fieldSlot = ref SlotAt(slot.Index);
         return fieldSlot.Type;
     }
 
@@ -470,7 +589,7 @@ public sealed class FieldBag
         {
             return false;
         }
-        ref FieldSlot fieldSlot = ref Slots()[(int)slot.Index];
+        ref FieldSlot fieldSlot = ref SlotAt(slot.Index);
         return fieldSlot.Type != FieldType.Empty;
     }
 
@@ -488,10 +607,10 @@ public sealed class FieldBag
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // NextAfter
     //
-    // Returns the next filled slot in Sequence order as a FieldBinding, or null when no
-    // filled slots remain.  Selects, among all filled slots, the one with the smallest
-    // Sequence strictly greater than the position, then advances the position to that
-    // Sequence.  Empty slots are never returned.  Called only by BagWalker.Next.
+    // Returns the next filled slot in Sequence order as a FieldBinding, or FieldBinding.None
+    // when no filled slots remain.  Selects, among all filled slots, the one with the smallest
+    // Sequence strictly greater than the position, then advances the position to that Sequence.
+    // Empty slots are never returned.  Called only by BagWalker.Next.
     //
     // position:  Caller-owned iteration position holding the last-returned slot's Sequence.
     //            Must start below any real Sequence (-1) so the first call visits the
@@ -500,14 +619,13 @@ public sealed class FieldBag
     ///////////////////////////////////////////////////////////////////////////////////////////////
     internal FieldBinding? NextAfter(ref int position)
     {
-        Span<FieldSlot> slots = Slots();
-
-        int bestIndex = -1;
+        bool found = false;
+        uint bestIndex = 0;
         uint bestSequence = 0;
 
-        for (int slotIndex = 0; slotIndex < _slotsInUse; slotIndex++)
+        for (uint slotIndex = 0; slotIndex < _slotsInUse; slotIndex++)
         {
-            ref FieldSlot candidate = ref slots[slotIndex];
+            ref FieldSlot candidate = ref SlotAt(slotIndex);
             if (candidate.Type == FieldType.Empty)
             {
                 continue;
@@ -519,21 +637,22 @@ public sealed class FieldBag
                 continue;
             }
 
-            if ((bestIndex < 0) || (candidateSequence < bestSequence))
+            if (!found || (candidateSequence < bestSequence))
             {
+                found = true;
                 bestIndex = slotIndex;
                 bestSequence = candidateSequence;
             }
         }
 
-        if (bestIndex < 0)
+        if (!found)
         {
-            return null;
+            return null ;
         }
 
         position = (int)bestSequence;
 
-        ref FieldSlot slot = ref slots[bestIndex];
+        ref FieldSlot slot = ref SlotAt(bestIndex);
         return new FieldBinding(slot.GetName(this), slot.AsString(this));
     }
 

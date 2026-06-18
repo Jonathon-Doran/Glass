@@ -3,22 +3,44 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // Gate
 //
-// One node in the tree of collection instances built during a single extraction.  Holds the
-// definition it was built from, its links to neighboring nodes, the bag its collection
-// decoded into, and the number of bits its collection consumed from the packet.
+// One node in the tree of collection instances built during a single extraction.  Carries
+// the decoding policy lifted from its GateDefinition at creation — the multiplicity kind, the
+// child collection to decode, and the resolved instance count — so the extraction runtime
+// reads everything it needs from the gate and never consults the definition again.
 //
-// Tree links are GateHandles into the FieldExtractor's gate list; the bag link is a
-// BagHandle into that extractor's bag store.  A link of None terminates that direction:
-// Parent is None at the root, FirstChild is None for a leaf, NextSibling is None for the
-// last child in a sibling chain.
+// Kind is the multiplicity rule.  ChildCollection is the collection each instance decodes.
+// Count is the concrete number of instances, resolved when the gate is created: the count
+// field's value read from the resolved bag for a Times gate.  Count is unused for a Once gate,
+// which decodes a single instance, and for an UntilEnd gate, which terminates positionally.
+//
+// ParentBag is the bag instance that spawned this gate — the instance being decoded when the
+// gate's field was reached.  It is the upward step of the resolution spine: a gate reaches its
+// enclosing instance through ParentBag, and an enclosing instance reaches its own ancestor
+// through that bag's ParentGate, alternating bag and gate to the root.  ParentBag is None for a
+// top-level gate.
+//
+// NextSibling is the next gate in the chain of child gates spawned by a single bag instance.
+// The spawning bag holds the chain's head; each gate holds this forward link to the next.
+// NextSibling is None for the last gate in the chain.
+//
+// Head and Tail bound the chain of instance bags this gate decoded, linked through each
+// FieldBag's own forward link.  The gate produces one bag per instance, appended at Tail as it
+// is decoded; the final count is known only when decoding stops.  Head and Tail are both None
+// for a gate with no instances yet.
+//
+// Definition is retained for now as a fallback path back to the gate's static definition; the
+// runtime does not read it.
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public struct Gate
 {
     public GateDefinitionHandle Definition;
-    public GateHandle Parent;
-    public GateHandle FirstChild;
+    public CollectionHandle ChildCollection;
+    public MultiplicityKind Kind;
+    public BagHandle ParentBag;
     public GateHandle NextSibling;
-    public BagHandle Bag;
+    public uint BagCount;
+    public BagHandle Head;
+    public BagHandle Tail;
     public GateHandle Self;
     public uint BitsConsumed;
 }

@@ -12,16 +12,13 @@ I'm not sure how expensive it is to render the maps.
 Need to identify the current zone for characters.  (Chat server packet gets this)
 Mob repository needs to be created.
 Connection still has multiple streams that are not used.
-Field data editor in Inference does not have modify support for optional groups. See "Fields".
+
 PacketEnvelope should include a Connection and not the ip addresses and ports.
 SessionRegistry is not checking for an existing Connection properly
 
 CharacterId standardization would be a good thhing
 The OpcodeRowPresenter logs are very verbose.
 
-Does PatchRegistry.Rent really need an opcodehandle?
-	Takes a PatchOpcode, but I think this is wrong.  We rent bags for collections.  The collection handle makes more sense.
-	Think about who rents Bags.
 
 Inference/Core/InferenceDebugLog and InferenceLog need to go away 
 
@@ -30,15 +27,13 @@ Inference should check that New/Open/Recent patches all load data correctly.
 I don't believe that handlers are handling arrays of items well.  Certainly the opcode trace is not automatically doing this.
 	** multiplicity on gates should address this
 
-FieldSlot should be refactored to allow null references.  Some sentinel value.
-	(Empty type indicates an unused slot)
-
 PatchData.SlotDefinedBefore needs an ancestor check to validate collection handles.
-
-Slot accessors were refactored to keep TryGet... when they probably should have had Get... with fastfail if the slot does not exist.
 
 The BufferPool determines the size class to allocate and blocks even if bigger buffers are available.
 
+The database should have checks for unsigned values, not just accept signed integers.
+
+Look into the SlotID ancestor comment.
 
 ISXGlass:
 

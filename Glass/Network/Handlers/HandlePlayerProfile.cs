@@ -19,9 +19,10 @@ public class HandlePlayerProfile : IHandleOpcodes
 {
     private readonly string _opcodeName = "OP_PlayerProfile";
     private readonly PatchOpcode _opcodeHandled;
-    private CollectionHandle _collectionHandle;
-    private PatchRegistry _registry;
-    private PatchLevel _patchLevel;
+    private readonly CollectionHandle _collectionHandle;
+    private readonly PatchRegistry _registry;
+    private readonly PatchLevel _patchLevel;
+    private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _nameSlot;
     private readonly SlotId _levelSlot;
@@ -59,25 +60,26 @@ public class HandlePlayerProfile : IHandleOpcodes
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _collectionHandle = _registry.GetOpcodeCollection(_patchLevel, _opcodeName);
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_PlayerProfile");
+        _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
-        _nameSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "name");
-        _levelSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "level");
-        _playerClassSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "player_class");
-        _practicePointsSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "practice_points");
-        _manaSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "mana");
-        _hitpointsSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "max_hitpoints");
-        _strengthSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "strength");
-        _staminaSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "stamina");
-        _charismaSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "charisma");
-        _dexteritySlot =  _registry.IndexOfField(_patchLevel, _collectionHandle, "dexterity");
-        _intelligenceSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "intelligence");
-        _agilitySlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "agility");
-        _wisdomSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "wisdom");
-        _platinumCarriedSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "platinum_carried");
-        _goldCarriedSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "gold_carried");
-        _silverCarriedSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "silver_carried");
-        _copperCarriedSlot = _registry.IndexOfField(_patchLevel, _collectionHandle, "copper_carried");
+        _nameSlot = _registry.IndexOfField(_collectionHandle, "name");
+        _levelSlot = _registry.IndexOfField(_collectionHandle, "level");
+        _playerClassSlot = _registry.IndexOfField(_collectionHandle, "player_class");
+        _practicePointsSlot = _registry.IndexOfField(_collectionHandle, "practice_points");
+        _manaSlot = _registry.IndexOfField(_collectionHandle, "mana");
+        _hitpointsSlot = _registry.IndexOfField(_collectionHandle, "max_hitpoints");
+        _strengthSlot = _registry.IndexOfField(_collectionHandle, "strength");
+        _staminaSlot = _registry.IndexOfField(_collectionHandle, "stamina");
+        _charismaSlot = _registry.IndexOfField(_collectionHandle, "charisma");
+        _dexteritySlot =  _registry.IndexOfField(_collectionHandle, "dexterity");
+        _intelligenceSlot = _registry.IndexOfField(_collectionHandle, "intelligence");
+        _agilitySlot = _registry.IndexOfField(_collectionHandle, "agility");
+        _wisdomSlot = _registry.IndexOfField(_collectionHandle, "wisdom");
+        _platinumCarriedSlot = _registry.IndexOfField(_collectionHandle, "platinum_carried");
+        _goldCarriedSlot = _registry.IndexOfField(_collectionHandle, "gold_carried");
+        _silverCarriedSlot = _registry.IndexOfField(_collectionHandle, "silver_carried");
+        _copperCarriedSlot = _registry.IndexOfField(_collectionHandle, "copper_carried");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -131,59 +133,62 @@ public class HandlePlayerProfile : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldBag bag = _registry.Rent(_collectionHandle);
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+
         try
         {
-            GlassContext.FieldExtractor.Extract(_patchLevel, _collectionHandle, data, bag);
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            uint bagCount = extractor.BagCount(rootGate);
 
-            ReadOnlySpan<byte> nameBytes = bag.GetBytesAt(_nameSlot);
-            string name = Encoding.ASCII.GetString(nameBytes);
-
-            Character? character = CharacterRepository.Instance.GetByName(name);
-            if (character == null)
+            for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
             {
-                DebugLog.Write(LogChannel.Opcodes, _opcodeName + ": no Character named '" + name + "' in repository; fields not stored.");
-                return;
+                ReadOnlySpan<byte> nameBytes = extractor.GetBytesAt(_nameSlot);
+                string name = Encoding.ASCII.GetString(nameBytes);
+
+                Character? character = CharacterRepository.Instance.GetByName(name);
+                if (character == null)
+                {
+                    DebugLog.Write(LogChannel.Opcodes, _opcodeName + ": no Character named '" + name + "' in repository; fields not stored.");
+                    return;
+                }
+                character.Level = extractor.GetUIntAt(_levelSlot);
+                character.PracticePoints = extractor.GetUIntAt(_practicePointsSlot);
+                character.MaxHP = extractor.GetUIntAt(_hitpointsSlot);
+                character.MaxMana = extractor.GetUIntAt(_manaSlot);
+
+                character.Strength = extractor.GetUIntAt(_strengthSlot);
+                character.Stamina = extractor.GetUIntAt(_staminaSlot);
+                character.Charisma = extractor.GetUIntAt(_charismaSlot);
+                character.Dexterity = extractor.GetUIntAt(_dexteritySlot);
+                character.Intelligence = extractor.GetUIntAt(_intelligenceSlot);
+                character.Agility = extractor.GetUIntAt(_agilitySlot);
+                character.Wisdom = extractor.GetUIntAt(_wisdomSlot);
+
+                character.Platinum = extractor.GetUIntAt(_platinumCarriedSlot);
+                character.Gold = extractor.GetUIntAt(_goldCarriedSlot);
+                character.Silver = extractor.GetUIntAt(_silverCarriedSlot);
+                character.Copper = extractor.GetUIntAt(_copperCarriedSlot);
+
+                // PlayerProfile is the first time we see the character name on the network.
+                if (metadata.SessionId == -1)
+                {
+                    GlassContext.SessionRegistry.IdentifyConnection(name, metadata);
+                    DebugLog.Write(LogChannel.Inference, "identifying port " + metadata.DestPort + " as " + name);
+                    GlassContext.SessionRegistry.FindConnectionByCharacter(name);
+                }
+
+                DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
+                    + _opcodeName + " length=" + data.Length
+                    + " name=" + name + " characterId=" + character.CharacterId
+                    + " level=" + character.Level + " hp=" + character.MaxHP + " mana=" + character.MaxMana);
+
             }
-
-            character.Level = bag.GetUIntAt(_levelSlot);
-            character.PracticePoints = bag.GetUIntAt(_practicePointsSlot);
-            character.MaxHP = bag.GetUIntAt(_hitpointsSlot);
-            character.MaxMana = bag.GetUIntAt(_manaSlot);
-
-            character.Strength = bag.GetUIntAt(_strengthSlot);
-            character.Stamina = bag.GetUIntAt(_staminaSlot);
-            character.Charisma = bag.GetUIntAt(_charismaSlot);
-            character.Dexterity = bag.GetUIntAt(_dexteritySlot);
-            character.Intelligence = bag.GetUIntAt(_intelligenceSlot);
-            character.Agility = bag.GetUIntAt(_agilitySlot);
-            character.Wisdom = bag.GetUIntAt(_wisdomSlot);
-
-            character.Platinum = bag.GetUIntAt(_platinumCarriedSlot);
-            character.Gold = bag.GetUIntAt(_goldCarriedSlot);
-            character.Silver = bag.GetUIntAt(_silverCarriedSlot);
-            character.Copper = bag.GetUIntAt(_copperCarriedSlot);
-
-            // PlayerProfile is the first time we see the character name on the network.
-            if (metadata.SessionId == -1)
-            {
-                GlassContext.SessionRegistry.IdentifyConnection(name, metadata);
-                DebugLog.Write(LogChannel.Inference, "identifying port " + metadata.DestPort + " as " + name);
-                GlassContext.SessionRegistry.FindConnectionByCharacter(name);
-            }
-
-            DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-                + _opcodeName + " length=" + data.Length
-                + " name=" + name + " characterId=" + character.CharacterId
-                + " level=" + character.Level + " hp=" + character.MaxHP + " mana=" + character.MaxMana);
         }
         finally
         {
-            bag.Release();
+            extractor.Release();
         }
     }
-
-
 
     private static readonly Dictionary<uint, string> ClassNames = new Dictionary<uint, string>()
     {
