@@ -53,8 +53,6 @@ public class PacketCatalog
         _byOpcode = new Dictionary<OpcodeValue, List<CatalogedPacket>>();
         _stats = new Dictionary<OpcodeValue, OpcodeStats>();
         GlassContext.PacketBus.Subscribe(HandleAppPacket);
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "PacketCatalog.ctor: created and subscribed to GlassContext.PacketBus");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -158,7 +156,7 @@ public class PacketCatalog
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "PacketCatalog.PacketsFor: no bucket for opcode=0x"
-                    + opcode);
+                    + opcode, LogLevel.Warn);
                 return results;
             }
 
@@ -204,9 +202,6 @@ public class PacketCatalog
             OpcodeStats stats;
             if (!_stats.TryGetValue(opcode, out stats))
             {
-/*                DebugLog.Write(LogChannel.InferenceDebug,
-                    "PacketCatalog.StatsFor: no stats for opcode=0x"
-                    + opcode);*/
                 return null;
             }
             return stats;
@@ -273,7 +268,7 @@ public class PacketCatalog
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "PacketCatalog.PacketAt: index " + packetIndex
-                    + " out of range (count=" + _packets.Count + ")");
+                    + " out of range (count=" + _packets.Count + ")", LogLevel.Error);
                 return null;
             }
             return _packets[(int)packetIndex];
@@ -295,6 +290,6 @@ public class PacketCatalog
             _byOpcode.Clear();
             _stats.Clear();
         }
-        DebugLog.Write(LogChannel.InferenceDebug, "PacketCatalog.Clear: cleared");
+        DebugLog.Write(LogChannel.InferenceDebug, "PacketCatalog.Clear: cleared", LogLevel.Trace);
     }
 }

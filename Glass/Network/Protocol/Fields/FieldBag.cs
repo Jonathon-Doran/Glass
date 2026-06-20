@@ -66,6 +66,28 @@ public sealed class FieldBag
         _lastChildGate = GateHandle.None;
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Invalidate
+    //
+    // Revokes this bag's tree membership by setting its collection handle to
+    // CollectionHandle.None.  A bag whose collection is None is not an instance in the
+    // extraction tree and is skipped by traversals that walk the bag store.  Called when an
+    // instance fails extraction and is rolled back: the bag keeps its slot in the store so the
+    // handles addressing later bags stay valid, but it no longer counts as a tree node.
+    //
+    // The mark is one-way and needs no inverse.  The bag's lease is not touched here; it is
+    // released by the end-of-extraction sweep like every other bag.  When the bag is later
+    // taken from the free list its fields are reset wholesale by Initialize, which overwrites
+    // this mark.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void Invalidate()
+    {
+        DebugLog.Write(LogChannel.Fields, "FieldBag.Invalidate: bag for collection "
+            + CollectionName + " marked not-a-member, collection set to None");
+
+        _collectionHandle = CollectionHandle.None;
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // CollectionName
     //

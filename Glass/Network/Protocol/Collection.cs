@@ -85,10 +85,6 @@ public struct Collection
             _slotCount = (ushort)value.Length;
             _arenaEstimate = ((uint)value.Length * NameArenaAllowance)
                             + (stringFieldCount * StringArenaAllowance);
-
-            DebugLog.Write(LogChannel.Fields, "Collection.Fields set: " + _name
-                + " fields " + _slotCount + " strings " + stringFieldCount
-                + " arenaEstimate " + _arenaEstimate);
         }
     }
 

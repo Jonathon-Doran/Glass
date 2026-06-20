@@ -146,7 +146,7 @@ public class SessionRegistry
         }
 
 
-        DebugLog.Write($"SessionRegistry.OnSessionConnected: session={sessionName} count={_sessionCount} character={characterName} pid={pid} hwnd={hwnd}");
+        DebugLog.Write(LogChannel.Input, $"SessionRegistry.OnSessionConnected: session={sessionName} count={_sessionCount} character={characterName} pid={pid} hwnd={hwnd}");
 
     }
 

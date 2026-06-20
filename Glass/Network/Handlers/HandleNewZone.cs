@@ -22,6 +22,7 @@ public class HandleNewZone : IHandleOpcodes
     private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
+    private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _shortNameSlot;
     private readonly SlotId _longNameSlot;
@@ -46,6 +47,7 @@ public class HandleNewZone : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_NewZone");
+        _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         _shortNameSlot = _registry.IndexOfField(_collectionHandle, "short_name");
         _longNameSlot = _registry.IndexOfField(_collectionHandle, "long_name");
@@ -98,31 +100,27 @@ public class HandleNewZone : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-/*        string shortName;
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        string shortName;
         string longName;
         uint zoneId;
 
-        FieldBag bag = _registry.Rent(_collectionHandle);
         try
         {
-            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
-
-            ReadOnlySpan<byte> snameBytes = bag.GetBytesAt(_shortNameSlot);
-            shortName = Encoding.ASCII.GetString(snameBytes);
-
-            ReadOnlySpan<byte> lnameBytes = bag.GetBytesAt(_longNameSlot);
-            longName = Encoding.ASCII.GetString(lnameBytes);
-
-
-            zoneId = bag.GetUIntAt(_zoneIdSlot);
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            shortName = extractor.GetStringAt(_shortNameSlot);
+            longName = extractor.GetStringAt(_longNameSlot);
+            zoneId = extractor.GetUIntAt(_zoneIdSlot);
         }
         finally
         {
-            bag.Release();
+            extractor.Release();
         }
 
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-            + _opcodeName + " length=" + data.Length);*/
+                    + _opcodeName + " length=" + data.Length);
+        DebugLog.Write(LogChannel.Opcodes, "Entered " + longName + "(" + shortName + "), zoneId="
+            + zoneId);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

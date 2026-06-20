@@ -55,9 +55,9 @@ public class PcapFileReader
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public int ProcessFile(string filePath, string? bpfFilter = null, IProgress<int>? progress = null)
     {
-        DebugLog.Write("---------");
+        DebugLog.Write(LogChannel.LowNetwork, "---------");
         DebugLog.Write(LogChannel.LowNetwork, "PcapFileReader.ProcessFile: opening '" + filePath + "'");
-        DebugLog.Write("---------");
+        DebugLog.Write(LogChannel.LowNetwork, "---------");
 
         // Lock out other packet sources until we are done
         if (!GlassContext.TryAcquirePacketSource())

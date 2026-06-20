@@ -21,6 +21,7 @@ public class HandleSessionDisconnect : IHandleOpcodes
     private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
+    private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _sessionIdSlot;
 
@@ -43,6 +44,7 @@ public class HandleSessionDisconnect : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_SessionDisconnect");
+        _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         _sessionIdSlot = _registry.IndexOfField(_collectionHandle, "session_id");
     }
@@ -75,22 +77,24 @@ public class HandleSessionDisconnect : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-/*        FieldBag bag = _registry.Rent(_collectionHandle);
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        uint sessionId;
 
         try
         {
-            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
-
-            uint sessionId = bag.GetUIntAt(_sessionIdSlot);
-
-            DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-                + _opcodeName + " length=" + data.Length);
-            DebugLog.Write(LogChannel.Opcodes, "sessionId=" + sessionId);
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            sessionId = extractor.GetUIntAt(_sessionIdSlot);
         }
         finally
         {
-            bag.Release();
-        }*/
+            extractor.Release();
+        }
+
+        /*
+        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
+                + _opcodeName + " length=" + data.Length);
+        DebugLog.Write(LogChannel.Opcodes, "sessionId=" + sessionId);
+        */
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

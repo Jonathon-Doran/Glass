@@ -128,7 +128,7 @@ public partial class CollectionEditor : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     protected override void OnClosed(EventArgs e)
     {
-        DebugLog.Write(LogChannel.Fields, "CollectionEditor.OnClosed: disposing connection");
+        DebugLog.Write(LogChannel.Fields, "CollectionEditor.OnClosed: disposing connection", LogLevel.Trace);
 
         _connection.Dispose();
 
@@ -147,7 +147,7 @@ public partial class CollectionEditor : Window
         string[] encodingStrings = GlassContext.PatchRegistry.GetEncodingStrings(patchLevel);
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.PopulateEncodingDropdown: "
-            + encodingStrings.Length + " encoding(s) for patchLevel=" + patchLevel);
+            + encodingStrings.Length + " encoding(s) for patchLevel=" + patchLevel, LogLevel.Trace);
 
         FieldEncodingColumn.ItemsSource = encodingStrings;
     }
@@ -163,7 +163,7 @@ public partial class CollectionEditor : Window
         List<PatchLevel> patchLevels = PatchRegistry.GetAllPatchLevels();
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.PopulatePatchLevelDropdown: "
-            + patchLevels.Count + " patch level(s) loaded");
+            + patchLevels.Count + " patch level(s) loaded", LogLevel.Trace);
 
         PatchLevelComboBox.ItemsSource = patchLevels;
         PatchLevelComboBox.SelectedItem = GlassContext.CurrentPatchLevel;
@@ -208,7 +208,7 @@ public partial class CollectionEditor : Window
         items.Add(sentinel);
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.PopulateCollectionDropdown: "
-            + (items.Count - 1) + " collection(s) plus sentinel for patchLevel=" + patchLevel);
+            + (items.Count - 1) + " collection(s) plus sentinel for patchLevel=" + patchLevel, LogLevel.Trace);
 
         CollectionComboBox.ItemsSource = items;
     }
@@ -244,7 +244,7 @@ public partial class CollectionEditor : Window
         }
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.PopulateGatesDropdown: "
-            + KnownGateNames.Count + " gate name(s) for patchLevel=" + patchLevel);
+            + KnownGateNames.Count + " gate name(s) for patchLevel=" + patchLevel, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -279,14 +279,14 @@ public partial class CollectionEditor : Window
 
         if (raw == null)
         {
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.ParseGateExpression: null expression, parse failed");
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.ParseGateExpression: null expression, parse failed", LogLevel.Warn);
             return false;
         }
 
         string trimmed = raw.Trim();
         if (trimmed.Length == 0)
         {
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.ParseGateExpression: empty expression, parse failed");
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.ParseGateExpression: empty expression, parse failed", LogLevel.Warn);
             return false;
         }
 
@@ -298,7 +298,7 @@ public partial class CollectionEditor : Window
             gate.CountFieldName = string.Empty;
 
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.ParseGateExpression: parsed '"
-                + trimmed + "' as Once child='" + gate.ChildCollection + "'");
+                + trimmed + "' as Once child='" + gate.ChildCollection + "'", LogLevel.Trace);
             return true;
         }
 
@@ -308,14 +308,14 @@ public partial class CollectionEditor : Window
         if (childPart.Length == 0)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.ParseGateExpression: expression '"
-                + trimmed + "' has no child collection before '*', parse failed");
+                + trimmed + "' has no child collection before '*', parse failed", LogLevel.Warn);
             return false;
         }
 
         if (suffixPart.Length == 0)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.ParseGateExpression: expression '"
-                + trimmed + "' has '*' but no count field or UntilEnd, parse failed");
+                + trimmed + "' has '*' but no count field or UntilEnd, parse failed", LogLevel.Warn);
             return false;
         }
 
@@ -327,7 +327,7 @@ public partial class CollectionEditor : Window
             gate.CountFieldName = string.Empty;
 
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.ParseGateExpression: parsed '"
-                + trimmed + "' as UntilEnd child='" + gate.ChildCollection + "'");
+                + trimmed + "' as UntilEnd child='" + gate.ChildCollection + "'", LogLevel.Trace);
             return true;
         }
 
@@ -336,7 +336,7 @@ public partial class CollectionEditor : Window
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.ParseGateExpression: parsed '"
             + trimmed + "' as Times child='" + gate.ChildCollection + "' countField='"
-            + gate.CountFieldName + "'");
+            + gate.CountFieldName + "'", LogLevel.Trace);
         return true;
     }
 
@@ -365,7 +365,7 @@ public partial class CollectionEditor : Window
         if (string.IsNullOrWhiteSpace(childCollection) == true)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.FormatGateExpression: empty child collection, "
-                + "returning empty expression");
+                + "returning empty expression", LogLevel.Warn);
             return string.Empty;
         }
 
@@ -386,13 +386,13 @@ public partial class CollectionEditor : Window
 
             default:
                 DebugLog.Write(LogChannel.Fields, "CollectionEditor.FormatGateExpression: unhandled kind "
-                    + kind + " for child '" + childCollection + "', returning child name only");
+                    + kind + " for child '" + childCollection + "', returning child name only", LogLevel.Warn);
                 result = childCollection;
                 break;
         }
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.FormatGateExpression: child='" + childCollection
-            + "' kind=" + kind + " countField='" + countFieldName + "' -> '" + result + "'");
+            + "' kind=" + kind + " countField='" + countFieldName + "' -> '" + result + "'", LogLevel.Trace);
         return result;
     }
 
@@ -471,7 +471,7 @@ public partial class CollectionEditor : Window
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.RecomputeAnyDetail: field='"
             + (row["field_name"] as string ?? string.Empty) + "' relativeTo=" + relativeToShows
-            + " gate=" + gateShows + " predicate=" + predicateShows + " anyDetail=" + anyDetail);
+            + " gate=" + gateShows + " predicate=" + predicateShows + " anyDetail=" + anyDetail, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -526,7 +526,7 @@ public partial class CollectionEditor : Window
         if (rowFound == false)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.LoadGateExpression: no Gate row "
-                + "named '" + gateName + "' for patchLevel=" + patchLevel + ", returning empty expression");
+                + "named '" + gateName + "' for patchLevel=" + patchLevel + ", returning empty expression", LogLevel.Warn);
             return string.Empty;
         }
 
@@ -535,14 +535,14 @@ public partial class CollectionEditor : Window
         if (kindParsed == false)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.LoadGateExpression: Gate '" + gateName
-                + "' has unparsable kind '" + kindString + "', returning empty expression");
+                + "' has unparsable kind '" + kindString + "', returning empty expression", LogLevel.Warn);
             return string.Empty;
         }
 
         string expression = FormatGateExpression(childCollection, kind, countFieldName);
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.LoadGateExpression: '" + gateName
-            + "' -> '" + expression + "' for patchLevel=" + patchLevel);
+            + "' -> '" + expression + "' for patchLevel=" + patchLevel, LogLevel.Trace);
         return expression;
     }
 
@@ -636,7 +636,7 @@ public partial class CollectionEditor : Window
         table.AcceptChanges();
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.LoadFieldsTable: " + table.Rows.Count
-            + " field(s) for " + patchLevel + " collection=" + collectionName);
+            + " field(s) for " + patchLevel + " collection=" + collectionName, LogLevel.Trace);
 
         _fieldsTable = table;
         FieldsGrid.ItemsSource = table.DefaultView;
@@ -663,13 +663,13 @@ public partial class CollectionEditor : Window
         if (PatchLevelComboBox.SelectedItem == null)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.PatchLevelComboBox_SelectionChanged: "
-                + "no selection");
+                + "no selection", LogLevel.Trace);
             return;
         }
 
         PatchLevel patchLevel = (PatchLevel)PatchLevelComboBox.SelectedItem;
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.PatchLevelComboBox_SelectionChanged: "
-            + "selected " + patchLevel);
+            + "selected " + patchLevel, LogLevel.Trace);
 
         PopulateCollectionDropdown(patchLevel);
         PopulateGatesDropdown(patchLevel);
@@ -692,14 +692,14 @@ public partial class CollectionEditor : Window
         if (CollectionComboBox.SelectedItem == null)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.CollectionComboBox_SelectionChanged: "
-                + "no selection");
+                + "no selection", LogLevel.Trace);
             return;
         }
 
         if (PatchLevelComboBox.SelectedItem == null)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.CollectionComboBox_SelectionChanged: "
-                + "collection selected but no patch level, ignoring");
+                + "collection selected but no patch level, ignoring", LogLevel.Warn);
             return;
         }
 
@@ -717,7 +717,7 @@ public partial class CollectionEditor : Window
             CollectionNameTextBox.Focus();
 
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.CollectionComboBox_SelectionChanged: "
-                + "sentinel selected, armed for new collection, form cleared");
+                + "sentinel selected, armed for new collection, form cleared", LogLevel.Trace);
             return;
         }
 
@@ -725,7 +725,7 @@ public partial class CollectionEditor : Window
         CollectionNameTextBox.Text = item.CollectionName;
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.CollectionComboBox_SelectionChanged: "
-            + "patchLevel=" + patchLevel + " collection=" + item.CollectionName);
+            + "patchLevel=" + patchLevel + " collection=" + item.CollectionName, LogLevel.Trace);
 
         LoadFieldsTable(patchLevel, item.CollectionName);
     }
@@ -745,7 +745,7 @@ public partial class CollectionEditor : Window
         if (PatchLevelComboBox.SelectedItem == null)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.ClearButton_Click: "
-                + "no patch level selected, ignoring");
+                + "no patch level selected, ignoring", LogLevel.Trace);
             return;
         }
 
@@ -756,7 +756,7 @@ public partial class CollectionEditor : Window
         _fieldsTable = CreateFieldsTable();
         FieldsGrid.ItemsSource = _fieldsTable.DefaultView;
 
-        DebugLog.Write(LogChannel.Fields, "CollectionEditor.ClearButton_Click: cleared to empty state");
+        DebugLog.Write(LogChannel.Fields, "CollectionEditor.ClearButton_Click: cleared to empty state", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -770,7 +770,6 @@ public partial class CollectionEditor : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.Fields, "CollectionEditor.CloseButton_Click: closing");
         Close();
     }
 
@@ -790,7 +789,7 @@ public partial class CollectionEditor : Window
         if (_fieldsTable == null)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.AddFieldButton_Click: "
-                + "no collection loaded, ignoring");
+                + "no collection loaded, ignoring", LogLevel.Warn);
             return;
         }
 
@@ -808,7 +807,7 @@ public partial class CollectionEditor : Window
         _fieldsTable.Rows.Add(newRow);
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.AddFieldButton_Click: "
-            + "added new field row, total now " + _fieldsTable.Rows.Count);
+            + "added new field row, total now " + _fieldsTable.Rows.Count, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -827,14 +826,14 @@ public partial class CollectionEditor : Window
         if (_fieldsTable == null)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.DeleteFieldButton_Click: "
-                + "no collection loaded, ignoring");
+                + "no collection loaded, ignoring", LogLevel.Warn);
             return;
         }
 
         if (FieldsGrid.SelectedItem == null)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.DeleteFieldButton_Click: "
-                + "no row selected, ignoring");
+                + "no row selected, ignoring", LogLevel.Warn);
             return;
         }
 
@@ -842,14 +841,14 @@ public partial class CollectionEditor : Window
         if (selected == null)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.DeleteFieldButton_Click: "
-                + "placeholder row selected, ignoring");
+                + "placeholder row selected, ignoring", LogLevel.Warn);
             return;
         }
 
         selected.Row.Delete();
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.DeleteFieldButton_Click: "
-            + "deleted row, table now has " + _fieldsTable.Rows.Count + " row(s)");
+            + "deleted row, table now has " + _fieldsTable.Rows.Count + " row(s)", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -875,7 +874,7 @@ public partial class CollectionEditor : Window
         if (PatchLevelComboBox.SelectedItem == null)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.SaveButton_Click: "
-                + "no patch level selected, ignoring");
+                + "no patch level selected, ignoring", LogLevel.Warn);
             return;
         }
 
@@ -883,7 +882,7 @@ public partial class CollectionEditor : Window
         if (newName.Length == 0)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.SaveButton_Click: "
-                + "empty collection name, ignoring");
+                + "empty collection name, ignoring", LogLevel.Error);
             MessageBox.Show(this, "Collection name is required.", "Save Failed",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             return;
@@ -891,7 +890,7 @@ public partial class CollectionEditor : Window
 
         PatchLevel patchLevel = (PatchLevel)PatchLevelComboBox.SelectedItem;
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.SaveButton_Click: starting save, "
-            + "patchLevel=" + patchLevel + " name=" + newName + " loadedName=" + _loadedCollectionName);
+            + "patchLevel=" + patchLevel + " name=" + newName + " loadedName=" + _loadedCollectionName, LogLevel.Trace);
 
         using SqliteTransaction tx = _connection.BeginTransaction();
 
@@ -902,13 +901,13 @@ public partial class CollectionEditor : Window
             SaveFieldsTable(tx, patchLevel, newName);
 
             tx.Commit();
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.SaveButton_Click: committed");
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.SaveButton_Click: committed", LogLevel.Trace);
         }
         catch (Exception ex)
         {
             tx.Rollback();
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.SaveButton_Click: rolled back, "
-                + ex.GetType().Name + ": " + ex.Message);
+                + ex.GetType().Name + ": " + ex.Message, LogLevel.Error);
             MessageBox.Show(this, "Save failed: " + ex.Message, "Save Failed",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             return;
@@ -950,7 +949,7 @@ public partial class CollectionEditor : Window
         if (selected == null)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.ToggleRelativeToButton_Click: "
-                + "no field row selected, ignoring");
+                + "no field row selected, ignoring", LogLevel.Warn);
             return;
         }
 
@@ -961,7 +960,7 @@ public partial class CollectionEditor : Window
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.ToggleRelativeToButton_Click: "
             + "field='" + (selected["field_name"] as string ?? string.Empty)
-            + "' show_relative_to " + current + " -> " + toggled);
+            + "' show_relative_to " + current + " -> " + toggled, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -982,7 +981,7 @@ public partial class CollectionEditor : Window
         if (selected == null)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.ToggleGateButton_Click: "
-                + "no field row selected, ignoring");
+                + "no field row selected, ignoring", LogLevel.Warn);
             return;
         }
 
@@ -993,7 +992,7 @@ public partial class CollectionEditor : Window
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.ToggleGateButton_Click: "
             + "field='" + (selected["field_name"] as string ?? string.Empty)
-            + "' show_gate " + current + " -> " + toggled);
+            + "' show_gate " + current + " -> " + toggled, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -1015,7 +1014,7 @@ public partial class CollectionEditor : Window
         if (selected == null)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.TogglePredicateButton_Click: "
-                + "no field row selected, ignoring");
+                + "no field row selected, ignoring", LogLevel.Warn);
             return;
         }
 
@@ -1026,7 +1025,7 @@ public partial class CollectionEditor : Window
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.TogglePredicateButton_Click: "
             + "field='" + (selected["field_name"] as string ?? string.Empty)
-            + "' show_predicate " + current + " -> " + toggled);
+            + "' show_predicate " + current + " -> " + toggled, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -1056,14 +1055,14 @@ public partial class CollectionEditor : Window
             cmd.ExecuteNonQuery();
 
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.ApplyCollectionName: inserted "
-                + "FieldCollection name=" + newName + " for patchLevel=" + patchLevel);
+                + "FieldCollection name=" + newName + " for patchLevel=" + patchLevel, LogLevel.Trace);
             return;
         }
 
         if (_loadedCollectionName == newName)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.ApplyCollectionName: name unchanged ("
-                + newName + "), nothing to do");
+                + newName + "), nothing to do", LogLevel.Trace);
             return;
         }
 
@@ -1158,7 +1157,7 @@ public partial class CollectionEditor : Window
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.RenameCollection: renamed '" + oldName
             + "' to '" + newName + "' (gate '" + oldGate + "' to '" + newGate
-            + "') for patchLevel=" + patchLevel);
+            + "') for patchLevel=" + patchLevel, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -1196,7 +1195,7 @@ public partial class CollectionEditor : Window
         {
             string scalarEncoding = row["encoding"] as string ?? string.Empty;
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.ResolveFieldEncoding: field '"
-                + fieldName + "' ungated, encoding='" + scalarEncoding + "'");
+                + fieldName + "' ungated, encoding='" + scalarEncoding + "'", LogLevel.Trace);
             return scalarEncoding;
         }
 
@@ -1214,7 +1213,7 @@ public partial class CollectionEditor : Window
             gateName = GateNameFromCell(gateRaw);
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.ResolveFieldEncoding: field '"
                 + fieldName + "' child '" + gate.ChildCollection + "' already prefixed, "
-                + "using as gate name");
+                + "using as gate name", LogLevel.Trace);
         }
         else
         {
@@ -1224,7 +1223,7 @@ public partial class CollectionEditor : Window
         UpsertGate(tx, patchLevel, gateName, gate);
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.ResolveFieldEncoding: field '"
-            + fieldName + "' gated, encoding='" + gateName + "'");
+            + fieldName + "' gated, encoding='" + gateName + "'", LogLevel.Trace);
         return gateName;
     }
 
@@ -1264,14 +1263,14 @@ public partial class CollectionEditor : Window
         if (operatorIndex <= 0)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.ExtractPredicateSourceName: '"
-                + trimmed + "' has no operator or no left operand, returning empty");
+                + trimmed + "' has no operator or no left operand, returning empty", LogLevel.Warn);
             return string.Empty;
         }
 
         string sourceName = trimmed.Substring(0, operatorIndex).Trim();
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.ExtractPredicateSourceName: '"
-            + trimmed + "' -> source '" + sourceName + "'");
+            + trimmed + "' -> source '" + sourceName + "'", LogLevel.Trace);
         return sourceName;
     }
 
@@ -1429,7 +1428,7 @@ public partial class CollectionEditor : Window
         }
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.ValidateFields: " + fieldCount
-            + " field(s) validated, no reference or cycle errors");
+            + " field(s) validated, no reference or cycle errors", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -1540,7 +1539,7 @@ public partial class CollectionEditor : Window
 
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.UpsertGate: updated Gate '"
                 + gateName + "' kind=" + gate.Kind + " child='" + gate.ChildCollection
-                + "' countField='" + gate.CountFieldName + "' for patchLevel=" + patchLevel);
+                + "' countField='" + gate.CountFieldName + "' for patchLevel=" + patchLevel, LogLevel.Trace);
             return;
         }
 
@@ -1560,7 +1559,7 @@ public partial class CollectionEditor : Window
 
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.UpsertGate: inserted Gate '"
                 + gateName + "' kind=" + gate.Kind + " child='" + gate.ChildCollection
-                + "' countField='" + gate.CountFieldName + "' for patchLevel=" + patchLevel);
+                + "' countField='" + gate.CountFieldName + "' for patchLevel=" + patchLevel, LogLevel.Trace);
         }
     }
 
@@ -1668,7 +1667,7 @@ public partial class CollectionEditor : Window
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.SaveFieldsTable: collection='"
             + collectionName + "' inserted=" + inserted + " updated=" + updated
-            + " deleted=" + deleted);
+            + " deleted=" + deleted, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -1698,14 +1697,14 @@ public partial class CollectionEditor : Window
         if (originalName.Length == 0)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.ReconcileOldGate: field '"
-                + fieldName + "' had no original gate, nothing to delete");
+                + fieldName + "' had no original gate, nothing to delete", LogLevel.Warn);
             return;
         }
 
         if (originalName == newName)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.ReconcileOldGate: field '"
-                + fieldName + "' gate unchanged ('" + originalName + "'), nothing to delete");
+                + fieldName + "' gate unchanged ('" + originalName + "'), nothing to delete", LogLevel.Trace);
             return;
         }
 
@@ -1722,7 +1721,7 @@ public partial class CollectionEditor : Window
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.ReconcileOldGate: field '"
             + fieldName + "' gate changed from '" + originalName + "' to '" + newName
-            + "', deleted old Gate for patchLevel=" + patchLevel + " rows=" + affected);
+            + "', deleted old Gate for patchLevel=" + patchLevel + " rows=" + affected, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

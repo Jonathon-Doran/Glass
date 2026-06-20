@@ -247,9 +247,6 @@ public class PatchData
         for (uint collectionIndex = 0; collectionIndex < collectionCount; collectionIndex++)
         {
             CollectionIndex collection = (CollectionIndex) collectionIndex;
-            
-            DebugLog.Write(LogChannel.Fields, "collection " + GetCollectionNameFromIndex(collection) +
-                " has handle " + collectionIndex);
 
             LoadFields(collection, conn);
         }
@@ -315,8 +312,6 @@ public class PatchData
 
         int count = Convert.ToInt32(result);
 
-        DebugLog.Write(LogChannel.Opcodes, "PatchData.CountPatchOpcodes: " + count
-            + " PatchOpcode row(s) for patchLevel=" + PatchLevel);
         return count;
     }
 
@@ -354,8 +349,6 @@ public class PatchData
 
         int count = Convert.ToInt32(result);
 
-        DebugLog.Write(LogChannel.Opcodes, "PatchData.CountCollections: " + count
-            + " FieldCollection row(s) for patchLevel=" + PatchLevel);
         return count;
     }
 
@@ -393,8 +386,6 @@ public class PatchData
 
         uint count = Convert.ToUInt32(result);
 
-        DebugLog.Write(LogChannel.Fields, "PatchData.CountGates: " + count
-            + " Gate row(s) for patchLevel=" + PatchLevel);
         return count;
     }
 
@@ -476,9 +467,6 @@ public class PatchData
 
             _opcodes[opcodeHandle] = record;
 
-            DebugLog.Write(LogChannel.Opcodes, "Register opcode " + patchOpcode
-                + " as handle " + opcodeHandle + " with gate handle " + gateHandle);
-
             _opcodeHandlesByName[opcodeName] = opcodeHandle;
             _opcodeHandlesByPatchOpcode[patchOpcode] = opcodeHandle;
 
@@ -488,8 +476,6 @@ public class PatchData
             handleIndex = handleIndex + 1;
         }
 
-        DebugLog.Write(LogChannel.Opcodes, "PatchData.LoadPatchOpcodes: loaded "
-            + handleIndex + " PatchOpcode(s) for patchLevel=" + PatchLevel);
         return handleIndex;
     }
 
@@ -538,8 +524,6 @@ public class PatchData
             handleIndex = handleIndex + 1;
         }
 
-        DebugLog.Write(LogChannel.Fields, "PatchData.LoadPatchCollections: loaded "
-            + handleIndex + " FieldCollection(s) for patchLevel=" + PatchLevel);
         return handleIndex;
     }
 
@@ -639,16 +623,9 @@ public class PatchData
                     + "' carries count field '" + fieldName + "', pending resolution at reference time");
             }
 
-            string childName = GetCollectionNameFromIndex(childCollection);
-            DebugLog.Write(LogChannel.Fields, "PatchData.LoadGateDefinitions: loaded gate '" + gateName
-                + "' kind=" + kind + " childCollection=" + childName
-                + " at index " + childCollection);
-
             handleIndex = handleIndex + 1;
         }
 
-        DebugLog.Write(LogChannel.Fields, "PatchData.LoadGateDefinitions: loaded " + handleIndex
-            + " gate definition(s) for patchLevel=" + PatchLevel);
         return handleIndex;
     }
 
@@ -808,9 +785,6 @@ public class PatchData
                     pendingPredicate.OwnerFieldName = fieldName;
                     pendingPredicate.RawPredicate = predicateString;
                     _pendingFieldPredicates!.Add(pendingPredicate);
-                    DebugLog.Write(LogChannel.Fields, "PatchData.LoadFields: collection='"
-                        + collectionName + "' field='" + fieldName
-                        + "' carries predicate '" + predicateString + "', pending resolution");
                 }
 
                 rowPosition = rowPosition + 1;
@@ -1095,15 +1069,8 @@ public class PatchData
             _gate[gateHandle].FieldSlot = slot;
             _gate[gateHandle].FieldSlotLocal = dotIndex < 0;
             resolvedCount = resolvedCount + 1;
-
-            DebugLog.Write(LogChannel.Fields, "PatchData.ResolveGates: gate '"
-                + _gate[gateHandle].Name + "' count expression '" + expression
-                + "' resolved to slot " + slot + " in collection '"
-                + GetCollectionNameFromIndex(sourceCollection) + "'");
         }
 
-        DebugLog.Write(LogChannel.Fields, "PatchData.ResolveGates: resolved " + resolvedCount
-            + " gate count field(s) for patchLevel=" + PatchLevel);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1265,8 +1232,6 @@ public class PatchData
         bool found = _opcodeHandlesByName.TryGetValue(opcodeName, out opcodeHandle);
         if (found == false)
         {
-            DebugLog.Write(LogChannel.Opcodes, "PatchData.GetBaseOpcode: unknown opcode name '"
-                + opcodeName + "' in patchLevel=" + PatchLevel + ", returning None");
             return PatchOpcode.None;
         }
 
@@ -1293,15 +1258,10 @@ public class PatchData
         bool found = _opcodeHandlesByPatchOpcode.TryGetValue(patchOpcode, out opcodeHandle);
         if (found == false)
         {
-            DebugLog.Write(LogChannel.Opcodes, "PatchData.GetOpcodeCollection: opcode "
-                + patchOpcode + " not in patchLevel=" + PatchLevel
-                + ", returning CollectionHandle.None");
             return CollectionHandle.None;
         }
 
         CollectionHandle collectionHandle = _opcodes[opcodeHandle].CollectionHandle;
-        DebugLog.Write(LogChannel.Opcodes, "PatchData.GetOpcodeCollection: opcode "
-            + patchOpcode + " resolves to collection handle " + collectionHandle);
         return collectionHandle;
     }
 

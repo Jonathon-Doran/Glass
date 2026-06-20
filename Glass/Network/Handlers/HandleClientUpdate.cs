@@ -16,7 +16,7 @@ namespace Glass.Network.Handlers;
 //
 // Handles OP_ClientUpdate packets.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleClientUpdate : IHandleOpcodes
+public class HandleClientUpdate
 {
     private readonly string _opcodeName = "OP_ClientUpdate";
     private readonly CollectionHandle _collectionHandle;
@@ -24,8 +24,6 @@ public class HandleClientUpdate : IHandleOpcodes
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
     private readonly GateDefinitionHandle _top_level_gate;
-
-    private readonly CollectionHandle _collectionClientUpdate;
 
     private readonly SlotId _sequenceSlot;
     private readonly SlotId _playerIdSlot;
@@ -88,10 +86,28 @@ public class HandleClientUpdate : IHandleOpcodes
     //
     // Dispatches to direction-specific handlers.
     //
-    // data:      The application payload
+    // data:       The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    {
+        switch (metadata.Channel)
+        {
+            case SoeConstants.StreamId.StreamClientToZone:
+                HandleClientToZone(data, metadata);
+                break;
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // HandleClientToZone
+    //
+    // Processes client-to-zone
+    //
+    // data:    The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         FieldExtractor extractor = GlassContext.FieldExtractor;
 

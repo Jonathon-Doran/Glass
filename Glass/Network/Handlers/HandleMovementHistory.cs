@@ -20,6 +20,7 @@ public class HandleMovementHistory : IHandleOpcodes
     private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
+    private readonly GateDefinitionHandle _top_level_gate;
 
     private bool _tooSmallObserved = false;
     private bool _oddSizeObserved = false;
@@ -51,6 +52,7 @@ public class HandleMovementHistory : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_MovementHistory");
+        _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         _xPosSlot = _registry.IndexOfField(_collectionHandle, "x_pos");
         _yPosSlot = _registry.IndexOfField(_collectionHandle, "y_pos");
@@ -129,6 +131,7 @@ public class HandleMovementHistory : IHandleOpcodes
         public ushort Timestamp;    // fine timestamp
         public ushort Sequence;     // rolling sequence number, with wrap
     }
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // HandleClientToServer
     //
@@ -141,7 +144,14 @@ public class HandleMovementHistory : IHandleOpcodes
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-    /*    Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+
+        float xPos;
+        float yPos;
+        float zPos;
+        uint moveState;
+        uint timestamp;
 
         if (character == null)
         {
@@ -149,50 +159,40 @@ public class HandleMovementHistory : IHandleOpcodes
             return;
         }
 
-        if (data.Length < 18)
-        {
-            _tooSmallObserved = true;
-            return;
-        }
-
-        if ((data.Length - 1) % 17 != 0)
-        {
-            _oddSizeObserved = true;
-            return;
-        }
-
-        int entryCount = (data.Length - 1) / 17;
-        byte trailingByte = data[data.Length - 1];
-        FieldBag bag = _registry.Rent(_collectionHandle);
-
         try
         {
-            for (int i = 0; i < entryCount; i++)
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            uint bagCount = extractor.BagCount(rootGate);
+
+            /*
+            DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName + " " + bagCount + " bags.");
+            */
+
+            for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
             {
-                bag.Clear();
-                ReadOnlySpan<byte> entry = data.Slice(i * 17, 17);
-                GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, entry, bag);
+                extractor.EnterGate(rootGate, bagIndex);
 
-                float xPos = bag.GetFloatAt(_xPosSlot);
-                float yPos = bag.GetFloatAt(_yPosSlot);
-                float zPos = bag.GetFloatAt(_zPosSlot);
-                uint moveState = bag.GetUIntAt(_movestateSlot);
-                uint timestamp = bag.GetUIntAt(_timestampSlot);
-
+                xPos = extractor.GetFloatAt(_xPosSlot);
+                yPos = extractor.GetFloatAt(_yPosSlot);
+                zPos = extractor.GetFloatAt(_zPosSlot);
+                moveState = extractor.GetUIntAt(_movestateSlot);
+                timestamp = extractor.GetUIntAt(_timestampSlot);
                 // movementState seems 2 when standing still, 1 when moving.   And 2 appears mid-movement during duplicate position
-                DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName + " entry[" + i + "]"
-                    + " X=" + xPos.ToString("F2")
-                    + " Y=" + yPos.ToString("F2")
-                    + " Z=" + zPos.ToString("F2")
-                    + " MoveState= " + moveState.ToString("x2")
-                    + " Timestamp= " + timestamp.ToString("x4")
-                );
+
+                // timestamp is a 16-bit unsigned timer that wraps under normal use
+                // I assume each zone has its own timer
+
+                /*
+                DebugLog.Write(LogChannel.Opcodes, "Entry " + bagIndex + "/" + bagCount +
+                    " position=(" + xPos + "," + yPos + "," + zPos + "), moveState=" + moveState +
+                    ", timestamp=" + timestamp);
+                */
             }
         }
         finally
         {
-            bag.Release();
-        }*/
+            extractor.Release();
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

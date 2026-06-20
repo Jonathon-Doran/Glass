@@ -19,6 +19,7 @@ public class HandleDeath : IHandleOpcodes
     private readonly PatchOpcode _opcodeHandled;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
+    private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _spawnIdSlot;
     private readonly SlotId _killerIdSlot;
@@ -42,6 +43,7 @@ public class HandleDeath : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_Death");
+        _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         _spawnIdSlot = _registry.IndexOfField(_collectionHandle, "spawn_id");
         _killerIdSlot = _registry.IndexOfField(_collectionHandle, "killer_id");
@@ -93,29 +95,22 @@ public class HandleDeath : IHandleOpcodes
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
-    {   
-        /*
+    {
+        FieldExtractor extractor = GlassContext.FieldExtractor;
         uint spawnId;
         uint killerId;
 
-        FieldBag bag = _registry.Rent(_collectionHandle);
         try
         {
-            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            spawnId = extractor.GetUIntAt(_spawnIdSlot);
+            killerId = extractor.GetUIntAt(_killerIdSlot);
 
-            spawnId = bag.GetUIntAt(_spawnIdSlot);
-            killerId = bag.GetUIntAt(_killerIdSlot);
         }
         finally
         {
-            bag.Release();
+            extractor.Release();
         }
-
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-            + _opcodeName + " length=" + data.Length);
-        DebugLog.Write(LogChannel.Opcodes, "Dead=" + spawnId + " (0x" + spawnId.ToString("x4") + ")");
-        DebugLog.Write(LogChannel.Opcodes, "Killer=" + killerId + " (0x" + killerId.ToString("x4") + ")");
-  */
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

@@ -21,6 +21,7 @@ public class HandleMobUpdate : IHandleOpcodes
     private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
+    private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _spawnIdSlot;
     private readonly SlotId _xPosSlot;
@@ -47,6 +48,7 @@ public class HandleMobUpdate : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_MobUpdate");
+        _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         _spawnIdSlot = _registry.IndexOfField(_collectionHandle, "spawn_id");
         _xPosSlot = _registry.IndexOfField(_collectionHandle, "x_pos");
@@ -104,32 +106,35 @@ public class HandleMobUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        /*uint spawnId;
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        uint spawnId;
         float xPos;
         float yPos;
         float zPos;
 
-        FieldBag bag = _registry.Rent(_collectionHandle);
         try
         {
-            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
 
-            spawnId = bag.GetUIntAt(_spawnIdSlot);
-            xPos = bag.GetFloatAt(_xPosSlot);
-            yPos = bag.GetFloatAt(_yPosSlot);
-            zPos = bag.GetFloatAt(_zPosSlot);
+            spawnId = extractor.GetUIntAt(_spawnIdSlot);
+            xPos = extractor.GetFloatAt(_xPosSlot);
+            yPos = extractor.GetFloatAt(_yPosSlot);
+            zPos = extractor.GetFloatAt(_zPosSlot);
         }
         finally
         {
-            bag.Release();
+            extractor.Release();
         }
+
 
         // short headingRaw = BinaryPrimitives.ReadInt16LittleEndian(data.Slice(12));
 
+        /*
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
             + _opcodeName + " spawnid: " + spawnId.ToString("x4") + " at ("
             + xPos.ToString("F2") + "," + yPos.ToString("F2") + "," + zPos.ToString("F2") + ")");
- */   }
+        */
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeHandled

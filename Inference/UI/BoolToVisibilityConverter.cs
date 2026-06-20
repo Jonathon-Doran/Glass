@@ -35,15 +35,15 @@ public class BoolToVisibilityConverter : IValueConverter
         {
             if (flag == true)
             {
-                DebugLog.Write(LogChannel.Fields, "BoolToVisibilityConverter.Convert: true, Visible");
+                DebugLog.Write(LogChannel.Fields, "BoolToVisibilityConverter.Convert: true, Visible", LogLevel.Trace);
                 return Visibility.Visible;
             }
 
-            DebugLog.Write(LogChannel.Fields, "BoolToVisibilityConverter.Convert: false, Collapsed");
+            DebugLog.Write(LogChannel.Fields, "BoolToVisibilityConverter.Convert: false, Collapsed", LogLevel.Trace);
             return Visibility.Collapsed;
         }
 
-        DebugLog.Write(LogChannel.Fields, "BoolToVisibilityConverter.Convert: non-bool, Collapsed");
+        DebugLog.Write(LogChannel.Fields, "BoolToVisibilityConverter.Convert: non-bool, Collapsed", LogLevel.Trace);
         return Visibility.Collapsed;
     }
 
@@ -62,7 +62,7 @@ public class BoolToVisibilityConverter : IValueConverter
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        DebugLog.Write(LogChannel.Fields, "BoolToVisibilityConverter.ConvertBack: not supported, throwing");
+        DebugLog.Write(LogChannel.Fields, "BoolToVisibilityConverter.ConvertBack: not supported, throwing", LogLevel.Error);
         throw new NotSupportedException("BoolToVisibilityConverter is one-way.");
     }
 }

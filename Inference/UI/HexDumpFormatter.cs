@@ -29,10 +29,10 @@ public static class HexDumpFormatter
     //
     // returns:   The formatted hex dump.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public static string Format(ReadOnlySpan<byte> payload, int maxBytes)
+    public static string Format(ReadOnlySpan<byte> payload, uint maxBytes)
     {
-        int payloadLength = payload.Length;
-        int displayLength;
+        uint payloadLength = (uint) payload.Length;
+        uint displayLength;
         if (maxBytes == int.MaxValue || payloadLength <= maxBytes)
         {
             displayLength = payloadLength;
@@ -42,12 +42,12 @@ public static class HexDumpFormatter
             displayLength = maxBytes;
         }
 
-        StringBuilder sb = new StringBuilder(displayLength * 4 + 80);
+        StringBuilder sb = new StringBuilder((int) displayLength * 4 + 80);
 
         int offset = 0;
         while (offset < displayLength)
         {
-            int bytesThisRow = Math.Min(16, displayLength - offset);
+            int bytesThisRow = Math.Min(16, (int)displayLength - offset);
 
             sb.Append(offset.ToString("x8"));
             sb.Append("  ");

@@ -62,13 +62,13 @@ public partial class DuplicatePatchLevelDialog : Window
         if (connection == null)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "DuplicatePatchLevelDialog.ctor: connection is null");
+                "DuplicatePatchLevelDialog.ctor: connection is null", LogLevel.Error);
             throw new ArgumentNullException(nameof(connection));
         }
 
         _entries = LoadPatchLevels(connection);
         DebugLog.Write(LogChannel.InferenceDebug,
-            "DuplicatePatchLevelDialog.ctor: loaded " + _entries.Count + " patch levels");
+            "DuplicatePatchLevelDialog.ctor: loaded " + _entries.Count + " patch levels", LogLevel.Trace);
 
         for (int entryIndex = 0; entryIndex < _entries.Count; entryIndex++)
         {
@@ -84,7 +84,7 @@ public partial class DuplicatePatchLevelDialog : Window
         {
             StatusText.Text = "No patch levels found in the database.";
             DebugLog.Write(LogChannel.InferenceDebug,
-                "DuplicatePatchLevelDialog.ctor: PatchOpcode contains no rows");
+                "DuplicatePatchLevelDialog.ctor: PatchOpcode contains no rows", LogLevel.Error);
         }
     }
 
@@ -137,7 +137,7 @@ public partial class DuplicatePatchLevelDialog : Window
         {
             StatusText.Text = "Select a source patch level.";
             DebugLog.Write(LogChannel.InferenceDebug,
-                "DuplicatePatchLevelDialog.OK: no source selected");
+                "DuplicatePatchLevelDialog.OK: no source selected", LogLevel.Info);
             return;
         }
 
@@ -146,7 +146,7 @@ public partial class DuplicatePatchLevelDialog : Window
         {
             StatusText.Text = "Select a target patch date.";
             DebugLog.Write(LogChannel.InferenceDebug,
-                "DuplicatePatchLevelDialog.OK: no target date selected");
+                "DuplicatePatchLevelDialog.OK: no target date selected", LogLevel.Info);
             return;
         }
 
@@ -157,7 +157,7 @@ public partial class DuplicatePatchLevelDialog : Window
         {
             StatusText.Text = "Target date must differ from the source patch date.";
             DebugLog.Write(LogChannel.InferenceDebug,
-                "DuplicatePatchLevelDialog.OK: target date equals source date (" + targetDateText + ")");
+                "DuplicatePatchLevelDialog.OK: target date equals source date (" + targetDateText + ")", LogLevel.Info);
             return;
         }
 
@@ -167,7 +167,7 @@ public partial class DuplicatePatchLevelDialog : Window
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "DuplicatePatchLevelDialog.OK: source=(" + SourcePatchDate + "," + SourceServerType
-            + ") target=" + TargetPatchDate);
+            + ") target=" + TargetPatchDate, LogLevel.Trace);
 
         DialogResult = true;
         Close();
@@ -184,8 +184,6 @@ public partial class DuplicatePatchLevelDialog : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void Button_Cancel_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.InferenceDebug, "DuplicatePatchLevelDialog: cancelled");
-
         DialogResult = false;
         Close();
     }

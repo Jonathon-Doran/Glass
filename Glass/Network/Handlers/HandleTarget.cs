@@ -21,6 +21,7 @@ public class HandleTarget : IHandleOpcodes
     private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
+    private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _spawnIdSlot;
 
@@ -43,6 +44,7 @@ public class HandleTarget : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_TargetMouse");
+        _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         _spawnIdSlot = _registry.IndexOfField(_collectionHandle, "spawn_id");
     }
@@ -94,24 +96,21 @@ public class HandleTarget : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-/*        uint spawnId;
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        uint spawnId;
 
-        FieldBag bag = _registry.Rent(_collectionHandle);
         try
         {
-            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
-
-            spawnId = bag.GetUIntAt(_spawnIdSlot);
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            spawnId = extractor.GetUIntAt(_spawnIdSlot);
         }
         finally
         {
-            bag.Release();
+            extractor.Release();
         }
 
-
-
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName);
-        DebugLog.Write(LogChannel.Opcodes, "Target = 0x" + spawnId.ToString("x4"));*/
+        DebugLog.Write(LogChannel.Opcodes, "Target = 0x" + spawnId.ToString("x4"));
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

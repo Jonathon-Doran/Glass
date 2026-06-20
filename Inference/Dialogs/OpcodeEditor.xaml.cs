@@ -119,7 +119,7 @@ public partial class OpcodeEditor : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     protected override void OnClosed(EventArgs e)
     {
-        DebugLog.Write(LogChannel.Fields, "OpcodeEditor.OnClosed: disposing connection");
+        DebugLog.Write(LogChannel.Fields, "OpcodeEditor.OnClosed: disposing connection", LogLevel.Trace);
 
         _connection.Dispose();
 
@@ -152,7 +152,7 @@ public partial class OpcodeEditor : Window
         }
 
         DebugLog.Write(LogChannel.Fields, "OpcodeEditor.PopulatePatchLevelDropdown: "
-            + patchLevels.Count + " patch level(s) loaded");
+            + patchLevels.Count + " patch level(s) loaded", LogLevel.Trace);
 
         PatchLevelComboBox.ItemsSource = patchLevels;
 
@@ -160,7 +160,7 @@ public partial class OpcodeEditor : Window
         PatchLevelComboBox.SelectedItem = currentPatchLevel;
 
         DebugLog.Write(LogChannel.Fields, "OpcodeEditor.PopulatePatchLevelDropdown: "
-            + "default selection set to " + currentPatchLevel);
+            + "default selection set to " + currentPatchLevel, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -200,7 +200,7 @@ public partial class OpcodeEditor : Window
         items.Add(sentinel);
 
         DebugLog.Write(LogChannel.Fields, "OpcodeEditor.PopulateOpcodeDropdown: "
-            + (items.Count - 1) + " opcode(s) plus sentinel for patchLevel=" + patchLevel);
+            + (items.Count - 1) + " opcode(s) plus sentinel for patchLevel=" + patchLevel, LogLevel.Trace);
 
         OpcodeComboBox.ItemsSource = items;
     }
@@ -249,7 +249,7 @@ public partial class OpcodeEditor : Window
         items.Add(sentinel);
 
         DebugLog.Write(LogChannel.Fields, "OpcodeEditor.PopulateVersionDropdown: "
-            + (items.Count - 1) + " version(s) plus sentinel for " + patchLevel + " " + opcodeName);
+            + (items.Count - 1) + " version(s) plus sentinel for " + patchLevel + " " + opcodeName, LogLevel.Trace);
 
         VersionComboBox.ItemsSource = items;
 
@@ -291,7 +291,7 @@ public partial class OpcodeEditor : Window
         }
 
         DebugLog.Write(LogChannel.Fields, "OpcodeEditor.PopulateGateDropdown: "
-            + names.Count + " gate(s) for patchLevel=" + patchLevel);
+            + names.Count + " gate(s) for patchLevel=" + patchLevel, LogLevel.Trace);
 
         GateComboBox.ItemsSource = names;
     }
@@ -327,7 +327,7 @@ public partial class OpcodeEditor : Window
         if (reader.Read() == false)
         {
             DebugLog.Write(LogChannel.Fields, "OpcodeEditor.LoadOpcodeForm: no PatchOpcode row "
-                + "for " + patchLevel + " " + opcodeName + " v" + version);
+                + "for " + patchLevel + " " + opcodeName + " v" + version, LogLevel.Error);
             return;
         }
 
@@ -357,7 +357,7 @@ public partial class OpcodeEditor : Window
             + " " + opcodeName + " v" + version + " key=" + loadedKey
             + " hex=" + OpcodeHexTextBox.Text
             + " byteLength=" + OpcodeByteLengthTextBox.Text
-            + " gate='" + GateComboBox.Text + "'");
+            + " gate='" + GateComboBox.Text + "'", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -379,13 +379,13 @@ public partial class OpcodeEditor : Window
         if (PatchLevelComboBox.SelectedItem == null)
         {
             DebugLog.Write(LogChannel.Fields, "OpcodeEditor.PatchLevelComboBox_SelectionChanged: "
-                + "no selection");
+                + "no selection", LogLevel.Trace);
             return;
         }
 
         PatchLevel patchLevel = (PatchLevel)PatchLevelComboBox.SelectedItem;
         DebugLog.Write(LogChannel.Fields, "OpcodeEditor.PatchLevelComboBox_SelectionChanged: "
-            + "selected " + patchLevel);
+            + "selected " + patchLevel, LogLevel.Trace);
 
         PopulateOpcodeDropdown(patchLevel);
         PopulateGateDropdown(patchLevel);
@@ -409,14 +409,14 @@ public partial class OpcodeEditor : Window
         if (OpcodeComboBox.SelectedItem == null)
         {
             DebugLog.Write(LogChannel.Fields, "OpcodeEditor.OpcodeComboBox_SelectionChanged: "
-                + "no selection");
+                + "no selection", LogLevel.Trace);
             return;
         }
 
         if (PatchLevelComboBox.SelectedItem == null)
         {
             DebugLog.Write(LogChannel.Fields, "OpcodeEditor.OpcodeComboBox_SelectionChanged: "
-                + "opcode selected but no patch level, ignoring");
+                + "opcode selected but no patch level, ignoring", LogLevel.Error);
             return;
         }
 
@@ -437,12 +437,12 @@ public partial class OpcodeEditor : Window
             OpcodeNameTextBox.Focus();
 
             DebugLog.Write(LogChannel.Fields, "OpcodeEditor.OpcodeComboBox_SelectionChanged: "
-                + "sentinel selected, armed for new opcode insert, form cleared");
+                + "sentinel selected, armed for new opcode insert, form cleared", LogLevel.Trace);
             return;
         }
 
         DebugLog.Write(LogChannel.Fields, "OpcodeEditor.OpcodeComboBox_SelectionChanged: "
-            + "patchLevel=" + patchLevel + " opcodeName=" + item.OpcodeName);
+            + "patchLevel=" + patchLevel + " opcodeName=" + item.OpcodeName, LogLevel.Trace);
 
         PopulateVersionDropdown(patchLevel, item.OpcodeName);
     }
@@ -467,14 +467,14 @@ public partial class OpcodeEditor : Window
         if (VersionComboBox.SelectedItem == null)
         {
             DebugLog.Write(LogChannel.Fields, "OpcodeEditor.VersionComboBox_SelectionChanged: "
-                + "no selection");
+                + "no selection", LogLevel.Trace);
             return;
         }
 
         if (PatchLevelComboBox.SelectedItem == null || OpcodeComboBox.SelectedItem == null)
         {
             DebugLog.Write(LogChannel.Fields, "OpcodeEditor.VersionComboBox_SelectionChanged: "
-                + "version selected but missing patch level or opcode name, ignoring");
+                + "version selected but missing patch level or opcode name, ignoring", LogLevel.Error);
             return;
         }
 
@@ -488,7 +488,7 @@ public partial class OpcodeEditor : Window
             OpcodeVersionTextBox.Focus();
 
             DebugLog.Write(LogChannel.Fields, "OpcodeEditor.VersionComboBox_SelectionChanged: "
-                + "sentinel selected, armed for new version insert");
+                + "sentinel selected, armed for new version insert", LogLevel.Trace);
             return;
         }
 
@@ -504,7 +504,7 @@ public partial class OpcodeEditor : Window
 
         DebugLog.Write(LogChannel.Fields, "OpcodeEditor.VersionComboBox_SelectionChanged: "
             + "patchLevel=" + patchLevel + " opcodeName=" + opcodeName + " version=" + version
-            + " patchOpcodeKey=" + _patchOpcodeKey);
+            + " patchOpcodeKey=" + _patchOpcodeKey, LogLevel.Trace);
 
         LoadOpcodeForm(patchLevel, opcodeName, version);
     }
@@ -524,7 +524,7 @@ public partial class OpcodeEditor : Window
         if (PatchLevelComboBox.SelectedItem == null)
         {
             DebugLog.Write(LogChannel.Fields, "OpcodeEditor.ClearButton_Click: "
-                + "no patch level selected, ignoring");
+                + "no patch level selected, ignoring", LogLevel.Trace);
             return;
         }
 
@@ -539,7 +539,7 @@ public partial class OpcodeEditor : Window
 
         _patchOpcodeKey = 0;
 
-        DebugLog.Write(LogChannel.Fields, "OpcodeEditor.ClearButton_Click: cleared to empty state");
+        DebugLog.Write(LogChannel.Fields, "OpcodeEditor.ClearButton_Click: cleared to empty state", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -553,7 +553,6 @@ public partial class OpcodeEditor : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.Fields, "OpcodeEditor.CloseButton_Click: closing");
         Close();
     }
 
@@ -575,12 +574,12 @@ public partial class OpcodeEditor : Window
         if (PatchLevelComboBox.SelectedItem == null)
         {
             DebugLog.Write(LogChannel.Fields, "OpcodeEditor.SaveButton_Click: "
-                + "no patch level selected, ignoring");
+                + "no patch level selected, ignoring", LogLevel.Trace);
             return;
         }
 
         PatchLevel patchLevel = (PatchLevel)PatchLevelComboBox.SelectedItem;
-        DebugLog.Write(LogChannel.Fields, "OpcodeEditor.SaveButton_Click: starting save");
+        DebugLog.Write(LogChannel.Fields, "OpcodeEditor.SaveButton_Click: starting save", LogLevel.Trace);
         using SqliteTransaction tx = _connection.BeginTransaction();
 
         try
@@ -595,13 +594,13 @@ public partial class OpcodeEditor : Window
             }
 
             tx.Commit();
-            DebugLog.Write(LogChannel.Fields, "OpcodeEditor.SaveButton_Click: committed");
+            DebugLog.Write(LogChannel.Fields, "OpcodeEditor.SaveButton_Click: committed", LogLevel.Trace);
         }
         catch (Exception ex)
         {
             tx.Rollback();
             DebugLog.Write(LogChannel.Fields, "OpcodeEditor.SaveButton_Click: rolled back, "
-                + ex.GetType().Name + ": " + ex.Message);
+                + ex.GetType().Name + ": " + ex.Message, LogLevel.Error);
             MessageBox.Show(this, "Save failed: " + ex.Message, "Save Failed",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             return;
@@ -693,7 +692,7 @@ public partial class OpcodeEditor : Window
         DebugLog.Write(LogChannel.Fields, "OpcodeEditor.InsertOpcodeRow: inserted "
             + "PatchOpcode id=" + _patchOpcodeKey + " " + patchLevel + " " + opcodeName
             + " v" + version + " opcode_value=0x" + opcodeValue.ToString("x4")
-            + " byte_length=" + byteLengthText + " gate='" + gateName + "'");
+            + " byte_length=" + byteLengthText + " gate='" + gateName + "'", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -753,6 +752,6 @@ public partial class OpcodeEditor : Window
             + "PatchOpcode id=" + _patchOpcodeKey + " name=" + opcodeName
             + " opcode_value=0x" + opcodeValue.ToString("x4")
             + " byte_length=" + byteLengthText + " version=" + version
-            + " gate='" + gateName + "'");
+            + " gate='" + gateName + "'", LogLevel.Trace);
     }
 }

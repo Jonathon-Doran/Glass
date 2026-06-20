@@ -65,7 +65,7 @@ public partial class PacketDetailWindow : Window
         DebugLog.Write(LogChannel.InferenceDebug,
             "PacketDetailWindow: opening packetIndex=" + packet.PacketIndex
             + " opcode=" + opcodeHex + " (" + opcodeName + ")"
-            + " length=" + payloadLength);
+            + " length=" + payloadLength, LogLevel.Trace);
 
         FieldTextBox.Text = ExtractFieldText(packet.Metadata.Opcode, payload);
         HexDumpTextBox.Text = HexDumpFormatter.Format(payload, int.MaxValue);
@@ -126,48 +126,10 @@ public partial class PacketDetailWindow : Window
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "PacketDetailWindow.ExtractFieldText: opcode=0x" + patchOpcode
-                + " not in active patch, no fields available");
+                + " not in active patch, no fields available", LogLevel.Error);
             return string.Empty;
         }
 
-        if (patchOpcode.Value.Value == 0x7E9B)
-        {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "PacketDetailWindow.ExtractFieldText: opcode=0x7E9B, segmenting on ItemString");
-            return ExtractInventoryItems(patchLevel, collectionHandle, patchOpcode, payload);
-        }
-
-        /*
-                FieldBag bag = registry.Rent(collectionHandle);
-                try
-                {
-                    GlassContext.FieldExtractor.ExtractCollection(patchLevel, collectionHandle, payload, bag);
-
-                    StringBuilder sb = new StringBuilder();
-                    BagWalker walker = bag.Walk();
-                    FieldBinding? binding = walker.Next();
-                    int bindingCount = 0;
-                    while (binding != null)
-                    {
-                        FieldBinding b = binding.Value;
-                        sb.Append(b.Name);
-                        sb.Append(" = ");
-                        sb.Append(b.Value);
-                        sb.Append('\n');
-                        binding = walker.Next();
-                        bindingCount++;
-                    }
-
-                    DebugLog.Write(LogChannel.InferenceDebug,
-                        "PacketDetailWindow.ExtractFieldText: opcode=0x" + patchOpcode
-                        + " extracted " + bindingCount + " bindings");
-                    return sb.ToString();
-                }
-                finally
-                {
-                    bag.Release();
-                }
-        */
         return "";
     }
 

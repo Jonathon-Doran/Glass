@@ -41,7 +41,7 @@ public class SessionDemux
         _localIpInt = IpToUInt32(localIp);
         _arqSeqGiveUp = arqSeqGiveUp;
 
-        DebugLog.Write("SessionDemux: created, localIp=" + localIp);
+        DebugLog.Write(LogChannel.Input, "SessionDemux: created, localIp=" + localIp);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

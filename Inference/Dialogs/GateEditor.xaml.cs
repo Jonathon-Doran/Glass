@@ -94,7 +94,7 @@ public partial class GateEditor : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     protected override void OnClosed(EventArgs e)
     {
-        DebugLog.Write(LogChannel.Fields, "GateEditor.OnClosed: disposing connection");
+        DebugLog.Write(LogChannel.Fields, "GateEditor.OnClosed: disposing connection", LogLevel.Trace);
 
         _connection.Dispose();
 
@@ -112,7 +112,7 @@ public partial class GateEditor : Window
         MultiplicityKind[] kinds = (MultiplicityKind[])Enum.GetValues(typeof(MultiplicityKind));
 
         DebugLog.Write(LogChannel.Fields, "GateEditor.PopulateKindDropdown: " + kinds.Length
-            + " kind(s)");
+            + " kind(s)", LogLevel.Trace);
 
         KindComboBox.ItemsSource = kinds;
     }
@@ -128,7 +128,7 @@ public partial class GateEditor : Window
         List<PatchLevel> patchLevels = PatchRegistry.GetAllPatchLevels();
 
         DebugLog.Write(LogChannel.Fields, "GateEditor.PopulatePatchLevelDropdown: "
-            + patchLevels.Count + " patch level(s) loaded");
+            + patchLevels.Count + " patch level(s) loaded", LogLevel.Trace);
 
         PatchLevelComboBox.ItemsSource = patchLevels;
         PatchLevelComboBox.SelectedItem = GlassContext.CurrentPatchLevel;
@@ -173,7 +173,7 @@ public partial class GateEditor : Window
         items.Add(sentinel);
 
         DebugLog.Write(LogChannel.Fields, "GateEditor.PopulateGateDropdown: "
-            + (items.Count - 1) + " gate(s) plus sentinel for patchLevel=" + patchLevel);
+            + (items.Count - 1) + " gate(s) plus sentinel for patchLevel=" + patchLevel, LogLevel.Trace);
 
         GateComboBox.ItemsSource = items;
     }
@@ -199,13 +199,13 @@ public partial class GateEditor : Window
         if (PatchLevelComboBox.SelectedItem == null)
         {
             DebugLog.Write(LogChannel.Fields, "GateEditor.PatchLevelComboBox_SelectionChanged: "
-                + "no selection");
+                + "no selection", LogLevel.Trace);
             return;
         }
 
         PatchLevel patchLevel = (PatchLevel)PatchLevelComboBox.SelectedItem;
         DebugLog.Write(LogChannel.Fields, "GateEditor.PatchLevelComboBox_SelectionChanged: "
-            + "selected " + patchLevel);
+            + "selected " + patchLevel, LogLevel.Trace);
 
         PopulateGateDropdown(patchLevel);
         PopulateChildCollectionDropdown(patchLevel);
@@ -227,14 +227,14 @@ public partial class GateEditor : Window
         if (GateComboBox.SelectedItem == null)
         {
             DebugLog.Write(LogChannel.Fields, "GateEditor.GateComboBox_SelectionChanged: "
-                + "no selection");
+                + "no selection", LogLevel.Trace);
             return;
         }
 
         if (PatchLevelComboBox.SelectedItem == null)
         {
             DebugLog.Write(LogChannel.Fields, "GateEditor.GateComboBox_SelectionChanged: "
-                + "gate selected but no patch level, ignoring");
+                + "gate selected but no patch level, ignoring", LogLevel.Error);
             return;
         }
 
@@ -253,14 +253,14 @@ public partial class GateEditor : Window
             GateNameTextBox.Focus();
 
             DebugLog.Write(LogChannel.Fields, "GateEditor.GateComboBox_SelectionChanged: "
-                + "sentinel selected, armed for new gate, form cleared");
+                + "sentinel selected, armed for new gate, form cleared", LogLevel.Trace);
             return;
         }
 
         _loadedGateName = item.GateName;
 
         DebugLog.Write(LogChannel.Fields, "GateEditor.GateComboBox_SelectionChanged: "
-            + "patchLevel=" + patchLevel + " gate=" + item.GateName);
+            + "patchLevel=" + patchLevel + " gate=" + item.GateName, LogLevel.Trace);
 
         LoadGateForm(patchLevel, item.GateName);
     }
@@ -317,7 +317,7 @@ public partial class GateEditor : Window
         if (rowFound == false)
         {
             DebugLog.Write(LogChannel.Fields, "GateEditor.LoadGateForm: no Gate row named '"
-                + gateName + "' for patchLevel=" + patchLevel);
+                + gateName + "' for patchLevel=" + patchLevel, LogLevel.Error);
             return;
         }
 
@@ -326,7 +326,7 @@ public partial class GateEditor : Window
         if (kindParsed == false)
         {
             DebugLog.Write(LogChannel.Fields, "GateEditor.LoadGateForm: gate '" + gateName
-                + "' has unparsable kind '" + kindString + "', defaulting to Once");
+                + "' has unparsable kind '" + kindString + "', defaulting to Once", LogLevel.Error);
             kind = MultiplicityKind.Once;
         }
 
@@ -338,7 +338,7 @@ public partial class GateEditor : Window
 
         DebugLog.Write(LogChannel.Fields, "GateEditor.LoadGateForm: loaded '" + gateName
             + "' kind=" + kind + " child='" + childCollection + "' countField='"
-            + countFieldName + "' countConstant='" + countConstant + "' for patchLevel=" + patchLevel);
+            + countFieldName + "' countConstant='" + countConstant + "' for patchLevel=" + patchLevel, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -360,7 +360,7 @@ public partial class GateEditor : Window
             showCount = false;
 
             DebugLog.Write(LogChannel.Fields, "GateEditor.KindComboBox_SelectionChanged: "
-                + "no selection, hiding count editors");
+                + "no selection, hiding count editors", LogLevel.Trace);
         }
         else
         {
@@ -368,7 +368,7 @@ public partial class GateEditor : Window
             showCount = kind == MultiplicityKind.Times;
 
             DebugLog.Write(LogChannel.Fields, "GateEditor.KindComboBox_SelectionChanged: "
-                + "kind=" + kind + " showCount=" + showCount);
+                + "kind=" + kind + " showCount=" + showCount, LogLevel.Trace);
         }
 
         if (showCount == true)
@@ -404,7 +404,7 @@ public partial class GateEditor : Window
         if (PatchLevelComboBox.SelectedItem == null)
         {
             DebugLog.Write(LogChannel.Fields, "GateEditor.ClearButton_Click: "
-                + "no patch level selected, ignoring");
+                + "no patch level selected, ignoring", LogLevel.Trace);
             return;
         }
 
@@ -416,7 +416,7 @@ public partial class GateEditor : Window
         _loadedGateName = string.Empty;
         KindComboBox.SelectedItem = MultiplicityKind.Once;
 
-        DebugLog.Write(LogChannel.Fields, "GateEditor.ClearButton_Click: cleared to empty state");
+        DebugLog.Write(LogChannel.Fields, "GateEditor.ClearButton_Click: cleared to empty state", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -430,7 +430,6 @@ public partial class GateEditor : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.Fields, "GateEditor.CloseButton_Click: closing");
         Close();
     }
 
@@ -455,14 +454,14 @@ public partial class GateEditor : Window
         if (PatchLevelComboBox.SelectedItem == null)
         {
             DebugLog.Write(LogChannel.Fields, "GateEditor.SaveButton_Click: "
-                + "no patch level selected, ignoring");
+                + "no patch level selected, ignoring", LogLevel.Trace);
             return;
         }
 
         if (KindComboBox.SelectedItem == null)
         {
             DebugLog.Write(LogChannel.Fields, "GateEditor.SaveButton_Click: "
-                + "no kind selected, ignoring");
+                + "no kind selected, ignoring", LogLevel.Error);
             MessageBox.Show(this, "Kind is required.", "Save Failed",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             return;
@@ -472,7 +471,7 @@ public partial class GateEditor : Window
         if (newName.Length == 0)
         {
             DebugLog.Write(LogChannel.Fields, "GateEditor.SaveButton_Click: "
-                + "empty gate name, ignoring");
+                + "empty gate name, ignoring", LogLevel.Error);
             MessageBox.Show(this, "Gate name is required.", "Save Failed",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             return;
@@ -495,7 +494,7 @@ public partial class GateEditor : Window
             if (hasField == false && hasConstant == false)
             {
                 DebugLog.Write(LogChannel.Fields, "GateEditor.SaveButton_Click: "
-                    + "Times gate '" + newName + "' has neither count field nor constant, ignoring");
+                    + "Times gate '" + newName + "' has neither count field nor constant, ignoring", LogLevel.Error);
                 MessageBox.Show(this, "A Times gate requires a count field or a constant count.",
                     "Save Failed", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
@@ -504,7 +503,7 @@ public partial class GateEditor : Window
             if (hasField == true && hasConstant == true)
             {
                 DebugLog.Write(LogChannel.Fields, "GateEditor.SaveButton_Click: "
-                    + "Times gate '" + newName + "' has both count field and constant, ignoring");
+                    + "Times gate '" + newName + "' has both count field and constant, ignoring", LogLevel.Error);
                 MessageBox.Show(this, "A Times gate takes either a count field or a constant count, not both.",
                     "Save Failed", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
@@ -522,7 +521,7 @@ public partial class GateEditor : Window
                 {
                     DebugLog.Write(LogChannel.Fields, "GateEditor.SaveButton_Click: "
                         + "Times gate '" + newName + "' constant '" + countConstantText
-                        + "' is not a non-negative integer, ignoring");
+                        + "' is not a non-negative integer, ignoring", LogLevel.Error);
                     MessageBox.Show(this, "The constant count must be a non-negative whole number.",
                         "Save Failed", MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
@@ -534,7 +533,7 @@ public partial class GateEditor : Window
         DebugLog.Write(LogChannel.Fields, "GateEditor.SaveButton_Click: starting save, "
             + "patchLevel=" + patchLevel + " name=" + newName + " loadedName=" + _loadedGateName
             + " kind=" + kind + " child='" + childCollection + "' countField='" + countFieldName
-            + "' countConstant='" + countConstantText + "'");
+            + "' countConstant='" + countConstantText + "'", LogLevel.Trace);
 
         using SqliteTransaction tx = _connection.BeginTransaction();
 
@@ -557,7 +556,7 @@ public partial class GateEditor : Window
                 cmd.ExecuteNonQuery();
 
                 DebugLog.Write(LogChannel.Fields, "GateEditor.SaveButton_Click: inserted gate '"
-                    + newName + "'");
+                    + newName + "'", LogLevel.Trace);
             }
             else
             {
@@ -583,17 +582,17 @@ public partial class GateEditor : Window
                 cmd.ExecuteNonQuery();
 
                 DebugLog.Write(LogChannel.Fields, "GateEditor.SaveButton_Click: updated gate '"
-                    + _loadedGateName + "' -> '" + newName + "'");
+                    + _loadedGateName + "' -> '" + newName + "'", LogLevel.Trace);
             }
 
             tx.Commit();
-            DebugLog.Write(LogChannel.Fields, "GateEditor.SaveButton_Click: committed");
+            DebugLog.Write(LogChannel.Fields, "GateEditor.SaveButton_Click: committed", LogLevel.Trace);
         }
         catch (Exception ex)
         {
             tx.Rollback();
             DebugLog.Write(LogChannel.Fields, "GateEditor.SaveButton_Click: rolled back, "
-                + ex.GetType().Name + ": " + ex.Message);
+                + ex.GetType().Name + ": " + ex.Message, LogLevel.Error);
             MessageBox.Show(this, "Save failed: " + ex.Message, "Save Failed",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             return;
@@ -632,14 +631,14 @@ public partial class GateEditor : Window
         if (PatchLevelComboBox.SelectedItem == null)
         {
             DebugLog.Write(LogChannel.Fields, "GateEditor.DeleteButton_Click: "
-                + "no patch level selected, ignoring");
+                + "no patch level selected, ignoring", LogLevel.Trace);
             return;
         }
 
         if (_loadedGateName.Length == 0)
         {
             DebugLog.Write(LogChannel.Fields, "GateEditor.DeleteButton_Click: "
-                + "no gate loaded, ignoring");
+                + "no gate loaded, ignoring", LogLevel.Error);
             return;
         }
 
@@ -651,7 +650,7 @@ public partial class GateEditor : Window
         if (confirm != MessageBoxResult.Yes)
         {
             DebugLog.Write(LogChannel.Fields, "GateEditor.DeleteButton_Click: "
-                + "user cancelled delete of '" + _loadedGateName + "'");
+                + "user cancelled delete of '" + _loadedGateName + "'", LogLevel.Trace);
             return;
         }
 
@@ -679,7 +678,7 @@ public partial class GateEditor : Window
         {
             tx.Rollback();
             DebugLog.Write(LogChannel.Fields, "GateEditor.DeleteButton_Click: rolled back, "
-                + ex.GetType().Name + ": " + ex.Message);
+                + ex.GetType().Name + ": " + ex.Message, LogLevel.Error);
             MessageBox.Show(this, "Delete failed: " + ex.Message, "Delete Failed",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             return;
@@ -729,7 +728,7 @@ public partial class GateEditor : Window
         }
 
         DebugLog.Write(LogChannel.Fields, "GateEditor.PopulateChildCollectionDropdown: "
-            + names.Count + " collection(s) for patchLevel=" + patchLevel);
+            + names.Count + " collection(s) for patchLevel=" + patchLevel, LogLevel.Trace);
 
         ChildCollectionComboBox.ItemsSource = names;
     }

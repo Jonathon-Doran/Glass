@@ -91,7 +91,7 @@ public partial class OpcodeManageWindow : Window
         DebugLog.Write(LogChannel.InferenceDebug,
             "OpcodeManageWindow: opened with " + knownOpcodes.Length
             + " opcode(s), " + hidden.Count + " initially hidden, cellWidth="
-            + CellWidth.ToString("F0", CultureInfo.InvariantCulture));
+            + CellWidth.ToString("F0", CultureInfo.InvariantCulture), LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -122,7 +122,7 @@ public partial class OpcodeManageWindow : Window
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "OpcodeManageWindow.OnRowPropertyChanged: opcode=" + row.OpcodeHex
-            + " hidden=" + row.IsHidden);
+            + " hidden=" + row.IsHidden, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

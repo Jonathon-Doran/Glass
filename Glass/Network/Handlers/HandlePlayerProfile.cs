@@ -181,7 +181,6 @@ public class HandlePlayerProfile : IHandleOpcodes
                     + _opcodeName + " length=" + data.Length
                     + " name=" + name + " characterId=" + character.CharacterId
                     + " level=" + character.Level + " hp=" + character.MaxHP + " mana=" + character.MaxMana);
-
             }
         }
         finally

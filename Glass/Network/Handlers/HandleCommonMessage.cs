@@ -20,6 +20,7 @@ public class HandleCommonMessage : IHandleOpcodes
     private CollectionHandle _collectionHandle;
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
+    private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _senderIdSlot;
     private readonly SlotId _channelIdSlot;
@@ -48,6 +49,8 @@ public class HandleCommonMessage : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_CommonMessage");
+        _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
+
         _senderIdSlot = _registry.IndexOfField(_collectionHandle, "sender_name");
         _channelIdSlot = _registry.IndexOfField(_collectionHandle, "channel_id");
         _messageIdSlot = _registry.IndexOfField(_collectionHandle, "message_text");
@@ -103,8 +106,10 @@ public class HandleCommonMessage : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
+        /*
         DebugLog.Write(LogChannel.Opcodes, _opcodeName);
         DebugLog.Write(LogChannel.Opcodes, "Server to Client");
+        */
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -117,33 +122,30 @@ public class HandleCommonMessage : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        /*
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+
         string sender;
         uint channel;
         string message;
 
-        FieldBag bag = _registry.Rent(_collectionHandle);
         try
         {
-            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
 
-            ReadOnlySpan<byte> senderBytes = bag.GetBytesAt(_senderIdSlot);
-            sender = Encoding.ASCII.GetString(senderBytes);
-            channel = bag.GetUIntAt(_channelIdSlot);
-
-            ReadOnlySpan<byte> messageBytes = bag.GetBytesAt(_messageIdSlot);
-            message = Encoding.ASCII.GetString(messageBytes);
+            sender = extractor.GetStringAt(_senderIdSlot);
+            channel = extractor.GetUIntAt(_channelIdSlot);
+            message = extractor.GetStringAt(_messageIdSlot);
         }
         finally
         {
-            bag.Release();
+            extractor.Release();
         }
+
         string channelName = GetChannelName(channel);
 
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
             + _opcodeName + " sender = " + sender + ", channel = " +
             channel + "(" + channelName + "), message = '" + message + "'");
-        */
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

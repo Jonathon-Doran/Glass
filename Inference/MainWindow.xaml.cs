@@ -86,8 +86,8 @@ public partial class MainWindow : Window
 
         GlassContext.ProfileManager = new ProfileManager();
         InitializeLogging();
-        DebugLog.Write(LogChannel.InferenceDebug, "Inference application started");
-        DebugLog.Write(LogChannel.Inference, "Inference log initialized");
+        DebugLog.Write(LogChannel.InferenceDebug, "Inference application started", LogLevel.Trace);
+        DebugLog.Write(LogChannel.Inference, "Inference log initialized", LogLevel.Trace);
 
         InitializeAnalysisFilters();
         AddDummyCandidates();
@@ -117,13 +117,15 @@ public partial class MainWindow : Window
         OpcodeTraceList.ItemsSource = _opcodeTracePresenter.Rows;
 
         GlassContext.BufferPool = new BufferPool(
-            new uint[] { 16, 64, 256, 512, 1024, 2048, 4096, 16384, 65536, 262144, 524288 },
-            new uint[] { 64, 32, 16, 16, 16, 10, 10, 10, 4, 2, 1 });
+            new uint[] { 16, 64, 256, 512, 1024, 2048, 16384, 65536, 262144, 524288 },
+            new uint[] { 1000, 1000, 1000, 1000, 1000, 1000, 1000, 20, 20, 20 });
         GcMonitor.Start(5);
     }
 
     private void InitializeLogging()
     {
+        DebugLog.SetMinimumLevel(LogLevel.Info);
+
         GlassDebugLogHandler glassDebugLogHandler = new GlassDebugLogHandler("glass.log");
         DebugLog.AddHandler(LogSink.GlassDebugLogfile, glassDebugLogHandler);
 
@@ -213,7 +215,7 @@ public partial class MainWindow : Window
         string? savedServerType = Properties.Settings.Default.LastOpenedPatchServerType;
         if (string.IsNullOrEmpty(savedPatchDate) || string.IsNullOrEmpty(savedServerType))
         {
-            DebugLog.Write(LogChannel.InferenceDebug, "RestoreLastPatchLevel: no previous patch level found");
+            DebugLog.Write(LogChannel.InferenceDebug, "RestoreLastPatchLevel: no previous patch level found", LogLevel.Error);
             return;
         }
 
@@ -227,7 +229,7 @@ public partial class MainWindow : Window
         UpdateRecentPatches(savedPatchDate, savedServerType);
         BuildRecentPatchesMenu();
         DebugLog.Write(LogChannel.InferenceDebug, "RestoreLastPatchLevel: restored "
-            + savedServerType + " " + savedPatchDate);
+            + savedServerType + " " + savedPatchDate, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -242,7 +244,7 @@ public partial class MainWindow : Window
     {
         GlassContext.BufferPool.LogStatistics();
 
-        DebugLog.Write(LogChannel.InferenceDebug, "Inference application closing");
+        DebugLog.Write(LogChannel.InferenceDebug, "Inference application closing", LogLevel.Trace);
         GlassContext.PatchRegistry.LogPoolStatistics();
         DebugLog.Shutdown();
     }
@@ -259,12 +261,12 @@ public partial class MainWindow : Window
         GlassContext.ISXGlassPipe.Connected += () => Dispatcher.Invoke(() =>
         {
             StatusIsx.Text = "ISX: Connected";
-            DebugLog.Write(LogChannel.InferenceDebug, "ISXGlass pipe connected");
+            DebugLog.Write(LogChannel.InferenceDebug, "ISXGlass pipe connected", LogLevel.Trace);
         });
         GlassContext.ISXGlassPipe.Disconnected += () => Dispatcher.Invoke(() =>
         {
             StatusIsx.Text = "ISX: Disconnected";
-            DebugLog.Write(LogChannel.InferenceDebug, "ISXGlass pipe disconnected");
+            DebugLog.Write(LogChannel.InferenceDebug, "ISXGlass pipe disconnected", LogLevel.Trace);
         });
         GlassContext.ISXGlassPipe.MessageReceived += msg => Dispatcher.Invoke(() => HandleISXGlassMessage(msg));
         GlassContext.ISXGlassPipe.Start();
@@ -273,12 +275,12 @@ public partial class MainWindow : Window
         GlassContext.GlassVideoPipe.Connected += () => Dispatcher.Invoke(() =>
         {
             StatusGlassVideo.Text = "GlassVideo: Connected";
-            DebugLog.Write(LogChannel.InferenceDebug, "GlassVideo pipe connected");
+            DebugLog.Write(LogChannel.InferenceDebug, "GlassVideo pipe connected", LogLevel.Trace);
         });
         GlassContext.GlassVideoPipe.Disconnected += () => Dispatcher.Invoke(() =>
         {
             StatusGlassVideo.Text = "GlassVideo: Not Running";
-            DebugLog.Write(LogChannel.InferenceDebug, "GlassVideo pipe disconnected");
+            DebugLog.Write(LogChannel.InferenceDebug, "GlassVideo pipe disconnected", LogLevel.Trace);
         });
         GlassContext.GlassVideoPipe.MessageReceived += msg => Dispatcher.Invoke(() =>
         {
@@ -286,9 +288,9 @@ public partial class MainWindow : Window
         });
         GlassContext.GlassVideoPipe.Start();
 
-        DebugLog.Write(LogChannel.InferenceDebug, "InitializePipes: pipes started");
+        DebugLog.Write(LogChannel.InferenceDebug, "InitializePipes: pipes started", LogLevel.Trace);
         
-        DebugLog.Write(LogChannel.InferenceDebug, "InitializePipes: session registry and focus tracker initialized");
+        DebugLog.Write(LogChannel.InferenceDebug, "InitializePipes: session registry and focus tracker initialized", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -326,8 +328,6 @@ public partial class MainWindow : Window
         AnalysisChannelFilter.Items.Add(z2c);
 
         AnalysisChannelFilter.SelectedIndex = 0;
-
-        DebugLog.Write(LogChannel.InferenceDebug, "InitializeAnalysisFilters: channel filter populated with 5 entries");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -369,12 +369,12 @@ public partial class MainWindow : Window
         string dbPath = Glass.Data.Database.DefaultPath;
         if (!System.IO.File.Exists(dbPath))
         {
-            DebugLog.Write(LogChannel.InferenceDebug, "OpenDatabase: database not found at " + dbPath);
+            DebugLog.Write(LogChannel.InferenceDebug, "OpenDatabase: database not found at " + dbPath, LogLevel.Error);
             return;
         }
 
         Glass.Data.Database.Open(dbPath);
-        DebugLog.Write(LogChannel.InferenceDebug, "OpenDatabase: opened " + dbPath);
+        DebugLog.Write(LogChannel.InferenceDebug, "OpenDatabase: opened " + dbPath, LogLevel.Info);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -590,7 +590,7 @@ public partial class MainWindow : Window
     {
         if (OpcodeGrid.SelectedItem == null)
         {
-            DebugLog.Write(LogChannel.InferenceDebug, "RefreshAnalysis: no opcode selected, skipping");
+            DebugLog.Write(LogChannel.InferenceDebug, "RefreshAnalysis: no opcode selected, skipping", LogLevel.Warn);
             return;
         }
 
@@ -603,7 +603,7 @@ public partial class MainWindow : Window
         if (packets.Count == 0)
         {
             DebugLog.Write(LogChannel.InferenceDebug, "RefreshAnalysis: no packets for "
-                + selected.Opcode + " with current filters");
+                + selected.Opcode + " with current filters", LogLevel.Warn);
             RenderHexDump(new List<HexDumpSample>());
             return;
         }
@@ -612,7 +612,7 @@ public partial class MainWindow : Window
             + " packets=" + packets.Count
             + " channel=" + (_analysisFilterChannel?.ToString() ?? "All")
             + " session=" + (_analysisFilterSessionId?.ToString() ?? "All")
-            + " maxHex=" + _analysisMaxHexBytes);
+            + " maxHex=" + _analysisMaxHexBytes, LogLevel.Trace);
 
         Thread analysisThread = new Thread(() => AnalyzeOpcode(packets));
         analysisThread.IsBackground = true;
@@ -661,7 +661,7 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void MenuItem_NewPatchLevel_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_NewPatchLevel_Click");
+        DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_NewPatchLevel_Click", LogLevel.Trace);
 
         NewPatchLevelDialog dialog = new NewPatchLevelDialog();
         dialog.Owner = this;
@@ -672,7 +672,7 @@ public partial class MainWindow : Window
             string serverType = dialog.ServerType;
             string entry = patchDate + " (" + serverType + ")";
 
-            DebugLog.Write(LogChannel.InferenceDebug, "New patch level created: " + entry);
+            DebugLog.Write(LogChannel.InferenceDebug, "New patch level created: " + entry, LogLevel.Trace);
 
             _currentPatchLevel = new PatchLevel(patchDate, serverType);
             StatusPatchLevel.Text = patchDate + " (" + serverType.Substring(0, 1).ToUpper() + serverType.Substring(1) + ")";
@@ -707,7 +707,7 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void MenuItem_OpenPatchLevel_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_OpenPatchLevel_Click");
+        DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_OpenPatchLevel_Click", LogLevel.Trace);
 
         OpenDialog dialog = new OpenDialog();
         dialog.Owner = this;
@@ -715,7 +715,7 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog() == true)
         {
             DebugLog.Write(LogChannel.InferenceDebug, "Opened patch level: ServerType="
-                + dialog.ServerType + " PatchDate=" + dialog.PatchDate);
+                + dialog.ServerType + " PatchDate=" + dialog.PatchDate, LogLevel.Trace);
 
             _currentPatchLevel = new PatchLevel(dialog.PatchDate, dialog.ServerType);
             StatusPatchLevel.Text = dialog.PatchDate + " (" + dialog.ServerType.Substring(0, 1).ToUpper() + dialog.ServerType.Substring(1) + ")";
@@ -744,12 +744,12 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void MenuItem_DuplicatePatchLevel_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_DuplicatePatchLevel_Click");
+        DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_DuplicatePatchLevel_Click", LogLevel.Trace);
 
         if (!Glass.Data.Database.IsInitialized)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "MenuItem_DuplicatePatchLevel_Click: database not initialized, aborting");
+                "MenuItem_DuplicatePatchLevel_Click: database not initialized, aborting", LogLevel.Error);
             MessageBox.Show("The database is not open.",
                 "Duplicate Patch Level", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
@@ -764,8 +764,6 @@ public partial class MainWindow : Window
         bool? dialogResult = dialog.ShowDialog();
         if (dialogResult != true)
         {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "MenuItem_DuplicatePatchLevel_Click: dialog cancelled");
             return;
         }
 
@@ -775,7 +773,7 @@ public partial class MainWindow : Window
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "MenuItem_DuplicatePatchLevel_Click: duplicating (" + sourcePatchDate + "," + sourceServerType
-            + ") -> " + targetPatchDate);
+            + ") -> " + targetPatchDate, LogLevel.Trace);
 
         int duplicatedCount;
         try
@@ -786,7 +784,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "MenuItem_DuplicatePatchLevel_Click: duplication failed: " + ex.Message);
+                "MenuItem_DuplicatePatchLevel_Click: duplication failed: " + ex.Message, LogLevel.Error);
             MessageBox.Show("Duplication failed: " + ex.Message,
                 "Duplicate Patch Level", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
@@ -795,7 +793,7 @@ public partial class MainWindow : Window
         if (duplicatedCount == 0)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "MenuItem_DuplicatePatchLevel_Click: source had no rows, nothing duplicated");
+                "MenuItem_DuplicatePatchLevel_Click: source had no rows, nothing duplicated", LogLevel.Warn);
             MessageBox.Show("The source patch level contained no opcodes.  Nothing was duplicated.",
                 "Duplicate Patch Level", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
@@ -803,14 +801,10 @@ public partial class MainWindow : Window
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "MenuItem_DuplicatePatchLevel_Click: duplicated " + duplicatedCount
-            + " opcodes into " + targetPatchDate);
+            + " opcodes into " + targetPatchDate, LogLevel.Info);
 
         UpdateRecentPatches(targetPatchDate, sourceServerType);
         BuildRecentPatchesMenu();
-
-        MessageBox.Show("Duplicated " + duplicatedCount + " opcodes from " + sourcePatchDate
-            + " (" + sourceServerType + ") into " + targetPatchDate + ".",
-            "Duplicate Patch Level", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -827,11 +821,11 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private async void MenuItem_OpenPcap_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_OpenPcap_Click");
+        DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_OpenPcap_Click", LogLevel.Trace);
 
         if (_currentPatchLevel == null)
         {
-            DebugLog.Write(LogChannel.General, "MenuItem_OpenPcap_Click: no patch level, aborting");
+            DebugLog.Write(LogChannel.General, "MenuItem_OpenPcap_Click: no patch level, aborting", LogLevel.Error);
             MessageBox.Show("Select a patch level before opening a pcap.",
                 "No Patch Level", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
@@ -853,13 +847,13 @@ public partial class MainWindow : Window
         GlassContext.CurrentPatchLevel = _currentPatchLevel.Value;
         OpcodeDispatch.RebuildForCurrentPatchLevel();
         DebugLog.Write(LogChannel.InferenceDebug,
-            "MenuItem_OpenPcap_Click: patch level set, OpcodeDispatch rebuilt");
+            "MenuItem_OpenPcap_Click: patch level set, OpcodeDispatch rebuilt", LogLevel.Trace);
 
         string localIp = PacketCapture.GetLocalIP()!;
         if (localIp == null)
         {
             DebugLog.Write(LogChannel.Network,
-                "MenuItem_OpenPcap_Click: no local IP, aborting");
+                "MenuItem_OpenPcap_Click: no local IP, aborting", LogLevel.Error);
             return;
         }
 
@@ -902,7 +896,7 @@ public partial class MainWindow : Window
         }
 
         DebugLog.Write(LogChannel.Network,
-            "MenuItem_OpenPcap_Click: " + routed + " packets routed");
+            "MenuItem_OpenPcap_Click: " + routed + " packets routed", LogLevel.Info);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -918,11 +912,11 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private async void MenuItem_LaunchProfile_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_LaunchProfile_Click");
+        DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_LaunchProfile_Click", LogLevel.Trace);
 
         if (_currentPatchLevel == null)
         {
-            DebugLog.Write(LogChannel.General, "No patch level before launch.");
+            DebugLog.Write(LogChannel.General, "No patch level before launch.", LogLevel.Error);
             return;
         }
 
@@ -932,7 +926,7 @@ public partial class MainWindow : Window
         OpcodeDispatch.RebuildForCurrentPatchLevel();
 
         DebugLog.Write(LogChannel.Inference,
-            "MenuItem_LaunchProfile_Click: patch level set for serverType=" + serverType);
+            "MenuItem_LaunchProfile_Click: patch level set for serverType=" + serverType, LogLevel.Trace);
 
         LaunchProfileDialog dialog = new LaunchProfileDialog(serverType);
         dialog.Owner = this;
@@ -943,13 +937,13 @@ public partial class MainWindow : Window
         }
 
         DebugLog.Write(LogChannel.InferenceDebug,
-            "MenuItem_LaunchProfile_Click: profile selected: " + dialog.SelectedProfileName);
+            "MenuItem_LaunchProfile_Click: profile selected: " + dialog.SelectedProfileName, LogLevel.Info);
 
         string? localIp = PacketCapture.GetLocalIP();
         if (localIp == null)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "MenuItem_LaunchProfile_Click: no capture device found");
+                "MenuItem_LaunchProfile_Click: no capture device found", LogLevel.Error);
             MessageBox.Show("No suitable capture device found. Is Npcap installed?",
                 "Capture Error", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
@@ -962,14 +956,14 @@ public partial class MainWindow : Window
         if (!_packetCapture.Start(bpfFilter))
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "MenuItem_LaunchProfile_Click: capture failed to start");
+                "MenuItem_LaunchProfile_Click: capture failed to start", LogLevel.Error);
             MessageBox.Show("Failed to start packet capture.",
                 "Capture Error", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
 
         DebugLog.Write(LogChannel.InferenceDebug,
-            "MenuItem_LaunchProfile_Click: capture started");
+            "MenuItem_LaunchProfile_Click: capture started", LogLevel.Info);
         StatusCapture.Text = "Capture: Active";
 
         await GlassContext.ProfileManager.LaunchProfile(dialog.SelectedProfileName);
@@ -1000,7 +994,7 @@ public partial class MainWindow : Window
             Keyboard.Focus(TextBoxOpcodeTraceFind);
             e.Handled = true;
             DebugLog.Write(LogChannel.InferenceDebug,
-                "Window_PreviewKeyDown: Ctrl+F — find bar shown, focus moved");
+                "Window_PreviewKeyDown: Ctrl+F — find bar shown, focus moved", LogLevel.Trace);
             return;
         }
 
@@ -1009,7 +1003,7 @@ public partial class MainWindow : Window
             OpcodeTraceFindBar.Visibility = Visibility.Collapsed;
             e.Handled = true;
             DebugLog.Write(LogChannel.InferenceDebug,
-                "Window_PreviewKeyDown: Escape — find bar hidden");
+                "Window_PreviewKeyDown: Escape — find bar hidden", LogLevel.Trace);
             return;
         }
     }
@@ -1030,9 +1024,6 @@ public partial class MainWindow : Window
         OpcodeTraceFindBar.Visibility = Visibility.Visible;
         TextBoxOpcodeTraceFind.Focus();
         TextBoxOpcodeTraceFind.SelectAll();
-
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "MenuItem_Find_Click: find bar shown, focus moved");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////
@@ -1049,9 +1040,6 @@ public partial class MainWindow : Window
     {
         _opcodeTracePresenter.SetRowsHidden(_opcodeTracePresenter.Rows, false);
         _opcodeTracePresenter.ClearHiddenOpcodes();
-
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "MenuItem_ShowAllRows_Click: all rows shown, hide set cleared");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////
@@ -1066,9 +1054,6 @@ public partial class MainWindow : Window
     private void MenuItem_CollapseAllRows_Click(object sender, RoutedEventArgs e)
     {
         _opcodeTracePresenter.CollapseAllRows();
-
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "MenuItem_CollapseAllRows_Click: all rows collapsed");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////
@@ -1084,8 +1069,6 @@ public partial class MainWindow : Window
     private void Button_OpcodeTraceFindClose_Click(object sender, RoutedEventArgs e)
     {
         OpcodeTraceFindBar.Visibility = Visibility.Collapsed;
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "Button_OpcodeTraceFindClose_Click: find bar hidden");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////
@@ -1104,8 +1087,6 @@ public partial class MainWindow : Window
         {
             OpcodeTraceFindBar.Visibility = Visibility.Collapsed;
             e.Handled = true;
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "TextBoxOpcodeTraceFind_KeyDown: Escape — find bar hidden");
             return;
         }
 
@@ -1141,17 +1122,16 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////
     private void CheckBoxOpcodeTraceFindWrap_Changed(object sender, RoutedEventArgs e)
     {
+        // check if the presenter has not been constructed
         if (_opcodeTracePresenter == null)
         {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "CheckBoxOpcodeTraceFindWrap_Changed: presenter not yet constructed, ignoring");
             return;
         }
 
         bool wrap = CheckBoxOpcodeTraceFindWrap.IsChecked == true;
         _opcodeTracePresenter.SetSearchWrap(wrap);
         DebugLog.Write(LogChannel.InferenceDebug,
-            "CheckBoxOpcodeTraceFindWrap_Changed: wrap=" + wrap);
+            "CheckBoxOpcodeTraceFindWrap_Changed: wrap=" + wrap, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1171,17 +1151,14 @@ public partial class MainWindow : Window
     // reports "No match" and the viewport is not changed.  Does not
     // modify the list view's selection.
     //
-    // Guards against early firing during XAML load.
-    //
     // sender:  The Find Next button on the find bar.
     // e:       Routed event args.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void Button_OpcodeTraceFindNext_Click(object sender, RoutedEventArgs e)
     {
+        // guard against early firing during XAML load
         if (_opcodeTracePresenter == null)
         {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "Button_OpcodeTraceFindNext_Click: presenter not yet constructed, ignoring");
             return;
         }
 
@@ -1208,7 +1185,7 @@ public partial class MainWindow : Window
         {
             StatusBarSecondaryText.Text = "No match";
             DebugLog.Write(LogChannel.InferenceDebug,
-                "Button_OpcodeTraceFindNext_Click: no match (mode=" + mode + ")");
+                "Button_OpcodeTraceFindNext_Click: no match (mode=" + mode + ")", LogLevel.Trace);
             return;
         }
         OpcodeTraceRow? cursorRow = _opcodeTracePresenter.CursorRow;
@@ -1220,7 +1197,7 @@ public partial class MainWindow : Window
         StatusBarSecondaryText.Text = _opcodeTracePresenter.CursorOrdinal
             + "/" + _opcodeTracePresenter.MatchCount + " matches";
         DebugLog.Write(LogChannel.InferenceDebug,
-            "Button_OpcodeTraceFindNext_Click: match found (mode=" + mode + ")");
+            "Button_OpcodeTraceFindNext_Click: match found (mode=" + mode + ")", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1249,8 +1226,6 @@ public partial class MainWindow : Window
     {
         if (_opcodeTracePresenter == null)
         {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "Button_OpcodeTraceFindPrevious_Click: presenter not yet constructed, ignoring");
             return;
         }
 
@@ -1277,7 +1252,7 @@ public partial class MainWindow : Window
         {
             StatusBarSecondaryText.Text = "No match";
             DebugLog.Write(LogChannel.InferenceDebug,
-                "Button_OpcodeTraceFindPrevious_Click: no match (mode=" + mode + ")");
+                "Button_OpcodeTraceFindPrevious_Click: no match (mode=" + mode + ")", LogLevel.Trace);
             return;
         }
         OpcodeTraceRow? cursorRow = _opcodeTracePresenter.CursorRow;
@@ -1289,7 +1264,7 @@ public partial class MainWindow : Window
         StatusBarSecondaryText.Text = _opcodeTracePresenter.CursorOrdinal
             + "/" + _opcodeTracePresenter.MatchCount + " matches";
         DebugLog.Write(LogChannel.InferenceDebug,
-            "Button_OpcodeTraceFindPrevious_Click: match found (mode=" + mode + ")");
+            "Button_OpcodeTraceFindPrevious_Click: match found (mode=" + mode + ")", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1322,8 +1297,6 @@ public partial class MainWindow : Window
                 HighlightRegionType childRegion = HighlightTextBehavior.GetRegion(asTextBlock);
                 if (childRegion == region)
                 {
-                    DebugLog.Write(LogChannel.InferenceDebug,
-                        "MainWindow.FindRegionTextBlock: found TextBlock for region=" + region);
                     return asTextBlock;
                 }
             }
@@ -1365,7 +1338,7 @@ public partial class MainWindow : Window
         if (scroller == null)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "MainWindow.ScrollOffsetIntoView: no ScrollViewer ancestor, ignoring");
+                "MainWindow.ScrollOffsetIntoView: no ScrollViewer ancestor, ignoring", LogLevel.Warn);
             return;
         }
 
@@ -1373,7 +1346,7 @@ public partial class MainWindow : Window
         if (pointer == null)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "MainWindow.ScrollOffsetIntoView: offset " + offset + " could not be resolved to a TextPointer");
+                "MainWindow.ScrollOffsetIntoView: offset " + offset + " could not be resolved to a TextPointer", LogLevel.Error);
             return;
         }
 
@@ -1381,7 +1354,7 @@ public partial class MainWindow : Window
         if (charRect.IsEmpty || double.IsInfinity(charRect.Top) || double.IsInfinity(charRect.Left))
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "MainWindow.ScrollOffsetIntoView: empty character rect at offset " + offset);
+                "MainWindow.ScrollOffsetIntoView: empty character rect at offset " + offset, LogLevel.Warn);
             return;
         }
 
@@ -1434,11 +1407,6 @@ public partial class MainWindow : Window
         {
             scroller.ScrollToHorizontalOffset(newHorizontal);
         }
-
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "MainWindow.ScrollOffsetIntoView: offset=" + offset
-            + " rectInScroller=(" + rectInScroller.Left + "," + rectInScroller.Top + ")"
-            + " newV=" + newVertical + " newH=" + newHorizontal);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1474,9 +1442,6 @@ public partial class MainWindow : Window
         HighlightRegionType region = match.Region;
         if (region != HighlightRegionType.Field && region != HighlightRegionType.Hex)
         {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "MainWindow.ScrollMatchIntoView: summary region=" + region
-                + " row brought into view, no inner scroll needed");
             return;
         }
 
@@ -1488,7 +1453,7 @@ public partial class MainWindow : Window
                 if (container == null)
                 {
                     DebugLog.Write(LogChannel.InferenceDebug,
-                        "MainWindow.ScrollMatchIntoView: container not realized for row, ignoring");
+                        "MainWindow.ScrollMatchIntoView: container not realized for row, ignoring", LogLevel.Warn);
                     return;
                 }
 
@@ -1497,15 +1462,11 @@ public partial class MainWindow : Window
                 {
                     DebugLog.Write(LogChannel.InferenceDebug,
                         "MainWindow.ScrollMatchIntoView: no TextBlock for region=" + region
-                        + " under container");
+                        + " under container", LogLevel.Warn);
                     return;
                 }
 
                 ScrollOffsetIntoView(regionBlock, match.Start);
-
-                DebugLog.Write(LogChannel.InferenceDebug,
-                    "MainWindow.ScrollMatchIntoView: scrolled region=" + region
-                    + " offset=" + match.Start + " for row packetIndex=" + row.PacketIndex);
             }));
         }));
     }
@@ -1572,7 +1533,7 @@ public partial class MainWindow : Window
         if (offset < 0)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "MainWindow.GetTextPointerAtCharacterOffset: negative offset " + offset);
+                "MainWindow.GetTextPointerAtCharacterOffset: negative offset " + offset, LogLevel.Error);
             return null;
         }
 
@@ -1585,11 +1546,6 @@ public partial class MainWindow : Window
                 totalRunLength += countRun.Text.Length;
             }
         }
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "MainWindow.GetTextPointerAtCharacterOffset: offset=" + offset
-            + " text.Text.Length=" + (text.Text?.Length ?? -1)
-            + " totalRunLength=" + totalRunLength
-            + " inlineCount=" + text.Inlines.Count);
 
         int remaining = offset;
         foreach (Inline inline in text.Inlines)
@@ -1598,7 +1554,7 @@ public partial class MainWindow : Window
             if (run == null)
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
-                    "MainWindow.GetTextPointerAtCharacterOffset: non-Run inline encountered, cannot traverse");
+                    "MainWindow.GetTextPointerAtCharacterOffset: non-Run inline encountered, cannot traverse", LogLevel.Error);
                 return null;
             }
 
@@ -1610,7 +1566,7 @@ public partial class MainWindow : Window
                 {
                     DebugLog.Write(LogChannel.InferenceDebug,
                         "MainWindow.GetTextPointerAtCharacterOffset: Run.ContentStart returned null for offset "
-                        + remaining + " within run of length " + runLength);
+                        + remaining + " within run of length " + runLength, LogLevel.Error);
                 }
                 return pointer;
             }
@@ -1618,9 +1574,6 @@ public partial class MainWindow : Window
             remaining = remaining - runLength;
         }
 
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "MainWindow.GetTextPointerAtCharacterOffset: offset " + offset
-            + " past end of rendered text");
         return null;
     }
 
@@ -1640,8 +1593,6 @@ public partial class MainWindow : Window
     {
         if (_opcodeTracePresenter == null)
         {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "Button_OpcodeTraceFindClear_Click: presenter not yet constructed, ignoring");
             return;
         }
 
@@ -1650,9 +1601,6 @@ public partial class MainWindow : Window
         _opcodeTracePresenter.SetSearchQuery(null);
         _opcodeTracePresenter.ClearHighlights();
         TextBoxOpcodeTraceFind.Focus();
-
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "Button_OpcodeTraceFindClear_Click: query and highlights cleared");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////
@@ -1681,8 +1629,6 @@ public partial class MainWindow : Window
     {
         if (_opcodeTracePresenter == null)
         {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "Button_OpcodeTraceFindAll_Click: presenter not yet constructed, ignoring");
             return;
         }
 
@@ -1709,7 +1655,7 @@ public partial class MainWindow : Window
         {
             StatusBarSecondaryText.Text = "No matches";
             DebugLog.Write(LogChannel.InferenceDebug,
-                "Button_OpcodeTraceFindAll_Click: no matches (mode=" + mode + ")");
+                "Button_OpcodeTraceFindAll_Click: no matches (mode=" + mode + ")", LogLevel.Trace);
             return;
         }
 
@@ -1721,9 +1667,6 @@ public partial class MainWindow : Window
         }
         StatusBarSecondaryText.Text = _opcodeTracePresenter.CursorOrdinal
             + "/" + _opcodeTracePresenter.MatchCount + " matches";
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "Button_OpcodeTraceFindAll_Click: " + _opcodeTracePresenter.MatchCount
-            + " matches (mode=" + mode + "), cursor positioned");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////
@@ -1742,7 +1685,7 @@ public partial class MainWindow : Window
         if (_contextMenuRow == null)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "MenuItem_OpcodeTraceHideRow_Click: no stashed row, ignoring");
+                "MenuItem_OpcodeTraceHideRow_Click: no stashed row, ignoring", LogLevel.Warn);
             return;
         }
 
@@ -1750,7 +1693,7 @@ public partial class MainWindow : Window
         _opcodeTracePresenter.SetRowsHidden(new[] { row }, true);
 
         DebugLog.Write(LogChannel.InferenceDebug,
-            "MenuItem_OpcodeTraceHideRow_Click: hid packetIndex=" + row.PacketIndex);
+            "MenuItem_OpcodeTraceHideRow_Click: hid packetIndex=" + row.PacketIndex, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1770,9 +1713,6 @@ public partial class MainWindow : Window
         OpcodeManageWindow window = new OpcodeManageWindow(_opcodeTracePresenter, _packetCatalog);
         window.Owner = this;
         window.Show();
-
-        DebugLog.Write(LogChannel.Opcodes,
-            "Button_OpcodeTraceManage_Click: opened manage window");
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1794,7 +1734,7 @@ public partial class MainWindow : Window
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void OnAllSessionsDisconnected()
     {
-        DebugLog.Write(LogChannel.Sessions, "MainWindow.OnAllSessionsDisconnected: all sessions disconnected, clearing active profile.");
+        DebugLog.Write(LogChannel.Sessions, "MainWindow.OnAllSessionsDisconnected: all sessions disconnected, clearing active profile.", LogLevel.Info);
         ProtocolStackBootstrap.Teardown();
         UpdateToolsMenuState();
     }
@@ -1824,7 +1764,6 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void MenuItem_Exit_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_Exit_Click");
         Close();
     }
 
@@ -1852,8 +1791,6 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void MenuItem_OpcodeEditor_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.Fields, "MainWindow.MenuItem_OpcodeEditor_Click: opening editor");
-
         OpcodeEditor editor = new OpcodeEditor();
         editor.Owner = this;
         editor.Show();
@@ -1869,8 +1806,6 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void MenuItem_CollectionEditor_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.Fields, "MainWindow.MenuItem_CollectionEditor_Click: opening editor");
-
         CollectionEditor editor = new CollectionEditor();
         editor.Owner = this;
         editor.Show();
@@ -1886,8 +1821,6 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void MenuItem_GateEditor_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.Fields, "MainWindow.MenuItem_GateEditor_Click: opening editor");
-
         GateEditor editor = new GateEditor();
         editor.Owner = this;
         editor.Show();
@@ -1923,7 +1856,7 @@ public partial class MainWindow : Window
         if (selected == null)
         {
             _analysisFilterSessionId = null;
-            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisSessionFilter_SelectionChanged: no selection, filter cleared");
+            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisSessionFilter_SelectionChanged: no selection, filter cleared", LogLevel.Trace);
             RefreshAnalysis();
             return;
         }
@@ -1931,12 +1864,12 @@ public partial class MainWindow : Window
         if (selected.Tag is int sessionId)
         {
             _analysisFilterSessionId = sessionId;
-            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisSessionFilter_SelectionChanged: filter set to session " + sessionId);
+            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisSessionFilter_SelectionChanged: filter set to session " + sessionId, LogLevel.Trace);
         }
         else
         {
             _analysisFilterSessionId = null;
-            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisSessionFilter_SelectionChanged: filter cleared (All)");
+            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisSessionFilter_SelectionChanged: filter cleared (All)", LogLevel.Trace);
         }
 
         RefreshAnalysis();
@@ -1958,7 +1891,7 @@ public partial class MainWindow : Window
         if (selected == null)
         {
             _analysisFilterChannel = null;
-            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisChannelFilter_SelectionChanged: no selection, filter cleared");
+            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisChannelFilter_SelectionChanged: no selection, filter cleared", LogLevel.Trace);
             RefreshAnalysis();
             return;
         }
@@ -1968,12 +1901,12 @@ public partial class MainWindow : Window
         if (selected.Tag is SoeConstants.StreamId streamId)
         {
             _analysisFilterChannel = streamId;
-            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisChannelFilter_SelectionChanged: filter set to " + streamId);
+            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisChannelFilter_SelectionChanged: filter set to " + streamId, LogLevel.Trace);
         }
         else
         {
             _analysisFilterChannel = null;
-            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisChannelFilter_SelectionChanged: filter cleared (All)");
+            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisChannelFilter_SelectionChanged: filter cleared (All)", LogLevel.Trace);
         }
         RefreshAnalysis();
     }
@@ -1993,7 +1926,7 @@ public partial class MainWindow : Window
 
         if (selected == null)
         {
-            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisPacketCount_SelectionChanged: no selection");
+            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisPacketCount_SelectionChanged: no selection", LogLevel.Trace);
             return;
         }
 
@@ -2002,16 +1935,16 @@ public partial class MainWindow : Window
         if (value == "All")
         {
             _analysisMaxPackets = int.MaxValue;
-            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisPacketCount_SelectionChanged: set to All");
+            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisPacketCount_SelectionChanged: set to All", LogLevel.Trace);
         }
         else if (int.TryParse(value, out int count))
         {
             _analysisMaxPackets = count;
-            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisPacketCount_SelectionChanged: set to " + count);
+            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisPacketCount_SelectionChanged: set to " + count, LogLevel.Trace);
         }
         else
         {
-            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisPacketCount_SelectionChanged: unexpected value '" + value + "'");
+            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisPacketCount_SelectionChanged: unexpected value '" + value + "'", LogLevel.Warn);
         }
         RefreshAnalysis();
     }
@@ -2031,7 +1964,7 @@ public partial class MainWindow : Window
 
         if (selected == null)
         {
-            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisHexLength_SelectionChanged: no selection");
+            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisHexLength_SelectionChanged: no selection", LogLevel.Trace);
             return;
         }
 
@@ -2040,12 +1973,12 @@ public partial class MainWindow : Window
         if (value == "Full")
         {
             _analysisMaxHexBytes = int.MaxValue;
-            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisHexLength_SelectionChanged: set to Full");
+            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisHexLength_SelectionChanged: set to Full", LogLevel.Trace);
         }
         else if (int.TryParse(value, out int bytes))
         {
             _analysisMaxHexBytes = bytes;
-            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisHexLength_SelectionChanged: set to " + bytes);
+            DebugLog.Write(LogChannel.InferenceDebug, "AnalysisHexLength_SelectionChanged: set to " + bytes, LogLevel.Trace);
         }
         else
         {
@@ -2069,12 +2002,12 @@ public partial class MainWindow : Window
     {
         if (CandidateGrid.SelectedItem == null)
         {
-            DebugLog.Write(LogChannel.InferenceDebug, "ToggleButton_AcceptCandidate_Click: no candidate selected");
+            DebugLog.Write(LogChannel.InferenceDebug, "ToggleButton_AcceptCandidate_Click: no candidate selected", LogLevel.Trace);
             return;
         }
         System.Windows.Controls.Primitives.ToggleButton toggle = (System.Windows.Controls.Primitives.ToggleButton)sender;
         bool isAccepted = toggle.IsChecked == true;
-        DebugLog.Write(LogChannel.InferenceDebug, "ToggleButton_AcceptCandidate_Click: accepted=" + isAccepted);
+        DebugLog.Write(LogChannel.InferenceDebug, "ToggleButton_AcceptCandidate_Click: accepted=" + isAccepted, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////
@@ -2108,7 +2041,7 @@ public partial class MainWindow : Window
         }
         DebugLog.Write(LogChannel.Opcodes,
             "OpcodeTraceList_SelectionChanged: hasSelection=" + hasSelection
-            + " isExpanded=" + (row != null ? row.IsExpanded.ToString() : "n/a"));
+            + " isExpanded=" + (row != null ? row.IsExpanded.ToString() : "n/a"), LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -2137,7 +2070,7 @@ public partial class MainWindow : Window
         if (OpcodeTraceList.SelectedItems.Count == 0)
         {
             DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTraceList_KeyDown: Ctrl-C with no selection, ignoring");
+                "OpcodeTraceList_KeyDown: Ctrl-C with no selection, ignoring", LogLevel.Info);
             return;
         }
 
@@ -2216,10 +2149,6 @@ public partial class MainWindow : Window
 
         Clipboard.SetText(sb.ToString());
 
-        DebugLog.Write(LogChannel.Opcodes,
-            "OpcodeTraceList_KeyDown: copied " + rowsCopied + " rows ("
-            + rowsWithDetail + " with detail) to clipboard");
-
         e.Handled = true;
     }
 
@@ -2275,29 +2204,29 @@ public partial class MainWindow : Window
         if (selectedItem == null)
         {
             DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTraceHexLength_SelectionChanged: no selection");
+                "OpcodeTraceHexLength_SelectionChanged: no selection", LogLevel.Trace);
             return;
         }
 
         string value = selectedItem.Content as string ?? "";
 
-        int maxBytes;
+        uint maxBytes;
         if (value == "Full")
         {
-            maxBytes = int.MaxValue;
+            maxBytes = uint.MaxValue;
             DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTraceHexLength_SelectionChanged: set to Full");
+                "OpcodeTraceHexLength_SelectionChanged: set to Full", LogLevel.Trace);
         }
-        else if (int.TryParse(value, out int parsed))
+        else if (uint.TryParse(value, out uint parsed))
         {
             maxBytes = parsed;
             DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTraceHexLength_SelectionChanged: set to " + parsed);
+                "OpcodeTraceHexLength_SelectionChanged: set to " + parsed, LogLevel.Trace);
         }
         else
         {
             DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTraceHexLength_SelectionChanged: unexpected value '" + value + "'");
+                "OpcodeTraceHexLength_SelectionChanged: unexpected value '" + value + "'", LogLevel.Warn);
             return;
         }
 
@@ -2336,18 +2265,18 @@ public partial class MainWindow : Window
             if (ReferenceEquals(OpcodeTraceHexLength.SelectedItem, item))
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
-                    "MainWindow.SetHexLengthFull: dropdown already on Full, no change");
+                    "MainWindow.SetHexLengthFull: dropdown already on Full, no change", LogLevel.Trace);
                 return;
             }
 
             OpcodeTraceHexLength.SelectedItem = item;
             DebugLog.Write(LogChannel.InferenceDebug,
-                "MainWindow.SetHexLengthFull: dropdown set to Full");
+                "MainWindow.SetHexLengthFull: dropdown set to Full", LogLevel.Trace);
             return;
         }
 
         DebugLog.Write(LogChannel.InferenceDebug,
-            "MainWindow.SetHexLengthFull: Full entry not found in dropdown");
+            "MainWindow.SetHexLengthFull: Full entry not found in dropdown", LogLevel.Warn);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -2364,7 +2293,7 @@ public partial class MainWindow : Window
         if (row == null)
         {
             DebugLog.Write(LogChannel.Opcodes,
-                "Toggle_OpcodeTraceExpand_Click: no row selected, ignoring");
+                "Toggle_OpcodeTraceExpand_Click: no row selected, ignoring", LogLevel.Trace);
             ToggleOpcodeTraceExpand.IsChecked = false;
             return;
         }
@@ -2414,7 +2343,7 @@ public partial class MainWindow : Window
         if (element == null)
         {
             DebugLog.Write(LogChannel.Opcodes,
-                "Row_DoubleClick: sender was not a FrameworkElement, ignoring");
+                "Row_DoubleClick: sender was not a FrameworkElement, ignoring", LogLevel.Warn);
             return;
         }
 
@@ -2422,7 +2351,7 @@ public partial class MainWindow : Window
         if (row == null)
         {
             DebugLog.Write(LogChannel.Opcodes,
-                "Row_DoubleClick: DataContext was not OpcodeTraceRow, ignoring");
+                "Row_DoubleClick: DataContext was not OpcodeTraceRow, ignoring", LogLevel.Error);
             return;
         }
 
@@ -2450,7 +2379,7 @@ public partial class MainWindow : Window
         if (patch == null)
         {
             DebugLog.Write(LogChannel.Opcodes,
-                "ColorPatch_MouseLeftButtonUp: sender was not a Border, ignoring");
+                "ColorPatch_MouseLeftButtonUp: sender was not a Border, ignoring", LogLevel.Error);
             return;
         }
 
@@ -2459,7 +2388,7 @@ public partial class MainWindow : Window
             patch.BorderBrush = Brushes.Gray;
             _armedColorPatch = null;
             DebugLog.Write(LogChannel.Opcodes,
-                "ColorPatch_MouseLeftButtonUp: disarmed patch tag='" + patch.Tag + "'");
+                "ColorPatch_MouseLeftButtonUp: disarmed patch tag='" + patch.Tag + "'", LogLevel.Trace);
             return;
         }
 
@@ -2470,7 +2399,7 @@ public partial class MainWindow : Window
         patch.BorderBrush = Brushes.White;
         _armedColorPatch = patch;
         DebugLog.Write(LogChannel.Opcodes,
-            "ColorPatch_MouseLeftButtonUp: armed patch tag='" + patch.Tag + "'");
+            "ColorPatch_MouseLeftButtonUp: armed patch tag='" + patch.Tag + "'", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -2481,7 +2410,6 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void Button_OpcodeTraceRefresh_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.Opcodes, "Button_OpcodeTraceRefresh_Click: refresh requested");
         _opcodeTracePresenter.Refresh();
     }
 
@@ -2506,7 +2434,7 @@ public partial class MainWindow : Window
         if (selected.Count == 0)
         {
             DebugLog.Write(LogChannel.Opcodes,
-                "Button_OpcodeTraceHide_Click: no rows selected, ignoring");
+                "Button_OpcodeTraceHide_Click: no rows selected, ignoring", LogLevel.Trace);
             return;
         }
 
@@ -2525,7 +2453,7 @@ public partial class MainWindow : Window
 
         DebugLog.Write(LogChannel.Opcodes,
             "Button_OpcodeTraceHide_Click: hid " + opcodes.Count
-            + " opcode(s) from " + selected.Count + " selected row(s)");
+            + " opcode(s) from " + selected.Count + " selected row(s)", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////
@@ -2550,7 +2478,7 @@ public partial class MainWindow : Window
             _contextMenuRow = null;
             e.Handled = true;
             DebugLog.Write(LogChannel.InferenceDebug,
-                "OpcodeTraceList_ContextMenuOpening: no hit, menu suppressed");
+                "OpcodeTraceList_ContextMenuOpening: no hit, menu suppressed", LogLevel.Warn);
             return;
         }
 
@@ -2571,7 +2499,7 @@ public partial class MainWindow : Window
             _contextMenuRow = null;
             e.Handled = true;
             DebugLog.Write(LogChannel.InferenceDebug,
-                "OpcodeTraceList_ContextMenuOpening: hit was not under a ListViewItem, menu suppressed");
+                "OpcodeTraceList_ContextMenuOpening: hit was not under a ListViewItem, menu suppressed", LogLevel.Warn);
             return;
         }
 
@@ -2581,14 +2509,14 @@ public partial class MainWindow : Window
             _contextMenuRow = null;
             e.Handled = true;
             DebugLog.Write(LogChannel.InferenceDebug,
-                "OpcodeTraceList_ContextMenuOpening: container DataContext was not OpcodeTraceRow, menu suppressed");
+                "OpcodeTraceList_ContextMenuOpening: container DataContext was not OpcodeTraceRow, menu suppressed", LogLevel.Warn);
             return;
         }
 
         _contextMenuRow = row;
         DebugLog.Write(LogChannel.InferenceDebug,
             "OpcodeTraceList_ContextMenuOpening: menu opening for packetIndex="
-            + row.PacketIndex);
+            + row.PacketIndex, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////
@@ -2607,7 +2535,7 @@ public partial class MainWindow : Window
         if (_contextMenuRow == null)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "MenuItem_OpcodeTraceOpenDetail_Click: no stashed row, ignoring");
+                "MenuItem_OpcodeTraceOpenDetail_Click: no stashed row, ignoring", LogLevel.Warn);
             return;
         }
 
@@ -2617,7 +2545,7 @@ public partial class MainWindow : Window
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "MenuItem_OpcodeTraceOpenDetail_Click: catalog has no packet at index "
-                + row.PacketIndex);
+                + row.PacketIndex, LogLevel.Error);
             return;
         }
 
@@ -2627,7 +2555,7 @@ public partial class MainWindow : Window
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "MenuItem_OpcodeTraceOpenDetail_Click: opened detail window for packetIndex="
-            + row.PacketIndex);
+            + row.PacketIndex, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////
@@ -2643,9 +2571,6 @@ public partial class MainWindow : Window
         OpcodeTraceFindBar.Visibility = Visibility.Visible;
         TextBoxOpcodeTraceFind.Focus();
         TextBoxOpcodeTraceFind.SelectAll();
-
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "ShowFindBar: find bar shown, focus moved");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -2670,7 +2595,7 @@ public partial class MainWindow : Window
         if (_armedColorPatch == null)
         {
             DebugLog.Write(LogChannel.Opcodes,
-                "ApplyArmedColor: no color armed, ignoring");
+                "ApplyArmedColor: no color armed, ignoring", LogLevel.Error);
             return;
         }
 
@@ -2678,7 +2603,7 @@ public partial class MainWindow : Window
         if (row == null)
         {
             DebugLog.Write(LogChannel.Opcodes,
-                "ApplyArmedColor: no row selected, ignoring");
+                "ApplyArmedColor: no row selected, ignoring", LogLevel.Error);
             return;
         }
 
@@ -2686,7 +2611,7 @@ public partial class MainWindow : Window
         if (tagText == null)
         {
             DebugLog.Write(LogChannel.Opcodes,
-                "ApplyArmedColor: armed patch has no Tag, ignoring");
+                "ApplyArmedColor: armed patch has no Tag, ignoring", LogLevel.Error);
             return;
         }
 
@@ -2695,7 +2620,7 @@ public partial class MainWindow : Window
             System.Globalization.NumberStyles.HexNumber, null, out argb))
         {
             DebugLog.Write(LogChannel.Opcodes,
-                "ApplyArmedColor: could not parse Tag '" + tagText + "' as hex uint");
+                "ApplyArmedColor: could not parse Tag '" + tagText + "' as hex uint", LogLevel.Error);
             return;
         }
 
@@ -2729,7 +2654,7 @@ public partial class MainWindow : Window
                 name = "(" + GlassContext.SessionRegistry.CharacterNameFromSession(packet.Metadata.SessionId) + ")";
             }
             DebugLog.Write(LogChannel.Fields, "session " + packet.Metadata.SessionId + " is [" +
-                name + "] and using metadata we get " + GlassContext.SessionRegistry.CharacterNameFromMetadata(packet.Metadata));
+                name + "] and using metadata we get " + GlassContext.SessionRegistry.CharacterNameFromMetadata(packet.Metadata), LogLevel.Trace);
 
             int displayLength = Math.Min(payloadLength, _analysisMaxHexBytes);
             bool truncated = payloadLength > _analysisMaxHexBytes;
@@ -2907,7 +2832,7 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void HandleISXGlassMessage(string msg)
     {
-        DebugLog.Write(LogChannel.ISXGlass, $"ISXGlass: message in {msg}");
+        DebugLog.Write(LogChannel.ISXGlass, $"ISXGlass: message in {msg}", LogLevel.Info);
         var parts = msg.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0)
         {
@@ -2923,7 +2848,7 @@ public partial class MainWindow : Window
                 {
                     if (parts.Length < 4)
                     {
-                        DebugLog.Write(LogChannel.ISXGlass, $"ISXGlass: malformed session_connected: {msg}");
+                        DebugLog.Write(LogChannel.InferenceDebug, $"ISXGlass: malformed session_connected: {msg}", LogLevel.Error);
                         return;
                     }
 
@@ -2938,12 +2863,12 @@ public partial class MainWindow : Window
                         bool hasId = uint.TryParse(sessionName.Substring(2), out uint accountId);
                         if (!hasId)
                         {
-                            DebugLog.Write(LogChannel.ISXGlass, $"ISXGlass: no integer account-id: {sessionName}");
+                            DebugLog.Write(LogChannel.InferenceDebug, $"ISXGlass: no integer account-id: {sessionName}", LogLevel.Error);
                             return;
                         }
 
                         characterName = GlassContext.ProfileManager.GetCharacterNameByAccountId(accountId);
-                        DebugLog.Write(LogChannel.ISXGlass, $"session connected: {sessionName}, pid={pid}, character={characterName}");
+                        DebugLog.Write(LogChannel.ISXGlass, $"session connected: {sessionName}, pid={pid}, character={characterName}", LogLevel.Info);
                         GlassContext.SessionRegistry.OnSessionConnected(sessionName, characterName, pid, hwnd);
                         int slot = GlassContext.ProfileManager.GetSlotForCharacter(characterName);
                         if (slot == -1)
@@ -2952,12 +2877,12 @@ public partial class MainWindow : Window
                         }
 
                         string cmd = $"slot_assign {slot} {sessionName} {hwnd:X}";
-                        DebugLog.Write(LogChannel.ISXGlass, $"HandleISXGlassMessage: sending {cmd}");
+                        DebugLog.Write(LogChannel.ISXGlass, $"HandleISXGlassMessage: sending {cmd}", LogLevel.Trace);
                         GlassContext.GlassVideoPipe.Send(cmd);
                     }
                     else
                     {
-                        DebugLog.Write(LogChannel.ISXGlass, $"session connected: {sessionName}, pid={pid}, no active profile.");
+                        DebugLog.Write(LogChannel.ISXGlass, $"session connected: {sessionName}, pid={pid}, no active profile.", LogLevel.Error);
                         GlassContext.SessionRegistry.OnSessionConnected(sessionName, characterName, pid, hwnd);
                     }
 
@@ -2974,12 +2899,12 @@ public partial class MainWindow : Window
 
                     if (parts.Length < 2)
                     {
-                        DebugLog.Write(LogChannel.ISXGlass, $"ISXGlass: malformed session_disconnected: {msg}");
+                        DebugLog.Write(LogChannel.InferenceDebug, $"ISXGlass: malformed session_disconnected: {msg}", LogLevel.Error);
                         return;
                     }
 
                     string sessionName = parts[1];
-                    DebugLog.Write(LogChannel.ISXGlass, $"session_disconnected: {sessionName}");
+                    DebugLog.Write(LogChannel.ISXGlass, $"session_disconnected: {sessionName}", LogLevel.Trace);
                     GlassContext.GlassVideoPipe.Send($"unassign {sessionName}");
                     GlassContext.SessionRegistry.OnSessionDisconnected(sessionName);
                     break;
@@ -3035,7 +2960,7 @@ public partial class MainWindow : Window
         StatusBarRowText.Text = string.Empty;
         StatusBarSecondaryText.Text = string.Empty;
 
-        DebugLog.Write(LogChannel.InferenceDebug, "MainWindow.UIReset: complete");
+        DebugLog.Write(LogChannel.InferenceDebug, "MainWindow.UIReset: complete", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

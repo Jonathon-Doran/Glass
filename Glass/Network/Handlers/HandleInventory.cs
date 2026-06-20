@@ -19,6 +19,7 @@ public class HandleInventory : IHandleOpcodes
     private readonly PatchOpcode _opcodeHandled;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
+    private readonly GateDefinitionHandle _top_level_gate;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleInventory (constructor)
@@ -35,6 +36,7 @@ public class HandleInventory : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "Inventory Top-Level");
+        _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -66,7 +68,32 @@ public class HandleInventory : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
+        if (metadata.Channel != SoeConstants.StreamId.StreamZoneToClient)
+        {
+            return;
+        }
 
+
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        uint bagCount = 0;
+
+        try
+        {
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            bagCount = extractor.BagCount(rootGate);
+
+            DebugLog.Write(LogChannel.Opcodes, "Inventory top level sees " + bagCount + " bags");
+
+            for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
+            {
+                extractor.EnterGate(rootGate, bagIndex);
+            }
+
+        }
+        finally
+        {
+            extractor.Release();
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

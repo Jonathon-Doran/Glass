@@ -42,7 +42,7 @@ public class OpcodeTracePresenter
     private readonly Dictionary<int, string> _characterNameCache;
     private readonly object _characterNameCacheLock;
     private readonly Action<SignalSessionAdded> _sessionAddedHandler;
-    private int _maxHexBytes;
+    private uint _maxHexBytes;
     private string _searchQuery;
     private byte[]? _searchQueryBytes;
     private int _matchCount;
@@ -121,7 +121,7 @@ public class OpcodeTracePresenter
         GlassContext.SignalBus.Unsubscribe(_sessionAddedHandler);
 
         DebugLog.Write(LogChannel.InferenceDebug,
-            "OpcodeTracePresenter.Detach: unsubscribed from SignalSessionAdded");
+            "OpcodeTracePresenter.Detach: unsubscribed from SignalSessionAdded", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -145,7 +145,7 @@ public class OpcodeTracePresenter
         if (signal == null)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "OpcodeTracePresenter.OnSessionAdded: null signal, ignoring");
+                "OpcodeTracePresenter.OnSessionAdded: null signal, ignoring", LogLevel.Warn);
             return;
         }
 
@@ -156,7 +156,7 @@ public class OpcodeTracePresenter
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "OpcodeTracePresenter.OnSessionAdded: cached sessionId="
-            + signal.SessionId + " character=" + signal.CharacterName);
+            + signal.SessionId + " character=" + signal.CharacterName, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -218,7 +218,7 @@ public class OpcodeTracePresenter
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "OpcodeTracePresenter.Refresh: rebuilt " + _rows.Count + " rows from "
-            + opcodes.Length + " known opcodes (" + _hiddenOpcodes.Count + " hidden)");
+            + opcodes.Length + " known opcodes (" + _hiddenOpcodes.Count + " hidden)", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -295,14 +295,14 @@ public class OpcodeTracePresenter
             _colorByPacketIndex.Remove(packetIndex);
             DebugLog.Write(LogChannel.InferenceDebug,
                 "OpcodeTracePresenter.SetPacketColor: cleared override for index="
-                + packetIndex);
+                + packetIndex, LogLevel.Trace);
         }
         else
         {
             _colorByPacketIndex[packetIndex] = argb;
             DebugLog.Write(LogChannel.InferenceDebug,
                 "OpcodeTracePresenter.SetPacketColor: set index="
-                + packetIndex + " color=0x" + argb.ToString("x8"));
+                + packetIndex + " color=0x" + argb.ToString("x8"), LogLevel.Trace);
         }
 
         for (int i = 0; i < _rows.Count; i++)
@@ -334,14 +334,14 @@ public class OpcodeTracePresenter
             _colorByOpcode.Remove(opcode);
             DebugLog.Write(LogChannel.InferenceDebug,
                 "OpcodeTracePresenter.SetOpcodeColor: cleared override for opcode=0x"
-                + opcode);
+                + opcode, LogLevel.Trace);
         }
         else
         {
             _colorByOpcode[opcode] = argb;
             DebugLog.Write(LogChannel.InferenceDebug,
                 "OpcodeTracePresenter.SetOpcodeColor: set opcode=0x"
-                + opcode + " color=0x" + argb.ToString("x8"));
+                + opcode + " color=0x" + argb.ToString("x8"), LogLevel.Trace);
         }
 
         for (int i = 0; i < _rows.Count; i++)
@@ -377,7 +377,7 @@ public class OpcodeTracePresenter
 
         if (packet == null)
         {
-            DebugLog.Write(LogChannel.InferenceDebug, "packetindex " + row.PacketIndex + " is not in the catalog");
+            DebugLog.Write(LogChannel.InferenceDebug, "packetindex " + row.PacketIndex + " is not in the catalog", LogLevel.Warn);
 
             return;
         }
@@ -390,6 +390,11 @@ public class OpcodeTracePresenter
         GateDefinitionHandle top_level_gate = registry.GetOpcodeGateDefinition(metadata.Opcode);
         FieldExtractor extractor = GlassContext.FieldExtractor;
         StringBuilder sb = new StringBuilder();
+
+        if (top_level_gate.Exists == false)
+        {
+            return;
+        }
 
         try
         {
@@ -437,25 +442,18 @@ public class OpcodeTracePresenter
     //
     // maxBytes:  Maximum bytes to render per row.  Pass int.MaxValue for no cap.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public void SetMaxHexBytes(int maxBytes)
+    public void SetMaxHexBytes(uint maxBytes)
     {
-        if (maxBytes <= 0 && maxBytes != int.MaxValue)
-        {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "OpcodeTracePresenter.SetMaxHexBytes: ignoring non-positive value " + maxBytes);
-            return;
-        }
-
         if (maxBytes == _maxHexBytes)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "OpcodeTracePresenter.SetMaxHexBytes: unchanged at " + maxBytes);
+                "OpcodeTracePresenter.SetMaxHexBytes: unchanged at " + maxBytes, LogLevel.Trace);
             return;
         }
 
         _maxHexBytes = maxBytes;
         DebugLog.Write(LogChannel.InferenceDebug,
-            "OpcodeTracePresenter.SetMaxHexBytes: cap set to " + maxBytes);
+            "OpcodeTracePresenter.SetMaxHexBytes: cap set to " + maxBytes, LogLevel.Trace);
 
         int repopulated = 0;
         for (int rowIndex = 0; rowIndex < _rows.Count; rowIndex++)
@@ -473,7 +471,7 @@ public class OpcodeTracePresenter
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "OpcodeTracePresenter.SetMaxHexBytes: re-formatted " + repopulated
-            + " populated rows out of " + _rows.Count);
+            + " populated rows out of " + _rows.Count, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -762,7 +760,7 @@ public class OpcodeTracePresenter
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "OpcodeTracePresenter.ApplyCursorHighlightColor: no range matched cursor matchIndex="
-                + _cursorMatchIndex);
+                + _cursorMatchIndex, LogLevel.Error);
         }
     }
 
@@ -788,7 +786,7 @@ public class OpcodeTracePresenter
     {
         if (string.IsNullOrWhiteSpace(query))
         {
-            DebugLog.Write(LogChannel.InferenceDebug, "TryParseHexQuery: empty query");
+            DebugLog.Write(LogChannel.InferenceDebug, "TryParseHexQuery: empty query", LogLevel.Error);
             return null;
         }
 
@@ -797,7 +795,7 @@ public class OpcodeTracePresenter
         if (tokens.Length < 2)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "TryParseHexQuery: single-token query '" + query + "' treated as ASCII");
+                "TryParseHexQuery: single-token query '" + query + "' treated as ASCII", LogLevel.Warn);
             return null;
         }
 
@@ -810,14 +808,14 @@ public class OpcodeTracePresenter
             if (token.Length != 2)
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
-                    "TryParseHexQuery: token '" + token + "' is not 2 chars, query treated as ASCII");
+                    "TryParseHexQuery: token '" + token + "' is not 2 chars, query treated as ASCII", LogLevel.Warn);
                 return null;
             }
 
             if (!byte.TryParse(token, System.Globalization.NumberStyles.HexNumber, null, out byte parsed))
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
-                    "TryParseHexQuery: token '" + token + "' is not hex, query treated as ASCII");
+                    "TryParseHexQuery: token '" + token + "' is not hex, query treated as ASCII", LogLevel.Warn);
                 return null;
             }
 
@@ -825,7 +823,7 @@ public class OpcodeTracePresenter
         }
 
         DebugLog.Write(LogChannel.InferenceDebug,
-            "TryParseHexQuery: parsed " + tokens.Length + " hex bytes");
+            "TryParseHexQuery: parsed " + tokens.Length + " hex bytes", LogLevel.Trace);
         return result;
     }
 
@@ -930,8 +928,6 @@ public class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     public void ClearHighlights()
     {
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "OpcodeTracePresenter.ClearHighlights: clearing highlights on " + _rows.Count + " rows");
         for (int i = 0; i < _rows.Count; i++)
         {
             OpcodeTraceRow row = _rows[i];
@@ -966,7 +962,7 @@ public class OpcodeTracePresenter
             _searchQueryBytes = null;
             ClearHighlights();
             DebugLog.Write(LogChannel.InferenceDebug,
-                "OpcodeTracePresenter.SetSearchQuery: cleared");
+                "OpcodeTracePresenter.SetSearchQuery: cleared", LogLevel.Trace);
             return;
         }
 
@@ -984,7 +980,7 @@ public class OpcodeTracePresenter
         }
         DebugLog.Write(LogChannel.InferenceDebug,
             "OpcodeTracePresenter.SetSearchQuery: query='" + query + "' type=" + _searchQueryType
-            + " bytes=" + _searchQueryBytes.Length);
+            + " bytes=" + _searchQueryBytes.Length, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -999,8 +995,6 @@ public class OpcodeTracePresenter
     public void SetSearchWrap(bool wrap)
     {
         _searchWrap = wrap;
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "OpcodeTracePresenter.SetSearchWrap: wrap=" + wrap);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1039,7 +1033,7 @@ public class OpcodeTracePresenter
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "OpcodeTracePresenter.SetRowsHidden: set " + changed
-            + " row(s) to IsHidden=" + hidden + ", " + unchanged + " unchanged");
+            + " row(s) to IsHidden=" + hidden + ", " + unchanged + " unchanged", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1127,7 +1121,7 @@ public class OpcodeTracePresenter
         }
 
         DebugLog.Write(LogChannel.InferenceDebug,
-            "OpcodeTracePresenter.CollapseAllRows: collapsed " + collapsed + " row(s)");
+            "OpcodeTracePresenter.CollapseAllRows: collapsed " + collapsed + " row(s)", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1142,7 +1136,7 @@ public class OpcodeTracePresenter
         HashSet<OpcodeValue> snapshot = new HashSet<OpcodeValue>(_hiddenOpcodes);
         DebugLog.Write(LogChannel.InferenceDebug,
             "OpcodeTracePresenter.GetHiddenOpcodes: returned snapshot of "
-            + snapshot.Count + " opcode(s)");
+            + snapshot.Count + " opcode(s)", LogLevel.Trace);
         return snapshot;
     }
 
@@ -1160,7 +1154,7 @@ public class OpcodeTracePresenter
         int count = _hiddenOpcodes.Count;
         _hiddenOpcodes.Clear();
         DebugLog.Write(LogChannel.InferenceDebug,
-            "OpcodeTracePresenter.ClearHiddenOpcodes: cleared " + count + " opcode(s)");
+            "OpcodeTracePresenter.ClearHiddenOpcodes: cleared " + count + " opcode(s)", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1200,7 +1194,7 @@ public class OpcodeTracePresenter
         if (rowCount == 0)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "OpcodeTracePresenter.FindNext: no rows");
+                "OpcodeTracePresenter.FindNext: no rows", LogLevel.Warn);
             return null;
         }
 
@@ -1229,10 +1223,6 @@ public class OpcodeTracePresenter
             {
                 startMatchIndex = _cursorMatchIndex + 1;
             }
-
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "OpcodeTracePresenter.FindNext: active search, resuming at rowIndex="
-                + startRowIndex + " matchIndex=" + startMatchIndex);
         }
         else
         {
@@ -1244,9 +1234,6 @@ public class OpcodeTracePresenter
                 totalMatches += RecomputeRowHighlights(_rows[i], mode);
             }
             _matchCount = totalMatches;
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "OpcodeTracePresenter.FindNext: recompute located " + totalMatches
-                + " matches across " + rowCount + " rows");
 
             startRowIndex = 0;
             if (selectedRow != null)
@@ -1258,9 +1245,6 @@ public class OpcodeTracePresenter
                 }
             }
             startMatchIndex = 0;
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "OpcodeTracePresenter.FindNext: no active search, starting at rowIndex="
-                + startRowIndex + " matchIndex=" + startMatchIndex);
         }
 
         // With wrap on, visit every row in turn starting from startRowIndex.
@@ -1274,9 +1258,6 @@ public class OpcodeTracePresenter
         {
             rowsToVisit = rowCount - startRowIndex;
         }
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "OpcodeTracePresenter.FindNext: wrap=" + _searchWrap
-            + " rowsToVisit=" + rowsToVisit);
 
         // Walk rows forward, returning the first match found.  The very
         // first row's first candidate is startMatchIndex; on every later
@@ -1310,16 +1291,10 @@ public class OpcodeTracePresenter
                 ordinalCount = ordinalCount + firstCandidate + 1;
                 _cursorOrdinal = ordinalCount;
                 ApplyCursorHighlightColor(previousCursorRow);
-                DebugLog.Write(LogChannel.InferenceDebug,
-                    "OpcodeTracePresenter.FindNext: cursor at rowIndex=" + rowIndex
-                    + " matchIndex=" + firstCandidate
-                    + " ordinal=" + _cursorOrdinal);
                 return row.Matches[firstCandidate];
             }
         }
 
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "OpcodeTracePresenter.FindNext: no match, cursor unchanged");
         return null;
     }
 
@@ -1360,7 +1335,7 @@ public class OpcodeTracePresenter
         if (rowCount == 0)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "OpcodeTracePresenter.FindPrevious: no rows");
+                "OpcodeTracePresenter.FindPrevious: no rows", LogLevel.Warn);
             return null;
         }
 
@@ -1401,7 +1376,7 @@ public class OpcodeTracePresenter
             _matchCount = totalMatches;
             DebugLog.Write(LogChannel.InferenceDebug,
                 "OpcodeTracePresenter.FindPrevious: recompute located " + totalMatches
-                + " matches across " + rowCount + " rows");
+                + " matches across " + rowCount + " rows", LogLevel.Trace);
 
             startRowIndex = rowCount - 1;
             if (selectedRow != null)
@@ -1416,7 +1391,7 @@ public class OpcodeTracePresenter
         }
         DebugLog.Write(LogChannel.InferenceDebug,
             "OpcodeTracePresenter.FindPrevious: starting at rowIndex=" + startRowIndex
-            + " matchIndex=" + startMatchIndex);
+            + " matchIndex=" + startMatchIndex, LogLevel.Trace);
 
         // With wrap on, visit every row in turn starting from startRowIndex
         // going backward, plus one extra to revisit the start row.  Without
@@ -1432,7 +1407,7 @@ public class OpcodeTracePresenter
         }
         DebugLog.Write(LogChannel.InferenceDebug,
             "OpcodeTracePresenter.FindPrevious: wrap=" + _searchWrap
-            + " rowsToVisit=" + rowsToVisit);
+            + " rowsToVisit=" + rowsToVisit, LogLevel.Trace);
 
         // Walk rows backward, returning the first match found.  On the
         // first row the candidate is min(startMatchIndex, Matches.Count - 1);
@@ -1476,13 +1451,13 @@ public class OpcodeTracePresenter
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "OpcodeTracePresenter.FindPrevious: cursor at rowIndex=" + rowIndex
                     + " matchIndex=" + candidate
-                    + " ordinal=" + _cursorOrdinal);
+                    + " ordinal=" + _cursorOrdinal, LogLevel.Trace);
                 return row.Matches[candidate];
             }
         }
 
         DebugLog.Write(LogChannel.InferenceDebug,
-            "OpcodeTracePresenter.FindPrevious: no match, cursor unchanged");
+            "OpcodeTracePresenter.FindPrevious: no match, cursor unchanged", LogLevel.Trace);
         return null;
     }
 
@@ -1514,7 +1489,7 @@ public class OpcodeTracePresenter
         {
             _matchCount = 0;
             DebugLog.Write(LogChannel.InferenceDebug,
-                "OpcodeTracePresenter.FindAll: empty query");
+                "OpcodeTracePresenter.FindAll: empty query", LogLevel.Warn);
             return null;
         }
 
@@ -1523,7 +1498,7 @@ public class OpcodeTracePresenter
         {
             _matchCount = 0;
             DebugLog.Write(LogChannel.InferenceDebug,
-                "OpcodeTracePresenter.FindAll: no rows");
+                "OpcodeTracePresenter.FindAll: no rows", LogLevel.Warn);
             return null;
         }
 
@@ -1535,12 +1510,12 @@ public class OpcodeTracePresenter
         _matchCount = totalMatches;
         DebugLog.Write(LogChannel.InferenceDebug,
             "OpcodeTracePresenter.FindAll: recompute located " + totalMatches
-            + " matches across " + rowCount + " rows");
+            + " matches across " + rowCount + " rows", LogLevel.Trace);
 
         if (totalMatches == 0)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "OpcodeTracePresenter.FindAll: no matches, cursor unchanged");
+                "OpcodeTracePresenter.FindAll: no matches, cursor unchanged", LogLevel.Trace);
             return null;
         }
 
@@ -1554,7 +1529,7 @@ public class OpcodeTracePresenter
             }
         }
         DebugLog.Write(LogChannel.InferenceDebug,
-            "OpcodeTracePresenter.FindAll: startRowIndex=" + startRowIndex);
+            "OpcodeTracePresenter.FindAll: startRowIndex=" + startRowIndex, LogLevel.Trace);
 
         for (int step = 0; step < rowCount; step++)
         {
@@ -1575,7 +1550,7 @@ public class OpcodeTracePresenter
                 ApplyCursorHighlightColor(previousCursorRow);
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "OpcodeTracePresenter.FindAll: cursor at rowIndex=" + rowIndex
-                    + " matchIndex=0 ordinal=1");
+                    + " matchIndex=0 ordinal=1", LogLevel.Trace);
                 return row.Matches[0];
             }
         }
@@ -1608,6 +1583,6 @@ public class OpcodeTracePresenter
         _cursorMatchIndex = -1;
         _searchWrap = false;
 
-        DebugLog.Write(LogChannel.InferenceDebug, "OpcodeTracePresenter.Clear: cleared");
+        DebugLog.Write(LogChannel.InferenceDebug, "OpcodeTracePresenter.Clear: cleared", LogLevel.Trace);
     }
 }

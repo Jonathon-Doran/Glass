@@ -21,6 +21,7 @@ public class HandleSetChatServer : IHandleOpcodes
     private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
+    private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _payloadSlot;
     private readonly SlotId _chatServerSlot;
@@ -52,6 +53,7 @@ public class HandleSetChatServer : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_SetChatServer");
+        _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         _payloadSlot =         _registry.IndexOfField(_collectionHandle, "csv_payload");
         _chatServerSlot =      _registry.IndexOfField(_collectionHandle, "chat_server");
@@ -110,26 +112,24 @@ public class HandleSetChatServer : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleWorldToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-/*        string payload;
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        string payload;
 
-        FieldBag bag = _registry.Rent(_collectionHandle);
         try
         {
-            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
-
-            ReadOnlySpan<byte> payloadBytes = bag.GetBytesAt(_payloadSlot);
-            payload = Encoding.ASCII.GetString(payloadBytes);
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            payload = extractor.GetStringAt(_payloadSlot);
         }
         finally
         {
-            bag.Release();
+            extractor.Release();
         }
 
         string[] csvFields = payload.Split(',');
 
         if (csvFields.Length < 4)
         {
-            DebugLog.Write(LogChannel.Inference, "HandleSetChatServer: malformed payload, field count="
+            DebugLog.Write(LogChannel.Opcodes, "HandleSetChatServer: malformed payload, field count="
                 + csvFields.Length + " raw='" + payload + "'");
             return;
         }
@@ -142,7 +142,7 @@ public class HandleSetChatServer : IHandleOpcodes
 
         if (dotIndex < 0)
         {
-            DebugLog.Write(LogChannel.Inference, "HandleSetChatServer: no dot in server.character field: '"
+            DebugLog.Write(LogChannel.Opcodes, "HandleSetChatServer: no dot in server.character field: '"
                 + serverDotCharacter + "'");
             return;
         }
@@ -150,10 +150,10 @@ public class HandleSetChatServer : IHandleOpcodes
         string serverName = serverDotCharacter.Substring(0, dotIndex);
         string characterName = serverDotCharacter.Substring(dotIndex + 1);
 
-        DebugLog.Write(LogChannel.Inference, "HandleSetChatServer: server=" + serverName
+        DebugLog.Write(LogChannel.Opcodes, "HandleSetChatServer: server=" + serverName
             + " character=" + characterName
             + " chatServer=" + chatServer
-            + " chatPort=" + chatPort);*/
+            + " chatPort=" + chatPort);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

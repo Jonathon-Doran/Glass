@@ -6,6 +6,7 @@ using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using System;
 using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Glass.Network.Handlers;
@@ -22,6 +23,7 @@ public class HandleHpUpdate : IHandleOpcodes
     private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
+    private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _playerIdSlot;
     private readonly SlotId _currentHPIdSlot;
@@ -46,6 +48,7 @@ public class HandleHpUpdate : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_HpUpdate");
+        _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         _playerIdSlot = _registry.IndexOfField(_collectionHandle, "player_id");
         _currentHPIdSlot = _registry.IndexOfField(_collectionHandle, "current_hp");
@@ -99,16 +102,15 @@ public class HandleHpUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-/*        Character? character = null;
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        Character? character = null;
+        uint playerId;
 
-        FieldBag bag = _registry.Rent(_collectionHandle);
         try
         {
-            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
-
-            uint playerId = bag.GetUIntAt(_playerIdSlot);
-
-            character = CharacterRepository.Instance.GetById((int) playerId);
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            playerId = extractor.GetUIntAt(_playerIdSlot);
+            character = CharacterRepository.Instance.GetById((int)playerId);
 
             if (character == null)
             {
@@ -116,17 +118,17 @@ public class HandleHpUpdate : IHandleOpcodes
                 return;
             }
 
-            character.MaxHP = bag.GetUIntAt(_maxHPIdSlot);
-            character.CurrentHP = bag.GetUIntAt(_currentHPIdSlot);
+            character.MaxHP = extractor.GetUIntAt(_maxHPIdSlot);
+            character.CurrentHP = extractor.GetUIntAt(_currentHPIdSlot);
         }
         finally
         {
-            bag.Release();
+            extractor.Release();
         }
 
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
             + _opcodeName + " length=" + data.Length);
-        DebugLog.Write(LogChannel.Opcodes, "HP at " + character.CurrentHP + " / " + character.MaxHP);*/
+        DebugLog.Write(LogChannel.Opcodes, "HP at " + character.CurrentHP + " / " + character.MaxHP);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

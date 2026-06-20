@@ -55,7 +55,7 @@ public partial class ManageCommandsDialog : Window
             return;
         }
 
-        DebugLog.Write($"ManageCommandsDialog.LoadStepList: commandId={_selectedCommand.Id}.");
+        DebugLog.Write(LogChannel.Database, $"ManageCommandsDialog.LoadStepList: commandId={_selectedCommand.Id}.");
 
         var repo = new CommandRepository();
         var command = repo.GetCommand(_selectedCommand.Id);

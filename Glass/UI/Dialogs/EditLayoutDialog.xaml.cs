@@ -780,7 +780,7 @@ public partial class EditLayoutDialog : Window
 
         if (Monitors.Count == 0)
         {
-            DebugLog.Write("LogChannel.General,EditLayoutDialog.Save_Click: no monitors configured, aborting.");
+            DebugLog.Write(LogChannel.General, "LogChannel.General,EditLayoutDialog.Save_Click: no monitors configured, aborting.");
             MessageBox.Show("Please configure at least one monitor.", "Monitors Required",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;

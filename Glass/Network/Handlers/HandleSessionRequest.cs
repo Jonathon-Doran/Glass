@@ -21,6 +21,7 @@ public class HandleSessionRequest : IHandleOpcodes
     private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
+    private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _sessionIdSlot;
     private readonly SlotId _maxLengthSlot;
@@ -44,6 +45,7 @@ public class HandleSessionRequest : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_SessionRequest");
+        _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         _sessionIdSlot = _registry.IndexOfField(_collectionHandle, "session_id");
         _maxLengthSlot = _registry.IndexOfField(_collectionHandle, "max_length");
@@ -77,25 +79,28 @@ public class HandleSessionRequest : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-/*        FieldBag bag = _registry.Rent(_collectionHandle);
-
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-             + _opcodeName + " length=" + data.Length);
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        uint sessionId;
+        uint maxLength;
 
         try
         {
-            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
 
-            uint sessionId = bag.GetUIntAt(_sessionIdSlot);
-            uint maxLength = bag.GetUIntAt(_maxLengthSlot);
-
-            DebugLog.Write(LogChannel.Opcodes, "session ID: 0x" + sessionId.ToString("x8") +
-                ", maxLength = " + maxLength);
+            sessionId = extractor.GetUIntAt(_sessionIdSlot);
+            maxLength = extractor.GetUIntAt(_maxLengthSlot);
         }
         finally
         {
-            bag.Release();
-        }*/
+            extractor.Release();
+        }
+
+        /*
+        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
+                     + _opcodeName + " length=" + data.Length);
+        DebugLog.Write(LogChannel.Opcodes, "session ID: 0x" + sessionId.ToString("x8") +
+                        ", maxLength = " + maxLength);
+        */
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

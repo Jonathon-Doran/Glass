@@ -50,7 +50,6 @@ public partial class OpenDialog : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void LoadPatchLevels()
     {
-        InferenceDebugLog.Write("OpenDialog.LoadPatchLevels: loading patch levels from database");
         using (SqliteConnection connection = Glass.Data.Database.Instance.Connect())
         {
             connection.Open();
@@ -73,8 +72,6 @@ public partial class OpenDialog : Window
                 }
             }
         }
-        InferenceDebugLog.Write("OpenDialog.LoadPatchLevels: loaded " + PatchList.Items.Count
-            + " patch levels");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -112,13 +109,10 @@ public partial class OpenDialog : Window
         int closeParen = selected.IndexOf(')');
         if (spaceIndex < 0 || openParen < 0 || closeParen < 0 || closeParen <= openParen + 1)
         {
-            InferenceDebugLog.Write("OpenDialog.Button_Open_Click: malformed entry: " + selected);
             return;
         }
         PatchDate = selected.Substring(0, spaceIndex);
         ServerType = selected.Substring(openParen + 1, closeParen - openParen - 1);
-        InferenceDebugLog.Write("OpenDialog.Button_Open_Click: opened ServerType=" + ServerType
-            + " PatchDate=" + PatchDate);
         DialogResult = true;
         Close();
     }
@@ -133,8 +127,6 @@ public partial class OpenDialog : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void Button_Cancel_Click(object sender, RoutedEventArgs e)
     {
-        InferenceDebugLog.Write("OpenDialog.Button_Cancel_Click: cancelled");
-
         DialogResult = false;
         Close();
     }

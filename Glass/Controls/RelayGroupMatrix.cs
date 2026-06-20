@@ -82,7 +82,7 @@ public class RelayGroupMatrix : Control
         if (_scrollViewer != null)
         {
             _scrollViewer.ScrollChanged -= ScrollViewer_ScrollChanged;
-            DebugLog.Write("RelayGroupMatrix.OnApplyTemplate: detached previous scroll handler.");
+            DebugLog.Write(LogChannel.Input, "RelayGroupMatrix.OnApplyTemplate: detached previous scroll handler.");
         }
 
         _headerScrollViewer = GetTemplateChild(PartHeaderScrollViewer) as ScrollViewer;
@@ -160,7 +160,7 @@ public class RelayGroupMatrix : Control
             return;
         }
 
-        DebugLog.Write($"RelayGroupMatrix.BuildGrid: building {_groups.Count} rows x {_characters.Count} columns.");
+        DebugLog.Write(LogChannel.Input, $"RelayGroupMatrix.BuildGrid: building {_groups.Count} rows x {_characters.Count} columns.");
 
         _headerGrid.Children.Clear();
         _headerGrid.RowDefinitions.Clear();

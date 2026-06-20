@@ -58,6 +58,22 @@ public enum LogSink
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
+// LogLevel
+//
+// Severity of a single log message.  Ordered from least to most severe so
+// that a numeric minimum-level threshold can suppress everything below a
+// chosen severity.  Each level maps to a single-letter tag emitted in the
+// log line prefix:  Trace=T, Info=I, Warn=W, Error=E.
+///////////////////////////////////////////////////////////////////////////////////////////////
+public enum LogLevel
+{
+    Trace = 0,      // lifecycle messsages, noise unless we are debugging something.
+    Info = 1,       // normal noteworthy event
+    Warn = 2,       // something unexpected but survivable.  Look at this...
+    Error = 3       // integrity violation
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////
 // DebugLog
 //
 // Unified logging system for Glass and Inference.  Messages are written to
@@ -97,6 +113,11 @@ public static class DebugLog
     private static DateTime? _frozenTimestamp;
     private static int _sequence;
 
+    // Minimum severity that will be dispatched.  Messages below this level are
+    // dropped in Write/WriteMultiline before any string is built.  Defaults to
+    // Trace so every message passes until the threshold is raised.
+    private static LogLevel _minimumLevel = LogLevel.Trace;
+
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Static constructor
     //
@@ -115,6 +136,22 @@ public static class DebugLog
             _enabled |= (1UL << i);
         }
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // SetMinimumLevel
+    //
+    // Sets the minimum severity that will be dispatched.  Messages written with
+    // a level below this value are dropped in Write and WriteMultiline before
+    // the timestamp prefix or message string is built.  Raising the threshold
+    // to Warn suppresses Trace and Info narration, leaving only Warn and Error.
+    //
+    // level:  The minimum severity to dispatch.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public static void SetMinimumLevel(LogLevel level)
+    {
+        _minimumLevel = level;
+    }
+
     public static void DisableAllChannels()
     {
         for (int i = 0; i < ChannelCount; i++)
@@ -215,17 +252,21 @@ public static class DebugLog
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Write
     //
-    // Writes a message to the specified channel.  A timestamp is prepended.
-    // The message is dispatched to all handlers on all sinks that the channel
-    // is routed to, provided the channel is enabled.
+    // Writes a message to the specified channel at the given severity.  A
+    // timestamp and one-letter level tag are prepended.  The message is
+    // dispatched to all handlers on all sinks that the channel is routed to,
+    // provided the channel is enabled and the level meets the minimum threshold.
+    //
+    // Messages below the minimum level are dropped before any string is built.
     //
     // No locking is performed during dispatch.  Each handler is responsible
     // for its own thread safety.
     //
     // channel:  The channel to write to
     // message:  The message text
+    // level:    The severity of this message.  Defaults to Trace.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public static void Write(LogChannel channel, string message)
+    public static void Write(LogChannel channel, string message, LogLevel level = LogLevel.Trace)
     {
         if (_shutdown)
         {
@@ -237,6 +278,11 @@ public static class DebugLog
             return;
         }
 
+        if (level < _minimumLevel)
+        {
+            return;
+        }
+
         ulong mask = _routing[(int)channel];
 
         if (mask == 0)
@@ -244,7 +290,7 @@ public static class DebugLog
             return;
         }
 
-        string timestamped = BuildTimestampPrefix("yyyy-MM-dd HH:mm:ss.fff") + message;
+        string timestamped = BuildTimestampPrefix("yyyy-MM-dd HH:mm:ss.fff", level) + message;
 
         List<IHandleLogMessages>[] snapshot = _handlers;
 
@@ -265,14 +311,17 @@ public static class DebugLog
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // WriteMultiline
     //
-    // Writes a multiline message to the specified channel.  The first line
-    // receives the timestamp.  Continuation lines are padded with spaces to
-    // align with the message text after the timestamp bracket.
+    // Writes a multiline message to the specified channel at the given severity.
+    // The first line receives the timestamp and level tag.  Continuation lines
+    // are padded with spaces to align with the message text after the prefix.
+    //
+    // Messages below the minimum level are dropped before any string is built.
     //
     // channel:  The channel to write to
     // message:  The message text, which may contain embedded newlines
+    // level:    The severity of this message.  Defaults to Trace.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public static void WriteMultiline(LogChannel channel, string message)
+    public static void WriteMultiline(LogChannel channel, string message, LogLevel level = LogLevel.Trace)
     {
         if (_shutdown)
         {
@@ -284,6 +333,11 @@ public static class DebugLog
             return;
         }
 
+        if (level < _minimumLevel)
+        {
+            return;
+        }
+
         ulong mask = _routing[(int)channel];
 
         if (mask == 0)
@@ -291,7 +345,7 @@ public static class DebugLog
             return;
         }
 
-        string timestamp = BuildTimestampPrefix("HH:mm:ss.fff");
+        string timestamp = BuildTimestampPrefix("HH:mm:ss.fff", level);
         string padding = new string(' ', timestamp.Length);
         string[] lines = message.Split('\n');
 
@@ -322,19 +376,6 @@ public static class DebugLog
                 }
             }
         }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Write
-    //
-    // Writes a message to the General channel.  Convenience overload for
-    // messages that do not belong to a specific category.
-    //
-    // message:  The message text
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public static void Write(string message)
-    {
-        Write(LogChannel.General, message);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -435,22 +476,20 @@ public static class DebugLog
     // BuildTimestampPrefix
     //
     // Builds the bracketed timestamp prefix (with trailing space) used by
-    // Write and WriteMultiline.
+    // Write and WriteMultiline, followed by a one-letter severity tag in its
+    // own brackets:  e.g. "[2026-05-20 17:54:23.896] [E] ".
     //
     // If a timestamp group is active (BeginTimestampGroup was called and
-    // EndTimestampGroup has not been called since), the prefix uses the frozen
-    // timestamp followed by the current sequence value, e.g.
+    // EndTimestampGroup has not been called since), the timestamp portion uses
+    // the frozen timestamp followed by the current sequence value, e.g.
     // "[2026-05-14 23:17:30.361+1] ".  The sequence is incremented before
     // formatting, so the first prefix in a group is "+1".
     //
-    // If no group is active, the prefix uses DateTime.Now and contains no
-    // "+N" suffix, e.g. "[2026-05-14 23:17:30.317] ".  This is the live-
-    // capture path and matches the prior behavior exactly.
+    // If no group is active, the timestamp portion uses DateTime.Now and
+    // contains no "+N" suffix.
     //
-    // The live-capture path (no group active) does a single field read and
-    // a single string concatenation, matching the cost of the prior inline
-    // code.  Sequence increment and frozen-timestamp formatting occur only
-    // when a group is active, which is the replay-only cold path.
+    // The severity tag is always emitted so that every log line is classifiable
+    // by a text search (e.g. "[E]" for errors).
     //
     // No DebugLog calls are made inside this method because it is invoked
     // from Write and WriteMultiline; any log call here would recurse.
@@ -458,17 +497,50 @@ public static class DebugLog
     // dateFormat:  The ToString format string for the timestamp portion.
     //              Write passes "yyyy-MM-dd HH:mm:ss.fff"; WriteMultiline
     //              passes "HH:mm:ss.fff".
+    // level:       The severity whose one-letter tag is appended.
     //
-    // Returns the bracketed prefix including trailing space.
+    // Returns the bracketed timestamp and tag, including trailing space.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private static string BuildTimestampPrefix(string dateFormat)
+    private static string BuildTimestampPrefix(string dateFormat, LogLevel level)
     {
+        string tag;
+
+        switch (level)
+        {
+            case LogLevel.Trace:
+                {
+                    tag = "T";
+                    break;
+                }
+            case LogLevel.Info:
+                {
+                    tag = "I";
+                    break;
+                }
+            case LogLevel.Warn:
+                {
+                    tag = "W";
+                    break;
+                }
+            case LogLevel.Error:
+                {
+                    tag = "E";
+                    break;
+                }
+            default:
+                {
+                    tag = "?";
+                    break;
+                }
+        }
+
         if (_frozenTimestamp.HasValue)
         {
             _sequence++;
-            return "[" + _frozenTimestamp.Value.ToString(dateFormat) + "+" + _sequence + "] ";
+            return "[" + _frozenTimestamp.Value.ToString(dateFormat) + "+" + _sequence + "] [" + tag + "] ";
         }
-        return "[" + DateTime.Now.ToString(dateFormat) + "] ";
+
+        return "[" + DateTime.Now.ToString(dateFormat) + "][" + tag + "] ";
     }
 
 }

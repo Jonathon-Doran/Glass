@@ -21,6 +21,7 @@ public class HandleManaUpdate : IHandleOpcodes
     private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
+    private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _playerIdSlot;
     private readonly SlotId _currentManaSlot;
@@ -45,6 +46,7 @@ public class HandleManaUpdate : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_ManaUpdate");
+        _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         _playerIdSlot = _registry.IndexOfField(_collectionHandle, "player_id");
         _currentManaSlot = _registry.IndexOfField(_collectionHandle, "current_mana");
@@ -97,15 +99,15 @@ public class HandleManaUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-/*        Character? character = null;
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        Character? character = null;
+        uint playerId;
 
-        FieldBag bag = _registry.Rent(_collectionHandle);
         try
         {
-            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
 
-            uint playerId = bag.GetUIntAt(_playerIdSlot);
-
+            playerId = extractor.GetUIntAt(_playerIdSlot);
             character = CharacterRepository.Instance.GetById((int)playerId);
 
             if (character == null)
@@ -114,18 +116,18 @@ public class HandleManaUpdate : IHandleOpcodes
                 return;
             }
 
-            character.MaxMana = bag.GetUIntAt(_maxManaSlot);
-            character.CurrentMana = bag.GetUIntAt(_currentManaSlot);
+            character.MaxMana = extractor.GetUIntAt(_maxManaSlot);
+            character.CurrentMana = extractor.GetUIntAt(_currentManaSlot);
         }
         finally
         {
-            bag.Release();
+            extractor.Release();
         }
 
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
             + _opcodeName + " length=" + data.Length);
         DebugLog.Write(LogChannel.Opcodes, "Mana at " + character.CurrentMana + " / " + character.MaxMana);
-*/    }
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeHandled
@@ -135,5 +137,3 @@ public class HandleManaUpdate : IHandleOpcodes
         get { return _opcodeHandled; }
     }
 }
-
-

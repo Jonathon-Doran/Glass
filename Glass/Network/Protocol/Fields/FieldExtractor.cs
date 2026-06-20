@@ -111,6 +111,20 @@ public class FieldExtractor
         DebugLog.Write(LogChannel.Fields, "FieldExtractor.Extract: top-level gate " + gateDefinition
             + ", payload " + payload.Length + " bytes");
 
+        if (payload.Length == 0)
+        {
+            PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
+            GateDefinition definition = GlassContext.PatchRegistry.GetGateDefinition(patchLevel, gateDefinition);
+
+            DebugLog.Write(LogChannel.Fields, "0 length payload passed to extract for gate " +
+                definition);
+            return GateHandle.None;
+        }
+        if (gateDefinition.Exists == false)
+        {
+            return GateHandle.None;
+        }
+
         GateHandle rootGate = ExpandMultiplicity(gateDefinition, BagHandle.None, payload);
         _activeBag = _gates[(int)(uint)rootGate].Head;
 
@@ -153,7 +167,17 @@ public class FieldExtractor
                     AppendInstanceBag(gateHandle, bagHandle);
 
                     uint cursorBefore = _bitCursor;
-                    ExtractCollection(gate.ChildCollection, payload, bagHandle);
+                    bool extracted = ExtractCollection(gate.ChildCollection, payload, bagHandle);
+
+                    if (extracted == false)
+                    {
+                        string failure = "FieldExtractor.ExpandMultiplicity: gate " + gateHandle
+                            + " Once instance bag " + bagHandle + " failed extraction at cursor "
+                            + cursorBefore + "; a required single instance ran off the payload";
+                        DebugLog.WriteMultiline(LogChannel.Fields, failure + Environment.NewLine
+                            + Environment.StackTrace);
+                        Environment.FailFast(failure);
+                    }
 
                     gate = _gates[(int)(uint)gateHandle];
                     gate.BitsConsumed += _bitCursor - cursorBefore;
@@ -180,7 +204,18 @@ public class FieldExtractor
                         AppendInstanceBag(gateHandle, bagHandle);
 
                         uint cursorBefore = _bitCursor;
-                        ExtractCollection(gate.ChildCollection, payload, bagHandle);
+                        bool extracted = ExtractCollection(gate.ChildCollection, payload, bagHandle);
+
+                        if (extracted == false)
+                        {
+                            string failure = "FieldExtractor.ExpandMultiplicity: gate " + gateHandle
+                                + " Times instance " + instanceIndex + " of " + resolvedCount
+                                + " bag " + bagHandle + " failed extraction at cursor " + cursorBefore
+                                + "; a counted instance ran off the payload";
+                            DebugLog.WriteMultiline(LogChannel.Fields, failure + Environment.NewLine
+                                + Environment.StackTrace);
+                            Environment.FailFast(failure);
+                        }
 
                         gate = _gates[(int)(uint)gateHandle];
                         gate.BitsConsumed += _bitCursor - cursorBefore;
@@ -204,18 +239,20 @@ public class FieldExtractor
                         AppendInstanceBag(gateHandle, bagHandle);
 
                         uint cursorBefore = _bitCursor;
-                        ExtractCollection(gate.ChildCollection, payload, bagHandle);
-                        uint consumed = _bitCursor - cursorBefore;
+                        bool extracted = ExtractCollection(gate.ChildCollection, payload, bagHandle);
 
-                        if (consumed == 0u)
+                        if (extracted == false)
                         {
-                            string failure = "FieldExtractor.ExpandMultiplicity: gate " + gateHandle
-                                + " UntilEnd instance consumed zero bits at cursor " + cursorBefore
-                                + " of " + payloadBits + "; a non-advancing repeat cannot terminate";
-                            DebugLog.WriteMultiline(LogChannel.Fields, failure + Environment.NewLine
-                                + Environment.StackTrace);
-                            Environment.FailFast(failure);
+                            RemoveInstanceBag(gateHandle, bagHandle);
+                            _bags[(int)(uint)bagHandle].Release();
+
+                            DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExpandMultiplicity: gate "
+                                + gateHandle + " UntilEnd terminated at cursor " + _bitCursor + " of "
+                                + payloadBits + "; discarded partial bag " + bagHandle);
+                            break;
                         }
+
+                        uint consumed = _bitCursor - cursorBefore;
 
                         gate = _gates[(int)(uint)gateHandle];
                         gate.BitsConsumed += consumed;
@@ -252,26 +289,39 @@ public class FieldExtractor
     // definition into the bag addressed by bagHandle, preserving definition-to-slot index
     // alignment.  Fills the bag for one instance: the instance begins at the current bit
     // cursor, and each field's schema offset is relocated past that cursor to its absolute
-    // payload position.  On completion the cursor is advanced past this instance and rounded
-    // to the next byte boundary so the following instance begins byte-aligned.
-    //
-    // Every definition produces exactly one slot.  Definitions whose decode does not succeed
-    // (Unknown encoding, payload too short for the bit range, unsupported bit width) produce
-    // slots that are added but left Empty.
+    // payload position.  On a fully-walked instance the cursor is advanced past this instance
+    // and rounded to the next byte boundary so the following instance begins byte-aligned, and
+    // true is returned.
     //
     // A field carrying a predicate is decoded only when its predicate holds; when it does not
-    // the slot is left Empty and no payload is consumed.  A field carrying a gate decodes its
-    // child collection through ExpandMultiplicity, which produces the child instance bags;
-    // the gate field's own slot is added for alignment and left Empty.
+    // the slot is left Empty and no payload is consumed.  This is a successful skip and the
+    // walk continues.  A field carrying a gate decodes its child collection; the gate field's
+    // own slot is added for alignment and left Empty.
+    //
+    // A field whose decode does not succeed for a reason other than payload length (Unknown
+    // encoding, unsupported bit width) produces a slot that is added but left Empty, and the
+    // walk continues.
+    //
+    // The instance fails when a non-predicate-skipped field fails the HasBits bounds check.
+    // The walk stops at once, the bit cursor is left where the instance began -- the final
+    // advance is never reached -- and false is returned.  The bag holds the partial slots
+    // walked before the failure; this method neither clears the bag nor unlinks it.
+    //
+    // A collection with no field definitions for the current patch is treated as a failed
+    // instance: false is returned and no slots are written.
     //
     // collection:  The collection whose field definitions to walk.
     // payload:     The raw payload bytes.  Field offsets are relocated past the bit cursor
     //              into this span.
     // bagHandle:   The handle of the bag to fill.  Resolved locally; the bag is mutated in
     //              place.
+    //
+    // Returns:  true when every definition was walked and the cursor advanced past the
+    //           instance; false when a field failed the bounds check, or the collection has no
+    //           field definitions, and the instance was abandoned with the cursor untouched.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private void ExtractCollection(CollectionHandle collection, ReadOnlySpan<byte> payload,
-        BagHandle bagHandle)
+    private bool ExtractCollection(CollectionHandle collection, ReadOnlySpan<byte> payload,
+            BagHandle bagHandle)
     {
         PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
         FieldBag bag = _bags[(int)(uint)bagHandle];
@@ -281,7 +331,7 @@ public class FieldExtractor
         {
             DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExtractCollection: collection "
                 + collection + " has no field definitions for this patch, nothing extracted");
-            return;
+            return false;
         }
 
         Span<uint> resolvedEndBits = stackalloc uint[definitions.Length];
@@ -312,10 +362,10 @@ public class FieldExtractor
             if (HasBits(payload, effectiveBitOffset, definition.BitLength) == false)
             {
                 DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExtractCollection: field '"
-                    + definition.Name + "' insufficient payload bits at offset " + effectiveBitOffset
-                    + " for length " + definition.BitLength + ", slot left empty");
-                resolvedEndBits[(int) definitionIndex] = localStartBit;
-                continue;
+                    + definition.Name + "' ran off payload at offset " + effectiveBitOffset
+                    + " for length " + definition.BitLength + "; abandoning instance, cursor left at "
+                    + _bitCursor);
+                return false;
             }
 
             switch (definition.Encoding)
@@ -427,6 +477,7 @@ public class FieldExtractor
         }
 
         AdvanceCursor(instanceExtentBits);
+        return true;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -616,6 +667,76 @@ public class FieldExtractor
 
         gateObject.BagCount = gateObject.BagCount + 1u;
         _gates[(int)(uint)gate] = gateObject;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // RemoveInstanceBag
+    //
+    // Removes a bag from a gate's instance chain, the inverse of AppendInstanceBag.  When the
+    // bag is the gate's sole instance both Head and Tail are reset to None; otherwise the chain
+    // is walked from Head to the bag's predecessor, the predecessor's NextBag is unlinked past
+    // the removed bag, and the gate's Tail is retreated to the predecessor when the removed bag
+    // was the tail.  Decrements the gate's BagCount in either case.  Threads the forward link
+    // that lives on the bag store and the head, tail, and count that live on the gate store,
+    // which is why the removal is performed here, where both stores are in scope, rather than on
+    // either type alone.
+    //
+    // The removed bag's storage is not touched: unlinking it from the chain is this method's
+    // whole responsibility, and the caller releases the bag.
+    //
+    // gate:  The handle of the gate whose instance chain gives up the bag.
+    // bag:   The handle of the bag to remove.  Must be present in the gate's instance chain.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void RemoveInstanceBag(GateHandle gate, BagHandle bag)
+    {
+        Gate gateObject = _gates[(int)(uint)gate];
+
+        if (gateObject.Head.Equals(bag) == true && gateObject.Tail.Equals(bag) == true)
+        {
+            gateObject.Head = BagHandle.None;
+            gateObject.Tail = BagHandle.None;
+
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.RemoveInstanceBag: gate " + gate
+                + " removed sole instance bag " + bag);
+        }
+        else
+        {
+            BagHandle walk = gateObject.Head;
+            BagHandle predecessor = BagHandle.None;
+            while (walk.Exists == true)
+            {
+                BagHandle next = _bags[(int)(uint)walk].NextBag;
+                if (next.Equals(bag) == true)
+                {
+                    predecessor = walk;
+                    break;
+                }
+                walk = next;
+            }
+
+            if (predecessor.Exists == false)
+            {
+                string failure = "FieldExtractor.RemoveInstanceBag: bag " + bag
+                    + " not found in gate " + gate + " instance chain";
+                DebugLog.WriteMultiline(LogChannel.Fields, failure + Environment.NewLine
+                    + Environment.StackTrace);
+                Environment.FailFast(failure);
+            }
+
+            _bags[(int)(uint)predecessor].NextBag = _bags[(int)(uint)bag].NextBag;
+
+            if (gateObject.Tail.Equals(bag) == true)
+            {
+                gateObject.Tail = predecessor;
+            }
+
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.RemoveInstanceBag: gate " + gate
+                + " removed instance bag " + bag + " after predecessor " + predecessor);
+        }
+
+        gateObject.BagCount = gateObject.BagCount - 1u;
+        _gates[(int)(uint)gate] = gateObject;
+        _bags[(int)(uint)bag].Invalidate();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1464,6 +1585,30 @@ public class FieldExtractor
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetStringAt
+    //
+    // Reads the slot as an ASCII string from the active bag, decoding the slot's arena bytes
+    // into a newly-allocated string.  Forwards to the bag's GetBytesAt accessor for the
+    // bytes, which FailFasts on a read failure, then decodes them as ASCII.  The active bag
+    // is the one selected by the most recent EnterGate, or the root bag set when the
+    // extraction completed.
+    //
+    // The returned string is an independent copy with no reference back to the arena, so it
+    // stays valid after the bag is cleared or released — unlike the span GetBytesAt returns.
+    // Callers in a hot path that must avoid the allocation read GetBytesAt instead.
+    //
+    // slot:  The slot to read.
+    //
+    // Returns:  The slot's decoded ASCII string.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public string GetStringAt(SlotId slot)
+    {
+        ReadOnlySpan<byte> bytes = _bags[(int)(uint)_activeBag].GetBytesAt(slot);
+        string value = System.Text.Encoding.ASCII.GetString(bytes);
+
+        return value;
+    }
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // GetGateAt
     //
     // Reads the gate-encoded slot from the active bag and returns the handle of the child gate
@@ -1590,6 +1735,10 @@ public class FieldExtractor
     ///////////////////////////////////////////////////////////////////////////////////////////
     public uint BagCount(GateHandle gate)
     {
+        if (gate.Exists == false)
+        {
+            return 0;
+        }
         return _gates[(int)(uint)gate].BagCount;
     }
 

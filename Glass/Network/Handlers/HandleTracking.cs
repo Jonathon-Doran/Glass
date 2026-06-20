@@ -29,7 +29,6 @@ public class HandleTrackingUpdate : IHandleOpcodes
 
     private readonly uint TRACKING_MAGIC_NUMBER = 0x4f348bff;
     //private readonly bool _brief = false;
-    private uint _fixedEntryLength;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleTrackingUpdate (constructor)
@@ -56,6 +55,8 @@ public class HandleTrackingUpdate : IHandleOpcodes
         _countSlot = _registry.IndexOfField(_collectionHandle, "count");
         _nameSlot = _registry.IndexOfField(_collectionHandle, "name");
         _levelSlot = _registry.IndexOfField(_collectionHandle, "level");
+
+        _ = TRACKING_MAGIC_NUMBER;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

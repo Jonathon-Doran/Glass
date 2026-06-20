@@ -52,7 +52,7 @@ public partial class LaunchProfileDialog : Window
     {
         List<string> allNames = ProfileRepository.GetAllNames();
 
-        DebugLog.Write(LogChannel.Inference, "Launch: LoadFiltered sees " + allNames.Count + " profiles for " + serverType);
+        DebugLog.Write(LogChannel.Inference, "Launch: LoadFiltered sees " + allNames.Count + " profiles for " + serverType, LogLevel.Trace);
         int matchCount = 0;
 
         foreach (string name in allNames)
@@ -71,7 +71,7 @@ public partial class LaunchProfileDialog : Window
         }
 
         DebugLog.Write(LogChannel.Inference, "LaunchProfileDialog.LoadFilteredProfiles: "
-            + matchCount + " profiles matched server type " + serverType);
+            + matchCount + " profiles matched server type " + serverType, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -103,7 +103,7 @@ public partial class LaunchProfileDialog : Window
         ProfileRepository profile = new ProfileRepository(SelectedProfileName);
         CharacterRepository.Instance.Load(profile.GetCharacterIds());
         DebugLog.Write(LogChannel.Inference, "LaunchProfileDialog.Button_Launch_Click: selected '"
-            + SelectedProfileName + "'");
+            + SelectedProfileName + "'", LogLevel.Trace);
 
         DialogResult = true;
         Close();
@@ -119,8 +119,6 @@ public partial class LaunchProfileDialog : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void Button_Cancel_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.Inference, "LaunchProfileDialog.Button_Cancel_Click: cancelled");
-
         DialogResult = false;
         Close();
     }

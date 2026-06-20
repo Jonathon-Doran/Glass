@@ -158,7 +158,7 @@ public static class HighlightTextBehavior
         if (block == null)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "HighlightTextBehavior.OnRegionChanged: target is not a TextBlock, ignoring");
+                "HighlightTextBehavior.OnRegionChanged: target is not a TextBlock, ignoring", LogLevel.Warn);
             return;
         }
 
@@ -179,7 +179,7 @@ public static class HighlightTextBehavior
         if (block == null)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "HighlightTextBehavior.OnTextChanged: target is not a TextBlock, ignoring");
+                "HighlightTextBehavior.OnTextChanged: target is not a TextBlock, ignoring", LogLevel.Warn);
             return;
         }
 
@@ -199,7 +199,7 @@ public static class HighlightTextBehavior
         if (block == null)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "HighlightTextBehavior.OnRangesChanged: target is not a TextBlock, ignoring");
+                "HighlightTextBehavior.OnRangesChanged: target is not a TextBlock, ignoring", LogLevel.Warn);
             return;
         }
 
@@ -220,7 +220,7 @@ public static class HighlightTextBehavior
         if (block == null)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "HighlightTextBehavior.OnMatchBrushChanged: target is not a TextBlock, ignoring");
+                "HighlightTextBehavior.OnMatchBrushChanged: target is not a TextBlock, ignoring", LogLevel.Warn);
             return;
         }
 
@@ -302,7 +302,7 @@ public static class HighlightTextBehavior
                 skippedRanges++;
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "HighlightTextBehavior.Rebuild: skipping range with non-positive length "
-                    + rangeLength + " at start=" + rangeStart);
+                    + rangeLength + " at start=" + rangeStart, LogLevel.Warn);
                 continue;
             }
 
@@ -311,7 +311,7 @@ public static class HighlightTextBehavior
                 skippedRanges++;
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "HighlightTextBehavior.Rebuild: skipping range past end of text, start="
-                    + rangeStart + " textLength=" + textLength);
+                    + rangeStart + " textLength=" + textLength, LogLevel.Warn);
                 continue;
             }
 
@@ -320,7 +320,7 @@ public static class HighlightTextBehavior
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "HighlightTextBehavior.Rebuild: clamping range end from "
-                    + rangeEnd + " to textLength=" + textLength);
+                    + rangeEnd + " to textLength=" + textLength, LogLevel.Trace);
                 rangeEnd = textLength;
             }
 
@@ -331,13 +331,13 @@ public static class HighlightTextBehavior
                     skippedRanges++;
                     DebugLog.Write(LogChannel.InferenceDebug,
                         "HighlightTextBehavior.Rebuild: skipping range fully overlapped by prior, start="
-                        + rangeStart + " end=" + rangeEnd + " cursor=" + cursor);
+                        + rangeStart + " end=" + rangeEnd + " cursor=" + cursor, LogLevel.Warn);
                     continue;
                 }
 
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "HighlightTextBehavior.Rebuild: clamping overlapping range start from "
-                    + rangeStart + " to cursor=" + cursor);
+                    + rangeStart + " to cursor=" + cursor, LogLevel.Warn);
                 rangeStart = cursor;
             }
 
@@ -377,12 +377,5 @@ public static class HighlightTextBehavior
             block.Inlines.Add(new Run(tail));
             emittedRuns++;
         }
-
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "HighlightTextBehavior.Rebuild: textLength=" + textLength
-            + " inputRanges=" + ranges.Count
-            + " filteredRanges=" + filtered.Count
-            + " skipped=" + skippedRanges
-            + " emittedRuns=" + emittedRuns);
     }
 }

@@ -23,10 +23,9 @@ public class HandleZoneEntry_C2Z: IHandleOpcodes
     private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
+    private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _nameSlot;
-    private readonly SlotId _spawnIdSlot;
-    private readonly SlotId _levelSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleZoneEntry_Z2C (constructor)
@@ -48,11 +47,9 @@ public class HandleZoneEntry_C2Z: IHandleOpcodes
         PatchOpcode baseOpcode = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _opcodeHandled = baseOpcode with { Version = 2 };
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_ZoneEntryV2");
+        _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
-        DebugLog.Write(LogChannel.Opcodes, "ZoneEntry C2Z registering opcode " + _opcodeHandled);
         _nameSlot = _registry.IndexOfField(_collectionHandle, "name");
-        _spawnIdSlot = _registry.IndexOfField(_collectionHandle, "spawn_id");
-        _levelSlot = _registry.IndexOfField(_collectionHandle, "level");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -60,7 +57,6 @@ public class HandleZoneEntry_C2Z: IHandleOpcodes
     //
     // Log any errors in the cold-path, dispose of any local storage. 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-
     public void Dispose()
     {
         GC.SuppressFinalize(this);

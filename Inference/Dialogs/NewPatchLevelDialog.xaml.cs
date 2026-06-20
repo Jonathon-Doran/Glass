@@ -50,9 +50,6 @@ public partial class NewPatchLevelDialog : Window
         ServerType = RadioTest.IsChecked == true ? "Test" : "Live";
         PatchDate = PatchDatePicker.SelectedDate ?? DateTime.Today;
 
-        InferenceDebugLog.Write("NewPatchLevelDialog: OK ServerType=" + ServerType
-            + " PatchDate=" + PatchDate.ToString("yyyy-MM-dd"));
-
         DialogResult = true;
         Close();
     }
@@ -67,8 +64,6 @@ public partial class NewPatchLevelDialog : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void Button_Cancel_Click(object sender, RoutedEventArgs e)
     {
-        InferenceDebugLog.Write("NewPatchLevelDialog: cancelled");
-
         DialogResult = false;
         Close();
     }

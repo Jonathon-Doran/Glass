@@ -15,6 +15,7 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
     private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
+    private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _spawnIdSlot;
     private readonly SlotId _xPosSlot;
@@ -49,6 +50,7 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_NpcMoveUpdate");
+        _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         _spawnIdSlot = _registry.IndexOfField(_collectionHandle, "spawn_id");
         _xPosSlot = _registry.IndexOfField(_collectionHandle, "x_pos");
@@ -119,66 +121,74 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-      /*  FieldBag bag = _registry.Rent(_collectionHandle);
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        uint spawnId;
+        float x, y, z;
+        float heading, headingDegrees;
+        uint flags;
+
+        // optional fields
+        float pitch, heading_delta, velocity, dx, dy, dz;
+
+        System.Text.StringBuilder optional = new System.Text.StringBuilder();
+
         try
         {
-            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
 
-            uint spawnId = bag.GetUIntAt(_spawnIdSlot);
-            float x = bag.GetFloatAt(_xPosSlot);
-            float y = bag.GetFloatAt(_yPosSlot);
-            float z = bag.GetFloatAt(_zPosSlot);
-            float heading = bag.GetFloatAt(_headingSlot);
-            uint flags = bag.GetUIntAt(_flagsSlot);
+            spawnId = extractor.GetUIntAt(_spawnIdSlot);
+            x = extractor.GetFloatAt(_xPosSlot);
+            y = extractor.GetFloatAt(_yPosSlot);
+            z = extractor.GetFloatAt(_zPosSlot);
 
-            DebugLog.Write(LogChannel.Opcodes, "Flags is 0x" + flags.ToString("x2"));
+            heading = extractor.GetFloatAt(_headingSlot);
+            headingDegrees = heading * 360.0f / 2048.0f;
+            flags = extractor.GetUIntAt(_flagsSlot);
 
-            double headingDegrees = heading * 360.0 / 2048.0;
-
-            System.Text.StringBuilder optional = new System.Text.StringBuilder();
-
-            if (bag.IsPresent(_pitchSlot))
+            if (extractor.IsPresent(_pitchSlot))
             {
-                optional.Append(" pitch=");
-                optional.Append(bag.GetFloatAt(_pitchSlot));
+                pitch = extractor.GetFloatAt(_pitchSlot);
+                optional.Append(", pitch=" + pitch);
             }
-            if (bag.IsPresent(_headingDeltaSlot))
+            if (extractor.IsPresent(_headingDeltaSlot))
             {
-                optional.Append(" headingDelta=");
-                optional.Append(bag.GetFloatAt(_headingDeltaSlot));
+                heading_delta = extractor.GetFloatAt(_headingDeltaSlot);
+                optional.Append(", heading delta=" + heading_delta);
             }
-            if (bag.IsPresent(_velocitySlot))
+            if (extractor.IsPresent(_velocitySlot))
             {
-                optional.Append(" velocity=");
-                optional.Append(bag.GetFloatAt(_velocitySlot));
+                velocity = extractor.GetFloatAt(_velocitySlot);
+                optional.Append(", velocity=" + velocity);
             }
-            if (bag.IsPresent(_dxSlot))
+            if (extractor.IsPresent(_dxSlot))
             {
-                optional.Append(" dx=");
-                optional.Append(bag.GetFloatAt(_dxSlot));
+                dx = extractor.GetFloatAt(_dxSlot);
+                optional.Append(", dx=" + dx);
             }
-            if (bag.IsPresent(_dySlot))
+            if (extractor.IsPresent(_dySlot))
             {
-                optional.Append(" dy=");
-                optional.Append(bag.GetFloatAt(_dySlot));
+                dy = extractor.GetFloatAt(_dySlot);
+                optional.Append(", dy=" + dy);
             }
-            if (bag.IsPresent(_dzSlot))
+            if (extractor.IsPresent(_dzSlot))
             {
-                optional.Append(" dz=");
-                optional.Append(bag.GetFloatAt(_dzSlot));
+                dz = extractor.GetFloatAt(_dzSlot);
+                optional.Append(", dz=" + dz);
             }
-
-            string timestamp = metadata.Timestamp.ToString("HH:mm:ss.fff");
-            DebugLog.Write(LogChannel.Opcodes, "[" + timestamp + "] " + _opcodeName
-                + " SpawnId=0x" + spawnId.ToString("x4")
-                + " pos=(" + x.ToString("F2") + "," + y.ToString("F2") + "," + z.ToString("F2") + ")"
-                + " heading=" + headingDegrees.ToString("0.00")
-                + optional.ToString());
         }
         finally
         {
-            bag.Release();
-        }*/
+            extractor.Release();
+        }
+
+        /*
+        string timestamp = metadata.Timestamp.ToString("HH:mm:ss.fff");
+        DebugLog.Write(LogChannel.Opcodes, "[" + timestamp + "] " + _opcodeName
+            + " SpawnId=0x" + spawnId.ToString("x4")
+            + " pos=(" + x.ToString("F2") + "," + y.ToString("F2") + "," + z.ToString("F2") + ")"
+            + " heading=" + headingDegrees.ToString("0.00")
+            + optional.ToString());
+        */
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

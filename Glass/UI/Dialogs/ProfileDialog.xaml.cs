@@ -929,7 +929,7 @@ public partial class ProfileDialog : Window
         if (match != null)
         {
             SlotAssignmentLayoutComboBox.SelectedItem = match;
-            DebugLog.Write($"ProfileDialog.LoadSlotAssignmentLayoutComboBox: pre-selected layoutId={assignedLayoutId.Value}.");
+            DebugLog.Write(LogChannel.Profiles, $"ProfileDialog.LoadSlotAssignmentLayoutComboBox: pre-selected layoutId={assignedLayoutId.Value}.");
         }
         else
         {

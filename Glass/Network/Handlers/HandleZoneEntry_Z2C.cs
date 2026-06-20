@@ -24,6 +24,7 @@ public class HandleZoneEntry_Z2C : IHandleOpcodes
     private readonly CollectionHandle _collectionHandle;
     private PatchRegistry _registry;
     private PatchLevel _patchLevel;
+    private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _nameSlot;
     private readonly SlotId _spawnIdSlot;
@@ -48,8 +49,7 @@ public class HandleZoneEntry_Z2C : IHandleOpcodes
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_ZoneEntryV1");
-
-        DebugLog.Write(LogChannel.Opcodes, "ZoneEntry Z2C registering opcode " + _opcodeHandled);
+        _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         _nameSlot = _registry.IndexOfField(_collectionHandle, "name");
         _spawnIdSlot = _registry.IndexOfField(_collectionHandle, "spawn_id");
@@ -86,30 +86,30 @@ public class HandleZoneEntry_Z2C : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-/*        string name;
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        string name;
         uint spawn_id;
         uint level;
 
-        FieldBag bag = _registry.Rent(_collectionHandle);
         try
         {
-            GlassContext.FieldExtractor.ExtractCollection(_patchLevel, _collectionHandle, data, bag);
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
 
-            ReadOnlySpan<byte> nameBytes = bag.GetBytesAt(_nameSlot);
-            name = Encoding.ASCII.GetString(nameBytes);
-  
-            spawn_id = bag.GetUIntAt(_spawnIdSlot);
-            level = bag.GetUIntAt(_levelSlot);
+            name = extractor.GetStringAt(_nameSlot);
+            spawn_id = extractor.GetUIntAt(_spawnIdSlot);
+            level = extractor.GetUIntAt(_levelSlot);
+            
         }
         finally
         {
-            bag.Release();
+            extractor.Release();
         }
-
+        /*
         DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName + " length=" + data.Length);
         DebugLog.Write(LogChannel.Opcodes, "name=\"" + name + "\"  id=(0x" + spawn_id.ToString("x4")+")");
         DebugLog.Write(LogChannel.Opcodes, "SpawnId= 0x" + spawn_id.ToString("x4"));
-        DebugLog.Write(LogChannel.Opcodes, "Level=" + level + " (0x" + level.ToString("x4") + ")");*/
+        DebugLog.Write(LogChannel.Opcodes, "Level=" + level + " (0x" + level.ToString("x4") + ")");
+ */
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

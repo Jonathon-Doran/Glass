@@ -24,8 +24,6 @@ Inference/Core/InferenceDebugLog and InferenceLog need to go away
 
 Inference should check that New/Open/Recent patches all load data correctly.
 
-I don't believe that handlers are handling arrays of items well.  Certainly the opcode trace is not automatically doing this.
-	** multiplicity on gates should address this
 
 PatchData.SlotDefinedBefore needs an ancestor check to validate collection handles.
 
@@ -34,6 +32,9 @@ The BufferPool determines the size class to allocate and blocks even if bigger b
 The database should have checks for unsigned values, not just accept signed integers.
 
 Look into the SlotID ancestor comment.
+
+CSV tokens are not decoded in the FieldExtractor but in the handler.
+
 
 ISXGlass:
 

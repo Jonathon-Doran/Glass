@@ -74,8 +74,6 @@ public class PatchRegistry
         PatchData? existing = TryFindPatchData(patchLevel);
         if (existing != null)
         {
-            DebugLog.Write(LogChannel.Network, "PatchRegistry.LoadPatchLevel: patchLevel "
-                + patchLevel + " already loaded, returning");
             return;
         }
 
@@ -104,9 +102,6 @@ public class PatchRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////
     public PatchLevel LoadLatestPatchLevel(string serverType)
     {
-        DebugLog.Write(LogChannel.Network, "PatchRegistry.LoadLatestPatchLevel: serverType="
-            + serverType);
-
         string latestDate = ResolveLatestPatchDate(serverType);
         PatchLevel patchLevel = new PatchLevel(latestDate, serverType);
         LoadPatchLevel(patchLevel);
@@ -184,9 +179,6 @@ public class PatchRegistry
             PatchLevel patchLevel = new PatchLevel(patchDate, serverType);
             patchLevels.Add(patchLevel);
         }
-
-        DebugLog.Write(LogChannel.Network, "PatchRegistry.GetAllPatchLevels: "
-            + patchLevels.Count + " patch level(s) in PatchOpcode");
 
         return patchLevels;
     }
@@ -327,8 +319,6 @@ public class PatchRegistry
         _collectionEntries.Add(entry);
 
         CollectionHandle handle = (CollectionHandle)(uint)(_collectionEntries.Count - 1);
-        DebugLog.Write(LogChannel.Fields, "PatchRegistry.RegisterCollection: minted handle "
-            + handle + " for collection index " + index + " in patchLevel=" + owner.PatchLevel);
         return handle;
     }
 
@@ -495,7 +485,6 @@ public class PatchRegistry
     // Returns:
     //   The number of opcodes in the patch.
     ///////////////////////////////////////////////////////////////////////////////////////////
-
     public int GetOpcodeCount(PatchLevel patchLevel)
     {
         PatchData patchData = FindPatchData(patchLevel);
@@ -520,37 +509,6 @@ public class PatchRegistry
     {
         PatchData patchData = FindPatchData(patchLevel);
         return patchData.GetEncodingStrings();
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Rent
-    //
-    // Rents a FieldBag from the pool, stamps it with the opcode name for diagnostic
-    // logging, and returns it.  The bag is cleared by the pool before being returned.
-    // The caller must release the bag when done reading.
-    //
-    // Throws InvalidOperationException if the patch level is not loaded.
-    //
-    // Parameters:
-    //   opcode:   The Opcode to tag the bag for
-    //
-    // Returns:
-    //   A bag with SlotsInUse == 0 and CurrentOpcodeName set, ready to be filled.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public FieldBag Rent(CollectionHandle collectionHandle)
-    {
-        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
-        ushort slotCapacity = GlassContext.PatchRegistry.GetSlotCount(collectionHandle);
-        uint arenaCapacity = GlassContext.PatchRegistry.GetArenaCapacity(patchLevel, collectionHandle);
-        uint required = FieldBag.BytesNeeded(slotCapacity, arenaCapacity);
-
-        // FIXME bag rental moves to ExtractCollection; interim stub with a fixed arena.
-        DebugLog.Write(LogChannel.Fields, "PatchRegistry.Rent: STUB for collection " + collectionHandle);
-        FieldBag bag = new FieldBag();
-
-        BufferLease lease = GlassContext.BufferPool.Rent(required);
-        bag.Initialize(lease, collectionHandle, slotCapacity, arenaCapacity);
-        return bag;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

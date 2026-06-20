@@ -36,11 +36,11 @@ public class StringToVisibilityConverter : IValueConverter, IMultiValueConverter
         string? text = value as string;
         if (string.IsNullOrWhiteSpace(text) == false)
         {
-            DebugLog.Write(LogChannel.Fields, "StringToVisibilityConverter.Convert: non-empty string, Visible");
+            DebugLog.Write(LogChannel.Fields, "StringToVisibilityConverter.Convert: non-empty string, Visible", LogLevel.Trace);
             return Visibility.Visible;
         }
 
-        DebugLog.Write(LogChannel.Fields, "StringToVisibilityConverter.Convert: empty or non-string, Collapsed");
+        DebugLog.Write(LogChannel.Fields, "StringToVisibilityConverter.Convert: empty or non-string, Collapsed", LogLevel.Trace);
         return Visibility.Collapsed;
     }
 
@@ -59,7 +59,7 @@ public class StringToVisibilityConverter : IValueConverter, IMultiValueConverter
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        DebugLog.Write(LogChannel.Fields, "StringToVisibilityConverter.ConvertBack: not supported, throwing");
+        DebugLog.Write(LogChannel.Fields, "StringToVisibilityConverter.ConvertBack: not supported, throwing", LogLevel.Error);
         throw new NotSupportedException("StringToVisibilityConverter is one-way.");
     }
 
@@ -89,7 +89,7 @@ public class StringToVisibilityConverter : IValueConverter, IMultiValueConverter
                 if (string.IsNullOrWhiteSpace(text) == false)
                 {
                     DebugLog.Write(LogChannel.Fields, "StringToVisibilityConverter.Convert(multi): "
-                        + "non-empty string at index " + valueIndex + ", Visible");
+                        + "non-empty string at index " + valueIndex + ", Visible", LogLevel.Trace);
                     return Visibility.Visible;
                 }
             }
@@ -98,14 +98,14 @@ public class StringToVisibilityConverter : IValueConverter, IMultiValueConverter
                 if (flag == true)
                 {
                     DebugLog.Write(LogChannel.Fields, "StringToVisibilityConverter.Convert(multi): "
-                        + "true flag at index " + valueIndex + ", Visible");
+                        + "true flag at index " + valueIndex + ", Visible", LogLevel.Trace);
                     return Visibility.Visible;
                 }
             }
         }
 
         DebugLog.Write(LogChannel.Fields, "StringToVisibilityConverter.Convert(multi): "
-            + "no populated value or set flag, Collapsed");
+            + "no populated value or set flag, Collapsed", LogLevel.Trace);
         return Visibility.Collapsed;
     }
 
@@ -124,7 +124,7 @@ public class StringToVisibilityConverter : IValueConverter, IMultiValueConverter
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
     {
-        DebugLog.Write(LogChannel.Fields, "StringToVisibilityConverter.ConvertBack(multi): not supported, throwing");
+        DebugLog.Write(LogChannel.Fields, "StringToVisibilityConverter.ConvertBack(multi): not supported, throwing", LogLevel.Error);
         throw new NotSupportedException("StringToVisibilityConverter is one-way.");
     }
 }
