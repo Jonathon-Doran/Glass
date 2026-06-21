@@ -437,6 +437,37 @@ public struct FieldSlot
         }
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetByteRange
+    //
+    // Returns the half-open byte range [start, end) of whole payload bytes that enclose this
+    // slot's wire bits, computed from WireBitOffset and WireBitLength.  A slot with zero wire
+    // bit length yields an empty range whose start equals its end.
+    //
+    // Returns:  The enclosing byte range.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public ByteRange GetByteRange()
+    {
+        if (_wireBitLength == 0)
+        {
+            uint emptyStart = _wireBitOffset / 8u;
+            DebugLog.Write(LogChannel.Fields,
+                "FieldSlot.GetWireByteRange: zero wire bit length at bit offset " + _wireBitOffset
+                + ", returning empty range at byte " + emptyStart, LogLevel.Trace);
+            return new ByteRange(emptyStart, emptyStart);
+        }
+
+        uint startByte = _wireBitOffset / 8u;
+        uint endBitExclusive = _wireBitOffset + _wireBitLength;
+        uint endByteExclusive = (endBitExclusive + 7u) / 8u;
+
+        DebugLog.Write(LogChannel.Fields,
+            "FieldSlot.GetWireByteRange: bitOffset=" + _wireBitOffset + " bitLength=" + _wireBitLength
+            + " -> bytes [" + startByte + ", " + endByteExclusive + ")", LogLevel.Trace);
+
+        return new ByteRange(startByte, endByteExclusive);
+    }
+
     public void debugDump()
     {
         DebugLog.Write(LogChannel.Fields, "value = 0x" + _value.ToString("x8"));

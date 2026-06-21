@@ -357,17 +357,13 @@ public class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////
     // PopulateRowDetail
     //
-    // Runs the field extractor against the row's payload and stores the formatted
-    // field text on the row, and formats the row's payload as a hex dump into the
-    // row's HexDumpText.  The hex dump is capped at the presenter's current
-    // _maxHexBytes.
-    //
-    // Rows whose opcode is not in the active patch produce an empty FieldText but
-    // still receive a HexDumpText so the user can examine the bytes regardless of
-    // whether a field schema is available.
+    // Formats the row's payload as a hex dump into HexDumpText, capped at the presenter's
+    // current _maxHexBytes, then asks OpcodeDispatch for the field tree the packet's handler
+    // builds and stores its root on the row.  Rows whose opcode has no registered handler
+    // receive a null field tree but still receive a hex dump.
     //
     // row:  The row to populate.
-    ///////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////
     public void PopulateRowDetail(OpcodeTraceRow row)
     {
         ReadOnlySpan<byte> payload = row.Payload.AsReadOnlySpan();
@@ -377,56 +373,27 @@ public class OpcodeTracePresenter
 
         if (packet == null)
         {
-            DebugLog.Write(LogChannel.InferenceDebug, "packetindex " + row.PacketIndex + " is not in the catalog", LogLevel.Warn);
-
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "OpcodeTracePresenter.PopulateRowDetail: packetIndex " + row.PacketIndex
+                + " not in catalog", LogLevel.Warn);
             return;
         }
 
         PacketMetadata metadata = packet.Value.Metadata;
-        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
-        PatchRegistry registry = GlassContext.PatchRegistry;
 
-        CollectionHandle collectionHandle = registry.GetOpcodeCollection(metadata.Opcode);
-        GateDefinitionHandle top_level_gate = registry.GetOpcodeGateDefinition(metadata.Opcode);
-        FieldExtractor extractor = GlassContext.FieldExtractor;
-        StringBuilder sb = new StringBuilder();
+        FieldDisplayNode? root = OpcodeDispatch.Instance.Describe(payload, metadata);
+        row.FieldTree = root;
 
-        if (top_level_gate.Exists == false)
+        if (root == null)
         {
-            return;
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "OpcodeTracePresenter.PopulateRowDetail: no handler for " + metadata.Opcode
+                + ", no field tree", LogLevel.Trace);
         }
-
-        try
+        else
         {
-            GateHandle rootGate = extractor.Extract(top_level_gate, payload);
-            uint bagCount = extractor.BagCount(rootGate);
-
-            for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
-            { 
-                extractor.EnterGate(rootGate,  bagIndex);
-
-                CollectionHandle collection = extractor.CollectionOf();
-                sb.Append('[');
-                sb.Append(GlassContext.PatchRegistry.GetCollectionName(collection));
-                sb.Append("]\n");
-
-                BagWalker walker = extractor.WalkBag();
-                FieldBinding? binding = walker.Next();
-                while (binding != null)
-                {
-                    FieldBinding b = binding.Value;
-                    sb.Append(b.Name);
-                    sb.Append(" = ");
-                    sb.Append(b.Value);
-                    sb.Append('\n');
-                    binding = walker.Next();
-                }
-            }
-            row.FieldText = sb.ToString();
-        }
-        finally
-        {
-            extractor.Release();
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "OpcodeTracePresenter.PopulateRowDetail: built field tree for " + metadata.Opcode, LogLevel.Trace);
         }
     }
 

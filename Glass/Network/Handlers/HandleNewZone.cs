@@ -124,6 +124,69 @@ public class HandleNewZone : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Describe
+    //
+    // Extracts OP_NewZone against the active patch and builds a display tree: a root node for
+    // the collection with one leaf child per field (short_name, long_name, zone_id), each
+    // carrying its payload byte range.
+    //
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
+    //
+    // Returns:   The root FieldDisplayNode.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    {
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        FieldDisplayNode root = new FieldDisplayNode();
+
+        try
+        {
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            uint bagCount = extractor.BagCount(rootGate);
+
+            DebugLog.Write(LogChannel.Fields,
+                "HandleNewZone.Describe: bagCount=" + bagCount, LogLevel.Trace);
+
+            if (bagCount == 0)
+            {
+                DebugLog.Write(LogChannel.Fields,
+                    "HandleNewZone.Describe: no bags extracted", LogLevel.Warn);
+                return root;
+            }
+
+            extractor.EnterGate(rootGate, 0);
+
+            string shortName = extractor.GetStringAt(_shortNameSlot);
+            string longName = extractor.GetStringAt(_longNameSlot);
+            uint zoneId = extractor.GetUIntAt(_zoneIdSlot);
+
+            FieldDisplayNode shortNameNode = new FieldDisplayNode("short_name = " + shortName);
+            shortNameNode.AddByteRange(extractor.GetByteRangeFor(_shortNameSlot));
+            root.AddChild(shortNameNode);
+
+            FieldDisplayNode longNameNode = new FieldDisplayNode("long_name = " + longName);
+            longNameNode.AddByteRange(extractor.GetByteRangeFor(_longNameSlot));
+            root.AddChild(longNameNode);
+
+            FieldDisplayNode zoneIdNode = new FieldDisplayNode("zone_id = " + zoneId);
+            zoneIdNode.AddByteRange(extractor.GetByteRangeFor(_zoneIdSlot));
+            root.AddChild(zoneIdNode);
+
+            root.Text = OpcodeName + " (" + shortName + ")";
+
+            DebugLog.Write(LogChannel.Fields,
+                "HandleNewZone.Describe: built root with " + root.Children.Count + " children", LogLevel.Trace);
+        }
+        finally
+        {
+            extractor.Release();
+        }
+
+        return root;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeHandled
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public PatchOpcode OpcodeHandled

@@ -1,5 +1,6 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Network.Handlers;
 using Glass.Network.Protocol.Fields;
 using System;
 using System.Collections.Frozen;
@@ -218,5 +219,30 @@ public class OpcodeDispatch
         uint version = versionResolver.ResolveVersion(data, metadata);
         PatchOpcode resolvedOpcode = new PatchOpcode(_patchLevel, opcodeValue, version);
         return resolvedOpcode;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Describe
+    //
+    // Asks the handler for the packet's opcode to return a display tree for
+    // the payload.  Returns null when no handler is registered for the opcode.
+    //
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
+    //
+    // Returns:   The root FieldDisplayNode, or null when no handler is registered.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public FieldDisplayNode? Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    {
+        if (_handlers.TryGetValue(metadata.Opcode, out IHandleOpcodes? handler) == true)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeDispatch.Describe: describing " + metadata.Opcode, LogLevel.Trace);
+            return handler.Describe(data, metadata);
+        }
+
+        DebugLog.Write(LogChannel.Opcodes,
+            "OpcodeDispatch.Describe: no handler for " + metadata.Opcode, LogLevel.Trace);
+        return null;
     }
 }

@@ -1709,6 +1709,21 @@ public class FieldExtractor
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetByteRangeFor
+    //
+    // Returns the ByteRange for the slot indicated by SlotId.  This is relative to the start
+    // of the packet payload.
+    //
+    // slot:  The slot to query.
+    //
+    // Returns:  The byte range covering the slot's content.  Does not return on failure.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public ByteRange GetByteRangeFor(SlotId slot)
+    {
+        return _bags[(int)(uint)_activeBag].GetByteRangeFor(slot);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // WalkBag
     //
     // Returns a walker over the filled slots of the active bag, letting a consumer enumerate

@@ -556,6 +556,29 @@ public sealed class FieldBag
         return value;
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetByteRangeFor
+    //
+    // Returns the ByteRange for the slot indicated by SlotId.  This is relative to the start
+    // of the packet payload.
+    //
+    // slot:     Thd ID of the slot to query
+    //
+    // Returns:  The byte range covering the slot's content.  Does not return on failure.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public ByteRange GetByteRangeFor(SlotId slot)
+    {
+        if (slot.Index >= _slotsInUse)
+        {
+            string rangeFailure = CollectionName + " FieldBag.GetByteRangeFor: slot.Index "
+                + slot.Index + " out of range [0, " + _slotsInUse + ")";
+            DebugLog.Write(LogChannel.Fields, rangeFailure, LogLevel.Error);
+            Environment.FailFast(rangeFailure);
+        }
+        ref FieldSlot fieldSlot = ref SlotAt(slot.Index);
+        return fieldSlot.GetByteRange();
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetTypeAt
     //

@@ -1,10 +1,11 @@
 ﻿using Glass.Core.Logging;
 using Glass.Core.Memory;
+using Glass.Network.Protocol;
+using Glass.Network.Protocol.Fields;
 using Inference.Core;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using Glass.Network.Protocol;
 using static Glass.Network.Protocol.SoeConstants;
 
 namespace Inference.Models;
@@ -77,7 +78,8 @@ public class OpcodeTraceRow : INotifyPropertyChanged
         _color = 0;
         _isExpanded = false;
         _isHidden = false;
-        _fieldText = null;
+        _fieldText = null;          // TODO: remove
+        _fieldTree = null;
         _hexDumpText = null;
 
         _highlights = new List<HighlightRange>();
@@ -95,6 +97,7 @@ public class OpcodeTraceRow : INotifyPropertyChanged
     public string CharacterName { get; }
     public int Length { get; }
     public RetainedBuffer Payload { get; }
+    private FieldDisplayNode? _fieldTree;
 
     public string ChannelAbbrev
     {
@@ -175,6 +178,41 @@ public class OpcodeTraceRow : INotifyPropertyChanged
         {
             _matches = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Matches)));
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FieldTree
+    //
+    // Root node of the field region's tree representation, or null when the packet's opcode
+    // has no registered handler.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public FieldDisplayNode? FieldTree
+    {
+        get { return _fieldTree; }
+        set
+        {
+            _fieldTree = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FieldTree)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FieldTreeRoots)));
+        }
+    }
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FieldTreeRoots
+    //
+    // The field tree's root wrapped in a single-element list, or an empty list when there is
+    // no field tree.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public IReadOnlyList<FieldDisplayNode> FieldTreeRoots
+    {
+        get
+        {
+            if (_fieldTree == null)
+            {
+                return System.Array.Empty<FieldDisplayNode>();
+            }
+
+            return new FieldDisplayNode[] { _fieldTree };
         }
     }
 }

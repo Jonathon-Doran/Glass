@@ -1,7 +1,8 @@
-﻿using Glass.Network.Protocol.Fields;
+﻿using Glass.Network.Protocol;
+using Glass.Network.Protocol.Fields;
 using System;
 
-namespace Glass.Network.Protocol;
+namespace Glass.Network.Handlers;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // IHandleOpcodes
@@ -51,6 +52,23 @@ public interface IHandleOpcodes : IDisposable
     uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         return 1;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Describe
+    //
+    // Builds a hierarchical display model for a packet's decoded fields and returns its root
+    // node.  The default implementation returns a single childless node carrying a placeholder
+    // label.  Handlers override this to emit their own formatted field tree.
+    //
+    // data:      The application payload (opcode bytes already stripped)
+    // metadata:  Packet metadata (timestamp, source/dest, channel)
+    //
+    // Returns:   The root FieldDisplayNode of the display model.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    {
+        return new FieldDisplayNode();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

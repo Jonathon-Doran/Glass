@@ -7,6 +7,7 @@ using Glass.Core;
 using Glass.Core.Logging;
 using Glass.Data.Models;
 using Glass.Data.Repositories;
+using Glass.Network.Handlers;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using System.Buffers.Binary;

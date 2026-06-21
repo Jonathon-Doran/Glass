@@ -4,6 +4,7 @@ using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using Inference.Models;
 using Inference.UI;
+using Microsoft.VisualBasic.FileIO;
 using System;
 using System.Text;
 using System.Windows;
@@ -67,7 +68,17 @@ public partial class PacketDetailWindow : Window
             + " opcode=" + opcodeHex + " (" + opcodeName + ")"
             + " length=" + payloadLength, LogLevel.Trace);
 
-        FieldTextBox.Text = ExtractFieldText(packet.Metadata.Opcode, payload);
+        FieldDisplayNode? fieldRoot = BuildFieldTree(packet.Metadata, payload);
+        if (fieldRoot != null)
+        {
+            FieldTree.ItemsSource = new FieldDisplayNode[] { fieldRoot };
+        }
+        else
+        {
+            FieldTree.ItemsSource = null;
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "PacketDetailWindow: no field tree for " + packet.Metadata.Opcode, LogLevel.Trace);
+        }
         HexDumpTextBox.Text = HexDumpFormatter.Format(payload, int.MaxValue);
     }
 
@@ -98,39 +109,28 @@ public partial class PacketDetailWindow : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // ExtractFieldText
+    // BuildFieldTree
     //
-    // Runs the field extractor against the payload using the active patch level and returns
-    // the formatted "name = value" text, one binding per line.  Returns empty string when the
-    // opcode is not present in the active patch.
+    // Asks OpcodeDispatch for the display tree the packet's handler builds for the payload.
+    // Returns the root node, or null when no handler is registered for the opcode.
     //
-    // For opcode 0x7E9B the payload carries a count-prefixed run of items, each beginning with
-    // an ItemString.  Each ItemString offset is found and the "Inventory Top-Level" collection
-    // is extracted against the payload sliced at that offset, so each item decodes from the
-    // start of its own bytes.  Items are emitted in wire order, separated by a header line
-    // carrying the item ordinal and byte offset.  For every other opcode the collection is
-    // extracted once against the whole payload.
+    // metadata:  The packet's metadata.
+    // payload:   Bytes to decode.
     //
-    // patchOpcode:  The packet's versioned opcode.
-    // payload:      Bytes to extract from.
+    // Returns:   The root FieldDisplayNode, or null.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private static string ExtractFieldText(PatchOpcode patchOpcode, ReadOnlySpan<byte> payload)
+    private static FieldDisplayNode? BuildFieldTree(PacketMetadata metadata, ReadOnlySpan<byte> payload)
     {
-        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
-        PatchRegistry registry = GlassContext.PatchRegistry;
+        FieldDisplayNode? root = OpcodeDispatch.Instance.Describe(payload, metadata);
 
-        string opcodeName = registry.GetOpcodeName(patchOpcode);
-        CollectionHandle collectionHandle = registry.GetOpcodeCollection(patchOpcode);
-
-        if (!collectionHandle.Exists)
+        if (root == null)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "PacketDetailWindow.ExtractFieldText: opcode=0x" + patchOpcode
-                + " not in active patch, no fields available", LogLevel.Error);
-            return string.Empty;
+                "PacketDetailWindow.BuildFieldTree: no handler for " + metadata.Opcode
+                + ", no field tree", LogLevel.Trace);
         }
 
-        return "";
+        return root;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
