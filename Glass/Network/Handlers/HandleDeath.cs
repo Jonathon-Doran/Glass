@@ -114,6 +114,46 @@ public class HandleDeath : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Describe
+    //
+    // Extracts OP_Death against the active patch and builds a display tree: a root node for
+    // the collection with one leaf child per field each carrying its payload byte range.
+    //
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
+    //
+    // Returns:   The root FieldDisplayNode.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    {
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        FieldDisplayNode root = new FieldDisplayNode();
+
+        try
+        {
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+
+            uint spawnId = extractor.GetUIntAt(_spawnIdSlot);
+            uint killerId = extractor.GetUIntAt(_killerIdSlot);
+
+            FieldDisplayNode spawnIdNode = new FieldDisplayNode("spawnId = 0x" + spawnId.ToString("X4"));
+            spawnIdNode.AddByteRange(extractor.GetByteRangeFor(_spawnIdSlot));
+            root.AddChild(spawnIdNode);
+
+            FieldDisplayNode killerIdNode = new FieldDisplayNode("killerId = 0x" + killerId.ToString("X4"));
+            killerIdNode.AddByteRange(extractor.GetByteRangeFor(_killerIdSlot));
+            root.AddChild(killerIdNode);
+        }
+        finally
+        {
+            extractor.Release();
+        }
+
+        root.Text = "Death";
+        return root;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeHandled
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public PatchOpcode OpcodeHandled

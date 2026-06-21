@@ -29,6 +29,7 @@ public class SessionRegistry
     private int _sessionCount = 0;
     private readonly Dictionary<string, SessionEntry> _sessions = new();
     private readonly Dictionary<int, int> _characterIdBySession = new();
+    private readonly Dictionary<int, string> _characterNameBySession = new();
     private readonly Dictionary<int, Connection> _connectionsByPort = new();
     private readonly int _arqSeqGiveUp = 512;
     private readonly string? _localIp;
@@ -327,7 +328,7 @@ public class SessionRegistry
 
                 DebugLog.Write(LogChannel.Sessions,
                     "SessionRegistry.GetConnection: new connection on port " + localPort
-                    + ", connections=" + _connectionsByPort.Count);
+                    + ", connections=" + _connectionsByPort.Count, LogLevel.Info);
             }
 
             return connection;
@@ -356,7 +357,7 @@ public class SessionRegistry
 
                 DebugLog.Write(LogChannel.Sessions,
                     "SessionRegistry.GetConnection: new connection on port " + localPort
-                    + ", connections=" + _connectionsByPort.Count);
+                    + ", connections=" + _connectionsByPort.Count, LogLevel.Info);
             }
 
             return connection;
@@ -427,16 +428,20 @@ public class SessionRegistry
         return null;
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // CharacterNameFromSession
+    //
+    // Returns the character name cached for a session id, or empty string when none is cached.
+    //
+    // sessionId:  The session id to look up.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     public string CharacterNameFromSession(int sessionId)
     {
         lock (_lock)
         {
-            foreach (KeyValuePair<string, SessionEntry> pair in _sessions)
+            if (_characterNameBySession.TryGetValue(sessionId, out string? name))
             {
-                if (pair.Value.SessionId == sessionId)
-                {
-                    return pair.Value.CharacterName;
-                }
+                return name;
             }
         }
 
@@ -499,20 +504,15 @@ public class SessionRegistry
                     + ", character=" + characterName);
                 return false;
             }
-
-            DebugLog.Write(LogChannel.LowNetwork, "Identify:  look for port " + localPort);
             
             foreach (KeyValuePair<string, SessionEntry> pair in _sessions)
             {
-                DebugLog.Write(LogChannel.LowNetwork, "check " + pair.Value.CharacterName + " on key " +
-                    pair.Key + " port " + pair.Value.LocalPort);
-
                 if (pair.Value.CharacterName == characterName)
                 {
                     Character? character = CharacterRepository.Instance.GetByName(characterName);
                     if (character == null)
                     {
-                        DebugLog.Write(LogChannel.LowNetwork, "No Character named " + characterName + " found in the CharacterRepository");
+                        DebugLog.Write(LogChannel.LowNetwork, "No Character named " + characterName + " found in the CharacterRepository", LogLevel.Error);
                         return false;
                     }
 
@@ -522,6 +522,7 @@ public class SessionRegistry
                     pair.Value.SessionId = connection.SessionId;
                     pair.Value.CharacterId = character.CharacterId;
                     _characterIdBySession[connection.SessionId] = character.CharacterId;
+                    _characterNameBySession[connection.SessionId] = characterName;
                     connection.CharacterId = character.CharacterId;
                     connection.Character = character;
 
@@ -529,14 +530,14 @@ public class SessionRegistry
                         "SessionRegistry.IdentifyConnection: port " + localPort
                         + " identified as character=" + characterName
                         + " session=" + pair.Value.SessionName
-                        + " connectionId=" + connection.SessionId);
+                        + " connectionId=" + connection.SessionId, LogLevel.Info);
 
                     GlassContext.SignalBus.Publish(
                         new SignalSessionAdded(connection.SessionId, characterName));
 
                     DebugLog.Write(LogChannel.SignalBus,
                         "SessionRegistry.IdentifyConnection: published SignalSessionAdded sessionId="
-                        + connection.SessionId + " character=" + characterName);
+                        + connection.SessionId + " character=" + characterName, LogLevel.Info);
                     return true;
                 }
             }
@@ -544,14 +545,14 @@ public class SessionRegistry
             DebugLog.Write(LogChannel.LowNetwork,
                 "SessionRegistry.IdentifyConnection: no SessionEntry for character="
                 + characterName + " on port " + localPort
-                + ", bootstrapping synthetic session");
+                + ", bootstrapping synthetic session", LogLevel.Info);
 
             Character? bootstrapCharacter = CharacterRepository.Instance.GetByName(characterName);
             if (bootstrapCharacter == null)
             {
                 DebugLog.Write(LogChannel.LowNetwork,
                     "SessionRegistry.IdentifyConnection: no Character named " + characterName
-                    + " in CharacterRepository, cannot bootstrap");
+                    + " in CharacterRepository, cannot bootstrap", LogLevel.Error);
                 return false;
             }
 
@@ -565,6 +566,7 @@ public class SessionRegistry
             synthEntry.SessionId = connection.SessionId;
             synthEntry.CharacterId = bootstrapCharacter.CharacterId;
             _characterIdBySession[connection.SessionId] = bootstrapCharacter.CharacterId;
+            _characterNameBySession[connection.SessionId] = characterName;
             connection.CharacterId = bootstrapCharacter.CharacterId;
             connection.Character = bootstrapCharacter;
 

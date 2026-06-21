@@ -6,6 +6,7 @@ using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using System.Buffers.Binary;
 using System.Printing;
+using System.Security.Cryptography.X509Certificates;
 using System.Xml.Linq;
 
 
@@ -123,11 +124,9 @@ public class HandleClientUpdate : IHandleOpcodes
 
             uint bagCount = extractor.BagCount(rootGate);
 
-            DebugLog.Write(LogChannel.Opcodes, "CU rootgate is " + rootGate + ", bags = " +
-                bagCount);
             if (character == null)
             {
-                DebugLog.Write(LogChannel.Opcodes, _opcodeName + ": no Character with id '" + id + "' in repository; fields not stored.");
+                DebugLog.Write(LogChannel.Opcodes, _opcodeName + ": no Character with id '" + id + "' in repository; fields not stored.", LogLevel.Error);
                 return;
             }
             for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
@@ -153,6 +152,79 @@ public class HandleClientUpdate : IHandleOpcodes
         {
             extractor.Release();
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Describe
+    //
+    // Extracts OP_ClientUpdate against the active patch and builds a display tree: a root node for
+    // the collection with one leaf child per field each carrying its payload byte range.
+    //
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
+    //
+    // Returns:   The root FieldDisplayNode.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    {
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        FieldDisplayNode root = new FieldDisplayNode();
+        string characterName = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
+
+        try
+        {
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+
+            FieldDisplayNode positionNode = new FieldDisplayNode();
+            root.AddChild(positionNode);
+
+            float XPos = extractor.GetFloatAt(_xPosSlot);
+            float YPos = extractor.GetFloatAt(_yPosSlot);
+            float ZPos = extractor.GetFloatAt(_zPosSlot);
+            uint sequence = extractor.GetUIntAt(_sequenceSlot);
+            uint playerId = extractor.GetUIntAt(_playerIdSlot);
+            // Note on heading:  measured as 160-degrees per second to within 0.2%.  One degree is 6.25ms of keypress.  
+            float Heading = extractor.GetUIntAt(_headingSlot) / 8192.0f * 360.0f;
+
+            positionNode.Text = "position = (" + XPos.ToString("F2") + "," +
+                YPos.ToString("F2") + "," + ZPos.ToString("F2") + ")";
+
+            FieldDisplayNode xNode = new FieldDisplayNode("x = " + XPos);
+            xNode.AddByteRange(extractor.GetByteRangeFor(_xPosSlot));
+            positionNode.AddChild(xNode);
+
+            FieldDisplayNode yNode = new FieldDisplayNode("y = " + YPos);
+            yNode.AddByteRange(extractor.GetByteRangeFor(_yPosSlot));
+            positionNode.AddChild(yNode);
+
+            FieldDisplayNode zNode = new FieldDisplayNode("z = " + ZPos);
+            zNode.AddByteRange(extractor.GetByteRangeFor(_zPosSlot));
+            positionNode.AddChild(zNode);
+
+            positionNode.AddByteRange(extractor.GetByteRangeFor(_xPosSlot));
+            positionNode.AddByteRange(extractor.GetByteRangeFor(_yPosSlot));
+            positionNode.AddByteRange(extractor.GetByteRangeFor(_zPosSlot));
+
+            FieldDisplayNode sequenceNode = new FieldDisplayNode("sequence = " + sequence);
+            sequenceNode.AddByteRange(extractor.GetByteRangeFor(_sequenceSlot));
+            root.AddChild(sequenceNode);
+
+            FieldDisplayNode playerIdNode = new FieldDisplayNode("playerId = 0x" + 
+                playerId.ToString("X4") + " (" + characterName + ")");
+            playerIdNode.AddByteRange(extractor.GetByteRangeFor(_playerIdSlot));
+            root.AddChild(playerIdNode);
+
+            FieldDisplayNode headingNode = new FieldDisplayNode("heading = " + Heading);
+            headingNode.AddByteRange(extractor.GetByteRangeFor(_headingSlot));
+            root.AddChild(headingNode);
+        }
+        finally
+        {
+            extractor.Release();
+        }
+
+        root.Text = "ClientUpdate (" + characterName + ")";
+        return root;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

@@ -155,8 +155,6 @@ public class HandleNewZone : IHandleOpcodes
                 return root;
             }
 
-            extractor.EnterGate(rootGate, 0);
-
             string shortName = extractor.GetStringAt(_shortNameSlot);
             string longName = extractor.GetStringAt(_longNameSlot);
             uint zoneId = extractor.GetUIntAt(_zoneIdSlot);

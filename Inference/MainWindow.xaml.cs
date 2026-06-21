@@ -2111,9 +2111,10 @@ public partial class MainWindow : Window
             sb.Append(row.Length);
             sb.Append(Environment.NewLine);
 
-            if (row.IsExpanded && !string.IsNullOrEmpty(row.FieldText))
+            if (row.IsExpanded && row.FieldTree != null)
             {
-                string[] detailLines = row.FieldText.Split('\n');
+                string fieldText = FieldTreeFormatter.ToIndentedText(row.FieldTree);
+                string[] detailLines = fieldText.Split('\n');
                 for (int j = 0; j < detailLines.Length; j++)
                 {
                     string line = detailLines[j].TrimEnd('\r');

@@ -87,29 +87,10 @@ public class HandleCommonMessage : IHandleOpcodes
     {
         switch (metadata.Channel)
         {
-            case SoeConstants.StreamId.StreamZoneToClient:
-                HandleZoneToClient(data, metadata);
-                break;
             case SoeConstants.StreamId.StreamClientToZone:
                 HandleClientToZone(data, metadata);
                 break;
         }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleZoneToClient
-    //
-    // Processes zone-to-client traffic
-    //
-    // data:      The application payload
-    // metadata:  Packet metadata (timestamp, source/dest)
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
-    {
-        /*
-        DebugLog.Write(LogChannel.Opcodes, _opcodeName);
-        DebugLog.Write(LogChannel.Opcodes, "Server to Client");
-        */
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -149,6 +130,52 @@ public class HandleCommonMessage : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Describe
+    //
+    // Extracts OP_CommonMessage against the active patch and builds a display tree: a root node for
+    // the collection with one leaf child per field each carrying its payload byte range.
+    //
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
+    //
+    // Returns:   The root FieldDisplayNode.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    {
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        FieldDisplayNode root = new FieldDisplayNode();
+        string characterName = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
+
+        try
+        {
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+
+            string sender = extractor.GetStringAt(_senderIdSlot);
+            uint channel = extractor.GetUIntAt(_channelIdSlot);
+            string message = extractor.GetStringAt(_messageIdSlot);
+
+            FieldDisplayNode senderNode = new FieldDisplayNode("sender = " + sender);
+            senderNode.AddByteRange(extractor.GetByteRangeFor(_senderIdSlot));
+            root.AddChild(senderNode);
+
+            FieldDisplayNode channelNode = new FieldDisplayNode("channel = " + channel);
+            channelNode.AddByteRange(extractor.GetByteRangeFor(_channelIdSlot));
+            root.AddChild(channelNode);
+
+            FieldDisplayNode messageNode = new FieldDisplayNode("message = " + message);
+            messageNode.AddByteRange(extractor.GetByteRangeFor(_messageIdSlot));
+            root.AddChild(messageNode);
+        }
+        finally
+        {
+            extractor.Release();
+        }
+
+        root.Text = "CommonMessage (to " + characterName + ")";
+        return root;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetChannelName
     //
     // Returns a human-readable name for the channel ID byte.
@@ -177,6 +204,19 @@ public class HandleCommonMessage : IHandleOpcodes
             return "/" + customNumber;
         }
         return "unknown(" + channelId.ToString("x2") + ")";
+    }
+    public uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    {
+        switch (metadata.Channel)
+        {
+            case SoeConstants.StreamId.StreamClientToZone:
+                return 1;
+
+            case SoeConstants.StreamId.StreamZoneToClient:
+                return 2;
+        }
+
+        return 0;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
