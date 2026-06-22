@@ -6,6 +6,7 @@ using Glass.Data.Repositories;
 using Glass.Network.Capture;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
+using Glass.UI;
 using Inference.Core;
 using Inference.Dialogs;
 using Inference.Models;
@@ -107,6 +108,7 @@ public partial class MainWindow : Window
 
         UpdateControlStates();
 
+
         _retainedBufferPool = new RetainedBufferPool();
         _packetCatalog = new PacketCatalog(_retainedBufferPool);
         _opcodeRowPresenter = new OpcodeRowPresenter(_packetCatalog);
@@ -115,13 +117,13 @@ public partial class MainWindow : Window
 
         _opcodeTracePresenter = new OpcodeTracePresenter(_packetCatalog);
         OpcodeTraceList.ItemsSource = _opcodeTracePresenter.Rows;
+        ArmColorPatch(ColorPatchYellow);
 
         GlassContext.BufferPool = new BufferPool(
             new uint[] { 16, 64, 256, 512, 1024, 2048, 16384, 65536, 262144, 524288 },
             new uint[] { 1000, 1000, 1000, 1000, 1000, 1000, 1000, 20, 20, 20 });
         GcMonitor.Start(5);
     }
-
     private void InitializeLogging()
     {
         DebugLog.SetMinimumLevel(LogLevel.Info);
@@ -1599,7 +1601,6 @@ public partial class MainWindow : Window
         TextBoxOpcodeTraceFind.Clear();
         StatusBarSecondaryText.Text = "";
         _opcodeTracePresenter.SetSearchQuery(null);
-        _opcodeTracePresenter.ClearHighlights();
         TextBoxOpcodeTraceFind.Focus();
     }
 
@@ -2361,15 +2362,62 @@ public partial class MainWindow : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ArmColorPatch
+    //
+    // Arms a color patch: restores any previously armed patch's border, sets this patch's
+    // border to the armed brush, records it as the armed patch, and pushes its color to the
+    // presenter as the active highlight color that subsequent highlighting operations stamp
+    // their spans with.  Exactly one patch is armed at a time.
+    //
+    // The patch's color is taken from its Tag, a string of the form "0xAARRGGBB".  A Tag that
+    // is missing or does not parse is a construction error: the method logs and returns without
+    // changing the armed patch, so the armed state and the presenter's active color stay
+    // consistent.
+    //
+    // patch:  The color patch Border to arm.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void ArmColorPatch(Border patch)
+    {
+        string? tagText = patch.Tag as string;
+        if (tagText == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "ArmColorPatch: patch has no Tag, ignoring", LogLevel.Error);
+            return;
+        }
+
+        uint raw;
+        if (!uint.TryParse(tagText.Substring(2),
+            System.Globalization.NumberStyles.HexNumber, null, out raw))
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "ArmColorPatch: could not parse Tag '" + tagText + "' as hex uint, ignoring",
+                LogLevel.Error);
+            return;
+        }
+
+        ArgbColor argb = new ArgbColor(raw);
+
+        if (_armedColorPatch != null)
+        {
+            _armedColorPatch.BorderBrush = Brushes.Gray;
+        }
+        patch.BorderBrush = Brushes.White;
+        _armedColorPatch = patch;
+
+        _opcodeTracePresenter.SetActiveHighlightColor(argb);
+
+        DebugLog.Write(LogChannel.Opcodes,
+            "ArmColorPatch: armed patch tag='" + tagText + "' color=0x" + argb.ToString(),
+            LogLevel.Info);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // ColorPatch_MouseLeftButtonUp
     //
-    // Click handler shared by every color patch on the Opcode Trace toolbar.
-    // Clicking an unarmed patch arms it (white border).  Clicking the armed
-    // patch disarms it (gray border).  Clicking a different patch swaps the
-    // armed slot to the new one.  Only one patch is armed at a time.
-    //
-    // The armed patch's color is read by the Color packet / Color opcode
-    // toggle handlers when the user clicks one of them.
+    // Click handler shared by every color patch on the Opcode Trace toolbar.  Clicking a patch
+    // arms it through ArmColorPatch and turns off the previous patch.
+    // Only one patch is armed at a time.
     //
     // sender:  The Border that raised the event.
     // e:       Standard mouse event args; not inspected.
@@ -2384,23 +2432,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        // skip arming the same color twice
         if (ReferenceEquals(_armedColorPatch, patch))
         {
-            patch.BorderBrush = Brushes.Gray;
-            _armedColorPatch = null;
-            DebugLog.Write(LogChannel.Opcodes,
-                "ColorPatch_MouseLeftButtonUp: disarmed patch tag='" + patch.Tag + "'", LogLevel.Trace);
             return;
         }
 
-        if (_armedColorPatch != null)
-        {
-            _armedColorPatch.BorderBrush = Brushes.Gray;
-        }
-        patch.BorderBrush = Brushes.White;
-        _armedColorPatch = patch;
-        DebugLog.Write(LogChannel.Opcodes,
-            "ColorPatch_MouseLeftButtonUp: armed patch tag='" + patch.Tag + "'", LogLevel.Trace);
+        ArmColorPatch(patch);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

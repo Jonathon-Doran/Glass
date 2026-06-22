@@ -3,6 +3,7 @@ using Glass.Core.Logging;
 using Glass.Core.Signals;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
+using Glass.UI;
 using Inference.Models;
 using Inference.UI;
 using Microsoft.Win32;
@@ -51,6 +52,8 @@ public class OpcodeTracePresenter
     private int _cursorMatchIndex;
     private int _cursorOrdinal;
     private bool _searchWrap;
+    private readonly HighlightGenerationMap _highlightGenerationMap;
+    private ArgbColor _activeHighlightColor;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeTracePresenter (constructor)
@@ -76,6 +79,11 @@ public class OpcodeTracePresenter
         _cursorRow = null;
         _cursorOrdinal = 0;
         _cursorMatchIndex = -1;
+        _highlightGenerationMap = new HighlightGenerationMap();
+        _activeHighlightColor = new ArgbColor(0u);
+
+        // The FieldHighlightBehavior needs to know the generations so that it can clean up old highlights
+        FieldHighlightBehavior.SetGenerationMap(_highlightGenerationMap);
 
         _sessionAddedHandler = OnSessionAdded;
         GlassContext.SignalBus.Subscribe(_sessionAddedHandler);
@@ -219,6 +227,25 @@ public class OpcodeTracePresenter
         DebugLog.Write(LogChannel.InferenceDebug,
             "OpcodeTracePresenter.Refresh: rebuilt " + _rows.Count + " rows from "
             + opcodes.Length + " known opcodes (" + _hiddenOpcodes.Count + " hidden)", LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // SetActiveHighlightColor
+    //
+    // Stores the ARGB color that subsequent highlighting operations stamp their spans with.
+    // Zero is the no-color-armed sentinel: while it is set, highlighting operations record
+    // matches but paint nothing.  Arming a color does not repaint anything already
+    // highlighted; the stored color affects only the next operation that writes spans.
+    //
+    // argb:  ARGB color to arm, or 0 to arm no color.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void SetActiveHighlightColor(ArgbColor argb)
+    {
+        _activeHighlightColor = argb;
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "OpcodeTracePresenter.SetActiveHighlightColor: armed color=0x" + argb.ToString(),
+            LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -471,10 +498,25 @@ public class OpcodeTracePresenter
         }
 
         ReadOnlySpan<byte> payload = row.Payload.AsReadOnlySpan();
-        int payloadLength = payload.Length;
+        uint payloadLength = (uint)payload.Length;
 
-        if (queryBytes.Length > payloadLength)
+        uint displayLength;
+        if (_maxHexBytes == int.MaxValue || payloadLength <= _maxHexBytes)
         {
+            displayLength = payloadLength;
+        }
+        else
+        {
+            displayLength = _maxHexBytes;
+        }
+
+        int scanLength = (int)displayLength;
+
+        if (queryBytes.Length > scanLength)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "OpcodeTracePresenter.LocateHexDumpHighlights: query longer than displayed "
+                + scanLength + " byte(s), nothing to scan", LogLevel.Trace);
             return;
         }
 
@@ -484,7 +526,7 @@ public class OpcodeTracePresenter
         int hexColumnOffset = 8 + 2;
         int asciiColumnOffset = 8 + 2 + (16 * 3) + 1 + 1;
 
-        int searchEnd = payloadLength - queryBytes.Length + 1;
+        int searchEnd = scanLength - queryBytes.Length + 1;
         for (int scanPos = 0; scanPos < searchEnd; scanPos++)
         {
             bool matched = true;
@@ -572,41 +614,81 @@ public class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     // LocateFieldHighlights
     //
-    // Scans the row's field text for case-insensitive occurrences of the active
-    // query, appending a HighlightRange and a SearchMatch per occurrence to the
-    // row's lists.  Each emitted HighlightRange carries the index it occupies in
-    // the row's Matches list so the view can later identify which range belongs
-    // to which SearchMatch.  In Fast mode collapsed rows are skipped.
+    // Walks the row's field tree and, for each node whose Text contains the active query,
+    // stamps a HighlightSpan on the node per occurrence and appends a node-addressed SearchMatch
+    // to the row's Matches list.  Matching is case-insensitive.  In Fast mode a collapsed row
+    // is skipped without walking its tree.  A row with no field tree is skipped.
     //
-    // row:   The row whose field text is scanned.
-    // mode:  Search mode gating body scans for collapsed rows.
+    // row:   The row whose field tree is scanned.
+    // mode:  Search mode gating the scan for collapsed rows.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void LocateFieldHighlights(OpcodeTraceRow row, SearchMode mode)
     {
         if (mode == SearchMode.Fast && !row.IsExpanded)
         {
+            DebugLog.Write(LogChannel.Fields,
+                "OpcodeTracePresenter.LocateFieldHighlights: fast mode, collapsed row skipped",
+                LogLevel.Trace);
             return;
         }
 
-        string? fieldText = row.FieldText;
-        if (string.IsNullOrEmpty(fieldText))
+        FieldDisplayNode? root = row.FieldTree;
+        if (root == null)
         {
+            DebugLog.Write(LogChannel.Fields,
+                "OpcodeTracePresenter.LocateFieldHighlights: no field tree, skipped", LogLevel.Trace);
             return;
         }
 
-        int scanPos = 0;
-        while (scanPos <= fieldText.Length - _searchQuery.Length)
+        int before = row.Matches.Count;
+        ScanFieldNode(root, row);
+        int added = row.Matches.Count - before;
+
+        DebugLog.Write(LogChannel.Fields,
+            "OpcodeTracePresenter.LocateFieldHighlights: added " + added + " field match(es)",
+            LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ScanFieldNode
+    //
+    // Scans one node's Text for every case-insensitive occurrence of the active query, stamping
+    // a HighlightSpan on the node and appending a node-addressed SearchMatch to the row for each,
+    // then recurses into the node's children.
+    //
+    // node:  The node to scan.
+    // row:   The row receiving the SearchMatches.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void ScanFieldNode(FieldDisplayNode node, OpcodeTraceRow row)
+    {
+        string text = node.Text;
+        if (!string.IsNullOrEmpty(text))
         {
-            int found = fieldText.IndexOf(_searchQuery, scanPos, StringComparison.OrdinalIgnoreCase);
-            if (found < 0)
+            int scanPos = 0;
+            while (scanPos <= text.Length - _searchQuery.Length)
             {
-                break;
+                int found = text.IndexOf(_searchQuery, scanPos, StringComparison.OrdinalIgnoreCase);
+                if (found < 0)
+                {
+                    break;
+                }
+
+                uint generation = _highlightGenerationMap.CurrentGeneration(_activeHighlightColor);
+                HighlightSpan highlightSpan = new HighlightSpan(found, _searchQuery.Length, _activeHighlightColor, generation);
+                node.AddSpan(highlightSpan, _highlightGenerationMap.CurrentGeneration);
+                row.Matches.Add(new SearchMatch(node, found));
+
+                DebugLog.Write(LogChannel.Fields,
+                    "OpcodeTracePresenter.ScanFieldNode: match at offset " + found
+                    + " in '" + text + "'", LogLevel.Trace);
+
+                scanPos = found + _searchQuery.Length;
             }
-            int matchIndex = row.Matches.Count;
-            row.Highlights.Add(new HighlightRange(HighlightRegionType.Field, found,
-                _searchQuery.Length, matchIndex, null));
-            row.Matches.Add(new SearchMatch(HighlightRegionType.Field, found));
-            scanPos = found + _searchQuery.Length;
+        }
+
+        for (int childIndex = 0; childIndex < node.Children.Count; childIndex++)
+        {
+            ScanFieldNode(node.Children[childIndex], row);
         }
     }
 
@@ -927,7 +1009,6 @@ public class OpcodeTracePresenter
             _searchQuery = string.Empty;
             _searchQueryType = SearchQueryType.Empty;
             _searchQueryBytes = null;
-            ClearHighlights();
             DebugLog.Write(LogChannel.InferenceDebug,
                 "OpcodeTracePresenter.SetSearchQuery: cleared", LogLevel.Trace);
             return;
@@ -945,6 +1026,9 @@ public class OpcodeTracePresenter
             _searchQueryType = SearchQueryType.Ascii;
             _searchQueryBytes = Encoding.ASCII.GetBytes(query);
         }
+
+        _highlightGenerationMap.Bump(_activeHighlightColor);
+
         DebugLog.Write(LogChannel.InferenceDebug,
             "OpcodeTracePresenter.SetSearchQuery: query='" + query + "' type=" + _searchQueryType
             + " bytes=" + _searchQueryBytes.Length, LogLevel.Trace);

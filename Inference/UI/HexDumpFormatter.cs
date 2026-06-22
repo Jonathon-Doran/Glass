@@ -85,6 +85,14 @@ public static class HexDumpFormatter
                 }
                 sb.Append(c);
             }
+
+            // Pad the ascii gutter to a full 16 columns when the row is short, so every rendered
+            // line is the same width and the closing '|' aligns.
+            for (int i = bytesThisRow; i < 16; i++)
+            {
+                sb.Append(' ');
+            }
+
             sb.Append('|');
             sb.Append('\n');
 

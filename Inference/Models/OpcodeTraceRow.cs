@@ -36,6 +36,18 @@ public class OpcodeTraceRow : INotifyPropertyChanged
     private List<SearchMatch> _matches;
 
     public event PropertyChangedEventHandler? PropertyChanged;
+    public uint PacketIndex { get; }
+    public string TimestampLocal { get; }
+    public string OpcodeHex { get; }
+    public OpcodeValue OpcodeValue { get; }
+    public string OpcodeName { get; }
+    public StreamId Channel { get; }
+    public ushort SourcePort { get; }
+    public ushort DestPort { get; }
+    public string CharacterName { get; }
+    public int Length { get; }
+    public RetainedBuffer Payload { get; }
+    private FieldDisplayNode? _fieldTree;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeTraceRow (constructor)
@@ -85,19 +97,6 @@ public class OpcodeTraceRow : INotifyPropertyChanged
         _highlights = new List<HighlightRange>();
         _matches = new List<SearchMatch>();
     }
-
-    public uint PacketIndex { get; }
-    public string TimestampLocal { get; }
-    public string OpcodeHex { get; }
-    public OpcodeValue OpcodeValue { get; }
-    public string OpcodeName { get; }
-    public StreamId Channel { get; }
-    public ushort SourcePort { get; }
-    public ushort DestPort { get; }
-    public string CharacterName { get; }
-    public int Length { get; }
-    public RetainedBuffer Payload { get; }
-    private FieldDisplayNode? _fieldTree;
 
     public string ChannelAbbrev
     {
@@ -202,6 +201,8 @@ public class OpcodeTraceRow : INotifyPropertyChanged
     //
     // The field tree's root wrapped in a single-element list, or an empty list when there is
     // no field tree.
+    //
+    // Note:  This exists because we needed something enumerable for the XAML
     ///////////////////////////////////////////////////////////////////////////////////////////
     public IReadOnlyList<FieldDisplayNode> FieldTreeRoots
     {
