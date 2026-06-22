@@ -1008,6 +1008,15 @@ public partial class MainWindow : Window
                 "Window_PreviewKeyDown: Escape — find bar hidden", LogLevel.Trace);
             return;
         }
+
+        if (e.Key == Key.G && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+        {
+            e.Handled = true;
+            MenuItem_GoToMessage_Click(MenuGoToMessage, new RoutedEventArgs());
+            DebugLog.Write(LogChannel.Opcodes,
+                "Window_PreviewKeyDown: Ctrl+G — opening Go To Message dialog", LogLevel.Trace);
+            return;
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////
@@ -1695,6 +1704,67 @@ public partial class MainWindow : Window
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "MenuItem_OpcodeTraceHideRow_Click: hid packetIndex=" + row.PacketIndex, LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////
+    // MenuItem_GoToMessage_Click
+    //
+    // Opens the Go To Message dialog seeded with the current cursor row's message index and
+    // the lowest and highest indices present in the trace.  On confirm, resolves the entered
+    // target to the nearest present row and scrolls it into view, updating the status bar to
+    // the landed row's message index.  No-ops with a status message when the trace is empty.
+    // Does not change the list selection or the presenter's search cursor.
+    //
+    // sender:  The Go to message menu item.
+    // e:       Routed event args.
+    ///////////////////////////////////////////////////////////////////////////////////////
+    private void MenuItem_GoToMessage_Click(object sender, RoutedEventArgs e)
+    {
+        MessageIndexBounds bounds = _opcodeTracePresenter.GetMessageIndexBounds();
+        if (!bounds.HasRows)
+        {
+            StatusBarSecondaryText.Text = "No messages";
+            DebugLog.Write(LogChannel.Opcodes,
+                "MainWindow.MenuItem_GoToMessage_Click: no rows, nothing to go to", LogLevel.Warn);
+            return;
+        }
+
+        uint current;
+        OpcodeTraceRow? cursorRow = _opcodeTracePresenter.CursorRow;
+        if (cursorRow != null)
+        {
+            current = cursorRow.PacketIndex;
+        }
+        else
+        {
+            current = bounds.Lowest;
+        }
+
+        GoToMessageDialog dialog = new GoToMessageDialog(current, bounds.Lowest, bounds.Highest);
+        dialog.Owner = this;
+
+        if (dialog.ShowDialog() != true)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "MainWindow.MenuItem_GoToMessage_Click: dialog cancelled", LogLevel.Trace);
+            return;
+        }
+
+        OpcodeTraceRow? target = _opcodeTracePresenter.RowForNearestPacketIndex(dialog.Target);
+        if (target == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "MainWindow.MenuItem_GoToMessage_Click: no row resolved for target "
+                + dialog.Target, LogLevel.Error);
+            return;
+        }
+
+        OpcodeTraceList.ScrollIntoView(target);
+        StatusBarRowText.Text = "Message " + target.PacketIndex;
+
+        DebugLog.Write(LogChannel.Opcodes,
+            "MainWindow.MenuItem_GoToMessage_Click: requested " + dialog.Target
+            + ", landed on message " + target.PacketIndex, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

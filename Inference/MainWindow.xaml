@@ -116,6 +116,9 @@
                 <MenuItem x:Name="MenuFind" Header="_Find..."
                           InputGestureText="Ctrl+F"
                           Click="MenuItem_Find_Click"/>
+                <MenuItem x:Name="MenuGoToMessage" Header="_Go to message..."
+                          InputGestureText="Ctrl+G"
+                          Click="MenuItem_GoToMessage_Click"/>
                 <Separator/>
                 <MenuItem x:Name="MenuShowAllRows" Header="_Show all rows"
                           Click="MenuItem_ShowAllRows_Click"/>

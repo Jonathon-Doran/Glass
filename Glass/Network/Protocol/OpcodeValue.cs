@@ -17,7 +17,7 @@
 // Handles are assigned by PatchData at load time (0..N-1, dense) and are valid only for the
 // PatchData instance that issued them. They are not interchangeable across patch levels.
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-public readonly record struct OpcodeValue(ushort Value)
+public readonly record struct OpcodeValue(ushort Value) : IComparable<OpcodeValue>
 {
     public static implicit operator uint(OpcodeValue handle) => handle.Value;
     public static explicit operator OpcodeValue(ushort value) => new(value);

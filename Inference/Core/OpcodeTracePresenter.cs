@@ -1610,6 +1610,115 @@ public class OpcodeTracePresenter
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // RowForNearestPacketIndex
+    //
+    // Scans the row collection for the row whose PacketIndex is nearest the target and
+    // returns it.  Distance is the unsigned magnitude of the difference, computed without
+    // subtraction underflow.  On a tie the row with the lower PacketIndex is kept, so a
+    // target falling exactly between two present messages resolves downward.  Returns null
+    // only when the collection is empty.
+    //
+    // target:  The message number to seek.
+    //
+    // returns: The nearest row, or null when there are no rows.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public OpcodeTraceRow? RowForNearestPacketIndex(uint target)
+    {
+        if (_rows.Count == 0)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTracePresenter.RowForNearestPacketIndex: no rows", LogLevel.Warn);
+            return null;
+        }
+
+        OpcodeTraceRow best = _rows[0];
+        uint bestDistance;
+        if (best.PacketIndex >= target)
+        {
+            bestDistance = best.PacketIndex - target;
+        }
+        else
+        {
+            bestDistance = target - best.PacketIndex;
+        }
+
+        for (int i = 1; i < _rows.Count; i++)
+        {
+            OpcodeTraceRow row = _rows[i];
+
+            uint distance;
+            if (row.PacketIndex >= target)
+            {
+                distance = row.PacketIndex - target;
+            }
+            else
+            {
+                distance = target - row.PacketIndex;
+            }
+
+            if (distance < bestDistance)
+            {
+                best = row;
+                bestDistance = distance;
+            }
+            else if (distance == bestDistance && row.PacketIndex < best.PacketIndex)
+            {
+                best = row;
+            }
+        }
+
+        DebugLog.Write(LogChannel.Opcodes,
+            "OpcodeTracePresenter.RowForNearestPacketIndex: target=" + target
+            + " resolved to PacketIndex=" + best.PacketIndex
+            + " distance=" + bestDistance, LogLevel.Trace);
+
+        return best;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetMessageIndexBounds
+    //
+    // Scans the row collection for the lowest and highest PacketIndex present and returns them.
+    // The collection is not assumed to be in index order, so both ends are found by a full
+    // scan.  When the collection is empty the result carries HasRows = false and both bounds
+    // are zero.
+    //
+    // returns: The lowest and highest present message index, with HasRows marking the empty
+    //          case.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public MessageIndexBounds GetMessageIndexBounds()
+    {
+        if (_rows.Count == 0)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTracePresenter.GetMessageIndexBounds: no rows", LogLevel.Warn);
+            return new MessageIndexBounds(0u, 0u, false);
+        }
+
+        uint lowest = _rows[0].PacketIndex;
+        uint highest = _rows[0].PacketIndex;
+
+        for (int i = 1; i < _rows.Count; i++)
+        {
+            uint index = _rows[i].PacketIndex;
+            if (index < lowest)
+            {
+                lowest = index;
+            }
+            if (index > highest)
+            {
+                highest = index;
+            }
+        }
+
+        DebugLog.Write(LogChannel.Opcodes,
+            "OpcodeTracePresenter.GetMessageIndexBounds: lowest=" + lowest
+            + " highest=" + highest + " rows=" + _rows.Count, LogLevel.Trace);
+
+        return new MessageIndexBounds(lowest, highest, true);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // Clear
     //
     // Resets every field to its initial state.  Must be called on the UI thread.
