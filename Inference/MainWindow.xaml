@@ -309,8 +309,8 @@
                                 ToolTip="Find next (Enter)"/>
                         <Button Grid.Column="5"
                                 x:Name="ButtonOpcodeTraceFindAll"
-                                Content="All"
-                                Click="Button_OpcodeTraceFindAll_Click"
+                                Content="Find"
+                                Click="Button_OpcodeTraceFindFirst_Click"
                                 Padding="8,2" Margin="4,0,0,0"
                                 ToolTip="Highlight all matches"/>
                         <CheckBox Grid.Column="6"
@@ -409,19 +409,11 @@
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Grid.Column="0" Text="{Binding PacketIndex}"/>
                                         <TextBlock Grid.Column="1"
-                                               infui:HighlightTextBehavior.Text="{Binding TimestampLocal}"
-                                               infui:HighlightTextBehavior.Ranges="{Binding Highlights}"
-                                               infui:HighlightTextBehavior.Region="SummaryTimestamp"/>
-
+                                               infui:FieldHighlightBehavior.FDN="{Binding TimestampElement}"/>
                                         <TextBlock Grid.Column="2"
-                                               infui:HighlightTextBehavior.Text="{Binding OpcodeHex}"
-                                               infui:HighlightTextBehavior.Ranges="{Binding Highlights}"
-                                               infui:HighlightTextBehavior.Region="SummaryOpcodeHex"/>
-
+                                               infui:FieldHighlightBehavior.FDN="{Binding OpcodeHexElement}"/>
                                         <TextBlock Grid.Column="3"
-                                               infui:HighlightTextBehavior.Text="{Binding OpcodeName}"
-                                               infui:HighlightTextBehavior.Ranges="{Binding Highlights}"
-                                               infui:HighlightTextBehavior.Region="SummaryOpcodeName"/>
+                                               infui:FieldHighlightBehavior.FDN="{Binding OpcodeNameElement}"/>
 
                                         <TextBlock Grid.Column="4" Text="{Binding ChannelAbbrev}"/>
                                         <TextBlock Grid.Column="5" Text="{Binding PortsText}"/>
@@ -455,9 +447,7 @@
                                             HorizontalScrollBarVisibility="Auto"
                                             Margin="16,0,0,4"
                                             Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
-                                        <TextBlock infui:HighlightTextBehavior.Text="{Binding HexDumpText}"
-                                               infui:HighlightTextBehavior.Ranges="{Binding Highlights}"
-                                               infui:HighlightTextBehavior.Region="Hex"
+                                        <TextBlock infui:FieldHighlightBehavior.FDN="{Binding HexDumpElement}"
                                                Background="Transparent"
                                                Padding="0"
                                                FontFamily="Consolas"

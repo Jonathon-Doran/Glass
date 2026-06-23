@@ -48,6 +48,12 @@ public class OpcodeTraceRow : INotifyPropertyChanged
     public int Length { get; }
     public RetainedBuffer Payload { get; }
     private FieldDisplayNode? _fieldTree;
+    private FieldDisplayNode? _timestampElement;
+    private FieldDisplayNode? _opcodeHexElement;
+    private FieldDisplayNode? _opcodeNameElement;
+    private FieldDisplayNode? _hexDumpElement;
+
+    private bool _enableTrace = false;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeTraceRow (constructor)
@@ -94,8 +100,20 @@ public class OpcodeTraceRow : INotifyPropertyChanged
         _fieldTree = null;
         _hexDumpText = null;
 
+        _timestampElement = null;
+        _opcodeHexElement = null;
+        _opcodeNameElement = null;
+        _hexDumpElement = null;
+
         _highlights = new List<HighlightRange>();
         _matches = new List<SearchMatch>();
+
+        /*
+        if (packetIndex == 59)
+        {
+            EnableTrace = true;
+        }
+        */
     }
 
     public string ChannelAbbrev
@@ -111,6 +129,12 @@ public class OpcodeTraceRow : INotifyPropertyChanged
         {
             return SourcePort + " \u2192 " + DestPort;
         }
+    }
+
+    public bool EnableTrace
+    {
+        get { return _enableTrace; }
+        set { _enableTrace = value; }
     }
     public uint Color
     {
@@ -192,6 +216,10 @@ public class OpcodeTraceRow : INotifyPropertyChanged
         set
         {
             _fieldTree = value;
+            if (EnableTrace && (value != null))
+            {
+                _fieldTree!.EnableTrace = true;
+            }
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FieldTree)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FieldTreeRoots)));
         }
@@ -214,6 +242,118 @@ public class OpcodeTraceRow : INotifyPropertyChanged
             }
 
             return new FieldDisplayNode[] { _fieldTree };
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // TimestampElement
+    //
+    // The timestamp summary cell as a single span-owning display element.  Its Text is the
+    // formatted local timestamp; its Spans carry that cell's search highlights.  Built on first
+    // access from TimestampLocal so a row that is never searched pays nothing.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public FieldDisplayNode TimestampElement
+    {
+        get
+        {
+            if (_timestampElement == null)
+            {
+                _timestampElement = new FieldDisplayNode(TimestampLocal);
+                if (EnableTrace)
+                {
+                    _timestampElement.EnableTrace = true;
+                }
+                DebugLog.Write(LogChannel.Fields,
+                    "OpcodeTraceRow.TimestampElement: built element for '" + TimestampLocal + "'",
+                    LogLevel.Trace);
+            }
+
+            return _timestampElement;
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeHexElement
+    //
+    // The opcode-hex summary cell as a single span-owning display element.  Its Text is the
+    // hex-formatted wire opcode; its Spans carry that cell's search highlights.  Built on first
+    // access from OpcodeHex so a row that is never searched pays nothing.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public FieldDisplayNode OpcodeHexElement
+    {
+        get
+        {
+            if (_opcodeHexElement == null)
+            {
+                _opcodeHexElement = new FieldDisplayNode(OpcodeHex);
+
+                DebugLog.Write(LogChannel.Fields,
+                    "OpcodeTraceRow.OpcodeHexElement: built element for '" + OpcodeHex + "'",
+                    LogLevel.Trace);
+            }
+
+            if (EnableTrace)
+            {
+                _opcodeHexElement.EnableTrace = true;
+            }
+
+            return _opcodeHexElement;
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeNameElement
+    //
+    // The opcode-name summary cell as a single span-owning display element.  Its Text is the
+    // resolved opcode name; its Spans carry that cell's search highlights.  Built on first
+    // access from OpcodeName so a row that is never searched pays nothing.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public FieldDisplayNode OpcodeNameElement
+    {
+        get
+        {
+            if (_opcodeNameElement == null)
+            {
+                _opcodeNameElement = new FieldDisplayNode(OpcodeName);
+
+                DebugLog.Write(LogChannel.Fields,
+                    "OpcodeTraceRow.OpcodeNameElement: built element for '" + OpcodeName + "'",
+                    LogLevel.Trace);
+            }
+
+            if (EnableTrace)
+            {
+                _opcodeNameElement.EnableTrace = true;
+            }
+
+            return _opcodeNameElement;
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // HexDumpElement
+    //
+    // The hex-dump cell as a single span-owning display element.  Its Text is the formatted hex
+    // dump; its Spans carry that cell's search highlights.  Unlike the summary elements this is
+    // not built lazily from an existing string: the dump does not exist until detail is
+    // populated, and it is re-formatted when the hex-length cap changes, so the presenter sets
+    // and updates this element's Text directly.  Null until detail is first populated.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public FieldDisplayNode? HexDumpElement
+    {
+        get
+        {
+            return _hexDumpElement;
+        }
+        set
+        {
+            _hexDumpElement = value;
+
+            if (EnableTrace && (_hexDumpElement != null))
+            {
+                _hexDumpElement.EnableTrace = true;
+            }
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HexDumpElement)));
         }
     }
 }

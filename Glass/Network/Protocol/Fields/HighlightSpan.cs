@@ -1,4 +1,5 @@
-﻿using Glass.UI;
+﻿using Glass.Core.Logging;
+using Glass.UI;
 
 namespace Glass.Network.Protocol.Fields;
 
@@ -36,5 +37,31 @@ public readonly record struct HighlightSpan
         Length = length;
         OverrideColor = overrideColor;
         Generation = generation;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // SpanText
+    //
+    // Returns the text this span covers, sliced out of the supplied node Text.
+    // If Start/Length fall outside the bounds of text, an out-of-range marker is returned
+    // instead of throwing, so the logging path is safe against a stale span written under an earlier Text.
+    //
+    // text:  The node Text string this span indexes into.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public string SpanText(string text)
+    {
+        if (text == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "MatchText: text is null");
+            return "<null>";
+        }
+
+        if (Start < 0 || Length < 0 || Start > text.Length || Start + Length > text.Length)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "MatchText: span out of range start=" + Start + " len=" + Length + " textLen=" + text.Length);
+            return "<out-of-range>";
+        }
+
+        return text.Substring(Start, Length);
     }
 }

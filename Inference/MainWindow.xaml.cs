@@ -1191,7 +1191,8 @@ public partial class MainWindow : Window
         }
 
         OpcodeTraceRow? selectedRow = OpcodeTraceList.SelectedItem as OpcodeTraceRow;
-        SearchMatch? match = _opcodeTracePresenter.FindNext(selectedRow, mode);
+        SearchMatch? previous = _opcodeTracePresenter.CurrentMatch;
+        SearchMatch? match = _opcodeTracePresenter.FindNext(mode);
         if (match == null)
         {
             StatusBarSecondaryText.Text = "No match";
@@ -1203,6 +1204,13 @@ public partial class MainWindow : Window
         if (cursorRow != null)
         {
             ScrollMatchIntoView(cursorRow, match.Value);
+            _opcodeTracePresenter.ApplyCursorHighlightColor(match);
+            if (previous != null)
+            {
+                previous.Value.Element.NotifySpansChanged();
+                DebugLog.Write(LogChannel.Opcodes,
+                    "Button_OpcodeTraceFindNext_Click: cleared previous cursor highlight", LogLevel.Trace);
+            }
             StatusBarRowText.Text = "Message " + cursorRow.PacketIndex;
         }
         StatusBarSecondaryText.Text = _opcodeTracePresenter.CursorOrdinal
@@ -1258,7 +1266,8 @@ public partial class MainWindow : Window
         }
 
         OpcodeTraceRow? selectedRow = OpcodeTraceList.SelectedItem as OpcodeTraceRow;
-        SearchMatch? match = _opcodeTracePresenter.FindPrevious(selectedRow, mode);
+        SearchMatch? previous = _opcodeTracePresenter.CurrentMatch;
+        SearchMatch? match = _opcodeTracePresenter.FindPrevious(mode);
         if (match == null)
         {
             StatusBarSecondaryText.Text = "No match";
@@ -1270,6 +1279,14 @@ public partial class MainWindow : Window
         if (cursorRow != null)
         {
             ScrollMatchIntoView(cursorRow, match.Value);
+
+            _opcodeTracePresenter.ApplyCursorHighlightColor(match);
+            if (previous != null)
+            {
+                previous.Value.Element.NotifySpansChanged();
+                DebugLog.Write(LogChannel.Opcodes,
+                    "Button_OpcodeTraceFindNext_Click: cleared previous cursor highlight", LogLevel.Trace);
+            }
             StatusBarRowText.Text = "Message " + cursorRow.PacketIndex;
         }
         StatusBarSecondaryText.Text = _opcodeTracePresenter.CursorOrdinal
@@ -1279,23 +1296,19 @@ public partial class MainWindow : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // FindRegionTextBlock
+    // FindElementTextBlock
     //
-    // Walks the visual tree under a ListViewItem container and returns the
-    // first TextBlock whose HighlightTextBehavior.Region attached property
-    // equals the requested region.  Returns null when no such TextBlock is
-    // realized under the container, which happens when the container has
-    // not yet been laid out or when the region belongs to a collapsed
-    // section of the row template.
+    // Walks the visual tree under a container and returns the first TextBlock whose
+    // FieldHighlightBehavior.FDN attached property is the requested element.  Returns null when no
+    // such TextBlock is realized under the container, which happens when the container has not yet
+    // been laid out or when the element belongs to a collapsed or unscrolled part of the row.
     //
-    // container:  The realized ListViewItem for the row of interest, as
-    //             returned by ItemContainerGenerator.ContainerFromItem.
-    // region:     The HighlightRegionType identifying which TextBlock to
-    //             locate.
+    // container:  The realized container for the row of interest.
+    // element:    The FieldDisplayNode whose displaying TextBlock to locate.
     //
     // returns:    The matching TextBlock, or null when none is found.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private static TextBlock? FindRegionTextBlock(DependencyObject container, HighlightRegionType region)
+    private static TextBlock? FindElementTextBlock(DependencyObject container, FieldDisplayNode element)
     {
         int childCount = VisualTreeHelper.GetChildrenCount(container);
         for (int i = 0; i < childCount; i++)
@@ -1305,14 +1318,101 @@ public partial class MainWindow : Window
             TextBlock? asTextBlock = child as TextBlock;
             if (asTextBlock != null)
             {
-                HighlightRegionType childRegion = HighlightTextBehavior.GetRegion(asTextBlock);
-                if (childRegion == region)
+                FieldDisplayNode? childElement = FieldHighlightBehavior.GetFDN(asTextBlock);
+                if (object.ReferenceEquals(childElement, element))
                 {
                     return asTextBlock;
                 }
             }
 
-            TextBlock? found = FindRegionTextBlock(child, region);
+            TextBlock? found = FindElementTextBlock(child, element);
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // CenterRowInList
+    //
+    // Scrolls the Opcode Trace list so the given row sits vertically centered in the outer
+    // viewport, giving the match context above and below rather than landing it at an edge.  The
+    // list is item-scrolling (CanContentScroll defaults true for a ListView), so the outer
+    // ScrollViewer's offsets and viewport are in item units, not pixels: centering is the row's
+    // item index minus half the viewport's item count, clamped to the scrollable range.
+    //
+    // Returns silently with a log entry when the row is not in the list or the outer ScrollViewer
+    // cannot be found.
+    //
+    // row:  The row to center.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void CenterRowInList(OpcodeTraceRow row)
+    {
+        int rowIndex = OpcodeTraceList.Items.IndexOf(row);
+        if (rowIndex < 0)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "MainWindow.CenterRowInList: row not in list, ignoring", LogLevel.Warn);
+            return;
+        }
+
+        ScrollViewer? outerScroller = FindDescendantScrollViewer(OpcodeTraceList);
+        if (outerScroller == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "MainWindow.CenterRowInList: no outer ScrollViewer, ignoring", LogLevel.Warn);
+            return;
+        }
+
+        double viewportItems = outerScroller.ViewportHeight;
+        double targetOffset = rowIndex - (viewportItems / 2.0);
+
+        if (targetOffset < 0)
+        {
+            targetOffset = 0;
+        }
+        double maxOffset = outerScroller.ScrollableHeight;
+        if (targetOffset > maxOffset)
+        {
+            targetOffset = maxOffset;
+        }
+
+        outerScroller.ScrollToVerticalOffset(targetOffset);
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "MainWindow.CenterRowInList: centered packetIndex=" + row.PacketIndex
+            + " rowIndex=" + rowIndex + " viewportItems=" + viewportItems
+            + " targetOffset=" + targetOffset, LogLevel.Info);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FindDescendantScrollViewer
+    //
+    // Walks down the visual tree from a starting element and returns the first ScrollViewer
+    // found in breadth-first order.  Used to reach a ListView's own template ScrollViewer.
+    // Returns null when no ScrollViewer exists beneath the starting element.
+    //
+    // root:  The element from which to begin the downward walk.
+    //
+    // returns:  The first descendant ScrollViewer, or null when none exists.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static ScrollViewer? FindDescendantScrollViewer(DependencyObject root)
+    {
+        int childCount = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < childCount; i++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(root, i);
+
+            ScrollViewer? asScroller = child as ScrollViewer;
+            if (asScroller != null)
+            {
+                return asScroller;
+            }
+
+            ScrollViewer? found = FindDescendantScrollViewer(child);
             if (found != null)
             {
                 return found;
@@ -1375,20 +1475,17 @@ public partial class MainWindow : Window
         double currentVertical = scroller.VerticalOffset;
         double viewportHeight = scroller.ViewportHeight;
         double rectTop = rectInScroller.Top + currentVertical;
-        double rectBottom = rectInScroller.Bottom + currentVertical;
-        double newVertical = currentVertical;
+        double rectCenter = rectTop + (rectInScroller.Height / 2.0);
 
-        if (rectTop - margin < currentVertical)
+        double newVertical = rectCenter - (viewportHeight / 2.0);
+        if (newVertical < 0)
         {
-            newVertical = rectTop - margin;
-            if (newVertical < 0)
-            {
-                newVertical = 0;
-            }
+            newVertical = 0;
         }
-        else if (rectBottom + margin > currentVertical + viewportHeight)
+        double maxVertical = scroller.ScrollableHeight;
+        if (newVertical > maxVertical)
         {
-            newVertical = rectBottom + margin - viewportHeight;
+            newVertical = maxVertical;
         }
 
         double currentHorizontal = scroller.HorizontalOffset;
@@ -1423,61 +1520,62 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     // ScrollMatchIntoView
     //
-    // Brings a SearchMatch on a given row into the visible area of the
-    // trace list.  The outer ListView's ScrollViewer scrolls by item,
-    // not by pixel, so the row is brought into the outer viewport with
-    // ScrollIntoView and no pixel-offset math is applied to the outer
-    // scroller.  For matches in the expanded Field or Hex sections, the
-    // inner per-row ScrollViewer scrolls by pixel; the matched character
-    // offset is brought into that inner viewport through two nested
-    // dispatcher callbacks at Loaded priority.  The outer callback waits
-    // for the layout pass triggered by ScrollIntoView; the inner waits
-    // for the second layout pass triggered by the row's expanded
-    // ScrollViewers becoming Visible when the row was force-expanded
-    // during a Deep search.  Summary-region matches need no inner scroll
-    // because the summary TextBlock has no enclosing per-row
-    // ScrollViewer.
+    // Brings a SearchMatch into the visible area of the trace list with context around it.  The
+    // match's row is centered in the outer list viewport so it does not land at an edge.  When the
+    // match's element is displayed inside an inner per-row ScrollViewer (the expanded Field or Hex
+    // detail), the anchor span's character offset is centered within that inner viewport; a
+    // summary-cell element has no inner ScrollViewer and needs no offset scroll because centering
+    // the row already brings it into view.
     //
-    // Returns silently with a log entry when the row has no realized
-    // container or when the region's TextBlock is not found under the
-    // container.  Does not modify the list view's selection.
+    // The work runs in three layout phases, each its own dispatcher turn at Loaded priority, so
+    // the layout each phase depends on has settled before the next runs: the first turn waits for
+    // the row container and any expanded inner ScrollViewers to realize; the second centers the
+    // row in the outer list, which re-realizes containers; the third measures the now-settled
+    // container, finds the element's TextBlock, and scrolls the anchor offset into the inner
+    // viewport.  Folding the centering and the measurement into one turn fails because the
+    // centering scroll invalidates the very layout the measurement reads.
+    //
+    // Returns silently with a log entry when the row's container or the element's TextBlock is not
+    // realized.  Does not modify the list view's selection.
     //
     // row:    The row containing the match.
-    // match:  The SearchMatch identifying the region and character offset
-    //         to scroll into view.
+    // match:  The SearchMatch to bring into view.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void ScrollMatchIntoView(OpcodeTraceRow row, SearchMatch match)
     {
-        OpcodeTraceList.ScrollIntoView(row);
-
-        HighlightRegionType region = match.Region;
-        if (region != HighlightRegionType.Field && region != HighlightRegionType.Hex)
-        {
-            return;
-        }
+        FieldDisplayNode element = match.Element;
+        int anchorOffset = match.Anchor.Start;
 
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new System.Action(() =>
         {
+            CenterRowInList(row);
+
             Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new System.Action(() =>
             {
                 DependencyObject? container = OpcodeTraceList.ItemContainerGenerator.ContainerFromItem(row);
                 if (container == null)
                 {
-                    DebugLog.Write(LogChannel.InferenceDebug,
+                    DebugLog.Write(LogChannel.Opcodes,
                         "MainWindow.ScrollMatchIntoView: container not realized for row, ignoring", LogLevel.Warn);
                     return;
                 }
 
-                TextBlock? regionBlock = FindRegionTextBlock(container, region);
-                if (regionBlock == null)
+                TextBlock? elementBlock = FindElementTextBlock(container, element);
+                if (elementBlock == null)
                 {
-                    DebugLog.Write(LogChannel.InferenceDebug,
-                        "MainWindow.ScrollMatchIntoView: no TextBlock for region=" + region
-                        + " under container", LogLevel.Warn);
+                    DebugLog.Write(LogChannel.Opcodes,
+                        "MainWindow.ScrollMatchIntoView: no TextBlock for element under container, ignoring",
+                        LogLevel.Warn);
                     return;
                 }
 
-                ScrollOffsetIntoView(regionBlock, match.Start);
+                ScrollViewer? outerScroller = FindDescendantScrollViewer(OpcodeTraceList);
+                ScrollViewer? elementScroller = FindAncestorScrollViewer(elementBlock);
+
+                if (elementScroller != null && !object.ReferenceEquals(elementScroller, outerScroller))
+                {
+                    ScrollOffsetIntoView(elementBlock, anchorOffset);
+                }
             }));
         }));
     }
@@ -1614,7 +1712,7 @@ public partial class MainWindow : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////
-    // Button_OpcodeTraceFindAll_Click
+    // Button_OpcodeTraceFindFirst_Click
     //
     // Pushes the find text box's current text into the presenter only when
     // it differs from the presenter's existing search query, then asks the
@@ -1635,7 +1733,7 @@ public partial class MainWindow : Window
     // sender:  The Find All button on the find bar.
     // e:       Routed event args.
     ///////////////////////////////////////////////////////////////////////////////////////
-    private void Button_OpcodeTraceFindAll_Click(object sender, RoutedEventArgs e)
+    private void Button_OpcodeTraceFindFirst_Click(object sender, RoutedEventArgs e)
     {
         if (_opcodeTracePresenter == null)
         {
@@ -1660,7 +1758,7 @@ public partial class MainWindow : Window
         }
 
         OpcodeTraceRow? selectedRow = OpcodeTraceList.SelectedItem as OpcodeTraceRow;
-        SearchMatch? match = _opcodeTracePresenter.FindAll(selectedRow, mode);
+        SearchMatch? match = _opcodeTracePresenter.FindFirst(mode);
         if (match == null)
         {
             StatusBarSecondaryText.Text = "No matches";

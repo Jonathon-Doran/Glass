@@ -17,6 +17,7 @@ public sealed class FieldDisplayNode
     private readonly List<HighlightSpan> _spans;
     private readonly List<FieldDisplayNode> _children;
     private event System.Action? _spansChanged;
+    private bool _enableTrace = false;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // FieldDisplayNode (constructor)
@@ -58,6 +59,12 @@ public sealed class FieldDisplayNode
             DebugLog.Write(LogChannel.Fields,
                 "FieldDisplayNode.Text: set to '" + value + "'", LogLevel.Trace);
         }
+    }
+
+    public bool EnableTrace
+    {
+        get { return _enableTrace; }
+        set { _enableTrace = value; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -164,8 +171,16 @@ public sealed class FieldDisplayNode
 
         DebugLog.Write(LogChannel.Fields,
             "FieldDisplayNode.AddSpan: appended start=" + span.Start + " length=" + span.Length
-            + " generation=" + span.Generation + " under '" + _text + "', span count now "
+            + " generation=" + span.Generation + ", span count now "
             + _spans.Count, LogLevel.Trace);
+
+        if (EnableTrace)
+        {
+            DebugLog.Write(LogChannel.Fields,
+                "FieldDisplayNode.AddSpan: appended start=" + span.Start + " length=" + span.Length
+                + " generation=" + span.Generation + "', span count now "
+                + _spans.Count, LogLevel.Info);
+        }
 
         // Notify subscribers that the span list changed so they can rebuild from Spans.  Only a
         // node bound to a realized element has a subscriber; an unrealized node invokes an empty
@@ -178,21 +193,92 @@ public sealed class FieldDisplayNode
     //
     // Removes every span whose generation is below the current generation for that span's own
     // color, as given by the supplied lookup.  Each color is an independent lane: a span survives
-    // only while its generation is at or above its color's current generation.  Raises
-    // SpansChanged when any span is removed so a renderer rebuilds.
+    // only while its generation is at or above its color's current generation.  Each span is
+    // logged with its start, length, color, own generation, its color's current generation, and
+    // the highlighted text the span covers, together with the keep-or-remove decision.
     //
     // currentGenerationForColor:  Returns the current generation for a given color.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public void RemoveStaleSpans(System.Func<Glass.UI.ArgbColor, uint> currentGenerationForColor)
     {
-        int removed = _spans.RemoveAll(existing =>
-            existing.Generation < currentGenerationForColor(existing.OverrideColor));
+        uint removed = 0u;
 
-        if (removed > 0)
+        for (int i = _spans.Count - 1; i >= 0; i = i - 1)
+        {
+            HighlightSpan span = _spans[i];
+            uint currentGeneration = currentGenerationForColor(span.OverrideColor);
+            bool stale = span.Generation < currentGeneration;
+
+            string covered;
+            if (span.Start >= 0 && span.Length > 0 && span.Start + span.Length <= _text.Length)
+            {
+                covered = _text.Substring(span.Start, span.Length);
+            }
+            else
+            {
+                covered = "<out of range>";
+            }
+
+            if (stale == true)
+            {
+                _spans.RemoveAt(i);
+                removed = removed + 1u;
+
+                if (EnableTrace)
+                {
+                    DebugLog.Write(LogChannel.Fields,
+                        "FieldDisplayNode.RemoveStaleSpans: removed span start=" + span.Start
+                        + " length=" + span.Length
+                        + " color=0x" + span.OverrideColor.Value.ToString("x8")
+                        + " generation=" + span.Generation
+                        + " currentGeneration=" + currentGeneration
+                        + " covered='" + covered + "'", LogLevel.Info);
+                }
+
+            }
+            else
+            {
+                if (EnableTrace)
+                {
+                    DebugLog.Write(LogChannel.Fields,
+                        "FieldDisplayNode.RemoveStaleSpans: kept span start=" + span.Start
+                        + " length=" + span.Length
+                        + " color=0x" + span.OverrideColor.Value.ToString("x8")
+                        + " generation=" + span.Generation
+                        + " currentGeneration=" + currentGeneration
+                        + " covered='" + covered + "'", LogLevel.Info);
+                }
+            }
+        }
+
+        if (removed > 0u)
+        {
+            if (EnableTrace)
+            {
+                DebugLog.Write(LogChannel.Fields,
+                    "FieldDisplayNode.RemoveStaleSpans: removed " + removed
+                    + " stale span(s), span count now " + _spans.Count, LogLevel.Info);
+            }
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // NotifySpansChanged
+    //
+    // Raises SpansChanged so a subscribed renderer rebuilds from the current span list.  Used
+    // when spans were invalidated by a generation bump elsewhere and the node must repaint even
+    // though no span is being added here.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void NotifySpansChanged()
+    {
+        if (EnableTrace)
         {
             DebugLog.Write(LogChannel.Fields,
-                "FieldDisplayNode.RemoveStaleSpans: removed " + removed + " stale span(s) under '"
-                + _text + "', span count now " + _spans.Count, LogLevel.Trace);
+                "FieldDisplayNode.NotifySpansChanged: raising SpansChanged under '" + _text + "'",
+                LogLevel.Info);
         }
+
+
+        _spansChanged?.Invoke();
     }
 }

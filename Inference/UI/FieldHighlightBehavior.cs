@@ -185,6 +185,8 @@ public static class FieldHighlightBehavior
         if (spans.Count == 0)
         {
             block.Inlines.Add(new Run(text));
+
+            // This is a pretty useless message
             DebugLog.Write(LogChannel.Fields,
                 "FieldHighlightBehavior.Rebuild: no spans, single plain run for '" + text + "'",
                 LogLevel.Trace);
@@ -230,6 +232,24 @@ public static class FieldHighlightBehavior
                 spanEnd = textLength;
             }
 
+            string applyCovered;
+            if (spanStart >= 0 && spanEnd <= textLength && spanEnd > spanStart)
+            {
+                applyCovered = text.Substring(spanStart, spanEnd - spanStart);
+            }
+            else
+            {
+                applyCovered = "<out of range>";
+            }
+
+            DebugLog.Write(LogChannel.Fields,
+                "FieldHighlightBehavior.Rebuild: applying span start=" + spanStart
+                + " end=" + spanEnd
+                + " color=0x" + span.OverrideColor
+                + " generation=" + span.Generation
+                + " covered='" + applyCovered + "'", LogLevel.Trace);
+
+
             for (int c = spanStart; c < spanEnd; c++)
             {
                 charColor[c] = span.OverrideColor;
@@ -252,8 +272,15 @@ public static class FieldHighlightBehavior
             string segText = text.Substring(segStart, segEnd - segStart);
             Run run = new Run(segText);
 
+
             if (segColor.HasValue)
             {
+                DebugLog.Write(LogChannel.Fields,
+                    "FieldHighlightBehavior.Rebuild: segment start=" + segStart
+                    + " length=" + (segEnd - segStart)
+                    + " color=0x" + segColor.Value.Value.ToString("x8")
+                    + " text='" + segText + "'", LogLevel.Trace);
+
                 uint argb = segColor.Value.Value;
                 SolidColorBrush brush = new SolidColorBrush(Color.FromArgb(
                     (byte)((argb >> 24) & 0xFF),
@@ -269,7 +296,7 @@ public static class FieldHighlightBehavior
         }
 
         DebugLog.Write(LogChannel.Fields,
-            "FieldHighlightBehavior.Rebuild: '" + text + "' applied " + applied
+            "FieldHighlightBehavior.Rebuild: applied " + applied
             + " span(s), skipped " + skipped, LogLevel.Trace);
     }
 

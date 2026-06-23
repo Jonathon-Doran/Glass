@@ -77,7 +77,7 @@ public sealed class HighlightGenerationMap
 
         DebugLog.Write(LogChannel.Fields,
             "HighlightGenerationMap.Bump: color=0x" + color.Value.ToString("x8")
-            + " generation now " + next, LogLevel.Trace);
+            + " generation now " + next, LogLevel.Info);
 
         return next;
     }
