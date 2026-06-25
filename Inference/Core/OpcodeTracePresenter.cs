@@ -11,6 +11,11 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Text;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Documents;
+using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace Inference.Core;
 
@@ -32,7 +37,7 @@ namespace Inference.Core;
 // lock via PacketsFor; the presenter does not hold the catalog lock past
 // those calls.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class OpcodeTracePresenter
+public partial class OpcodeTracePresenter
 {
     private readonly PacketCatalog _catalog;
     private readonly ObservableCollection<OpcodeTraceRow> _rows;
@@ -51,10 +56,10 @@ public class OpcodeTracePresenter
     private int _matchCount;
     private SearchCursor _searchCursor;
     private SearchQueryType _searchQueryType;
-    private bool _searchWrap;
     private readonly HighlightGenerationMap _highlightGenerationMap;
     private ArgbColor _activeHighlightColor;
     private readonly List<SearchMatch> _matches;
+    private readonly System.Windows.Controls.ListView _opcodeTraceList;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeTracePresenter (constructor)
@@ -63,9 +68,10 @@ public class OpcodeTracePresenter
     //
     // catalog:  The PacketCatalog the presenter reads on Refresh.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public OpcodeTracePresenter(PacketCatalog catalog)
+    public OpcodeTracePresenter(PacketCatalog catalog, System.Windows.Controls.ListView opcodeTraceList)
     {
         _catalog = catalog;
+        _opcodeTraceList = opcodeTraceList;
         _rows = new ObservableCollection<OpcodeTraceRow>();
         _rowByPacketIndex = new Dictionary<uint, OpcodeTraceRow>();
         _hiddenOpcodes = new HashSet<OpcodeValue>();
@@ -78,7 +84,7 @@ public class OpcodeTracePresenter
         _searchQueryBytes = null;
         _matchCount = 0;
         _searchQueryType = SearchQueryType.Empty;
-        _searchCursor = SearchCursor.Inactive;
+        _searchCursor = new SearchCursor(this);
         _highlightGenerationMap = new HighlightGenerationMap();
         _activeHighlightColor = new ArgbColor(0u);
         _matches = new List<SearchMatch>();
@@ -89,7 +95,12 @@ public class OpcodeTracePresenter
         _sessionAddedHandler = OnSessionAdded;
         GlassContext.SignalBus.Subscribe(_sessionAddedHandler);
     }
-    public int MatchCount
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // NumCurrentMatches
+    //
+    // The number of matches for the active search.  This is cleared at the start of each new search
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public int NumCurrentMatches
     {
         get
         {
@@ -100,46 +111,53 @@ public class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     // CurrentMatch
     //
-    // The match the cursor is parked on, or null when the cursor is inactive.  Reads the match
-    // at the cursor's index into the match list; returns null without indexing when the cursor
-    // holds no position.
+    // The match the cursor sits on, or null when the cursor names a row rather than a match.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public SearchMatch? CurrentMatch
     {
         get
         {
-            if (_searchCursor.Active == false)
+            if (_searchCursor.State == SearchCursor.CursorState.OnRow)
             {
                 DebugLog.Write(LogChannel.Opcodes,
-                    "OpcodeTracePresenter.CurrentMatch: cursor inactive, no current match", LogLevel.Trace);
+                    "OpcodeTracePresenter.CurrentMatch: cursor on row, no current match", LogLevel.Trace);
                 return null;
             }
 
-            return _matches[(int)_searchCursor.Value];
+            return _matches[(int)_searchCursor.MatchIndex];
         }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // CursorRow
     //
-    // The row whose current cursor match belongs to it, or null when the cursor is inactive.
+    // The row the cursor is on.  When the cursor is OnMatch, this resolves the match's packet
+    // index to its row.  When the cursor is OnRow, this returns the named row directly.
     //
-    // The getter resolves the cursor's match to its row through the packet-index map.  The
-    // setter lands the cursor on the first match in the supplied row, found by walking the match
-    // list for a match whose PacketIndex equals the row's; when the row carries no match, or the
-    // supplied row is null, the cursor is left unchanged.  The walk is an acceptable cold-path
-    // cost: the setter fires on list selection, not on a hot path.
+    // The setter moves the cursor onto the supplied row, leaving it OnRow with no match
+    // resolved; the next advance resolves a match by direction.  A null row, or a row not in
+    // the collection, leaves the cursor unchanged.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public OpcodeTraceRow? CursorRow
     {
         get
         {
-            if (_searchCursor.Active == false)
+            if (_searchCursor.State == SearchCursor.CursorState.OnRow)
             {
+                OpcodeTraceRow? namedRow;
+                if (_rowByPacketIndex.TryGetValue(_searchCursor.RowPacketIndex, out namedRow))
+                {
+                    return namedRow;
+                }
+
+                DebugLog.Write(LogChannel.Opcodes,
+                    "OpcodeTracePresenter.CursorRow: OnRow packetIndex " + _searchCursor.RowPacketIndex
+                    + " has no row in map", LogLevel.Warn);
                 return null;
             }
 
-            uint matchPacketIndex = _matches[(int)_searchCursor.Value].PacketIndex;
+            // must be on a match then
+            uint matchPacketIndex = _matches[(int)_searchCursor.MatchIndex].PacketIndex;
 
             OpcodeTraceRow? row;
             if (_rowByPacketIndex.TryGetValue(matchPacketIndex, out row))
@@ -161,48 +179,36 @@ public class OpcodeTracePresenter
                 return;
             }
 
-            uint targetPacketIndex = value.PacketIndex;
-
-            for (uint i = 0u; i < (uint)_matches.Count; i = i + 1u)
+            int rowIndex = _rows.IndexOf(value);
+            if (rowIndex < 0)
             {
-                if (_matches[(int)i].PacketIndex == targetPacketIndex)
-                {
-                    _searchCursor = (SearchCursor)i;
-                    DebugLog.Write(LogChannel.Opcodes,
-                        "OpcodeTracePresenter.CursorRow: cursor set to match index " + i
-                        + " for packetIndex " + targetPacketIndex, LogLevel.Trace);
-                    return;
-                }
+                DebugLog.Write(LogChannel.Opcodes,
+                    "OpcodeTracePresenter.CursorRow: row packetIndex " + value.PacketIndex
+                    + " not in collection, cursor left unchanged", LogLevel.Warn);
+                return;
             }
 
-            DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.CursorRow: packetIndex " + targetPacketIndex
-                + " has no match, cursor left unchanged", LogLevel.Trace);
+            _searchCursor.MoveToPacket((uint)rowIndex);
         }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // CursorOrdinal
     //
-    // The 1-based position of the current cursor match within the match list, for display as
-    // "ordinal of total".  Returns 0 when the cursor is inactive, meaning no match is current.
+    // The 1-based position of the cursor's match within the match list, for display as
+    // "ordinal of total".  Returns 0 when the cursor is OnRow, meaning no match is current.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public uint CursorOrdinal
     {
         get
         {
-            if (_searchCursor.Active == false)
+            if (_searchCursor.State != SearchCursor.CursorState.OnMatch)
             {
                 return 0u;
             }
 
-            return _searchCursor.Value + 1u;
+            return _searchCursor.MatchIndex + 1u;
         }
-    }
-
-    public string SearchQuery
-    {
-        get { return _searchQuery; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -270,7 +276,7 @@ public class OpcodeTracePresenter
     {
         PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
         OpcodeValue[] opcodes = _catalog.KnownOpcodes();
-        List<CatalogedPacket> accumulated = new List<CatalogedPacket>();
+        List<CatalogedPacket> filteredPackets = new List<CatalogedPacket>();
         for (int i = 0; i < opcodes.Length; i++)
         {
             OpcodeValue opcode = opcodes[i];
@@ -279,19 +285,21 @@ public class OpcodeTracePresenter
                 continue;
             }
             List<CatalogedPacket> bucket = _catalog.PacketsFor(opcode, null, null, int.MaxValue);
-            accumulated.AddRange(bucket);
+            filteredPackets.AddRange(bucket);
         }
 
-        accumulated.Sort((a, b) => a.PacketIndex.CompareTo(b.PacketIndex));
+        filteredPackets.Sort((a, b) => a.PacketIndex.CompareTo(b.PacketIndex));
 
         _rows.Clear();
         _rowByPacketIndex.Clear();
+        _matches.Clear();
+        _matchCount = 0;
 
-        for (int i = 0; i < accumulated.Count; i++)
+        for (int packetIndex = 0; packetIndex < filteredPackets.Count; packetIndex++)
         {
             OpcodeValue opcodeToDisplay;
 
-            CatalogedPacket packet = accumulated[i];
+            CatalogedPacket packet = filteredPackets[packetIndex];
             if (packet.Metadata.Opcode.Exists)
             {
                 opcodeToDisplay = packet.Metadata.Opcode.Value;
@@ -305,15 +313,27 @@ public class OpcodeTracePresenter
             string characterName = ResolveCharacterName(packet.Metadata.SessionId);
             int length = packet.Payload.Length;
 
+            // create an OTR for the packet.  One OTR for each packet in filteredPackets
             OpcodeTraceRow row = new OpcodeTraceRow(packet.PacketIndex,
                             timestampLocal, opcodeToDisplay, opcodeName, packet.Metadata.Channel,
                             characterName, length, packet.Payload,
                             (ushort)packet.Metadata.SourcePort, (ushort)packet.Metadata.DestPort);
-            row.Color = ResolveColor(packet.PacketIndex, packet.Opcode);
+            row.Color = GetPacketColor(packet.PacketIndex, packet.Opcode);
             _rows.Add(row);
             _rowByPacketIndex[packet.PacketIndex] = row;
         }
 
+        // No active search.  Reset the cursor.  If there are no rows then it probably does not matter.
+        // A PacketIndex of 0 may not make any sense.
+        if (_rows.Count > 0)
+        {
+            _searchCursor.MoveToPacket(_rows[0].PacketIndex);
+        }
+        else
+        {
+            _searchCursor.MoveToPacket(0u);
+        }
+       
         DebugLog.Write(LogChannel.Opcodes,
             "OpcodeTracePresenter.Refresh: rebuilt " + _rows.Count + " rows from "
             + opcodes.Length + " known opcodes (" + _hiddenOpcodes.Count + " hidden)", LogLevel.Trace);
@@ -366,7 +386,7 @@ public class OpcodeTracePresenter
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // ResolveColor
+    // GetPacketColor
     //
     // Returns the ARGB color to apply to a row, using the two-layer
     // override model: a per-arrival-index override wins, the per-opcode
@@ -378,7 +398,7 @@ public class OpcodeTracePresenter
     // packetIndex:  Arrival index from the originating CatalogedPacket.
     // opcode:       Wire opcode value, used for the per-opcode fallback.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private uint ResolveColor(uint packetIndex, OpcodeValue opcode)
+    private uint GetPacketColor(uint packetIndex, OpcodeValue opcode)
     {
         uint color;
         if (_colorByPacketIndex.TryGetValue(packetIndex, out color))
@@ -398,7 +418,7 @@ public class OpcodeTracePresenter
     // Sets or clears the per-packet color override for the given arrival
     // index.  Writing 0 removes the entry (zero is the no-override
     // sentinel).  After the map update, the row with the matching
-    // PacketIndex has its Color recomputed via ResolveColor so the visible
+    // PacketIndex has its Color recomputed via GetPacketColor so the visible
     // background reflects the new override layer plus any per-opcode
     // fallback.
     //
@@ -417,20 +437,13 @@ public class OpcodeTracePresenter
         else
         {
             _colorByPacketIndex[packetIndex] = argb;
+
             DebugLog.Write(LogChannel.Opcodes,
                 "OpcodeTracePresenter.SetPacketColor: set index="
                 + packetIndex + " color=0x" + argb.ToString("x8"), LogLevel.Trace);
         }
 
-        for (int i = 0; i < _rows.Count; i++)
-        {
-            OpcodeTraceRow row = _rows[i];
-            if (row.PacketIndex == packetIndex)
-            {
-                row.Color = ResolveColor(row.PacketIndex, row.OpcodeValue);
-                return;
-            }
-        }
+        _rowByPacketIndex[packetIndex].Color = GetPacketColor(packetIndex, _rowByPacketIndex[packetIndex].OpcodeValue);
     }
     ///////////////////////////////////////////////////////////////////////////////////////////
     // SetOpcodeColor
@@ -438,7 +451,7 @@ public class OpcodeTracePresenter
     // Sets or clears the per-opcode color override for the given wire
     // opcode value.  Writing 0 removes the entry (zero is the no-override
     // sentinel).  After the map update, every visible row with the matching
-    // OpcodeValue has its Color recomputed via ResolveColor so per-packet
+    // OpcodeValue has its Color recomputed via GetPacketColor so per-packet
     // overrides still win where set.
     //
     // opcode:  Wire opcode value to apply the override to.
@@ -466,7 +479,7 @@ public class OpcodeTracePresenter
             OpcodeTraceRow row = _rows[i];
             if (row.OpcodeValue == opcode)
             {
-                row.Color = ResolveColor(row.PacketIndex, row.OpcodeValue);
+                row.Color = GetPacketColor(row.PacketIndex, row.OpcodeValue);
             }
         }
     }
@@ -508,15 +521,8 @@ public class OpcodeTracePresenter
         FieldDisplayNode? root = OpcodeDispatch.Instance.Describe(payload, metadata);
         row.FieldTree = root;
 
-        if (root == null)
-        {
-            // this fires on every unhandled opcode!
-            DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.PopulateRowDetail: no handler for " + metadata.Opcode
-                + ", no field tree", LogLevel.Trace);
-        }
-        else
-        {
+        if (root != null)
+        { 
             DebugLog.Write(LogChannel.Opcodes,
                 "OpcodeTracePresenter.PopulateRowDetail: built field tree for " + metadata.Opcode +
                 ", packetindex: " + row.PacketIndex, LogLevel.Trace);
@@ -574,6 +580,409 @@ public class OpcodeTracePresenter
         DebugLog.Write(LogChannel.Opcodes,
             "OpcodeTracePresenter.SetMaxHexBytes: re-formatted " + repopulated
             + " populated rows out of " + _rows.Count, LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ScrollMatchIntoView
+    //
+    // Brings a SearchMatch into the visible area of the trace list with context around it, then
+    // runs the supplied settled action once the scroll's layout has completed.  The match's row
+    // is centered in the outer list viewport so it does not land at an edge.  When the match's
+    // element is displayed inside an inner per-row ScrollViewer (the expanded Field or Hex
+    // detail), the anchor span's character offset is centered within that inner viewport; a
+    // summary-cell element has no inner ScrollViewer and needs no offset scroll because centering
+    // the row already brings it into view.
+    //
+    // The work runs in three layout phases, each its own dispatcher turn at Loaded priority, so
+    // the layout each phase depends on has settled before the next runs: the first turn waits for
+    // the row container and any expanded inner ScrollViewers to realize; the second centers the
+    // row in the outer list, which re-realizes containers; the third measures the now-settled
+    // container, finds the element's TextBlock, and scrolls the anchor offset into the inner
+    // viewport.  The settled action runs at the end of the third turn, after the anchor is in
+    // view, so a caller can defer work such as cursor painting until scrolling has finished and
+    // the viewport no longer moves.
+    //
+    // Returns silently with a log entry when the row's container or the element's TextBlock is not
+    // realized; the settled action still runs in those cases so a caller's deferred work is not
+    // lost when only the inner offset scroll could not be performed.  Does not modify the list
+    // view's selection.
+    //
+    // row:        The row containing the match.
+    // match:      The SearchMatch to bring into view.
+    // onSettled:  Action invoked at the end of the final layout phase, or null for no action.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void ScrollMatchIntoView(OpcodeTraceRow row, SearchMatch match, Action? onSettled)
+    {
+        FieldDisplayNode element = match.Element;
+        int anchorOffset = match.Anchor.Start;
+
+        _opcodeTraceList.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new System.Action(() =>
+        {
+            CenterRowInList(row);
+
+            _opcodeTraceList.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new System.Action(() =>
+            {
+                DependencyObject? container = _opcodeTraceList.ItemContainerGenerator.ContainerFromItem(row);
+                if (container == null)
+                {
+                    DebugLog.Write(LogChannel.Opcodes,
+                        "OpcodeTracePresenter.ScrollMatchIntoView: container not realized for row, ignoring", LogLevel.Warn);
+
+                    if (onSettled != null)
+                    {
+                        onSettled();
+                    }
+                    return;
+                }
+
+                TextBlock? elementBlock = FindElementTextBlock(container, element);
+                if (elementBlock == null)
+                {
+                    DebugLog.Write(LogChannel.Opcodes,
+                        "OpcodeTracePresenter.ScrollMatchIntoView: no TextBlock for element under container, ignoring",
+                        LogLevel.Warn);
+
+                    if (onSettled != null)
+                    {
+                        onSettled();
+                    }
+                    return;
+                }
+
+                ScrollViewer? outerScroller = FindDescendantScrollViewer(_opcodeTraceList);
+                ScrollViewer? elementScroller = FindAncestorScrollViewer(elementBlock);
+
+                if (elementScroller != null && !object.ReferenceEquals(elementScroller, outerScroller))
+                {
+                    ScrollOffsetIntoView(elementBlock, anchorOffset);
+                }
+
+                if (onSettled != null)
+                {
+                    onSettled();
+                }
+            }));
+        }));
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // CenterRowInList
+    //
+    // Scrolls the Opcode Trace list so the given row sits vertically centered in the outer
+    // viewport, giving the match context above and below rather than landing it at an edge.  The
+    // list is item-scrolling (CanContentScroll defaults true for a ListView), so the outer
+    // ScrollViewer's offsets and viewport are in item units, not pixels: centering is the row's
+    // item index minus half the viewport's item count, clamped to the scrollable range.
+    //
+    // Returns silently with a log entry when the row is not in the list or the outer ScrollViewer
+    // cannot be found.
+    //
+    // row:  The row to center.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void CenterRowInList(OpcodeTraceRow row)
+    {
+        int rowIndex = _opcodeTraceList.Items.IndexOf(row);
+        if (rowIndex < 0)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTracePresenter.CenterRowInList: row not in list, ignoring", LogLevel.Warn);
+            return;
+        }
+
+        ScrollViewer? outerScroller = FindDescendantScrollViewer(_opcodeTraceList);
+        if (outerScroller == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTracePresenter.CenterRowInList: no outer ScrollViewer, ignoring", LogLevel.Warn);
+            return;
+        }
+
+        double viewportItems = outerScroller.ViewportHeight;
+        double targetOffset = rowIndex - (viewportItems / 2.0);
+
+        if (targetOffset < 0)
+        {
+            targetOffset = 0;
+        }
+        double maxOffset = outerScroller.ScrollableHeight;
+        if (targetOffset > maxOffset)
+        {
+            targetOffset = maxOffset;
+        }
+
+        outerScroller.ScrollToVerticalOffset(targetOffset);
+
+        DebugLog.Write(LogChannel.Opcodes,
+            "OpcodeTracePresenter.CenterRowInList: centered packetIndex=" + row.PacketIndex
+            + " rowIndex=" + rowIndex + " viewportItems=" + viewportItems
+            + " targetOffset=" + targetOffset, LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FindDescendantScrollViewer
+    //
+    // Walks down the visual tree from a starting element and returns the first ScrollViewer
+    // found in breadth-first order.  Used to reach a ListView's own template ScrollViewer.
+    // Returns null when no ScrollViewer exists beneath the starting element.
+    //
+    // root:  The element from which to begin the downward walk.
+    //
+    // returns:  The first descendant ScrollViewer, or null when none exists.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static ScrollViewer? FindDescendantScrollViewer(DependencyObject root)
+    {
+        int childCount = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < childCount; i++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(root, i);
+
+            ScrollViewer? asScroller = child as ScrollViewer;
+            if (asScroller != null)
+            {
+                return asScroller;
+            }
+
+            ScrollViewer? found = FindDescendantScrollViewer(child);
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FindElementTextBlock
+    //
+    // Walks the visual tree under a container and returns the first TextBlock whose
+    // FieldHighlightBehavior.FDN attached property is the requested element.  Returns null when no
+    // such TextBlock is realized under the container, which happens when the container has not yet
+    // been laid out or when the element belongs to a collapsed or unscrolled part of the row.
+    //
+    // container:  The realized container for the row of interest.
+    // element:    The FieldDisplayNode whose displaying TextBlock to locate.
+    //
+    // returns:    The matching TextBlock, or null when none is found.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static TextBlock? FindElementTextBlock(DependencyObject container, FieldDisplayNode element)
+    {
+        int childCount = VisualTreeHelper.GetChildrenCount(container);
+        for (int i = 0; i < childCount; i++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(container, i);
+
+            TextBlock? asTextBlock = child as TextBlock;
+            if (asTextBlock != null)
+            {
+                FieldDisplayNode? childElement = FieldHighlightBehavior.GetFDN(asTextBlock);
+                if (object.ReferenceEquals(childElement, element))
+                {
+                    return asTextBlock;
+                }
+            }
+
+            TextBlock? found = FindElementTextBlock(child, element);
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FindAncestorScrollViewer
+    //
+    // Walks up the visual tree from a starting element and returns the nearest ScrollViewer
+    // ancestor.  Returns null when no ScrollViewer is found above the starting element.
+    //
+    // start:    The element from which to begin the upward walk.  May be null, in which case
+    //           null is returned.
+    //
+    // returns:  The nearest enclosing ScrollViewer, or null when none exists above start.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static ScrollViewer? FindAncestorScrollViewer(DependencyObject? start)
+    {
+        if (start == null)
+        {
+            return null;
+        }
+
+        DependencyObject? current = VisualTreeHelper.GetParent(start);
+        while (current != null)
+        {
+            ScrollViewer? asScroller = current as ScrollViewer;
+            if (asScroller != null)
+            {
+                return asScroller;
+            }
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ScrollOffsetIntoView
+    //
+    // Scrolls the ScrollViewer ancestor of a TextBlock so the character at the given offset is
+    // inside the viewport with a 20-pixel margin.  The character rectangle is obtained by
+    // resolving the character offset to a TextPointer through the TextBlock's Inlines, then asking
+    // that TextPointer for its forward character rect and transforming the rect into the
+    // ScrollViewer's coordinate space.  Both vertical and horizontal offsets are adjusted so the
+    // rectangle is visible.
+    //
+    // Returns silently with a log entry when the TextBlock has no ScrollViewer ancestor, when the
+    // offset is outside the TextBlock's rendered text, or when the resulting character rectangle
+    // is empty.
+    //
+    // text:    The TextBlock containing the match.
+    // offset:  Zero-based character offset within the TextBlock's rendered text.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static void ScrollOffsetIntoView(TextBlock text, int offset)
+    {
+        const double margin = 20.0;
+
+        ScrollViewer? scroller = FindAncestorScrollViewer(text);
+        if (scroller == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTracePresenter.ScrollOffsetIntoView: no ScrollViewer ancestor, ignoring", LogLevel.Warn);
+            return;
+        }
+
+        TextPointer? pointer = GetTextPointerAtCharacterOffset(text, offset);
+        if (pointer == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTracePresenter.ScrollOffsetIntoView: offset " + offset + " could not be resolved to a TextPointer", LogLevel.Error);
+            return;
+        }
+
+        Rect charRect = pointer.GetCharacterRect(LogicalDirection.Forward);
+        if (charRect.IsEmpty || double.IsInfinity(charRect.Top) || double.IsInfinity(charRect.Left))
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTracePresenter.ScrollOffsetIntoView: empty character rect at offset " + offset, LogLevel.Warn);
+            return;
+        }
+
+        GeneralTransform toScroller = text.TransformToAncestor(scroller);
+        Rect rectInScroller = toScroller.TransformBounds(charRect);
+
+        double currentVertical = scroller.VerticalOffset;
+        double viewportHeight = scroller.ViewportHeight;
+        double rectTop = rectInScroller.Top + currentVertical;
+        double rectCenter = rectTop + (rectInScroller.Height / 2.0);
+
+        double newVertical = rectCenter - (viewportHeight / 2.0);
+        if (newVertical < 0)
+        {
+            newVertical = 0;
+        }
+        double maxVertical = scroller.ScrollableHeight;
+        if (newVertical > maxVertical)
+        {
+            newVertical = maxVertical;
+        }
+
+        double currentHorizontal = scroller.HorizontalOffset;
+        double viewportWidth = scroller.ViewportWidth;
+        double rectLeft = rectInScroller.Left + currentHorizontal;
+        double rectRight = rectInScroller.Right + currentHorizontal;
+        double newHorizontal = currentHorizontal;
+
+        if (rectLeft - margin < currentHorizontal)
+        {
+            newHorizontal = rectLeft - margin;
+            if (newHorizontal < 0)
+            {
+                newHorizontal = 0;
+            }
+        }
+        else if (rectRight + margin > currentHorizontal + viewportWidth)
+        {
+            newHorizontal = rectRight + margin - viewportWidth;
+        }
+
+        if (newVertical != currentVertical)
+        {
+            scroller.ScrollToVerticalOffset(newVertical);
+        }
+        if (newHorizontal != currentHorizontal)
+        {
+            scroller.ScrollToHorizontalOffset(newHorizontal);
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetTextPointerAtCharacterOffset
+    //
+    // Returns a TextPointer at the given character offset into a TextBlock's rendered text.  The
+    // TextBlock's text may be composed of multiple Run inlines (as produced by
+    // HighlightTextBehavior); the offset is into the concatenated visible text, not into the
+    // TextBlock's element-symbol space.
+    //
+    // Walks the TextBlock's Inlines, accumulating text length per Run.  When the cumulative length
+    // reaches the requested offset, returns a TextPointer at the position inside that Run.  Returns
+    // null when the offset is past the end of the rendered text or when the TextBlock contains
+    // inline types other than Run that this helper does not know how to traverse.
+    //
+    // text:    The TextBlock whose rendered text is being indexed.
+    // offset:  Zero-based character offset into the concatenated rendered text.
+    //
+    // returns: A TextPointer at the requested character position, or null when the offset is out
+    //          of range.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static TextPointer? GetTextPointerAtCharacterOffset(TextBlock text, int offset)
+    {
+        if (offset < 0)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTracePresenter.GetTextPointerAtCharacterOffset: negative offset " + offset, LogLevel.Error);
+            return null;
+        }
+
+        int totalRunLength = 0;
+        foreach (Inline countInline in text.Inlines)
+        {
+            Run? countRun = countInline as Run;
+            if (countRun != null)
+            {
+                totalRunLength += countRun.Text.Length;
+            }
+        }
+
+        int remaining = offset;
+        foreach (Inline inline in text.Inlines)
+        {
+            Run? run = inline as Run;
+            if (run == null)
+            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "OpcodeTracePresenter.GetTextPointerAtCharacterOffset: non-Run inline encountered, cannot traverse", LogLevel.Error);
+                return null;
+            }
+
+            int runLength = run.Text.Length;
+            if (remaining <= runLength)
+            {
+                TextPointer? pointer = run.ContentStart.GetPositionAtOffset(remaining, LogicalDirection.Forward);
+                if (pointer == null)
+                {
+                    DebugLog.Write(LogChannel.Opcodes,
+                        "OpcodeTracePresenter.GetTextPointerAtCharacterOffset: Run.ContentStart returned null for offset "
+                        + remaining + " within run of length " + runLength, LogLevel.Error);
+                }
+                return pointer;
+            }
+
+            remaining = remaining - runLength;
+        }
+
+        return null;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -888,57 +1297,6 @@ public class OpcodeTracePresenter
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // ApplyCursorHighlightColor
-    //
-    // Paints one match in the reserved cursor color, on top of that match's normal highlight, and
-    // clears the previous cursor paint everywhere in one step.  The cursor color is its own
-    // generation lane in the highlight generation map: bumping that lane makes every span
-    // previously stamped in the cursor color stale at once, with no per-row bookkeeping, restoring
-    // those matches to their underlying highlight color.  After the bump, a fresh cursor-color span
-    // is stamped over every span of the supplied match at the lane's new generation, so the whole
-    // hit — all lines of a hex match, all runs of a composite field — lights in the cursor color.
-    // Spans paint last-wins, so the cursor color sits above the match color already present.
-    //
-    // Bumping before stamping is required: stamping first and bumping after would make the just-
-    // stamped spans stale.  A null match still bumps, clearing the previous cursor paint and
-    // leaving nothing cursor-colored.
-    //
-    // match:  The match to paint as the cursor, or null to only clear the previous cursor paint.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public void ApplyCursorHighlightColor(SearchMatch? match)
-    {
-        ArgbColor cursorColor = new ArgbColor(0x800000FFu);
-
-        _highlightGenerationMap.Bump(cursorColor);
-
-        if (match == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.ApplyCursorHighlightColor: no match, cursor paint cleared",
-                LogLevel.Trace);
-            return;
-        }
-
-        SearchMatch value = match.Value;
-        FieldDisplayNode element = value.Element;
-        uint cursorGeneration = _highlightGenerationMap.CurrentGeneration(cursorColor);
-
-        int stamped = 0;
-        for (int i = 0; i < value.Spans.Count; i++)
-        {
-            HighlightSpan source = value.Spans[i];
-            HighlightSpan cursorSpan = new HighlightSpan(
-                source.Start, source.Length, cursorColor, cursorGeneration);
-            element.AddSpan(cursorSpan, _highlightGenerationMap.CurrentGeneration);
-            stamped++;
-        }
-
-        DebugLog.Write(LogChannel.Opcodes,
-            "OpcodeTracePresenter.ApplyCursorHighlightColor: stamped " + stamped
-            + " cursor span(s)", LogLevel.Trace);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
     // TryParseHexQuery
     //
     // Determines whether the user's query string should be interpreted as a hex byte sequence.
@@ -1002,6 +1360,42 @@ public class OpcodeTracePresenter
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // RebuildIfChanged
+    //
+    // Rebuilds the match list when the supplied query differs from the cached query.  Every row
+    // is recomputed against the query, repopulating _matches and _matchCount, and the supplied
+    // query becomes the cached query.  When the query is unchanged the existing match list is
+    // left intact.
+    //
+    // query:  The current find-box query to compare against the cached query.
+    // mode:   Search mode passed through to the per-row recompute.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void RebuildIfChanged(string query, SearchMode mode)
+    {
+        if (query == _searchQuery)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTracePresenter.RebuildIfChanged: query unchanged, matches kept",
+                LogLevel.Trace);
+            return;
+        }
+
+        SetSearchQuery(query);
+
+        int rowCount = _rows.Count;
+        int totalMatches = 0;
+        for (int i = 0; i < rowCount; i = i + 1)
+        {
+            totalMatches = totalMatches + RecomputeRowHighlights(_rows[i], mode);
+        }
+        _matchCount = totalMatches;
+
+        DebugLog.Write(LogChannel.Opcodes,
+            "OpcodeTracePresenter.RebuildIfChanged: rebuilt, " + _matches.Count
+            + " matches across " + rowCount + " rows", LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // RecomputeRowHighlights
     //
     // Recomputes the highlight ranges and match positions for a single row
@@ -1038,20 +1432,15 @@ public class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     private int RecomputeRowHighlights(OpcodeTraceRow row, SearchMode mode)
     {
-        row.Highlights.Clear();
-        row.Matches.Clear();
+        int startingMatchCount = _matches.Count;
 
         if (row.IsHidden)
         {
-            row.Highlights = new List<HighlightRange>();
-            row.Matches = new List<SearchMatch>();
             return 0;
         }
 
         if (_searchQueryType == SearchQueryType.Empty)
         {
-            row.Highlights = new List<HighlightRange>();
-            row.Matches = new List<SearchMatch>();
             return 0;
         }
 
@@ -1077,65 +1466,29 @@ public class OpcodeTracePresenter
         LocateFieldHighlights(row, mode);
         LocateHexDumpHighlights(row, mode);
 
-        List<HighlightRange> rebuiltHighlights = new List<HighlightRange>(row.Highlights);
-        List<SearchMatch> rebuiltMatches = new List<SearchMatch>(row.Matches);
-        row.Highlights = rebuiltHighlights;
-        row.Matches = rebuiltMatches;
+        int currentRowMatches = _matches.Count - startingMatchCount;
 
-        int matchCount = row.Matches.Count;
-        if (mode == SearchMode.Deep && matchCount > 0 && !row.IsExpanded)
+        if (mode == SearchMode.Deep && currentRowMatches > 0 && !row.IsExpanded)
         {
             row.IsExpanded = true;
         }
 
-        return matchCount;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // ClearHighlights
-    //
-    // Clears every row's highlight ranges and match positions by assigning
-    // fresh empty List instances through the row's setters.  The setter
-    // assignment raises PropertyChanged with a reference that differs from
-    // the prior dependency property value, so the bound attached
-    // HighlightTextBehavior.Ranges property sees a value change and its
-    // OnRangesChanged callback rebuilds the TextBlock's inlines as a single
-    // unhighlighted run.
-    //
-    // Calling Clear() on the existing Highlights and Matches lists is not
-    // sufficient.  WPF compares the new and old values of a dependency
-    // property by reference for reference types; when the reference is
-    // unchanged the change callback does not run, and the visible
-    // highlights persist until container recycling sets the DP back from
-    // its default value.  A fresh List reference defeats that check.
-    //
-    // Must be called on the UI thread; mutates _rows entries that are
-    // bound to the list view.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public void ClearHighlights()
-    {
-        for (int i = 0; i < _rows.Count; i++)
-        {
-            OpcodeTraceRow row = _rows[i];
-            row.Highlights = new List<HighlightRange>();
-            row.Matches = new List<SearchMatch>();
-        }
+        return currentRowMatches;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // SetSearchQuery
     //
-    // Assigns the active search query and resets the cursor to inactive.
-    //
-    // An empty or whitespace-only query resets the query state to Empty and discards the byte
-    // form.  A non-empty query is classified as Hex or Ascii, the byte form is set accordingly,
-    // and the active highlight color's generation is bumped so the prior search's spans go stale.
+    // Assigns the active search query and its derived byte form.  An empty or whitespace-only
+    // query resets the query state to Empty and discards the byte form.  A non-empty query is
+    // classified as Hex or Ascii, the byte form is set accordingly, and the active highlight
+    // color's generation is bumped so the prior search's spans go stale.  Does not touch the
+    // cursor; cursor parking is the caller's responsibility.
     //
     // query:  The new search query, or null/whitespace to clear.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public void SetSearchQuery(string? query)
     {
-        _searchCursor = SearchCursor.Inactive;
         _matchCount = 0;
 
         if (string.IsNullOrWhiteSpace(query))
@@ -1144,7 +1497,7 @@ public class OpcodeTracePresenter
             _searchQueryType = SearchQueryType.Empty;
             _searchQueryBytes = null;
             DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.SetSearchQuery: cleared, cursor inactive", LogLevel.Trace);
+                "OpcodeTracePresenter.SetSearchQuery: cleared", LogLevel.Trace);
             return;
         }
 
@@ -1161,11 +1514,12 @@ public class OpcodeTracePresenter
             _searchQueryBytes = Encoding.ASCII.GetBytes(query);
         }
 
+        // invalidate the current color's highlights.
         _highlightGenerationMap.Bump(_activeHighlightColor);
 
         DebugLog.Write(LogChannel.Opcodes,
             "OpcodeTracePresenter.SetSearchQuery: query='" + query + "' type=" + _searchQueryType
-            + " bytes=" + _searchQueryBytes.Length + ", cursor inactive", LogLevel.Trace);
+            + " bytes=" + _searchQueryBytes.Length, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1179,7 +1533,7 @@ public class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     public void SetSearchWrap(bool wrap)
     {
-        _searchWrap = wrap;
+        _searchCursor.SetWrap(wrap);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1345,83 +1699,38 @@ public class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     // FindNext
     //
-    // Advances the search cursor forward to the next live match and returns it, or null when the
-    // trace holds no matches.
+    // Advances the search cursor forward to the next live match and returns it, or null when no
+    // live match exists.
     //
-    // When the cursor is inactive the match list is first rebuilt: every row is recomputed
-    // against the active query, which repopulates _matches and _matchCount.  When the cursor is
-    // already active the existing _matches list is walked without rebuilding.
+    // RebuildIfChanged repopulates _matches when the supplied query differs from the cached
+    // query; an unchanged query walks the existing list.  The forward walk, stale pruning, wrap
+    // handling, scroll-into-view, and cursor painting are all owned by the cursor's
+    // AdvanceForward.  After the advance the cursor is OnMatch when it landed on a live match and
+    // the match at its index is returned; any other state means no live match was found and null
+    // is returned.
     //
-    // The forward walk over _matches is delegated to AdvanceCursorForward, which prunes stale
-    // matches in place and honors the wrap setting.  The previous cursor paint is cleared and the
-    // new match is painted in the cursor color by ApplyCursorHighlightColor.  On a null result
-    // the cursor paint is cleared and the cursor is left inactive.
+    // query:  The current find-box query, compared against the cached query to decide rebuild.
+    // mode:   Search mode passed to the per-row recompute when this call rebuilds.
     //
-    // mode:  Search mode passed to the per-row recompute when this call rebuilds.
-    //
-    // returns:  The SearchMatch at the new cursor position, or null when no match exists.
+    // returns:  The SearchMatch the cursor landed on, or null when no live match exists.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public SearchMatch? FindNext(SearchMode mode)
+    public SearchMatch? FindNext(string query, SearchMode mode)
     {
-        if (_searchCursor.Active == false)
-        {
-            int rowCount = _rows.Count;
-            int totalMatches = 0;
-            for (int i = 0; i < rowCount; i++)
-            {
-                totalMatches = totalMatches + RecomputeRowHighlights(_rows[i], mode);
-            }
-            _matchCount = totalMatches;
+        RebuildIfChanged(query, mode);
 
-            DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.FindNext: rebuilt matches, " + _matches.Count
-                + " located across " + rowCount + " rows", LogLevel.Trace);
-        }
-        else
+        _searchCursor.AdvanceForward();
+
+        if (_searchCursor.State != SearchCursor.CursorState.OnMatch)
         {
             DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.FindNext: resuming active cursor at index " + _searchCursor.Value,
-                LogLevel.Trace);
-        }
-
-        FieldDisplayNode? previousElement = null;
-        if (_searchCursor.Active == true)
-        {
-            previousElement = _matches[(int)_searchCursor.Value].Element;
-        }
-
-        SearchCursor advanced = AdvanceCursorForward();
-
-        if (advanced.Active == false)
-        {
-            _searchCursor = SearchCursor.Inactive;
-            ApplyCursorHighlightColor(null);
-
-            if (previousElement != null)
-            {
-                previousElement.NotifySpansChanged();
-                DebugLog.Write(LogChannel.Opcodes,
-                    "OpcodeTracePresenter.FindNext: no live match, repainted previous cursor element",
-                    LogLevel.Trace);
-            }
-
-            DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.FindNext: no live match, cursor cleared", LogLevel.Trace);
+                "OpcodeTracePresenter.FindNext: no live match found", LogLevel.Trace);
             return null;
         }
 
-        _searchCursor = advanced;
-        SearchMatch match = _matches[(int)advanced.Value];
-
-        if (previousElement != null && object.ReferenceEquals(previousElement, match.Element) == false)
-        {
-            previousElement.NotifySpansChanged();
-            DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.FindNext: repainted previous cursor element", LogLevel.Trace);
-        }
+        SearchMatch match = _matches[(int)_searchCursor.MatchIndex];
 
         DebugLog.Write(LogChannel.Opcodes,
-            "OpcodeTracePresenter.FindNext: cursor at index " + advanced.Value
+            "OpcodeTracePresenter.FindNext: cursor at match index " + _searchCursor.MatchIndex
             + " of " + _matches.Count, LogLevel.Trace);
         return match;
     }
@@ -1430,61 +1739,37 @@ public class OpcodeTracePresenter
     // FindPrevious
     //
     // Advances the search cursor backward to the previous live match and returns it, or null when
-    // the trace holds no matches.
+    // no live match exists.
     //
-    // When the cursor is inactive the match list is first rebuilt: every row is recomputed
-    // against the active query, which repopulates _matches and _matchCount.  When the cursor is
-    // already active the existing _matches list is walked without rebuilding.
+    // RebuildIfChanged repopulates _matches when the supplied query differs from the cached
+    // query; an unchanged query walks the existing list.  The backward walk, stale pruning, wrap
+    // handling, scroll-into-view, and cursor painting are all owned by the cursor's
+    // AdvanceBackward.  After the advance the cursor is OnMatch when it landed on a live match and
+    // the match at its index is returned; any other state means no live match was found and null
+    // is returned.
     //
-    // The backward walk over _matches is delegated to AdvanceCursorBackward, which prunes stale
-    // matches in place and honors the wrap setting.  The previous cursor paint is cleared and the
-    // new match is painted in the cursor color by ApplyCursorHighlightColor.  On a null result
-    // the cursor paint is cleared and the cursor is left inactive.
+    // query:  The current find-box query, compared against the cached query to decide rebuild.
+    // mode:   Search mode passed to the per-row recompute when this call rebuilds.
     //
-    // mode:  Search mode passed to the per-row recompute when this call rebuilds.
-    //
-    // returns:  The SearchMatch at the new cursor position, or null when no match exists.
+    // returns:  The SearchMatch the cursor landed on, or null when no live match exists.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public SearchMatch? FindPrevious(SearchMode mode)
+    public SearchMatch? FindPrevious(string query, SearchMode mode)
     {
-        if (_searchCursor.Active == false)
-        {
-            int rowCount = _rows.Count;
-            int totalMatches = 0;
-            for (int i = 0; i < rowCount; i++)
-            {
-                totalMatches = totalMatches + RecomputeRowHighlights(_rows[i], mode);
-            }
-            _matchCount = totalMatches;
+        RebuildIfChanged(query, mode);
 
-            DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.FindPrevious: rebuilt matches, " + _matches.Count
-                + " located across " + rowCount + " rows", LogLevel.Trace);
-        }
-        else
+        _searchCursor.AdvanceBackward();
+
+        if (_searchCursor.State != SearchCursor.CursorState.OnMatch)
         {
             DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.FindPrevious: resuming active cursor at index " + _searchCursor.Value,
-                LogLevel.Trace);
-        }
-
-        SearchCursor advanced = AdvanceCursorBackward();
-
-        if (advanced.Active == false)
-        {
-            _searchCursor = SearchCursor.Inactive;
-            ApplyCursorHighlightColor(null);
-
-            DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.FindPrevious: no live match, cursor cleared", LogLevel.Trace);
+                "OpcodeTracePresenter.FindPrevious: no live match found", LogLevel.Trace);
             return null;
         }
 
-        _searchCursor = advanced;
-        SearchMatch match = _matches[(int)advanced.Value];
+        SearchMatch match = _matches[(int)_searchCursor.MatchIndex];
 
         DebugLog.Write(LogChannel.Opcodes,
-            "OpcodeTracePresenter.FindPrevious: cursor at index " + advanced.Value
+            "OpcodeTracePresenter.FindPrevious: cursor at match index " + _searchCursor.MatchIndex
             + " of " + _matches.Count, LogLevel.Trace);
         return match;
     }
@@ -1492,23 +1777,34 @@ public class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     // FindFirst
     //
-    // Runs a fresh search from the start of the trace.  The cursor is forced inactive so the
-    // forward walk rebuilds _matches against the active query and lands on the first live match,
-    // regardless of any prior cursor position.  Returns the first match, or null when the trace
-    // holds no matches.
+    // Runs a fresh forward search from the start of the trace.  The cursor is parked OnRow at the
+    // first row so the forward walk resolves from the top regardless of any prior cursor position,
+    // then FindNext rebuilds against the query if needed and lands on the first live match.  When
+    // there are no rows the cursor is parked at packet index zero and FindNext returns null over
+    // the empty match list.  Returns the first match, or null when no live match exists.
     //
-    // mode:  Search mode passed through to the forward walk's rebuild.
+    // query:  The current find-box query, passed through to FindNext.
+    // mode:   Search mode passed through to FindNext.
     //
-    // returns:  The SearchMatch at the first live match, or null when no match exists.
+    // returns:  The SearchMatch at the first live match, or null when no live match exists.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public SearchMatch? FindFirst(SearchMode mode)
+    public SearchMatch? FindFirst(string query, SearchMode mode)
     {
-        _searchCursor = SearchCursor.Inactive;
+        if (_rows.Count > 0)
+        {
+            _searchCursor.MoveToPacket(_rows[0].PacketIndex);
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTracePresenter.FindFirst: parked cursor OnRow at first row packetIndex "
+                + _rows[0].PacketIndex + ", running fresh forward search", LogLevel.Trace);
+        }
+        else
+        {
+            _searchCursor.MoveToPacket(0u);
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTracePresenter.FindFirst: no rows, parked cursor at packet index 0", LogLevel.Trace);
+        }
 
-        DebugLog.Write(LogChannel.Opcodes,
-            "OpcodeTracePresenter.FindFirst: cursor reset, running fresh forward search", LogLevel.Trace);
-
-        return FindNext(mode);
+        return FindNext(query, mode);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1605,205 +1901,38 @@ public class OpcodeTracePresenter
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // AdvanceCursorForward
+    // RemoveMatchIfStale
     //
-    // Scans _matches forward from the position after the current cursor to the next live match,
-    // deleting stale matches in place as they are encountered.  A match is stale when its anchor
-    // span's generation no longer equals the current generation for that span's color; such a
-    // match paints nothing and is removed from _matches so the list self-prunes during the walk.
+    // Removes the match at the given index when it is stale, leaving a live match in place.  A
+    // match is stale when its anchor span's generation no longer equals the current generation
+    // for that span's color; a stale match is removed from _matches in place, shifting the tail
+    // down by one.
     //
-    // Deletion shifts the tail down by one, so after a delete the same index is re-examined
-    // rather than advanced.  With _searchWrap set, reaching the end wraps to index 0 and the scan
-    // continues.  With wrap off, reaching the end without a live match ahead parks on the last
-    // remaining index: pruning has removed every stale entry up to the end, so that entry is
-    // live, and the cursor holds there rather than going inactive.
+    // index:  The subscript into _matches to test.  Must be in range; callers walk only indices
+    //         they have bounds-checked.
     //
-    // The returned cursor is inactive only when _matches holds no entries at all.  An
-    // examined-count bound guarantees termination, so a list of only stale matches terminates
-    // after pruning them all.
-    //
-    // returns:  The cursor at the next live match, or SearchCursor.Inactive only when _matches
-    //           is empty.
+    // returns:  True when the match was stale and removed; false when it was live and left in
+    //           place.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private SearchCursor AdvanceCursorForward()
+    private bool RemoveMatchIfStale(uint index)
     {
-        if (_matches.Count == 0)
+        SearchMatch candidate = _matches[(int)index];
+        HighlightSpan anchor = candidate.Anchor;
+        uint currentGeneration = _highlightGenerationMap.CurrentGeneration(anchor.OverrideColor);
+
+        if (anchor.Generation == currentGeneration)
         {
             DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.AdvanceCursorForward: empty match list, returning Inactive",
-                LogLevel.Trace);
-            return SearchCursor.Inactive;
+                "OpcodeTracePresenter.RemoveMatchIfStale: live match at index " + index
+                + ", left in place", LogLevel.Trace);
+            return false;
         }
 
-        uint index;
-        if (_searchCursor.Active == false)
-        {
-            index = 0u;
-        }
-        else
-        {
-            index = _searchCursor.Value + 1u;
-        }
-
-        uint examined = 0u;
-        uint limit = (uint)_matches.Count;
-
-        while (examined < limit)
-        {
-            if (index >= (uint)_matches.Count)
-            {
-                if (_searchWrap == false)
-                {
-                    uint parkIndex = (uint)_matches.Count - 1u;
-                    DebugLog.Write(LogChannel.Opcodes,
-                        "OpcodeTracePresenter.AdvanceCursorForward: end reached, wrap off, parking on last index "
-                        + parkIndex, LogLevel.Trace);
-                    return (SearchCursor)parkIndex;
-                }
-
-                index = 0u;
-                DebugLog.Write(LogChannel.Opcodes,
-                    "OpcodeTracePresenter.AdvanceCursorForward: wrapped to index 0", LogLevel.Trace);
-            }
-
-            SearchMatch candidate = _matches[(int)index];
-            HighlightSpan anchor = candidate.Anchor;
-            uint currentGeneration = _highlightGenerationMap.CurrentGeneration(anchor.OverrideColor);
-
-            if (anchor.Generation == currentGeneration)
-            {
-                DebugLog.Write(LogChannel.Opcodes,
-                    "OpcodeTracePresenter.AdvanceCursorForward: live match at index " + index,
-                    LogLevel.Trace);
-                return (SearchCursor)index;
-            }
-
-            _matches.RemoveAt((int)index);
-            examined = examined + 1u;
-            DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.AdvanceCursorForward: pruned stale match at index " + index
-                + ", " + _matches.Count + " remaining", LogLevel.Trace);
-        }
-
+        _matches.RemoveAt((int)index);
         DebugLog.Write(LogChannel.Opcodes,
-            "OpcodeTracePresenter.AdvanceCursorForward: scan exhausted, parking on last index "
-            + ((uint)_matches.Count - 1u), LogLevel.Trace);
-        return (SearchCursor)((uint)_matches.Count - 1u);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // AdvanceCursorBackward
-    //
-    // Scans _matches backward from the position before the current cursor to the next live
-    // match, deleting stale matches in place as they are encountered.  A match is stale when its
-    // anchor span's generation no longer equals the current generation for that span's color;
-    // such a match paints nothing and is removed from _matches so the list self-prunes during
-    // the walk.
-    //
-    // Deletion at an index does not move any earlier index, so after a delete the scan steps to
-    // the index below.  With _searchWrap set, passing the start wraps to the last index and the
-    // scan continues.  With wrap off, passing the start without a live match behind parks on
-    // index 0: pruning has removed every stale entry down to the start, so that entry is live,
-    // and the cursor holds there rather than going inactive.
-    //
-    // The returned cursor is inactive only when _matches holds no entries at all.  An
-    // examined-count bound guarantees termination, so a list of only stale matches terminates
-    // after pruning them all.
-    //
-    // returns:  The cursor at the next live match, or SearchCursor.Inactive only when _matches
-    //           is empty.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private SearchCursor AdvanceCursorBackward()
-    {
-        if (_matches.Count == 0)
-        {
-            DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.AdvanceCursorBackward: empty match list, returning Inactive",
-                LogLevel.Trace);
-            return SearchCursor.Inactive;
-        }
-
-        uint index;
-        if (_searchCursor.Active == false)
-        {
-            index = (uint)_matches.Count - 1u;
-        }
-        else if (_searchCursor.Value == 0u)
-        {
-            if (_searchWrap == false)
-            {
-                DebugLog.Write(LogChannel.Opcodes,
-                    "OpcodeTracePresenter.AdvanceCursorBackward: at start, wrap off, parking on index 0",
-                    LogLevel.Trace);
-                return (SearchCursor)0u;
-            }
-
-            index = (uint)_matches.Count - 1u;
-            DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.AdvanceCursorBackward: wrapped to last index " + index,
-                LogLevel.Trace);
-        }
-        else
-        {
-            index = _searchCursor.Value - 1u;
-        }
-
-        uint examined = 0u;
-        uint limit = (uint)_matches.Count;
-
-        while (examined < limit)
-        {
-            SearchMatch candidate = _matches[(int)index];
-            HighlightSpan anchor = candidate.Anchor;
-            uint currentGeneration = _highlightGenerationMap.CurrentGeneration(anchor.OverrideColor);
-
-            if (anchor.Generation == currentGeneration)
-            {
-                DebugLog.Write(LogChannel.Opcodes,
-                    "OpcodeTracePresenter.AdvanceCursorBackward: live match at index " + index,
-                    LogLevel.Trace);
-                return (SearchCursor)index;
-            }
-
-            _matches.RemoveAt((int)index);
-            examined = examined + 1u;
-            DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.AdvanceCursorBackward: pruned stale match at index " + index
-                + ", " + _matches.Count + " remaining", LogLevel.Trace);
-
-            if (_matches.Count == 0)
-            {
-                DebugLog.Write(LogChannel.Opcodes,
-                    "OpcodeTracePresenter.AdvanceCursorBackward: list emptied by pruning, returning Inactive",
-                    LogLevel.Trace);
-                return SearchCursor.Inactive;
-            }
-
-            if (index == 0u)
-            {
-                if (_searchWrap == false)
-                {
-                    DebugLog.Write(LogChannel.Opcodes,
-                        "OpcodeTracePresenter.AdvanceCursorBackward: start reached after prune, wrap off, parking on index 0",
-                        LogLevel.Trace);
-                    return (SearchCursor)0u;
-                }
-
-                index = (uint)_matches.Count - 1u;
-                DebugLog.Write(LogChannel.Opcodes,
-                    "OpcodeTracePresenter.AdvanceCursorBackward: wrapped to last index " + index
-                    + " after prune", LogLevel.Trace);
-            }
-            else
-            {
-                index = index - 1u;
-            }
-        }
-
-        DebugLog.Write(LogChannel.Opcodes,
-            "OpcodeTracePresenter.AdvanceCursorBackward: scan exhausted, parking on index 0",
-            LogLevel.Trace);
-        return (SearchCursor)0u;
+            "OpcodeTracePresenter.RemoveMatchIfStale: pruned stale match at index " + index
+            + ", " + _matches.Count + " remaining", LogLevel.Trace);
+        return true;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1870,7 +1999,6 @@ public class OpcodeTracePresenter
         _searchQueryBytes = null;
         _matchCount = 0;
         _searchQueryType = SearchQueryType.Empty;
-        _searchWrap = false;
 
         DebugLog.Write(LogChannel.Opcodes, "OpcodeTracePresenter.Clear: cleared", LogLevel.Trace);
     }

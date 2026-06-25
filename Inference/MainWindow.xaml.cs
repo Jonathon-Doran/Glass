@@ -115,7 +115,7 @@ public partial class MainWindow : Window
         OpcodeGrid.ItemsSource = _opcodeRowPresenter.Rows;
         GlassContext.PacketBus.Subscribe(HandleAppPacket);
 
-        _opcodeTracePresenter = new OpcodeTracePresenter(_packetCatalog);
+        _opcodeTracePresenter = new OpcodeTracePresenter(_packetCatalog, OpcodeTraceList);
         OpcodeTraceList.ItemsSource = _opcodeTracePresenter.Rows;
         ArmColorPatch(ColorPatchYellow);
 
@@ -1148,23 +1148,17 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Button_OpcodeTraceFindNext_Click
     //
-    // Pushes the find text box's current text into the presenter only when
-    // it differs from the presenter's existing search query, then advances
-    // the presenter's search cursor forward by one match.  The Deep
-    // checkbox selects the search mode: when checked and the call
-    // triggers an initial scan, every row's body is scanned and rows that
-    // produced matches are force-expanded, and the Hex bytes dropdown is
-    // forced to Full so the hex dump display covers the range that the
-    // scan covered; when unchecked, body scans are skipped on collapsed
-    // rows and the dropdown is left alone.  On success the cursor row and
-    // the matched character offset are scrolled into view and the status
-    // text reports the total match count; on failure the status text
-    // reports "No match" and the viewport is not changed.  Does not
-    // modify the list view's selection.
+    // Find-bar Next handler.  Reads the typed query and the deep/fast checkbox, then calls
+    // FindNext on the presenter, which compares the query against its cached query, rebuilds
+    // the match list when it changed, advances the cursor forward to the next live match, and
+    // scrolls and paints that match.  On a hit the status bar shows the landed row's message
+    // number and the cursor ordinal over the match count; on a miss it shows no-match.  Deep
+    // mode widens the hex length before searching.
     //
-    // sender:  The Find Next button on the find bar.
-    // e:       Routed event args.
+    // sender:  The Next button.
+    // e:       The routed event args.
     ///////////////////////////////////////////////////////////////////////////////////////////
+ 
     private void Button_OpcodeTraceFindNext_Click(object sender, RoutedEventArgs e)
     {
         // guard against early firing during XAML load
@@ -1174,10 +1168,6 @@ public partial class MainWindow : Window
         }
 
         string typedText = TextBoxOpcodeTraceFind.Text ?? string.Empty;
-        if (typedText != _opcodeTracePresenter.SearchQuery)
-        {
-            _opcodeTracePresenter.SetSearchQuery(typedText);
-        }
 
         SearchMode mode;
         if (CheckBoxOpcodeTraceFindDeep.IsChecked == true)
@@ -1190,9 +1180,7 @@ public partial class MainWindow : Window
             mode = SearchMode.Fast;
         }
 
-        OpcodeTraceRow? selectedRow = OpcodeTraceList.SelectedItem as OpcodeTraceRow;
-        SearchMatch? previous = _opcodeTracePresenter.CurrentMatch;
-        SearchMatch? match = _opcodeTracePresenter.FindNext(mode);
+        SearchMatch? match = _opcodeTracePresenter.FindNext(typedText, mode);
         if (match == null)
         {
             StatusBarSecondaryText.Text = "No match";
@@ -1200,21 +1188,16 @@ public partial class MainWindow : Window
                 "Button_OpcodeTraceFindNext_Click: no match (mode=" + mode + ")", LogLevel.Trace);
             return;
         }
+
         OpcodeTraceRow? cursorRow = _opcodeTracePresenter.CursorRow;
         if (cursorRow != null)
         {
-            ScrollMatchIntoView(cursorRow, match.Value);
-            _opcodeTracePresenter.ApplyCursorHighlightColor(match);
-            if (previous != null)
-            {
-                previous.Value.Element.NotifySpansChanged();
-                DebugLog.Write(LogChannel.Opcodes,
-                    "Button_OpcodeTraceFindNext_Click: cleared previous cursor highlight", LogLevel.Trace);
-            }
             StatusBarRowText.Text = "Message " + cursorRow.PacketIndex;
         }
+
         StatusBarSecondaryText.Text = _opcodeTracePresenter.CursorOrdinal
-            + "/" + _opcodeTracePresenter.MatchCount + " matches";
+            + "/" + _opcodeTracePresenter.NumCurrentMatches + " matches";
+
         DebugLog.Write(LogChannel.InferenceDebug,
             "Button_OpcodeTraceFindNext_Click: match found (mode=" + mode + ")", LogLevel.Trace);
     }
@@ -1222,37 +1205,25 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Button_OpcodeTraceFindPrevious_Click
     //
-    // Pushes the find text box's current text into the presenter only when
-    // it differs from the presenter's existing search query, then advances
-    // the presenter's search cursor backward by one match.  The Deep
-    // checkbox selects the search mode: when checked and the call
-    // triggers an initial scan, every row's body is scanned and rows that
-    // produced matches are force-expanded, and the Hex bytes dropdown is
-    // forced to Full so the hex dump display covers the range that the
-    // scan covered; when unchecked, body scans are skipped on collapsed
-    // rows and the dropdown is left alone.  On success the cursor row and
-    // the matched character offset are scrolled into view and the status
-    // text reports the total match count; on failure the status text
-    // reports "No match" and the viewport is not changed.  Does not
-    // modify the list view's selection.
+    // Find-bar Previous handler.  Reads the typed query and the deep/fast checkbox, then calls
+    // FindPrevious on the presenter, which compares the query against its cached query,
+    // rebuilds the match list when it changed, advances the cursor backward to the previous
+    // live match, and scrolls and paints that match.  On a hit the status bar shows the landed
+    // row's message number and the cursor ordinal over the match count; on a miss it shows
+    // no-match.  Deep mode widens the hex length before searching.
     //
-    // Guards against early firing during XAML load.
-    //
-    // sender:  The Find Previous button on the find bar.
-    // e:       Routed event args.
+    // sender:  The Previous button on the find bar.
+    // e:       The routed event args.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void Button_OpcodeTraceFindPrevious_Click(object sender, RoutedEventArgs e)
     {
+        // guard against early firing during XAML load
         if (_opcodeTracePresenter == null)
         {
             return;
         }
 
         string typedText = TextBoxOpcodeTraceFind.Text ?? string.Empty;
-        if (typedText != _opcodeTracePresenter.SearchQuery)
-        {
-            _opcodeTracePresenter.SetSearchQuery(typedText);
-        }
 
         SearchMode mode;
         if (CheckBoxOpcodeTraceFindDeep.IsChecked == true)
@@ -1265,9 +1236,7 @@ public partial class MainWindow : Window
             mode = SearchMode.Fast;
         }
 
-        OpcodeTraceRow? selectedRow = OpcodeTraceList.SelectedItem as OpcodeTraceRow;
-        SearchMatch? previous = _opcodeTracePresenter.CurrentMatch;
-        SearchMatch? match = _opcodeTracePresenter.FindPrevious(mode);
+        SearchMatch? match = _opcodeTracePresenter.FindPrevious(typedText, mode);
         if (match == null)
         {
             StatusBarSecondaryText.Text = "No match";
@@ -1275,24 +1244,71 @@ public partial class MainWindow : Window
                 "Button_OpcodeTraceFindPrevious_Click: no match (mode=" + mode + ")", LogLevel.Trace);
             return;
         }
+
         OpcodeTraceRow? cursorRow = _opcodeTracePresenter.CursorRow;
         if (cursorRow != null)
         {
-            ScrollMatchIntoView(cursorRow, match.Value);
-
-            _opcodeTracePresenter.ApplyCursorHighlightColor(match);
-            if (previous != null)
-            {
-                previous.Value.Element.NotifySpansChanged();
-                DebugLog.Write(LogChannel.Opcodes,
-                    "Button_OpcodeTraceFindNext_Click: cleared previous cursor highlight", LogLevel.Trace);
-            }
             StatusBarRowText.Text = "Message " + cursorRow.PacketIndex;
         }
+
         StatusBarSecondaryText.Text = _opcodeTracePresenter.CursorOrdinal
-            + "/" + _opcodeTracePresenter.MatchCount + " matches";
+            + "/" + _opcodeTracePresenter.NumCurrentMatches + " matches";
+
         DebugLog.Write(LogChannel.InferenceDebug,
             "Button_OpcodeTraceFindPrevious_Click: match found (mode=" + mode + ")", LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Button_OpcodeTraceFindFirst_Click
+    //
+    // Find-bar First handler.  Reads the typed query and the deep/fast checkbox, then calls
+    // FindFirst on the presenter, which parks the cursor at the top of the trace, rebuilds the
+    // match list against the query when it changed, advances forward to the first live match,
+    // and scrolls and paints that match.  On a hit the status bar shows the landed row's
+    // message number and the cursor ordinal over the match count; on a miss it shows no-match.
+    // Deep mode widens the hex length before searching.
+    //
+    // sender:  The First button on the find bar.
+    // e:       The routed event args.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void Button_OpcodeTraceFindFirst_Click(object sender, RoutedEventArgs e)
+    {
+        // guard against early firing during XAML load
+        if (_opcodeTracePresenter == null)
+        {
+            return;
+        }
+
+        string typedText = TextBoxOpcodeTraceFind.Text ?? string.Empty;
+
+        SearchMode mode;
+        if (CheckBoxOpcodeTraceFindDeep.IsChecked == true)
+        {
+            mode = SearchMode.Deep;
+            SetHexLengthFull();
+        }
+        else
+        {
+            mode = SearchMode.Fast;
+        }
+
+        SearchMatch? match = _opcodeTracePresenter.FindFirst(typedText, mode);
+        if (match == null)
+        {
+            StatusBarSecondaryText.Text = "No matches";
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "Button_OpcodeTraceFindFirst_Click: no matches (mode=" + mode + ")", LogLevel.Trace);
+            return;
+        }
+
+        OpcodeTraceRow? cursorRow = _opcodeTracePresenter.CursorRow;
+        if (cursorRow != null)
+        {
+            StatusBarRowText.Text = "Message " + cursorRow.PacketIndex;
+        }
+
+        StatusBarSecondaryText.Text = _opcodeTracePresenter.CursorOrdinal
+            + "/" + _opcodeTracePresenter.NumCurrentMatches + " matches";
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1709,72 +1725,6 @@ public partial class MainWindow : Window
         StatusBarSecondaryText.Text = "";
         _opcodeTracePresenter.SetSearchQuery(null);
         TextBoxOpcodeTraceFind.Focus();
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////
-    // Button_OpcodeTraceFindFirst_Click
-    //
-    // Pushes the find text box's current text into the presenter only when
-    // it differs from the presenter's existing search query, then asks the
-    // presenter to recompute matches across every row and park the cursor
-    // at the first match at or after the list's selected row.  The Deep
-    // checkbox selects the search mode: when checked, every row's body is
-    // scanned and rows that produced matches are force-expanded, and the
-    // Hex bytes dropdown is forced to Full so the hex dump display covers
-    // the range that the scan covered; when unchecked, body scans are
-    // skipped on collapsed rows and the dropdown is left alone.  On
-    // success the cursor row and the matched character offset are
-    // scrolled into view and the status text reports the total match
-    // count; on failure the status text reports "No matches" and the
-    // viewport is not changed.  Does not modify the list view's selection.
-    //
-    // Guards against early firing during XAML load.
-    //
-    // sender:  The Find All button on the find bar.
-    // e:       Routed event args.
-    ///////////////////////////////////////////////////////////////////////////////////////
-    private void Button_OpcodeTraceFindFirst_Click(object sender, RoutedEventArgs e)
-    {
-        if (_opcodeTracePresenter == null)
-        {
-            return;
-        }
-
-        string typedText = TextBoxOpcodeTraceFind.Text ?? string.Empty;
-        if (typedText != _opcodeTracePresenter.SearchQuery)
-        {
-            _opcodeTracePresenter.SetSearchQuery(typedText);
-        }
-
-        SearchMode mode;
-        if (CheckBoxOpcodeTraceFindDeep.IsChecked == true)
-        {
-            mode = SearchMode.Deep;
-            SetHexLengthFull();
-        }
-        else
-        {
-            mode = SearchMode.Fast;
-        }
-
-        OpcodeTraceRow? selectedRow = OpcodeTraceList.SelectedItem as OpcodeTraceRow;
-        SearchMatch? match = _opcodeTracePresenter.FindFirst(mode);
-        if (match == null)
-        {
-            StatusBarSecondaryText.Text = "No matches";
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "Button_OpcodeTraceFindAll_Click: no matches (mode=" + mode + ")", LogLevel.Trace);
-            return;
-        }
-
-        OpcodeTraceRow? cursorRow = _opcodeTracePresenter.CursorRow;
-        if (cursorRow != null)
-        {
-            ScrollMatchIntoView(cursorRow, match.Value);
-            StatusBarRowText.Text = "Message " + cursorRow.PacketIndex;
-        }
-        StatusBarSecondaryText.Text = _opcodeTracePresenter.CursorOrdinal
-            + "/" + _opcodeTracePresenter.MatchCount + " matches";
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////
