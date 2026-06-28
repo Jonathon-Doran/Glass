@@ -18,6 +18,8 @@ public sealed class FieldDisplayNode
     private readonly List<FieldDisplayNode> _children;
     private event System.Action? _spansChanged;
     private bool _enableTrace = false;
+    private uint _packetIndex;
+
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // FieldDisplayNode (constructor)
@@ -32,6 +34,7 @@ public sealed class FieldDisplayNode
         _ranges = new List<ByteRange>();
         _spans = new List<HighlightSpan>();
         _children = new List<FieldDisplayNode>();
+        _packetIndex = 0;
 
         DebugLog.Write(LogChannel.Fields,
             "FieldDisplayNode: created text='" + text + "'", LogLevel.Trace);
@@ -59,6 +62,12 @@ public sealed class FieldDisplayNode
             DebugLog.Write(LogChannel.Fields,
                 "FieldDisplayNode.Text: set to '" + value + "'", LogLevel.Trace);
         }
+    }
+
+    public uint PacketIndex
+    {
+        get { return _packetIndex; }
+        set { _packetIndex = value; }
     }
 
     public bool EnableTrace

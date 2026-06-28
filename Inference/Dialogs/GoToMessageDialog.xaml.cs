@@ -53,6 +53,27 @@ public partial class GoToMessageDialog : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // Window_Loaded
+    //
+    // Places keyboard focus in the target input box once the dialog's visual tree has loaded,
+    // and selects its seeded text, so the user can type a new index immediately and overtype
+    // the seeded value without first clicking the box.  Focus is set here rather than in the
+    // constructor because the input box is not yet focusable before the window loads.
+    //
+    // sender:  The dialog window.
+    // e:       Routed event args.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        bool focused = TargetMessageBox.Focus();
+        TargetMessageBox.SelectAll();
+
+        DebugLog.Write(LogChannel.Opcodes,
+            "GoToMessageDialog.Window_Loaded: focus set to target box, focused=" + focused,
+            LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // TryCommit
     //
     // Parses the input box as an unsigned message index, clamps it into the dialog's bounds,

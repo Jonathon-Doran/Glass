@@ -389,73 +389,85 @@
                         </ListView.Resources>
                         <ListView.ItemTemplate>
                             <DataTemplate>
-                                <Grid x:Name="OpcodeTraceRowContainer">
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                    </Grid.RowDefinitions>
+                                <Border BorderThickness="2" BorderBrush="Transparent">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsCursorRow}" Value="True">
+                                                    <Setter Property="BorderBrush" Value="DodgerBlue"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <Grid x:Name="OpcodeTraceRowContainer">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
 
-                                    <Grid x:Name="OpcodeTraceRowSummary" Grid.Row="0" Background="Transparent" MouseLeftButtonDown="Row_DoubleClick">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="70"/>
-                                            <ColumnDefinition Width="120"/>
-                                            <ColumnDefinition Width="70"/>
-                                            <ColumnDefinition Width="200"/>
-                                            <ColumnDefinition Width="60"/>
-                                            <ColumnDefinition Width="130"/>
-                                            <ColumnDefinition Width="120"/>
-                                            <ColumnDefinition Width="60"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="{Binding PacketIndex}"/>
-                                        <TextBlock Grid.Column="1"
+                                        <Grid x:Name="OpcodeTraceRowSummary" Grid.Row="0" Background="Transparent" MouseLeftButtonDown="Row_DoubleClick">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="70"/>
+                                                <ColumnDefinition Width="120"/>
+                                                <ColumnDefinition Width="70"/>
+                                                <ColumnDefinition Width="200"/>
+                                                <ColumnDefinition Width="60"/>
+                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="120"/>
+                                                <ColumnDefinition Width="60"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding PacketIndex}"/>
+                                            <TextBlock Grid.Column="1"
                                                infui:FieldHighlightBehavior.FDN="{Binding TimestampElement}"/>
-                                        <TextBlock Grid.Column="2"
+                                            <TextBlock Grid.Column="2"
                                                infui:FieldHighlightBehavior.FDN="{Binding OpcodeHexElement}"/>
-                                        <TextBlock Grid.Column="3"
+                                            <TextBlock Grid.Column="3"
                                                infui:FieldHighlightBehavior.FDN="{Binding OpcodeNameElement}"/>
 
-                                        <TextBlock Grid.Column="4" Text="{Binding ChannelAbbrev}"/>
-                                        <TextBlock Grid.Column="5" Text="{Binding PortsText}"/>
-                                        <TextBlock Grid.Column="6" Text="{Binding CharacterName}"/>
-                                        <TextBlock Grid.Column="7" Text="{Binding Length}"/>
-                                    </Grid>
-                                    <ScrollViewer Grid.Row="1"
+                                            <TextBlock Grid.Column="4" Text="{Binding ChannelAbbrev}"/>
+                                            <TextBlock Grid.Column="5" Text="{Binding PortsText}"/>
+                                            <TextBlock Grid.Column="6" Text="{Binding CharacterName}"/>
+                                            <TextBlock Grid.Column="7" Text="{Binding Length}"/>
+                                        </Grid>
+                                        <ScrollViewer Grid.Row="1"
                                             MaxHeight="160"
                                             VerticalScrollBarVisibility="Auto"
                                             HorizontalScrollBarVisibility="Auto"
                                             Margin="16,4,0,4"
                                             Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
-                                        <TreeView ItemsSource="{Binding FieldTreeRoots}"
+                                            <TreeView ItemsSource="{Binding FieldTreeRoots}"
                                               BorderThickness="0"
                                               Background="Transparent"
                                               ItemContainerStyle="{StaticResource TightTreeViewItem}">
-                                            <TreeView.ItemTemplate>
-                                                <HierarchicalDataTemplate ItemsSource="{Binding Children}">
-                                                    <TextBlock infui:FieldHighlightBehavior.FDN="{Binding}"
+                                                <TreeView.ItemTemplate>
+                                                    <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                                                        <TextBlock infui:FieldHighlightBehavior.FDN="{Binding}"
                                                        FontFamily="Consolas"
                                                        FontSize="13"
                                                 />
-                                                </HierarchicalDataTemplate>
-                                            </TreeView.ItemTemplate>
-                                        </TreeView>
-                                    </ScrollViewer>
+                                                    </HierarchicalDataTemplate>
+                                                </TreeView.ItemTemplate>
+                                            </TreeView>
+                                        </ScrollViewer>
 
-                                    <ScrollViewer Grid.Row="2"
+                                        <ScrollViewer Grid.Row="2"
                                             MaxHeight="160"
                                             VerticalScrollBarVisibility="Auto"
                                             HorizontalScrollBarVisibility="Auto"
                                             Margin="16,0,0,4"
                                             Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
-                                        <TextBlock infui:FieldHighlightBehavior.FDN="{Binding HexDumpElement}"
+                                            <TextBlock infui:FieldHighlightBehavior.FDN="{Binding HexDumpElement}"
                                                Background="Transparent"
                                                Padding="0"
                                                FontFamily="Consolas"
                                                TextWrapping="NoWrap"
                                                MinWidth="900"/>
-                                    </ScrollViewer>
-                                </Grid>
+                                        </ScrollViewer>
+                                    </Grid>
+                                </Border>
                             </DataTemplate>
+
                         </ListView.ItemTemplate>
                         <ListView.ItemContainerStyle>
                             <Style TargetType="ListViewItem">
@@ -464,9 +476,6 @@
                                 <Setter Property="BorderThickness" Value="1"/>
                                 <Setter Property="BorderBrush" Value="Transparent"/>
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsExpanded}" Value="True">
-                                        <Setter Property="BorderBrush" Value="Gray"/>
-                                    </DataTrigger>
                                     <DataTrigger Binding="{Binding IsHidden}" Value="True">
                                         <Setter Property="Visibility" Value="Collapsed"/>
                                     </DataTrigger>
@@ -477,8 +486,11 @@
                                     <Trigger Property="IsSelected" Value="True">
                                         <Setter Property="Background"
                                                 Value="{Binding Color, Converter={StaticResource ColorArgbToBrush}}"/>
-                                        <Setter Property="BorderBrush" Value="White"/>
                                     </Trigger>
+                                    <DataTrigger Binding="{Binding IsCursorRow}" Value="True">
+                                        <Setter Property="BorderBrush" Value="DodgerBlue"/>
+                                        <Setter Property="BorderThickness" Value="2"/>
+                                    </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </ListView.ItemContainerStyle>

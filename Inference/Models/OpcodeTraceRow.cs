@@ -34,6 +34,7 @@ public class OpcodeTraceRow : INotifyPropertyChanged
     private string? _hexDumpText;
     private List<HighlightRange> _highlights;
     private List<SearchMatch> _matches;
+    private bool _isCursorRow;
 
     public event PropertyChangedEventHandler? PropertyChanged;
     public uint PacketIndex { get; }
@@ -99,6 +100,7 @@ public class OpcodeTraceRow : INotifyPropertyChanged
         _fieldText = null;          // TODO: remove
         _fieldTree = null;
         _hexDumpText = null;
+        _isCursorRow = false;
 
         _timestampElement = null;
         _opcodeHexElement = null;
@@ -201,6 +203,26 @@ public class OpcodeTraceRow : INotifyPropertyChanged
         {
             _matches = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Matches)));
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // IsCursorRow
+    //
+    // True when this row is the one the search cursor currently designates.  Exactly one row in
+    // the collection is the cursor row at a time; the presenter clears the flag on the prior
+    // cursor row and sets it on the new one as the cursor moves.  Bound by the row container
+    // style to paint the cursor border, independent of selection or focus.
+    //
+    // Raises PropertyChanged so the bound border repaints when the designation moves.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public bool IsCursorRow
+    {
+        get { return _isCursorRow; }
+        set
+        {
+            _isCursorRow = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsCursorRow)));
         }
     }
 
@@ -355,5 +377,47 @@ public class OpcodeTraceRow : INotifyPropertyChanged
             }
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HexDumpElement)));
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Equals
+    //
+    // Compares this row to another object for equality on PacketIndex.  PacketIndex is the
+    // durable per-message identity assigned at row build and is unique across the row set, so it
+    // serves as the row's equality key.
+    //
+    // obj:      The object to compare against; equal only when it is an OpcodeTraceRow carrying
+    //           the same PacketIndex.
+    //
+    // returns:  True when obj is an OpcodeTraceRow whose PacketIndex equals this row's
+    //           PacketIndex; false otherwise.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public override bool Equals(object? obj)
+    {
+        OpcodeTraceRow? other = obj as OpcodeTraceRow;
+        if (other == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTraceRow.Equals: other is not an OpcodeTraceRow, not equal", LogLevel.Trace);
+            return false;
+        }
+
+        bool equal = other.PacketIndex == PacketIndex;
+        DebugLog.Write(LogChannel.Opcodes,
+            "OpcodeTraceRow.Equals: this.PacketIndex=" + PacketIndex
+            + " other.PacketIndex=" + other.PacketIndex + " equal=" + equal, LogLevel.Trace);
+        return equal;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetHashCode
+    //
+    // Produces the row's hash from PacketIndex, the row's equality key, so equal rows hash equal.
+    //
+    // returns:  The hash code of this row's PacketIndex.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public override int GetHashCode()
+    {
+        return PacketIndex.GetHashCode();
     }
 }

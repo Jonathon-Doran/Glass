@@ -1,4 +1,5 @@
 ﻿using Glass.Core.Logging;
+using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using Glass.UI;
 using Inference.Models;
@@ -40,6 +41,7 @@ public partial class OpcodeTracePresenter
         private CursorState _state;
         private uint _matchIndex;
         private uint _rowPacketIndex;       // this is a durable ID unlike a row index
+        private OpcodeTraceRow? _currentRow; // the row the cursor currently sits on; null only when the trace has no rows
         private bool _wrap;
         private readonly ArgbColor _cursorColor;
 
@@ -57,6 +59,7 @@ public partial class OpcodeTracePresenter
             _state = CursorState.OnRow;
             _matchIndex = 0u;
             _rowPacketIndex = 0u;
+            _currentRow = null;
             _wrap = false;
             _cursorColor = new ArgbColor(0x800000FFu);
         }
@@ -70,6 +73,26 @@ public partial class OpcodeTracePresenter
         public CursorState State
         {
             get { return _state; }
+        }
+
+        ///////////////////////////////////////////////////////////////////////////////////////
+        // CurrentMessage
+        //
+        // The message index of the row the cursor sits on, valid whether the cursor is on a match
+        // or parked on a bare row.  None when the cursor holds no row, which occurs only on an
+        // empty trace.
+        ///////////////////////////////////////////////////////////////////////////////////////
+        public MessageIndex CurrentMessage
+        {
+            get
+            {
+                if (_currentRow == null)
+                {
+                    return MessageIndex.None;
+                }
+
+                return (MessageIndex)_currentRow.PacketIndex;
+            }
         }
 
         ///////////////////////////////////////////////////////////////////////////////////////
@@ -94,27 +117,6 @@ public partial class OpcodeTracePresenter
         }
 
         ///////////////////////////////////////////////////////////////////////////////////////
-        // RowPacketIndex
-        //
-        // The PacketIndex of the row the cursor names.  Valid only when OnRow; reading it
-        // OnMatch is an integrity violation.
-        ///////////////////////////////////////////////////////////////////////////////////////
-        public uint RowPacketIndex
-        {
-            get
-            {
-                if (_state != CursorState.OnRow)
-                {
-                    DebugLog.Write(LogChannel.Opcodes,
-                        "SearchCursor.RowPacketIndex read while state is " + _state, LogLevel.Error);
-                    Environment.FailFast("SearchCursor.RowPacketIndex read while not OnRow");
-                }
-
-                return _rowPacketIndex;
-            }
-        }
-
-        ///////////////////////////////////////////////////////////////////////////////////////
         // SetWrap
         //
         // Sets whether advancing past the end of the match list wraps to the other end and
@@ -131,61 +133,221 @@ public partial class OpcodeTracePresenter
         }
 
         ///////////////////////////////////////////////////////////////////////////////////////
-        // MoveToPacket
+        // TransitionToRow
         //
-        // Transitions the cursor to the OnRow state, naming the row by its PacketIndex.  The
-        // match index is cleared; OnRow makes it meaningless.
+        // Moves the cursor's row identity from the row it currently holds to the supplied row,
+        // maintaining the cursor-row border across the change.  The border is cleared on the
+        // outgoing row (the one _currentRow still names on entry), _currentRow is repointed to the
+        // new row, and the border is set on the new row.  Does nothing when the new row is the one
+        // already held: the border is already correct and re-flipping it would flicker.
         //
-        // rowPacketIndex:  The PacketIndex of the row the cursor names.
+        // The cursor shows itself only through this border.  It does not write the list selection,
+        // which is owned by the user for multi-row copy; the cursor's border and the user's
+        // selection are independent and may sit on different rows at once.
+        //
+        // Owns row-level state only.  The cursor's match identity is set separately by the landing
+        // path, not here.
+        //
+        // newRow:  The row the cursor is moving onto.  Null only when the trace has no rows, in
+        //          which case the border is cleared off any outgoing row and _currentRow is left
+        //          null.
         ///////////////////////////////////////////////////////////////////////////////////////
-        public void MoveToPacket(uint rowPacketIndex)
+        private void TransitionToRow(OpcodeTraceRow? newRow)
         {
-            DebugLog.Write(LogChannel.Opcodes,
-                "SearchCursor.MoveToPacket: " + _state + " -> OnRow(rowPacketIndex=" + rowPacketIndex + ")",
-                LogLevel.Info);
-
-            _state = CursorState.OnRow;
-            _rowPacketIndex = rowPacketIndex;
-            _matchIndex = 0u;
-        }
-
-        ///////////////////////////////////////////////////////////////////////////////////////
-        // AdvanceForward
-        //
-        // Moves this cursor to the next live match, removing stale matches as they are
-        // encountered.  OnMatch starts after the current match; OnRow starts at the first match
-        // whose PacketIndex is at or after the cursor row's PacketIndex.  With wrap set, the end
-        // wraps to index zero and the scan continues; with wrap off, reaching the end ends the
-        // scan.  The cursor is left unchanged when no live match is found.
-        //
-        // On landing, the outgoing match's element is captured before the cursor index moves, the
-        // match's row is scrolled into view, and Repaint is run as the scroll's settled action so
-        // the cursor color lands after the viewport has stopped moving.  Scrolling before painting
-        // cuts the color-flash artifact that painting first would leave during the scroll.
-        ///////////////////////////////////////////////////////////////////////////////////////
-        public void AdvanceForward()
-        {
-            if (_owner._matches.Count == 0)
+            if (object.ReferenceEquals(newRow, _currentRow))
             {
                 DebugLog.Write(LogChannel.Opcodes,
-                    "SearchCursor.AdvanceForward: empty match list, cursor unchanged", LogLevel.Trace);
+                    "SearchCursor.TransitionToRow: already on target row, no change", LogLevel.Trace);
                 return;
             }
 
+            if (_currentRow != null)
+            {
+                _currentRow.IsCursorRow = false;
+                DebugLog.Write(LogChannel.Opcodes,
+                    "SearchCursor.TransitionToRow: cleared border on packetIndex "
+                    + _currentRow.PacketIndex, LogLevel.Trace);
+            }
+            else
+            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "SearchCursor.TransitionToRow: no outgoing row to clear", LogLevel.Trace);
+            }
+
+            _currentRow = newRow;
+
+            if (newRow == null)
+            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "SearchCursor.TransitionToRow: new row is null (empty trace), no border set",
+                    LogLevel.Warn);
+                return;
+            }
+
+            newRow.IsCursorRow = true;
+            DebugLog.Write(LogChannel.Opcodes,
+                "SearchCursor.TransitionToRow: set border on packetIndex "
+                + newRow.PacketIndex, LogLevel.Trace);
+        }
+
+        ///////////////////////////////////////////////////////////////////////////////////////
+        // BringCursorIntoView
+        //
+        // Centers the cursor's current position in the trace list and paints it in the cursor
+        // color.  The paint is deferred until any scroll has settled so the color does not flash
+        // mid-scroll.  Does nothing when the trace has no rows.
+        //
+        // Reads cursor state, so the cursor must already hold its new position when this is called.
+        //
+        // outgoingElement:  The element the cursor painted at its prior position, or null when the
+        //                   cursor had no prior paint.  Used to clear that prior cursor span when
+        //                   the paint runs.
+        ///////////////////////////////////////////////////////////////////////////////////////
+        private void BringCursorIntoView(FieldDisplayNode? outgoingElement)
+        {
+            if (_currentRow == null)
+            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "SearchCursor.BringCursorIntoView: no current row (empty trace), nothing to center",
+                    LogLevel.Warn);
+                return;
+            }
+
+            if (_state == CursorState.OnMatch)
+            {
+                SearchMatch match = _owner._matches[(int)_matchIndex];
+
+                // Repaint is not called directly.  It is wrapped as the scroll's settled action and
+                // runs at the end of the scroll's final layout phase, after the viewport settles, so
+                // the cursor color does not flash mid-scroll.
+                _owner.ScrollMatchIntoView(_currentRow, match, () => Repaint(outgoingElement));
+
+                DebugLog.Write(LogChannel.Opcodes,
+                    "SearchCursor.BringCursorIntoView: scrolling match at packetIndex "
+                    + match.PacketIndex + " into view, paint deferred to settled", LogLevel.Trace);
+                return;
+            }
+
+            _owner.CenterRowInList(_currentRow);
+            DebugLog.Write(LogChannel.Opcodes,
+                "SearchCursor.BringCursorIntoView: centered bare row at packetIndex "
+                + _currentRow.PacketIndex, LogLevel.Trace);
+        }
+
+        ///////////////////////////////////////////////////////////////////////////////////////
+        // MoveToMessage
+        //
+        // Moves the cursor to the row named by its message index.  Resolves the row through the
+        // owner's row map; when that row owns matches the cursor lands on the row's first match,
+        // and when it owns none the cursor parks on the row.  The cursor-row border is maintained
+        // across the change and the landing is centered in the list.  When the named message has
+        // no row, the cursor is left unchanged.
+        //
+        // messageIndex:  The message index of the row to move to.
+        ///////////////////////////////////////////////////////////////////////////////////////
+        public void MoveToMessage(uint messageIndex)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "SearchCursor.MoveToMessage: message index " + messageIndex, LogLevel.Info);
+
+            OpcodeTraceRow? row;
+            if (!_owner._rowByPacketIndex.TryGetValue(messageIndex, out row))
+            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "SearchCursor.MoveToMessage: message " + messageIndex
+                    + " has no row in map, cursor left unchanged", LogLevel.Warn);
+                return;
+            }
+
+            // capture the outgoing match's element before any state changes, for the deferred paint
             FieldDisplayNode? outgoingElement = null;
             if (_state == CursorState.OnMatch)
             {
                 outgoingElement = _owner._matches[(int)_matchIndex].Element;
             }
 
-            uint index;
+            TransitionToRow(row);
+
+            if (row.Matches.Count > 0)
+            {
+                // the same SearchMatch instance lives in both the row and the owner's list; resolve
+                // its live subscript by identity rather than storing one, since pruning shifts the list
+                SearchMatch firstMatch = row.Matches[0];
+                int globalIndex = _owner._matches.IndexOf(firstMatch);
+
+                if (globalIndex < 0)
+                {
+                    DebugLog.Write(LogChannel.Opcodes,
+                        "SearchCursor.MoveToMessage: row message " + messageIndex
+                        + " owns matches but first match is not in the owner's match list, parking on row",
+                        LogLevel.Warn);
+
+                    _state = CursorState.OnRow;
+                    _rowPacketIndex = messageIndex;
+                    _matchIndex = 0u;
+
+                    BringCursorIntoView(outgoingElement);
+                    return;
+                }
+
+                DebugLog.Write(LogChannel.Opcodes,
+                    "SearchCursor.MoveToMessage: row message " + messageIndex
+                    + " owns matches, landing on first at global index " + globalIndex, LogLevel.Info);
+
+                _state = CursorState.OnMatch;
+                _matchIndex = (uint)globalIndex;
+                _rowPacketIndex = messageIndex;
+
+                BringCursorIntoView(outgoingElement);
+                return;
+            }
+
+            DebugLog.Write(LogChannel.Opcodes,
+                "SearchCursor.MoveToMessage: row message " + messageIndex
+                + " owns no matches, parking on row", LogLevel.Info);
+
+            _state = CursorState.OnRow;
+            _rowPacketIndex = messageIndex;
+            _matchIndex = 0u;
+
+            BringCursorIntoView(outgoingElement);
+        }
+
+        ///////////////////////////////////////////////////////////////////////////////////////
+        // AdvanceForward
+        //
+        // Moves the cursor to the next live match, pruning stale matches as they are encountered.
+        // From a match the scan starts after it; from a row the scan starts at the first match at
+        // or after the row's position.  With wrap set the end continues from index zero; with wrap
+        // off reaching the end leaves the cursor unchanged.  The cursor is also left unchanged when
+        // no live match is found.  On landing the cursor-row border is maintained and the match is
+        // centered in the list.
+        ///////////////////////////////////////////////////////////////////////////////////////
+        public void AdvanceForward()
+        {
+            if (_owner._matches.Count == 0)
+            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "SearchCursor.AdvanceForward: empty match list, cursor unchanged", LogLevel.Info);
+                return;
+            }
+
+            // capture the outgoing match's element before the walk, while _matchIndex still names
+            // the pre-move match; a mid-walk prune can shift the list past recovery afterward
+            FieldDisplayNode? outgoingElement = null;
             if (_state == CursorState.OnMatch)
             {
-                index = _matchIndex + 1u;
+                outgoingElement = _owner._matches[(int)_matchIndex].Element;
+            }
+
+            uint globalMatchIndex;
+            if (_state == CursorState.OnMatch)
+            {
+                globalMatchIndex = _matchIndex + 1u;
             }
             else
             {
-                index = StartIndexForRow();
+                globalMatchIndex = StartIndexForRow();
             }
 
             uint examined = 0u;
@@ -193,70 +355,81 @@ public partial class OpcodeTracePresenter
 
             while (examined < limit)
             {
-                if (index >= (uint)_owner._matches.Count)
+                if (globalMatchIndex >= (uint)_owner._matches.Count)
                 {
                     if (_wrap == false)
                     {
                         DebugLog.Write(LogChannel.Opcodes,
                             "SearchCursor.AdvanceForward: end reached, wrap off, cursor unchanged",
-                            LogLevel.Trace);
+                            LogLevel.Info);
                         return;
                     }
 
-                    index = 0u;
+                    globalMatchIndex = 0u;
                     DebugLog.Write(LogChannel.Opcodes,
-                        "SearchCursor.AdvanceForward: wrapped to index 0", LogLevel.Trace);
+                        "SearchCursor.AdvanceForward: wrapped to index 0", LogLevel.Info);
                 }
 
-                if (_owner.RemoveMatchIfStale(index) == true)
+                if (_owner.RemoveMatchIfStale(globalMatchIndex) == true)
                 {
                     examined = examined + 1u;
                     continue;
                 }
 
-                _state = CursorState.OnMatch;
-                _matchIndex = index;
                 DebugLog.Write(LogChannel.Opcodes,
-                    "SearchCursor.AdvanceForward: cursor moved to match index " + index, LogLevel.Trace);
+                    "SearchCursor.AdvanceForward: live match found at index " + globalMatchIndex,
+                    LogLevel.Info);
 
-                LandOnCurrentMatch(outgoingElement);
+                _state = CursorState.OnMatch;
+                _matchIndex = globalMatchIndex;
+                _rowPacketIndex = _owner._matches[(int)globalMatchIndex].PacketIndex;
+
+                OpcodeTraceRow? newRow;
+                if (!_owner._rowByPacketIndex.TryGetValue(_rowPacketIndex, out newRow))
+                {
+                    newRow = null;
+                    DebugLog.Write(LogChannel.Opcodes,
+                        "SearchCursor.AdvanceForward: match rowPacketIndex " + _rowPacketIndex
+                        + " has no row in map", LogLevel.Warn);
+                }
+
+                TransitionToRow(newRow);
+                BringCursorIntoView(outgoingElement);
                 return;
             }
 
             DebugLog.Write(LogChannel.Opcodes,
-                "SearchCursor.AdvanceForward: cursor unchanged, no live match found", LogLevel.Trace);
+                "SearchCursor.AdvanceForward: cursor unchanged, no live match found", LogLevel.Info);
         }
 
         ///////////////////////////////////////////////////////////////////////////////////////
         // AdvanceBackward
         //
-        // Moves this cursor to the previous live match, removing stale matches as they are
-        // encountered.  OnMatch starts before the current match; OnRow starts at the last match
-        // whose PacketIndex is at or before the cursor row's PacketIndex.  With wrap set, passing
-        // index zero wraps to the last index and the scan continues; with wrap off, passing the
-        // start ends the scan.  The cursor is left unchanged when no live match is found.
-        //
-        // On landing, the outgoing match's element is captured before the cursor index moves, the
-        // match's row is scrolled into view, and Repaint is run as the scroll's settled action so
-        // the cursor color lands after the viewport has stopped moving.  Scrolling before painting
-        // cuts the color-flash artifact that painting first would leave during the scroll.
+        // Moves the cursor to the previous live match, pruning stale matches as they are
+        // encountered.  From a match the scan starts before it; from a row the scan starts at the
+        // last match at or before the row's position.  With wrap set, passing index zero continues
+        // from the last index; with wrap off, passing the start leaves the cursor unchanged.  The
+        // cursor is also left unchanged when no live match is found.  On landing the cursor-row
+        // border is maintained and the match is centered in the list.
         ///////////////////////////////////////////////////////////////////////////////////////
         public void AdvanceBackward()
         {
             if (_owner._matches.Count == 0)
             {
                 DebugLog.Write(LogChannel.Opcodes,
-                    "SearchCursor.AdvanceBackward: empty match list, cursor unchanged", LogLevel.Trace);
+                    "SearchCursor.AdvanceBackward: empty match list, cursor unchanged", LogLevel.Info);
                 return;
             }
 
+            // capture the outgoing match's element before the walk, while _matchIndex still names
+            // the pre-move match; a mid-walk prune can shift the list past recovery afterward
             FieldDisplayNode? outgoingElement = null;
             if (_state == CursorState.OnMatch)
             {
                 outgoingElement = _owner._matches[(int)_matchIndex].Element;
             }
 
-            uint index;
+            uint globalMatchIndex;
             bool started;
             if (_state == CursorState.OnMatch)
             {
@@ -266,30 +439,31 @@ public partial class OpcodeTracePresenter
                     {
                         DebugLog.Write(LogChannel.Opcodes,
                             "SearchCursor.AdvanceBackward: at start, wrap off, cursor unchanged",
-                            LogLevel.Trace);
+                            LogLevel.Info);
                         return;
                     }
 
-                    index = (uint)_owner._matches.Count - 1u;
+                    globalMatchIndex = (uint)_owner._matches.Count - 1u;
                     DebugLog.Write(LogChannel.Opcodes,
-                        "SearchCursor.AdvanceBackward: wrapped to last index " + index, LogLevel.Trace);
+                        "SearchCursor.AdvanceBackward: wrapped to last index " + globalMatchIndex,
+                        LogLevel.Info);
                 }
                 else
                 {
-                    index = _matchIndex - 1u;
+                    globalMatchIndex = _matchIndex - 1u;
                 }
                 started = true;
             }
             else
             {
-                index = StartIndexForRowBackward(out started);
+                globalMatchIndex = StartIndexForRowBackward(out started);
             }
 
             if (started == false)
             {
                 DebugLog.Write(LogChannel.Opcodes,
                     "SearchCursor.AdvanceBackward: no match at or before row, cursor unchanged",
-                    LogLevel.Trace);
+                    LogLevel.Info);
                 return;
             }
 
@@ -298,7 +472,7 @@ public partial class OpcodeTracePresenter
 
             while (examined < limit)
             {
-                if (_owner.RemoveMatchIfStale(index) == true)
+                if (_owner.RemoveMatchIfStale(globalMatchIndex) == true)
                 {
                     examined = examined + 1u;
 
@@ -306,48 +480,61 @@ public partial class OpcodeTracePresenter
                     {
                         DebugLog.Write(LogChannel.Opcodes,
                             "SearchCursor.AdvanceBackward: list emptied by pruning, cursor unchanged",
-                            LogLevel.Trace);
+                            LogLevel.Info);
                         return;
                     }
 
-                    if (index >= (uint)_owner._matches.Count)
+                    if (globalMatchIndex >= (uint)_owner._matches.Count)
                     {
-                        index = (uint)_owner._matches.Count - 1u;
+                        globalMatchIndex = (uint)_owner._matches.Count - 1u;
                     }
-                    else if (index == 0u)
+                    else if (globalMatchIndex == 0u)
                     {
                         if (_wrap == false)
                         {
                             DebugLog.Write(LogChannel.Opcodes,
                                 "SearchCursor.AdvanceBackward: start reached after prune, wrap off, cursor unchanged",
-                                LogLevel.Trace);
+                                LogLevel.Info);
                             return;
                         }
 
-                        index = (uint)_owner._matches.Count - 1u;
+                        globalMatchIndex = (uint)_owner._matches.Count - 1u;
                         DebugLog.Write(LogChannel.Opcodes,
-                            "SearchCursor.AdvanceBackward: wrapped to last index " + index
-                            + " after prune", LogLevel.Trace);
+                            "SearchCursor.AdvanceBackward: wrapped to last index " + globalMatchIndex
+                            + " after prune", LogLevel.Info);
                     }
                     else
                     {
-                        index = index - 1u;
+                        globalMatchIndex = globalMatchIndex - 1u;
                     }
 
                     continue;
                 }
 
-                _state = CursorState.OnMatch;
-                _matchIndex = index;
                 DebugLog.Write(LogChannel.Opcodes,
-                    "SearchCursor.AdvanceBackward: cursor moved to match index " + index, LogLevel.Trace);
+                    "SearchCursor.AdvanceBackward: live match found at index " + globalMatchIndex,
+                    LogLevel.Info);
 
-                LandOnCurrentMatch(outgoingElement);
+                _state = CursorState.OnMatch;
+                _matchIndex = globalMatchIndex;
+                _rowPacketIndex = _owner._matches[(int)globalMatchIndex].PacketIndex;
+
+                OpcodeTraceRow? newRow;
+                if (!_owner._rowByPacketIndex.TryGetValue(_rowPacketIndex, out newRow))
+                {
+                    newRow = null;
+                    DebugLog.Write(LogChannel.Opcodes,
+                        "SearchCursor.AdvanceBackward: match rowPacketIndex " + _rowPacketIndex
+                        + " has no row in map", LogLevel.Warn);
+                }
+
+                TransitionToRow(newRow);
+                BringCursorIntoView(outgoingElement);
                 return;
             }
 
             DebugLog.Write(LogChannel.Opcodes,
-                "SearchCursor.AdvanceBackward: cursor unchanged, no live match found", LogLevel.Trace);
+                "SearchCursor.AdvanceBackward: cursor unchanged, no live match found", LogLevel.Info);
         }
 
         ///////////////////////////////////////////////////////////////////////////////////////
@@ -376,7 +563,7 @@ public partial class OpcodeTracePresenter
                 {
                     DebugLog.Write(LogChannel.Opcodes,
                         "SearchCursor.StartIndexForRowBackward: row packetIndex " + _rowPacketIndex
-                        + " resolved to match index " + candidateIndex, LogLevel.Trace);
+                        + " resolved to match index " + candidateIndex, LogLevel.Info);
                     found = true;
                     return candidateIndex;
                 }
@@ -384,53 +571,9 @@ public partial class OpcodeTracePresenter
 
             DebugLog.Write(LogChannel.Opcodes,
                 "SearchCursor.StartIndexForRowBackward: no match at or before row packetIndex "
-                + _rowPacketIndex + ", cursor will be left unchanged", LogLevel.Trace);
+                + _rowPacketIndex + ", cursor will be left unchanged", LogLevel.Info);
             found = false;
             return 0u;
-        }
-
-        ///////////////////////////////////////////////////////////////////////////////////////
-        // LandOnCurrentMatch
-        //
-        // Brings the match the cursor now sits on into view and paints it in the cursor color.
-        // Called from an advance once the cursor is OnMatch at its new index.  The match's row is
-        // resolved through the owner and scrolled into view; Repaint is handed to the scroll as
-        // its settled action so the cursor color lands only after the viewport has stopped moving,
-        // cutting the color-flash a paint-first order would leave.  The outgoing element is passed
-        // through to Repaint so the prior cursor paint clears even when it sat on a different
-        // element.
-        //
-        // When the match's row cannot be resolved the scroll is skipped and Repaint runs directly,
-        // so the cursor color is still applied even though the row could not be brought into view.
-        //
-        // outgoingElement:  The element the cursor painted on its prior position, or null when the
-        //                   cursor had no prior paint.
-        ///////////////////////////////////////////////////////////////////////////////////////
-        private void LandOnCurrentMatch(FieldDisplayNode? outgoingElement)
-        {
-            SearchMatch match = _owner._matches[(int)_matchIndex];
-            uint matchPacketIndex = match.PacketIndex;
-
-            OpcodeTraceRow? row;
-            if (_owner._rowByPacketIndex.TryGetValue(matchPacketIndex, out row))
-            {
-                // Repaint is not called here.  It is wrapped as the scroll's settled action and
-                // runs at the end of the scroll's final layout phase, after the viewport settles.
-
-                _owner.ScrollMatchIntoView(row, match, () => Repaint(outgoingElement));
-                DebugLog.Write(LogChannel.Opcodes,
-                    "SearchCursor.LandOnCurrentMatch: scrolling match at packetIndex " + matchPacketIndex
-                    + " into view, paint deferred to settled", LogLevel.Trace);
-            }
-            else
-            {
-                // No row to scroll, so nothing defers the paint; Repaint runs now.
-
-                Repaint(outgoingElement);
-                DebugLog.Write(LogChannel.Opcodes,
-                    "SearchCursor.LandOnCurrentMatch: match packetIndex " + matchPacketIndex
-                    + " has no row in map, painted without scroll", LogLevel.Warn);
-            }
         }
 
         ///////////////////////////////////////////////////////////////////////////////////////

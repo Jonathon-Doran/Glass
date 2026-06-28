@@ -109,86 +109,15 @@ public partial class OpcodeTracePresenter
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // CurrentMatch
+    // CursorMessage
     //
-    // The match the cursor sits on, or null when the cursor names a row rather than a match.
+    // The message index of the row the cursor sits on, or None when the cursor holds no row.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public SearchMatch? CurrentMatch
+    public MessageIndex CursorMessage
     {
         get
         {
-            if (_searchCursor.State == SearchCursor.CursorState.OnRow)
-            {
-                DebugLog.Write(LogChannel.Opcodes,
-                    "OpcodeTracePresenter.CurrentMatch: cursor on row, no current match", LogLevel.Trace);
-                return null;
-            }
-
-            return _matches[(int)_searchCursor.MatchIndex];
-        }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // CursorRow
-    //
-    // The row the cursor is on.  When the cursor is OnMatch, this resolves the match's packet
-    // index to its row.  When the cursor is OnRow, this returns the named row directly.
-    //
-    // The setter moves the cursor onto the supplied row, leaving it OnRow with no match
-    // resolved; the next advance resolves a match by direction.  A null row, or a row not in
-    // the collection, leaves the cursor unchanged.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public OpcodeTraceRow? CursorRow
-    {
-        get
-        {
-            if (_searchCursor.State == SearchCursor.CursorState.OnRow)
-            {
-                OpcodeTraceRow? namedRow;
-                if (_rowByPacketIndex.TryGetValue(_searchCursor.RowPacketIndex, out namedRow))
-                {
-                    return namedRow;
-                }
-
-                DebugLog.Write(LogChannel.Opcodes,
-                    "OpcodeTracePresenter.CursorRow: OnRow packetIndex " + _searchCursor.RowPacketIndex
-                    + " has no row in map", LogLevel.Warn);
-                return null;
-            }
-
-            // must be on a match then
-            uint matchPacketIndex = _matches[(int)_searchCursor.MatchIndex].PacketIndex;
-
-            OpcodeTraceRow? row;
-            if (_rowByPacketIndex.TryGetValue(matchPacketIndex, out row))
-            {
-                return row;
-            }
-
-            DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.CursorRow: cursor match packetIndex " + matchPacketIndex
-                + " has no row in map", LogLevel.Warn);
-            return null;
-        }
-        set
-        {
-            if (value == null)
-            {
-                DebugLog.Write(LogChannel.Opcodes,
-                    "OpcodeTracePresenter.CursorRow: null row, cursor left unchanged", LogLevel.Trace);
-                return;
-            }
-
-            int rowIndex = _rows.IndexOf(value);
-            if (rowIndex < 0)
-            {
-                DebugLog.Write(LogChannel.Opcodes,
-                    "OpcodeTracePresenter.CursorRow: row packetIndex " + value.PacketIndex
-                    + " not in collection, cursor left unchanged", LogLevel.Warn);
-                return;
-            }
-
-            _searchCursor.MoveToPacket((uint)rowIndex);
+            return _searchCursor.CurrentMessage;
         }
     }
 
@@ -327,11 +256,13 @@ public partial class OpcodeTracePresenter
         // A PacketIndex of 0 may not make any sense.
         if (_rows.Count > 0)
         {
-            _searchCursor.MoveToPacket(_rows[0].PacketIndex);
+            DebugLog.Write(LogChannel.Opcodes, "Refresh call#1 to MoveToMessage", LogLevel.Info);
+            _searchCursor.MoveToMessage(_rows[0].PacketIndex);
         }
         else
         {
-            _searchCursor.MoveToPacket(0u);
+            DebugLog.Write(LogChannel.Opcodes, "Refresh call#2 to MoveToMessage", LogLevel.Info);
+            _searchCursor.MoveToMessage(0u);
         }
        
         DebugLog.Write(LogChannel.Opcodes,
@@ -503,6 +434,7 @@ public partial class OpcodeTracePresenter
         if (row.HexDumpElement == null)
         {
             row.HexDumpElement = new FieldDisplayNode(hexDump);
+            row.HexDumpElement.PacketIndex = row.PacketIndex;
         }
 
         CatalogedPacket? packet = _catalog.PacketAt(row.PacketIndex);
@@ -583,6 +515,18 @@ public partial class OpcodeTracePresenter
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // MoveCursorToMessage
+    //
+    // Moves the search cursor to the row named by the given message index.
+    //
+    // messageIndex:  The message index of the row to move the cursor to.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void MoveCursorToMessage(uint messageIndex)
+    {
+        _searchCursor.MoveToMessage(messageIndex);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // ScrollMatchIntoView
     //
     // Brings a SearchMatch into the visible area of the trace list with context around it, then
@@ -615,6 +559,9 @@ public partial class OpcodeTracePresenter
     {
         FieldDisplayNode element = match.Element;
         int anchorOffset = match.Anchor.Start;
+
+        DebugLog.Write(LogChannel.Opcodes, "ScrollMatchIntoView: row " + row.PacketIndex +
+            ", match for row " + match.PacketIndex, LogLevel.Info);
 
         _opcodeTraceList.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new System.Action(() =>
         {
@@ -651,6 +598,24 @@ public partial class OpcodeTracePresenter
 
                 ScrollViewer? outerScroller = FindDescendantScrollViewer(_opcodeTraceList);
                 ScrollViewer? elementScroller = FindAncestorScrollViewer(elementBlock);
+
+                if (elementScroller != null)
+                {
+                    DebugLog.Write(LogChannel.Opcodes, "element scroller exists", LogLevel.Info);
+                }
+                else
+                {
+                    DebugLog.Write(LogChannel.Opcodes, "element scroller DOES NOT EXIST", LogLevel.Info);
+                }
+
+                if (outerScroller != null)
+                {
+                    DebugLog.Write(LogChannel.Opcodes, "outer scroller exists", LogLevel.Info);
+                }
+                else
+                {
+                    DebugLog.Write(LogChannel.Opcodes, "outer scroller DOES NOT EXIST", LogLevel.Info);
+                }
 
                 if (elementScroller != null && !object.ReferenceEquals(elementScroller, outerScroller))
                 {
@@ -1258,6 +1223,8 @@ public partial class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void ScanSummaryElement(FieldDisplayNode element, OpcodeTraceRow row)
     {
+        element.PacketIndex = row.PacketIndex;
+
         string text = element.Text;
         if (string.IsNullOrEmpty(text))
         {
@@ -1792,14 +1759,16 @@ public partial class OpcodeTracePresenter
     {
         if (_rows.Count > 0)
         {
-            _searchCursor.MoveToPacket(_rows[0].PacketIndex);
+            DebugLog.Write(LogChannel.Opcodes, "FindFirst call#1 to MoveToMessage", LogLevel.Info);
+            _searchCursor.MoveToMessage(_rows[0].PacketIndex);
             DebugLog.Write(LogChannel.Opcodes,
                 "OpcodeTracePresenter.FindFirst: parked cursor OnRow at first row packetIndex "
                 + _rows[0].PacketIndex + ", running fresh forward search", LogLevel.Trace);
         }
         else
         {
-            _searchCursor.MoveToPacket(0u);
+            DebugLog.Write(LogChannel.Opcodes, "FindFirst call#2 to MoveToMessage", LogLevel.Info);
+            _searchCursor.MoveToMessage(0u);
             DebugLog.Write(LogChannel.Opcodes,
                 "OpcodeTracePresenter.FindFirst: no rows, parked cursor at packet index 0", LogLevel.Trace);
         }
@@ -1976,6 +1945,42 @@ public partial class OpcodeTracePresenter
             + " highest=" + highest + " rows=" + _rows.Count, LogLevel.Trace);
 
         return new MessageIndexBounds(lowest, highest, true);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // CenterRowForPacketIndex
+    //
+    // Scrolls the Opcode Trace list so the row carrying the given message index sits vertically
+    // centered in the viewport, giving it context above and below rather than landing it at an
+    // edge.  Resolves the index to its row through the packet-index map, then defers the centering
+    // to a Loaded-priority dispatcher turn so the row's container has realized before the scroll
+    // offset is computed.  Does nothing but log when the index resolves to no row.
+    //
+    // packetIndex:  The message index of the row to center.
+    //
+    // returns:  True when a row was resolved and centering was scheduled; false when no row
+    //           carries the index.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public bool CenterRowForPacketIndex(uint packetIndex)
+    {
+        OpcodeTraceRow? row;
+        if (!_rowByPacketIndex.TryGetValue(packetIndex, out row))
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTracePresenter.CenterRowForPacketIndex: no row for index " + packetIndex
+                + ", nothing centered", LogLevel.Warn);
+            return false;
+        }
+
+        _opcodeTraceList.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+        {
+            CenterRowInList(row);
+        }));
+
+        DebugLog.Write(LogChannel.Opcodes,
+            "OpcodeTracePresenter.CenterRowForPacketIndex: scheduled centering for index "
+            + packetIndex, LogLevel.Trace);
+        return true;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

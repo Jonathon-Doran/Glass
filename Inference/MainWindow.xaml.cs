@@ -1189,10 +1189,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        OpcodeTraceRow? cursorRow = _opcodeTracePresenter.CursorRow;
-        if (cursorRow != null)
+        MessageIndex cursorMessage = _opcodeTracePresenter.CursorMessage;
+        if (cursorMessage.Exists)
         {
-            StatusBarRowText.Text = "Message " + cursorRow.PacketIndex;
+            StatusBarRowText.Text = "Message " + cursorMessage;
         }
 
         StatusBarSecondaryText.Text = _opcodeTracePresenter.CursorOrdinal
@@ -1245,10 +1245,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        OpcodeTraceRow? cursorRow = _opcodeTracePresenter.CursorRow;
-        if (cursorRow != null)
+        MessageIndex cursorMessage = _opcodeTracePresenter.CursorMessage;
+        if (cursorMessage.Exists)
         {
-            StatusBarRowText.Text = "Message " + cursorRow.PacketIndex;
+            StatusBarRowText.Text = "Message " + cursorMessage;
         }
 
         StatusBarSecondaryText.Text = _opcodeTracePresenter.CursorOrdinal
@@ -1301,10 +1301,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        OpcodeTraceRow? cursorRow = _opcodeTracePresenter.CursorRow;
-        if (cursorRow != null)
+        MessageIndex cursorMessage = _opcodeTracePresenter.CursorMessage;
+        if (cursorMessage.Exists)
         {
-            StatusBarRowText.Text = "Message " + cursorRow.PacketIndex;
+            StatusBarRowText.Text = "Message " + cursorMessage;
         }
 
         StatusBarSecondaryText.Text = _opcodeTracePresenter.CursorOrdinal
@@ -1534,69 +1534,6 @@ public partial class MainWindow : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // ScrollMatchIntoView
-    //
-    // Brings a SearchMatch into the visible area of the trace list with context around it.  The
-    // match's row is centered in the outer list viewport so it does not land at an edge.  When the
-    // match's element is displayed inside an inner per-row ScrollViewer (the expanded Field or Hex
-    // detail), the anchor span's character offset is centered within that inner viewport; a
-    // summary-cell element has no inner ScrollViewer and needs no offset scroll because centering
-    // the row already brings it into view.
-    //
-    // The work runs in three layout phases, each its own dispatcher turn at Loaded priority, so
-    // the layout each phase depends on has settled before the next runs: the first turn waits for
-    // the row container and any expanded inner ScrollViewers to realize; the second centers the
-    // row in the outer list, which re-realizes containers; the third measures the now-settled
-    // container, finds the element's TextBlock, and scrolls the anchor offset into the inner
-    // viewport.  Folding the centering and the measurement into one turn fails because the
-    // centering scroll invalidates the very layout the measurement reads.
-    //
-    // Returns silently with a log entry when the row's container or the element's TextBlock is not
-    // realized.  Does not modify the list view's selection.
-    //
-    // row:    The row containing the match.
-    // match:  The SearchMatch to bring into view.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private void ScrollMatchIntoView(OpcodeTraceRow row, SearchMatch match)
-    {
-        FieldDisplayNode element = match.Element;
-        int anchorOffset = match.Anchor.Start;
-
-        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new System.Action(() =>
-        {
-            CenterRowInList(row);
-
-            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new System.Action(() =>
-            {
-                DependencyObject? container = OpcodeTraceList.ItemContainerGenerator.ContainerFromItem(row);
-                if (container == null)
-                {
-                    DebugLog.Write(LogChannel.Opcodes,
-                        "MainWindow.ScrollMatchIntoView: container not realized for row, ignoring", LogLevel.Warn);
-                    return;
-                }
-
-                TextBlock? elementBlock = FindElementTextBlock(container, element);
-                if (elementBlock == null)
-                {
-                    DebugLog.Write(LogChannel.Opcodes,
-                        "MainWindow.ScrollMatchIntoView: no TextBlock for element under container, ignoring",
-                        LogLevel.Warn);
-                    return;
-                }
-
-                ScrollViewer? outerScroller = FindDescendantScrollViewer(OpcodeTraceList);
-                ScrollViewer? elementScroller = FindAncestorScrollViewer(elementBlock);
-
-                if (elementScroller != null && !object.ReferenceEquals(elementScroller, outerScroller))
-                {
-                    ScrollOffsetIntoView(elementBlock, anchorOffset);
-                }
-            }));
-        }));
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
     // FindAncestorScrollViewer
     //
     // Walks up the visual tree from a starting element and returns the
@@ -1778,10 +1715,10 @@ public partial class MainWindow : Window
         }
 
         uint current;
-        OpcodeTraceRow? cursorRow = _opcodeTracePresenter.CursorRow;
-        if (cursorRow != null)
+        MessageIndex cursorMessage = _opcodeTracePresenter.CursorMessage;
+        if (cursorMessage.Exists)
         {
-            current = cursorRow.PacketIndex;
+            current = cursorMessage;
         }
         else
         {
@@ -1807,7 +1744,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        OpcodeTraceList.ScrollIntoView(target);
+        OpcodeTraceList.SelectedItem = target;
         StatusBarRowText.Text = "Message " + target.PacketIndex;
 
         DebugLog.Write(LogChannel.Opcodes,
@@ -2132,11 +2069,14 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////
     // OpcodeTraceList_SelectionChanged
     //
-    // Reflects the new selection state across the toolbar and the status bar.
-    // Enables the Hide and Expand controls when a row is selected and syncs the
-    // Expand toggle to the row's expansion state.  Updates the status bar's row
-    // text to the selected row's packet index, or clears it when no row is
-    // selected.
+    // Reflects the new selection state across the toolbar and status bar, and moves the search
+    // cursor to follow a single deliberate row pick.  The Hide and Expand controls are enabled
+    // when any row is selected, the Expand toggle is synced to the selected row's expansion
+    // state, and the status bar's row text shows the selected row's message number.
+    //
+    // The cursor follows the selection only when exactly one row is selected: a single row pick
+    // moves the cursor to that row.  When no rows or several rows are selected — the latter being
+    // a multi-row copy gesture — the cursor is left where it is.
     //
     // sender:  The trace ListView.
     // e:       Selection change event args.
@@ -2147,7 +2087,21 @@ public partial class MainWindow : Window
         bool hasSelection = row != null;
         ButtonOpcodeTraceHide.IsEnabled = hasSelection;
         ToggleOpcodeTraceExpand.IsEnabled = hasSelection;
-        _opcodeTracePresenter.CursorRow = row;
+
+        if (OpcodeTraceList.SelectedItems.Count == 1 && row != null)
+        {
+            _opcodeTracePresenter.MoveCursorToMessage(row.PacketIndex);
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTraceList_SelectionChanged: single selection, cursor moved to packetIndex "
+                + row.PacketIndex, LogLevel.Info);
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTraceList_SelectionChanged: selection count "
+                + OpcodeTraceList.SelectedItems.Count + ", cursor left unchanged", LogLevel.Info);
+        }
+
         if (row != null)
         {
             ToggleOpcodeTraceExpand.IsChecked = row.IsExpanded;
@@ -2158,9 +2112,6 @@ public partial class MainWindow : Window
             ToggleOpcodeTraceExpand.IsChecked = false;
             StatusBarRowText.Text = "";
         }
-        DebugLog.Write(LogChannel.Opcodes,
-            "OpcodeTraceList_SelectionChanged: hasSelection=" + hasSelection
-            + " isExpanded=" + (row != null ? row.IsExpanded.ToString() : "n/a"), LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
