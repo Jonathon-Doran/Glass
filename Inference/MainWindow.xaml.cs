@@ -2090,6 +2090,7 @@ public partial class MainWindow : Window
 
         if (OpcodeTraceList.SelectedItems.Count == 1 && row != null)
         {
+            StatusBarSecondaryText.Text = "";
             _opcodeTracePresenter.MoveCursorToMessage(row.PacketIndex);
             DebugLog.Write(LogChannel.Opcodes,
                 "OpcodeTraceList_SelectionChanged: single selection, cursor moved to packetIndex "
