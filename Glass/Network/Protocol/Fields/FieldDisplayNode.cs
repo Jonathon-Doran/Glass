@@ -10,12 +10,14 @@ using System.Collections.Generic;
 // ranges the node was decoded from, and a list of child nodes.  Children are appended after
 // construction via AddChild; byte ranges via AddByteRange.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public sealed class FieldDisplayNode
+public sealed class FieldDisplayNode : System.ComponentModel.INotifyPropertyChanged
 {
     private string _text;
     private readonly List<ByteRange> _ranges;
     private readonly List<HighlightSpan> _spans;
     private readonly List<FieldDisplayNode> _children;
+    private FieldDisplayNode? _parent;
+    private bool _isExpanded;
     private event System.Action? _spansChanged;
     private bool _enableTrace = false;
     private uint _packetIndex;
@@ -34,11 +36,14 @@ public sealed class FieldDisplayNode
         _ranges = new List<ByteRange>();
         _spans = new List<HighlightSpan>();
         _children = new List<FieldDisplayNode>();
+        _parent = null;
+        _isExpanded = false;
         _packetIndex = 0;
 
         DebugLog.Write(LogChannel.Fields,
             "FieldDisplayNode: created text='" + text + "'", LogLevel.Trace);
     }
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // FieldDisplayNode (constructor)
     //
@@ -46,6 +51,54 @@ public sealed class FieldDisplayNode
     ///////////////////////////////////////////////////////////////////////////////////////////
     public FieldDisplayNode() : this(string.Empty)
     {
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // PropertyChanged
+    //
+    // Raised when a bindable property changes, so a bound control updates.  Carries the name of
+    // the property that changed.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Parent
+    //
+    // The node this node was added under, or null when it has none.  A node with no parent is a
+    // tree root: walking Parent upward from any node terminates at null.  Set only when the node
+    // is appended as a child, so it always names the node whose Children contains this one.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public FieldDisplayNode? Parent
+    {
+        get { return _parent; }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // IsExpanded
+    //
+    // Whether the node is expanded in the tree.  Bound two-way to the displaying TreeViewItem's
+    // expansion, so setting it opens or closes the node in the view, and a user toggling the node
+    // writes back here.  Setting it to the value it already holds is a no-op.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public bool IsExpanded
+    {
+        get { return _isExpanded; }
+        set
+        {
+            if (_isExpanded == value)
+            {
+                return;
+            }
+
+            _isExpanded = value;
+
+            DebugLog.Write(LogChannel.Fields,
+                "FieldDisplayNode.IsExpanded: set to " + value + " under '" + _text + "'",
+                LogLevel.Trace);
+
+            PropertyChanged?.Invoke(this,
+                new System.ComponentModel.PropertyChangedEventArgs(nameof(IsExpanded)));
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -154,6 +207,7 @@ public sealed class FieldDisplayNode
         }
 
         _children.Add(child);
+        child._parent = this;
 
         DebugLog.Write(LogChannel.Fields,
             "FieldDisplayNode.AddChild: appended '" + child.Text + "' under '" + _text
@@ -272,6 +326,31 @@ public sealed class FieldDisplayNode
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // ExpandAncestors
+    //
+    // Expands every node on the path from this node's parent up to the root, so this node is
+    // visible in the tree.  This node itself is not expanded: making it visible is a property of
+    // its ancestors being open, not of its own state.  A node already at the root, with no
+    // parent, expands nothing.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void ExpandAncestors()
+    {
+        FieldDisplayNode? ancestor = _parent;
+        uint expanded = 0u;
+
+        while (ancestor != null)
+        {
+            ancestor.IsExpanded = true;
+            expanded = expanded + 1u;
+            ancestor = ancestor.Parent;
+        }
+
+        DebugLog.Write(LogChannel.Fields,
+            "FieldDisplayNode.ExpandAncestors: expanded " + expanded + " ancestor(s) above '"
+            + _text + "'", LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // NotifySpansChanged
     //
     // Raises SpansChanged so a subscribed renderer rebuilds from the current span list.  Used
@@ -286,7 +365,6 @@ public sealed class FieldDisplayNode
                 "FieldDisplayNode.NotifySpansChanged: raising SpansChanged under '" + _text + "'",
                 LogLevel.Info);
         }
-
 
         _spansChanged?.Invoke();
     }

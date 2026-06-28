@@ -1172,6 +1172,9 @@ public partial class OpcodeTracePresenter
                 HighlightSpan highlightSpan = new HighlightSpan(found, _searchQuery.Length, _activeHighlightColor, generation);
                 element.AddSpan(highlightSpan, _highlightGenerationMap.CurrentGeneration);
 
+                // open the tree path to this match so it is visible without manual expansion
+                element.ExpandAncestors();
+
                 List<HighlightSpan> spans = new List<HighlightSpan>();
                 spans.Add(highlightSpan);
                 SearchMatch match = new SearchMatch(row.PacketIndex, element, spans);
