@@ -18,6 +18,7 @@ public sealed class FieldDisplayNode : System.ComponentModel.INotifyPropertyChan
     private readonly List<FieldDisplayNode> _children;
     private FieldDisplayNode? _parent;
     private bool _isExpanded;
+    private uint _rowTextOffset;                    // offset of this FND's text relative to the OTR start
     private event System.Action? _spansChanged;
     private bool _enableTrace = false;
     private uint _packetIndex;
@@ -39,6 +40,7 @@ public sealed class FieldDisplayNode : System.ComponentModel.INotifyPropertyChan
         _parent = null;
         _isExpanded = false;
         _packetIndex = 0;
+        _rowTextOffset = 0u;
 
         DebugLog.Write(LogChannel.Fields,
             "FieldDisplayNode: created text='" + text + "'", LogLevel.Trace);
@@ -99,6 +101,21 @@ public sealed class FieldDisplayNode : System.ComponentModel.INotifyPropertyChan
             PropertyChanged?.Invoke(this,
                 new System.ComponentModel.PropertyChangedEventArgs(nameof(IsExpanded)));
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // RowTextOffset
+    //
+    // The node's position in document order across one row's searchable elements, assigned during
+    // match generation as the Locate phases visit elements in summary, field-tree, then hex-dump
+    // order.  Monotonic in that visit order, so two nodes in the same row order by this value.
+    // Durable across a match-list rebuild because the node is permanent; lets a search resume
+    // point be ordered against rebuilt matches without a tree walk.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public uint RowTextOffset
+    {
+        get { return _rowTextOffset; }
+        set { _rowTextOffset = value; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -244,11 +261,6 @@ public sealed class FieldDisplayNode : System.ComponentModel.INotifyPropertyChan
                 + " generation=" + span.Generation + "', span count now "
                 + _spans.Count, LogLevel.Info);
         }
-
-        // Notify subscribers that the span list changed so they can rebuild from Spans.  Only a
-        // node bound to a realized element has a subscriber; an unrealized node invokes an empty
-        // delegate list and nothing happens.
-        _spansChanged?.Invoke();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

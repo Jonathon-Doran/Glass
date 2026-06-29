@@ -54,6 +54,7 @@ public partial class OpcodeTracePresenter
     private string _searchQuery;
     private byte[]? _searchQueryBytes;
     private int _matchCount;
+    private uint _matchGeneration = 0u;
     private SearchCursor _searchCursor;
     private SearchQueryType _searchQueryType;
     private readonly HighlightGenerationMap _highlightGenerationMap;
@@ -152,6 +153,11 @@ public partial class OpcodeTracePresenter
 
         DebugLog.Write(LogChannel.Opcodes,
             "OpcodeTracePresenter.Detach: unsubscribed from SignalSessionAdded", LogLevel.Trace);
+    }
+
+    public uint MatchGeneration
+    {
+        get { return _matchGeneration; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -505,6 +511,7 @@ public partial class OpcodeTracePresenter
             if (row.HexDumpElement != null)
             {
                 row.HexDumpElement.Text = hexDump;
+                row.HexDumpElement.NotifySpansChanged();
             }
             repopulated++;
         }
@@ -560,9 +567,6 @@ public partial class OpcodeTracePresenter
         FieldDisplayNode element = match.Element;
         int anchorOffset = match.Anchor.Start;
 
-        DebugLog.Write(LogChannel.Opcodes, "ScrollMatchIntoView: row " + row.PacketIndex +
-            ", match for row " + match.PacketIndex, LogLevel.Info);
-
         _opcodeTraceList.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new System.Action(() =>
         {
             CenterRowInList(row);
@@ -598,24 +602,6 @@ public partial class OpcodeTracePresenter
 
                 ScrollViewer? outerScroller = FindDescendantScrollViewer(_opcodeTraceList);
                 ScrollViewer? elementScroller = FindAncestorScrollViewer(elementBlock);
-
-                if (elementScroller != null)
-                {
-                    DebugLog.Write(LogChannel.Opcodes, "element scroller exists", LogLevel.Info);
-                }
-                else
-                {
-                    DebugLog.Write(LogChannel.Opcodes, "element scroller DOES NOT EXIST", LogLevel.Info);
-                }
-
-                if (outerScroller != null)
-                {
-                    DebugLog.Write(LogChannel.Opcodes, "outer scroller exists", LogLevel.Info);
-                }
-                else
-                {
-                    DebugLog.Write(LogChannel.Opcodes, "outer scroller DOES NOT EXIST", LogLevel.Info);
-                }
 
                 if (elementScroller != null && !object.ReferenceEquals(elementScroller, outerScroller))
                 {
@@ -965,8 +951,9 @@ public partial class OpcodeTracePresenter
     // row:   The row whose payload is scanned.
     // mode:  Search mode gating body scans for collapsed rows.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private void LocateHexDumpHighlights(OpcodeTraceRow row, SearchMode mode)
+    private void LocateHexDumpHighlights(OpcodeTraceRow row, SearchMode mode, ref uint rowTextOffset)
     {
+        DebugLog.Write(LogChannel.Opcodes, "MaxHexBytes=" + _maxHexBytes, LogLevel.Info);
         if (mode == SearchMode.Fast && !row.IsExpanded)
         {
             return;
@@ -980,6 +967,7 @@ public partial class OpcodeTracePresenter
             return;
         }
 
+        hexElement.RowTextOffset = rowTextOffset;
         byte[] queryBytes = _searchQueryBytes!;
         if (queryBytes.Length == 0)
         {
@@ -1095,7 +1083,7 @@ public partial class OpcodeTracePresenter
                 matchSpans.Add(asciiSpan);
             }
 
-            SearchMatch match = new SearchMatch(row.PacketIndex, hexElement, matchSpans);
+            SearchMatch match = new SearchMatch(row.PacketIndex, hexElement, matchSpans, _matchGeneration);
             row.Matches.Add(match);
             _matches.Add(match);
 
@@ -1104,6 +1092,8 @@ public partial class OpcodeTracePresenter
                 + ", " + matchSpans.Count + " span(s) across lines " + firstLine + "-" + lastLine,
                 LogLevel.Trace);
         }
+
+        rowTextOffset += (uint)hexElement.Text.Length;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1117,7 +1107,7 @@ public partial class OpcodeTracePresenter
     // row:   The row whose field tree is scanned.
     // mode:  Search mode gating the scan for collapsed rows.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private void LocateFieldHighlights(OpcodeTraceRow row, SearchMode mode)
+    private void LocateFieldHighlights(OpcodeTraceRow row, SearchMode mode, ref uint rowTextOffset)
     {
         if (mode == SearchMode.Fast && !row.IsExpanded)
         {
@@ -1136,7 +1126,7 @@ public partial class OpcodeTracePresenter
         }
 
         int before = row.Matches.Count;
-        ScanFieldNode(root, row);
+        ScanFieldNode(root, row, ref rowTextOffset);
         int added = row.Matches.Count - before;
 
         DebugLog.Write(LogChannel.Fields,
@@ -1154,9 +1144,11 @@ public partial class OpcodeTracePresenter
     // element:  The element to scan.
     // row:      The row receiving the SearchMatches.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private void ScanFieldNode(FieldDisplayNode element, OpcodeTraceRow row)
+    private void ScanFieldNode(FieldDisplayNode element, OpcodeTraceRow row, ref uint rowTextOffset)
     {
         string text = element.Text;
+        element.RowTextOffset = rowTextOffset;
+
         if (!string.IsNullOrEmpty(text))
         {
             int scanPos = 0;
@@ -1177,7 +1169,7 @@ public partial class OpcodeTracePresenter
 
                 List<HighlightSpan> spans = new List<HighlightSpan>();
                 spans.Add(highlightSpan);
-                SearchMatch match = new SearchMatch(row.PacketIndex, element, spans);
+                SearchMatch match = new SearchMatch(row.PacketIndex, element, spans, _matchGeneration);
                 row.Matches.Add(match);
                 _matches.Add(match);
 
@@ -1189,9 +1181,10 @@ public partial class OpcodeTracePresenter
             }
         }
 
+        rowTextOffset += (uint)text.Length;
         for (int childIndex = 0; childIndex < element.Children.Count; childIndex++)
         {
-            ScanFieldNode(element.Children[childIndex], row);
+            ScanFieldNode(element.Children[childIndex], row, ref rowTextOffset);
         }
     }
 
@@ -1206,11 +1199,11 @@ public partial class OpcodeTracePresenter
     //
     // row:  The row whose summary cells are scanned.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private void LocateSummaryHighlights(OpcodeTraceRow row)
+    private void LocateSummaryHighlights(OpcodeTraceRow row, ref uint rowTextOffset)
     {
-        ScanSummaryElement(row.TimestampElement, row);
-        ScanSummaryElement(row.OpcodeHexElement, row);
-        ScanSummaryElement(row.OpcodeNameElement, row);
+        ScanSummaryElement(row.TimestampElement, row, ref rowTextOffset);
+        ScanSummaryElement(row.OpcodeHexElement, row, ref rowTextOffset);
+        ScanSummaryElement(row.OpcodeNameElement, row, ref rowTextOffset);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1224,9 +1217,10 @@ public partial class OpcodeTracePresenter
     // element:  The summary cell element to scan.
     // row:      The row receiving the SearchMatches.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private void ScanSummaryElement(FieldDisplayNode element, OpcodeTraceRow row)
+    private void ScanSummaryElement(FieldDisplayNode element, OpcodeTraceRow row, ref uint rowTextOffset)
     {
         element.PacketIndex = row.PacketIndex;
+        element.RowTextOffset = rowTextOffset;
 
         string text = element.Text;
         if (string.IsNullOrEmpty(text))
@@ -1249,7 +1243,7 @@ public partial class OpcodeTracePresenter
 
             List<HighlightSpan> spans = new List<HighlightSpan>();
             spans.Add(highlightSpan);
-            SearchMatch match = new SearchMatch(row.PacketIndex, element, spans);
+            SearchMatch match = new SearchMatch(row.PacketIndex, element, spans, _matchGeneration);
             row.Matches.Add(match);
             _matches.Add(match);
 
@@ -1264,6 +1258,8 @@ public partial class OpcodeTracePresenter
 
             scanPos = found + _searchQuery.Length;
         }
+
+        rowTextOffset += (uint)text.Length;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1346,23 +1342,23 @@ public partial class OpcodeTracePresenter
         {
             DebugLog.Write(LogChannel.Opcodes,
                 "OpcodeTracePresenter.RebuildIfChanged: query unchanged, matches kept",
-                LogLevel.Trace);
+                LogLevel.Info);
             return;
         }
 
         SetSearchQuery(query);
 
+
         int rowCount = _rows.Count;
-        int totalMatches = 0;
-        for (int i = 0; i < rowCount; i = i + 1)
+        _matchCount = 0;
+        for (int i = 0; i < rowCount; i++)
         {
-            totalMatches = totalMatches + RecomputeRowHighlights(_rows[i], mode);
+            _matchCount += RecomputeRowHighlights(_rows[i], mode);
         }
-        _matchCount = totalMatches;
 
         DebugLog.Write(LogChannel.Opcodes,
             "OpcodeTracePresenter.RebuildIfChanged: rebuilt, " + _matches.Count
-            + " matches across " + rowCount + " rows", LogLevel.Trace);
+            + " matches across " + rowCount + " rows", LogLevel.Info);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1432,9 +1428,10 @@ public partial class OpcodeTracePresenter
                 + row.PacketIndex, LogLevel.Trace);
         }
 
-        LocateSummaryHighlights(row);
-        LocateFieldHighlights(row, mode);
-        LocateHexDumpHighlights(row, mode);
+        uint rowTextOffset = 0u;
+        LocateSummaryHighlights(row, ref rowTextOffset);
+        LocateFieldHighlights(row, mode, ref rowTextOffset);
+        LocateHexDumpHighlights(row, mode, ref rowTextOffset);
 
         int currentRowMatches = _matches.Count - startingMatchCount;
 
@@ -1460,6 +1457,8 @@ public partial class OpcodeTracePresenter
     public void SetSearchQuery(string? query)
     {
         _matchCount = 0;
+        _searchCursor.InvalidateMatchIndex();
+        _matchGeneration++;
 
         if (string.IsNullOrWhiteSpace(query))
         {
@@ -1467,7 +1466,7 @@ public partial class OpcodeTracePresenter
             _searchQueryType = SearchQueryType.Empty;
             _searchQueryBytes = null;
             DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.SetSearchQuery: cleared", LogLevel.Trace);
+                "OpcodeTracePresenter.SetSearchQuery: cleared", LogLevel.Info);
             return;
         }
 
@@ -1489,7 +1488,7 @@ public partial class OpcodeTracePresenter
 
         DebugLog.Write(LogChannel.Opcodes,
             "OpcodeTracePresenter.SetSearchQuery: query='" + query + "' type=" + _searchQueryType
-            + " bytes=" + _searchQueryBytes.Length, LogLevel.Trace);
+            + " bytes=" + _searchQueryBytes.Length, LogLevel.Info);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1686,6 +1685,7 @@ public partial class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     public SearchMatch? FindNext(string query, SearchMode mode)
     {
+        DebugLog.Write(LogChannel.Opcodes, "FindNext", LogLevel.Info);
         RebuildIfChanged(query, mode);
 
         _searchCursor.AdvanceForward();
@@ -1890,9 +1890,8 @@ public partial class OpcodeTracePresenter
     {
         SearchMatch candidate = _matches[(int)index];
         HighlightSpan anchor = candidate.Anchor;
-        uint currentGeneration = _highlightGenerationMap.CurrentGeneration(anchor.OverrideColor);
 
-        if (anchor.Generation == currentGeneration)
+        if (candidate.Generation == _matchGeneration)
         {
             DebugLog.Write(LogChannel.Opcodes,
                 "OpcodeTracePresenter.RemoveMatchIfStale: live match at index " + index
@@ -2002,10 +2001,13 @@ public partial class OpcodeTracePresenter
         {
             _characterNameCache.Clear();
         }
-        _maxHexBytes = 64;
+
         _searchQuery = string.Empty;
         _searchQueryBytes = null;
         _matchCount = 0;
+        _matchGeneration++;
+        _matches.Clear();
+        _searchCursor.Reset();
         _searchQueryType = SearchQueryType.Empty;
 
         DebugLog.Write(LogChannel.Opcodes, "OpcodeTracePresenter.Clear: cleared", LogLevel.Trace);

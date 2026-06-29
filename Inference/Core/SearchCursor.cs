@@ -40,8 +40,11 @@ public partial class OpcodeTracePresenter
         private readonly OpcodeTracePresenter _owner;
         private CursorState _state;
         private uint _matchIndex;
-        private uint _rowPacketIndex;       // this is a durable ID unlike a row index
-        private OpcodeTraceRow? _currentRow; // the row the cursor currently sits on; null only when the trace has no rows
+        private uint _rowPacketIndex;             // this is a durable ID unlike a row index
+        private FieldDisplayNode? _anchorElement; // durable node of the cursor's match, valid across a rebuild
+        private int _anchorTextOffset;            // anchor span offset within _anchorElement.Text
+        private bool _matchIndexValid;            // true while _matchIndex names a live position; false when the anchor must re-resolve it
+        private OpcodeTraceRow? _currentRow;      // the row the cursor currently sits on; null only when the trace has no rows
         private bool _wrap;
         private readonly ArgbColor _cursorColor;
 
@@ -61,6 +64,9 @@ public partial class OpcodeTracePresenter
             _rowPacketIndex = 0u;
             _currentRow = null;
             _wrap = false;
+            _anchorElement = null;
+            _anchorTextOffset = 0;
+            _matchIndexValid = false;
             _cursorColor = new ArgbColor(0x800000FFu);
         }
 
@@ -294,9 +300,7 @@ public partial class OpcodeTracePresenter
                     "SearchCursor.MoveToMessage: row message " + messageIndex
                     + " owns matches, landing on first at global index " + globalIndex, LogLevel.Info);
 
-                _state = CursorState.OnMatch;
-                _matchIndex = (uint)globalIndex;
-                _rowPacketIndex = messageIndex;
+                SetCursorOnMatch((uint)globalIndex);
 
                 BringCursorIntoView(outgoingElement);
                 return;
@@ -332,6 +336,8 @@ public partial class OpcodeTracePresenter
                 return;
             }
 
+            DebugLog.Write(LogChannel.Opcodes, "AdvanceForward, matches=" + _owner._matches.Count, LogLevel.Info);
+
             // capture the outgoing match's element before the walk, while _matchIndex still names
             // the pre-move match; a mid-walk prune can shift the list past recovery afterward
             FieldDisplayNode? outgoingElement = null;
@@ -341,14 +347,22 @@ public partial class OpcodeTracePresenter
             }
 
             uint globalMatchIndex;
-            if (_state == CursorState.OnMatch)
+            if (_state == CursorState.OnMatch && _matchIndexValid)
             {
                 globalMatchIndex = _matchIndex + 1u;
+            }
+            else if (_state == CursorState.OnMatch && !_matchIndexValid)
+            {
+                globalMatchIndex = StartIndexForAnchorForward();
+
+                SearchMatch match = _owner._matches[(int) globalMatchIndex];
             }
             else
             {
                 globalMatchIndex = StartIndexForRow();
             }
+
+            DebugLog.Write(LogChannel.Opcodes, "globalMatchIndex is " +  globalMatchIndex, LogLevel.Info);
 
             uint examined = 0u;
             uint limit = (uint)_owner._matches.Count;
@@ -361,13 +375,13 @@ public partial class OpcodeTracePresenter
                     {
                         DebugLog.Write(LogChannel.Opcodes,
                             "SearchCursor.AdvanceForward: end reached, wrap off, cursor unchanged",
-                            LogLevel.Info);
+                            LogLevel.Trace);
                         return;
                     }
 
                     globalMatchIndex = 0u;
                     DebugLog.Write(LogChannel.Opcodes,
-                        "SearchCursor.AdvanceForward: wrapped to index 0", LogLevel.Info);
+                        "SearchCursor.AdvanceForward: wrapped to index 0", LogLevel.Trace);
                 }
 
                 if (_owner.RemoveMatchIfStale(globalMatchIndex) == true)
@@ -379,10 +393,13 @@ public partial class OpcodeTracePresenter
                 DebugLog.Write(LogChannel.Opcodes,
                     "SearchCursor.AdvanceForward: live match found at index " + globalMatchIndex,
                     LogLevel.Info);
+                SearchMatch matchTest = _owner._matches[(int) globalMatchIndex];
+                DebugLog.Write(LogChannel.Opcodes,
+                    "This match is packetIndex=" + matchTest.PacketIndex + ", RowTextOffset="
+                    + matchTest.Element.RowTextOffset + ", Anchor.Start=" + matchTest.Anchor.Start,
+                    LogLevel.Info);
 
-                _state = CursorState.OnMatch;
-                _matchIndex = globalMatchIndex;
-                _rowPacketIndex = _owner._matches[(int)globalMatchIndex].PacketIndex;
+                SetCursorOnMatch(globalMatchIndex);
 
                 OpcodeTraceRow? newRow;
                 if (!_owner._rowByPacketIndex.TryGetValue(_rowPacketIndex, out newRow))
@@ -417,7 +434,7 @@ public partial class OpcodeTracePresenter
             if (_owner._matches.Count == 0)
             {
                 DebugLog.Write(LogChannel.Opcodes,
-                    "SearchCursor.AdvanceBackward: empty match list, cursor unchanged", LogLevel.Info);
+                    "SearchCursor.AdvanceBackward: empty match list, cursor unchanged", LogLevel.Trace);
                 return;
             }
 
@@ -431,7 +448,11 @@ public partial class OpcodeTracePresenter
 
             uint globalMatchIndex;
             bool started;
-            if (_state == CursorState.OnMatch)
+            if (_state == CursorState.OnMatch && !_matchIndexValid)
+            {
+                globalMatchIndex = StartIndexForAnchorBackward(out started);
+            }
+            else if (_state == CursorState.OnMatch)
             {
                 if (_matchIndex == 0u)
                 {
@@ -439,14 +460,14 @@ public partial class OpcodeTracePresenter
                     {
                         DebugLog.Write(LogChannel.Opcodes,
                             "SearchCursor.AdvanceBackward: at start, wrap off, cursor unchanged",
-                            LogLevel.Info);
+                            LogLevel.Trace);
                         return;
                     }
 
                     globalMatchIndex = (uint)_owner._matches.Count - 1u;
                     DebugLog.Write(LogChannel.Opcodes,
                         "SearchCursor.AdvanceBackward: wrapped to last index " + globalMatchIndex,
-                        LogLevel.Info);
+                        LogLevel.Trace);
                 }
                 else
                 {
@@ -463,7 +484,7 @@ public partial class OpcodeTracePresenter
             {
                 DebugLog.Write(LogChannel.Opcodes,
                     "SearchCursor.AdvanceBackward: no match at or before row, cursor unchanged",
-                    LogLevel.Info);
+                    LogLevel.Trace);
                 return;
             }
 
@@ -480,7 +501,7 @@ public partial class OpcodeTracePresenter
                     {
                         DebugLog.Write(LogChannel.Opcodes,
                             "SearchCursor.AdvanceBackward: list emptied by pruning, cursor unchanged",
-                            LogLevel.Info);
+                            LogLevel.Trace);
                         return;
                     }
 
@@ -494,14 +515,14 @@ public partial class OpcodeTracePresenter
                         {
                             DebugLog.Write(LogChannel.Opcodes,
                                 "SearchCursor.AdvanceBackward: start reached after prune, wrap off, cursor unchanged",
-                                LogLevel.Info);
+                                LogLevel.Trace);
                             return;
                         }
 
                         globalMatchIndex = (uint)_owner._matches.Count - 1u;
                         DebugLog.Write(LogChannel.Opcodes,
                             "SearchCursor.AdvanceBackward: wrapped to last index " + globalMatchIndex
-                            + " after prune", LogLevel.Info);
+                            + " after prune", LogLevel.Trace);
                     }
                     else
                     {
@@ -513,11 +534,9 @@ public partial class OpcodeTracePresenter
 
                 DebugLog.Write(LogChannel.Opcodes,
                     "SearchCursor.AdvanceBackward: live match found at index " + globalMatchIndex,
-                    LogLevel.Info);
+                    LogLevel.Trace);
 
-                _state = CursorState.OnMatch;
-                _matchIndex = globalMatchIndex;
-                _rowPacketIndex = _owner._matches[(int)globalMatchIndex].PacketIndex;
+                SetCursorOnMatch(globalMatchIndex);
 
                 OpcodeTraceRow? newRow;
                 if (!_owner._rowByPacketIndex.TryGetValue(_rowPacketIndex, out newRow))
@@ -534,7 +553,187 @@ public partial class OpcodeTracePresenter
             }
 
             DebugLog.Write(LogChannel.Opcodes,
-                "SearchCursor.AdvanceBackward: cursor unchanged, no live match found", LogLevel.Info);
+                "SearchCursor.AdvanceBackward: cursor unchanged, no live match found", LogLevel.Trace);
+        }
+
+        ///////////////////////////////////////////////////////////////////////////////////////
+        // StartIndexForAnchorForward
+        //
+        // Resolves the starting index for a forward advance when the stored match index is
+        // invalid after a rebuild.  Scans _matches for the first match whose element's
+        // SearchOrdinal is at or after the anchor element's ordinal.  When ordinals are equal
+        // (same node), the anchor offset breaks the tie: the match must start at or after
+        // _anchorTextOffset.  Returns the match count when no qualifying match exists, so the
+        // forward scan sees a past-the-end start and applies its end-of-list handling.
+        ///////////////////////////////////////////////////////////////////////////////////////
+        private uint StartIndexForAnchorForward()
+        {
+            if (_anchorElement == null)
+            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "SearchCursor.StartIndexForAnchorForward: no anchor, returning end index",
+                    LogLevel.Warn);
+                return (uint)_owner._matches.Count;
+            }
+
+            for (uint i = 0u; i < (uint)_owner._matches.Count; i++)
+            {
+                SearchMatch candidate = _owner._matches[(int)i];
+
+                DebugLog.Write(LogChannel.Opcodes,
+                    "candidate PacketIndex=" + candidate.PacketIndex + ", RowTextOffset=" +
+                    candidate.Element.RowTextOffset + ", Anchor.Start=" + candidate.Anchor.Start,
+                    LogLevel.Info);
+
+                HighlightSpan anchor = candidate.Anchor;
+                if (anchor.Generation < _owner._highlightGenerationMap.CurrentGeneration(anchor.OverrideColor))
+                {
+                    continue;
+                }
+
+                if (candidate.PacketIndex == _rowPacketIndex
+                    && candidate.Element.RowTextOffset + candidate.Anchor.Start >= _anchorTextOffset)
+                {
+                    DebugLog.Write(LogChannel.Opcodes,
+                        "SearchCursor.StartIndexForAnchorForward: resolved to index " + i
+                        + " same packet, rowTextOffset=" + candidate.Element.RowTextOffset, LogLevel.Info);
+                    return i;
+                }
+
+                if (candidate.PacketIndex > _rowPacketIndex)
+                {
+                    DebugLog.Write(LogChannel.Opcodes,
+                        "SearchCursor.StartIndexForAnchorForward: resolved to index " + i
+                        + " packetIndex=" + candidate.PacketIndex, LogLevel.Info);
+                    return i;
+                }
+            }
+
+            DebugLog.Write(LogChannel.Opcodes,
+                "SearchCursor.StartIndexForAnchorForward: no match at or after anchor packetIndex "
+                + _rowPacketIndex + " rowTextOffset=" + _anchorTextOffset
+                + ", returning end index", LogLevel.Info);
+            return (uint)_owner._matches.Count;
+        }
+
+        ///////////////////////////////////////////////////////////////////////////////////////
+        // StartIndexForAnchorBackward
+        //
+        // Resolves the starting index for a backward advance when the stored match index is
+        // invalid after a rebuild.  Scans _matches in reverse for the last match whose
+        // element's SearchOrdinal is at or before the anchor element's ordinal.  When
+        // ordinals are equal (same node), the anchor offset breaks the tie: the match must
+        // start at or before _anchorTextOffset.  When no qualifying match exists, found is set
+        // false and zero is returned, signaling the backward scan to leave the cursor
+        // unchanged.
+        //
+        // found:    Set true when a qualifying match exists, false when none does.
+        //
+        // returns:  The subscript of the last qualifying match when found is true; zero when
+        //           found is false.
+        ///////////////////////////////////////////////////////////////////////////////////////
+        private uint StartIndexForAnchorBackward(out bool found)
+        {
+            if (_anchorElement == null)
+            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "SearchCursor.StartIndexForAnchorBackward: no anchor, cannot resolve",
+                    LogLevel.Warn);
+                found = false;
+                return 0u;
+            }
+
+            uint count = (uint)_owner._matches.Count;
+
+            for (uint i = count; i > 0u; i--)
+            {
+                uint candidateIndex = i - 1u;
+                SearchMatch candidate = _owner._matches[(int)candidateIndex];
+
+                HighlightSpan anchor = candidate.Anchor;
+                if (anchor.Generation < _owner._highlightGenerationMap.CurrentGeneration(anchor.OverrideColor))
+                {
+                    continue;
+                }
+
+                if (candidate.PacketIndex == _rowPacketIndex
+                    && candidate.Element.RowTextOffset + candidate.Anchor.Start <= _anchorTextOffset)
+                {
+                    DebugLog.Write(LogChannel.Opcodes,
+                        "SearchCursor.StartIndexForAnchorBackward: resolved to index " + candidateIndex
+                        + " same packet, rowTextOffset=" + candidate.Element.RowTextOffset, LogLevel.Trace);
+                    found = true;
+                    return candidateIndex;
+                }
+
+                if (candidate.PacketIndex < _rowPacketIndex)
+                {
+                    DebugLog.Write(LogChannel.Opcodes,
+                        "SearchCursor.StartIndexForAnchorBackward: resolved to index " + candidateIndex
+                        + " packetIndex=" + candidate.PacketIndex, LogLevel.Trace);
+                    found = true;
+                    return candidateIndex;
+                }
+            }
+
+            DebugLog.Write(LogChannel.Opcodes,
+                "SearchCursor.StartIndexForAnchorBackward: no match at or before anchor packetIndex "
+                + _rowPacketIndex + " rowTextOffset=" + _anchorTextOffset
+                + ", cursor will be left unchanged", LogLevel.Trace);
+            found = false;
+            return 0u;
+        }
+
+        ///////////////////////////////////////////////////////////////////////////////////////
+        // SetCursorOnMatch
+        //
+        // The single sink through which the cursor takes up residence on a resolved match.  Sets
+        // the cursor OnMatch at the given subscript, records the match's row packet index, and
+        // records the match's durable position — the FieldDisplayNode its anchor span sits on and
+        // that span's character offset.  Every landing path routes through here so the durable
+        // position is recorded in exactly one place.
+        //
+        // The durable position is what lets a relative search survive the match list being rebuilt
+        // by the next query.  A match subscript is invalidated the instant the list is rebuilt; the
+        // recorded node and offset are not, because FieldDisplayNode instances are permanent and
+        // reference-stable across a rebuild and the offset is into that node's own Text.  The next
+        // directional advance brackets from this recorded position when the subscript no longer
+        // means anything.
+        //
+        // newIndex:  The subscript into the owner's _matches the cursor is landing on.  Must be in
+        //            range; the caller resolves and bounds-checks it before landing.
+        ///////////////////////////////////////////////////////////////////////////////////////
+        private void SetCursorOnMatch(uint newIndex)
+        {
+            SearchMatch match = _owner._matches[(int)newIndex];
+
+            _state = CursorState.OnMatch;
+            _matchIndex = newIndex;
+            _matchIndexValid = true;
+            _rowPacketIndex = match.PacketIndex;
+            _anchorElement = match.Element;
+            _anchorTextOffset = (int) match.Element.RowTextOffset + match.Anchor.Start;
+
+            DebugLog.Write(LogChannel.Opcodes,
+                "SearchCursor.SetCursorOnMatch: index " + newIndex + " packetIndex "
+                + _rowPacketIndex + " anchorOffset " + _anchorTextOffset, LogLevel.Trace);
+        }
+
+        ///////////////////////////////////////////////////////////////////////////////////////
+        // InvalidateMatchIndex
+        //
+        // Marks the cursor's stored match subscript as no longer naming a live position in the
+        // owner's match list.  While invalid, the next directional advance re-resolves its
+        // starting position from the cursor's durable anchor — the FieldDisplayNode and character
+        // offset recorded at the last landing — instead of trusting the stored subscript.  A
+        // landing then assigns a fresh subscript and makes it valid again.
+        ///////////////////////////////////////////////////////////////////////////////////////
+        public void InvalidateMatchIndex()
+        {
+            _matchIndexValid = false;
+
+            DebugLog.Write(LogChannel.Opcodes,
+                "SearchCursor.InvalidateMatchIndex: anchor will drive the next advance", LogLevel.Info);
         }
 
         ///////////////////////////////////////////////////////////////////////////////////////
@@ -595,14 +794,14 @@ public partial class OpcodeTracePresenter
                 {
                     DebugLog.Write(LogChannel.Opcodes,
                         "SearchCursor.StartIndexForRow: row packetIndex " + _rowPacketIndex
-                        + " resolved to match index " + i, LogLevel.Trace);
+                        + " resolved to match index " + i, LogLevel.Info);
                     return i;
                 }
             }
 
             DebugLog.Write(LogChannel.Opcodes,
                 "SearchCursor.StartIndexForRow: no match at or after row packetIndex "
-                + _rowPacketIndex + ", returning end index " + _owner._matches.Count, LogLevel.Trace);
+                + _rowPacketIndex + ", returning end index " + _owner._matches.Count, LogLevel.Info);
             return (uint)_owner._matches.Count;
         }
 
@@ -656,6 +855,27 @@ public partial class OpcodeTracePresenter
             DebugLog.Write(LogChannel.Opcodes,
                 "SearchCursor.Repaint: stamped " + stamped + " cursor span(s) at match index "
                 + _matchIndex, LogLevel.Trace);
+        }
+
+        ///////////////////////////////////////////////////////////////////////////////////////
+        // Reset
+        //
+        // Returns the cursor to its initial state.  Clears all match and anchor state,
+        // parks the cursor OnRow at packet index zero.  Called when the trace is cleared
+        // so no stale match index, anchor, or row reference survives into the next capture.
+        ///////////////////////////////////////////////////////////////////////////////////////
+        public void Reset()
+        {
+            _state = CursorState.OnRow;
+            _matchIndex = 0u;
+            _rowPacketIndex = 0u;
+            _currentRow = null;
+            _wrap = false;
+            _anchorElement = null;
+            _anchorTextOffset = 0;
+            _matchIndexValid = false;
+            DebugLog.Write(LogChannel.Opcodes,
+                "SearchCursor.Reset: cursor reset to initial state", LogLevel.Info);
         }
 
         ///////////////////////////////////////////////////////////////////////////////////////

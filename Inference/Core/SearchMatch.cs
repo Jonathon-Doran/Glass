@@ -48,6 +48,7 @@ using System.Collections.Generic;
 public readonly struct SearchMatch
 {
     public uint PacketIndex { get; }
+    public uint Generation {  get; }
     public FieldDisplayNode Element { get; }
     public IReadOnlyList<HighlightSpan> Spans { get; }
 
@@ -60,12 +61,15 @@ public readonly struct SearchMatch
     // packetIndex:  The arrival index of the row whose payload produced the hit.
     // element:      The FieldDisplayNode whose Text contains the hit.
     // spans:        The hit's highlight components, anchor first.  Must hold at least one span.
+    // generation:   The match generation
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public SearchMatch(uint packetIndex, FieldDisplayNode element, IReadOnlyList<HighlightSpan> spans)
+    public SearchMatch(uint packetIndex, FieldDisplayNode element, IReadOnlyList<HighlightSpan> spans,
+        uint generation)
     {
         PacketIndex = packetIndex;
         Element = element;
         Spans = spans;
+        Generation = generation;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
