@@ -454,7 +454,7 @@ public partial class GateEditor : Window
         if (PatchLevelComboBox.SelectedItem == null)
         {
             DebugLog.Write(LogChannel.Fields, "GateEditor.SaveButton_Click: "
-                + "no patch level selected, ignoring", LogLevel.Trace);
+                + "no patch level selected, ignoring", LogLevel.Info);
             return;
         }
 
@@ -556,7 +556,8 @@ public partial class GateEditor : Window
                 cmd.ExecuteNonQuery();
 
                 DebugLog.Write(LogChannel.Fields, "GateEditor.SaveButton_Click: inserted gate '"
-                    + newName + "'", LogLevel.Trace);
+                    + newName + "'", LogLevel.Info);
+                DebugLog.Write(LogChannel.Fields, "ChildCollection is " + childCollection, LogLevel.Info);
             }
             else
             {
@@ -582,11 +583,12 @@ public partial class GateEditor : Window
                 cmd.ExecuteNonQuery();
 
                 DebugLog.Write(LogChannel.Fields, "GateEditor.SaveButton_Click: updated gate '"
-                    + _loadedGateName + "' -> '" + newName + "'", LogLevel.Trace);
+                    + _loadedGateName + "' -> '" + newName + "'", LogLevel.Info);
+                DebugLog.Write(LogChannel.Fields, "childCollection: " + childCollection, LogLevel.Info);
             }
 
             tx.Commit();
-            DebugLog.Write(LogChannel.Fields, "GateEditor.SaveButton_Click: committed", LogLevel.Trace);
+            DebugLog.Write(LogChannel.Fields, "GateEditor.SaveButton_Click: committed", LogLevel.Info);
         }
         catch (Exception ex)
         {

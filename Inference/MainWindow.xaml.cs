@@ -121,12 +121,12 @@ public partial class MainWindow : Window
 
         GlassContext.BufferPool = new BufferPool(
             new uint[] { 16, 64, 256, 512, 1024, 2048, 16384, 65536, 262144, 524288 },
-            new uint[] { 1000, 1000, 1000, 1000, 1000, 1000, 1000, 20, 20, 20 });
+            new uint[] { 1000, 10000, 1000, 1000, 1000, 1000, 1000, 20, 20, 20 });
         GcMonitor.Start(5);
     }
     private void InitializeLogging()
     {
-        DebugLog.SetMinimumLevel(LogLevel.Info);
+        DebugLog.SetMinimumLevel(LogLevel.Trace);
 
         GlassDebugLogHandler glassDebugLogHandler = new GlassDebugLogHandler("glass.log");
         DebugLog.AddHandler(LogSink.GlassDebugLogfile, glassDebugLogHandler);

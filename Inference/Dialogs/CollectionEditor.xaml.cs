@@ -18,10 +18,9 @@ namespace Inference.Dialogs;
 //
 // Modeless editor for the collection-centric patch-data tables: FieldCollection, PacketField,
 // and Gate.  A patch level and a collection are selected; the collection's PacketField
-// rows are edited in one grid.  A field's gate is entered as an expression that the save path
-// translates into a Gate row named "Gate_<child>" and the field's encoding; a field's
-// predicate is entered as a string validated on save.  Reads and writes via direct SQL through
-// the Database singleton.
+// rows are edited in one grid.  A gated field stores a Gate.name string as its encoding;
+// gate rows are created and edited separately in GateEditor.  A field's predicate is entered
+// as a string validated on save.  Reads and writes via direct SQL through the Database singleton.
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public partial class CollectionEditor : Window
 {
@@ -56,26 +55,12 @@ public partial class CollectionEditor : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // KnownGateNames
     //
-    // The gate expressions for every Gate row in the selected patch level, formatted by
-    // FormatGateExpression, bound as the ItemsSource of the gate combobox in the fields grid's
-    // row details.  The collection instance is created once and only ever mutated, so bindings
-    // established when a row's details render remain valid across repopulation.
+    // The name of every Gate row in the selected patch level, ordered by name, bound as the
+    // ItemsSource of the gate combobox in the fields grid's row details.  The collection instance
+    // is created once and only ever mutated, so bindings established when a row's details render
+    // remain valid across repopulation.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public ObservableCollection<string> KnownGateNames { get; } = new ObservableCollection<string>();
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GateExpression
-    //
-    // The parsed parts of a gate expression entered in the fields grid.  ChildCollection is the
-    // child FieldCollection name.  Kind is the multiplicity rule.  CountFieldName is the field
-    // whose value supplies the repeat count for a Times gate, and is empty for Once and UntilEnd.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private struct GateExpression
-    {
-        public string ChildCollection;
-        public MultiplicityKind Kind;
-        public string CountFieldName;
-    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // CollectionDropdownItem
@@ -248,155 +233,6 @@ public partial class CollectionEditor : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // ParseGateExpression
-    //
-    // Parses a gate expression into its child collection, multiplicity kind, and optional count
-    // field.  The forms are:
-    //
-    //   XXX               - Once: decode child collection XXX exactly once.
-    //   XXX*<FieldName>    - Times: decode XXX a number of times read from FieldName.
-    //   XXX*UntilEnd       - UntilEnd: decode XXX until the payload is exhausted.
-    //
-    // Whitespace around the whole expression and around each part is trimmed.  The literal
-    // "UntilEnd" after the asterisk selects the UntilEnd kind; any other text after the asterisk
-    // is a count field name and selects the Times kind.  An expression with no asterisk is the
-    // Once kind with no count field.
-    //
-    // Parameters:
-    //   raw   - The raw gate expression from the grid cell.
-    //   gate  - On success, receives the parsed child collection, kind, and count field.
-    //
-    // Returns:
-    //   true when the expression parsed into a child collection; false when the expression is
-    //   empty or the child collection name is missing.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private bool ParseGateExpression(string raw, out GateExpression gate)
-    {
-        gate = default;
-        gate.ChildCollection = string.Empty;
-        gate.Kind = MultiplicityKind.Once;
-        gate.CountFieldName = string.Empty;
-
-        if (raw == null)
-        {
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.ParseGateExpression: null expression, parse failed", LogLevel.Warn);
-            return false;
-        }
-
-        string trimmed = raw.Trim();
-        if (trimmed.Length == 0)
-        {
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.ParseGateExpression: empty expression, parse failed", LogLevel.Warn);
-            return false;
-        }
-
-        int asteriskIndex = trimmed.IndexOf('*');
-        if (asteriskIndex < 0)
-        {
-            gate.ChildCollection = trimmed;
-            gate.Kind = MultiplicityKind.Once;
-            gate.CountFieldName = string.Empty;
-
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.ParseGateExpression: parsed '"
-                + trimmed + "' as Once child='" + gate.ChildCollection + "'", LogLevel.Trace);
-            return true;
-        }
-
-        string childPart = trimmed.Substring(0, asteriskIndex).Trim();
-        string suffixPart = trimmed.Substring(asteriskIndex + 1).Trim();
-
-        if (childPart.Length == 0)
-        {
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.ParseGateExpression: expression '"
-                + trimmed + "' has no child collection before '*', parse failed", LogLevel.Warn);
-            return false;
-        }
-
-        if (suffixPart.Length == 0)
-        {
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.ParseGateExpression: expression '"
-                + trimmed + "' has '*' but no count field or UntilEnd, parse failed", LogLevel.Warn);
-            return false;
-        }
-
-        gate.ChildCollection = childPart;
-
-        if (suffixPart == "UntilEnd")
-        {
-            gate.Kind = MultiplicityKind.UntilEnd;
-            gate.CountFieldName = string.Empty;
-
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.ParseGateExpression: parsed '"
-                + trimmed + "' as UntilEnd child='" + gate.ChildCollection + "'", LogLevel.Trace);
-            return true;
-        }
-
-        gate.Kind = MultiplicityKind.Times;
-        gate.CountFieldName = suffixPart;
-
-        DebugLog.Write(LogChannel.Fields, "CollectionEditor.ParseGateExpression: parsed '"
-            + trimmed + "' as Times child='" + gate.ChildCollection + "' countField='"
-            + gate.CountFieldName + "'", LogLevel.Trace);
-        return true;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // FormatGateExpression
-    //
-    // Builds the gate expression string shown in the fields grid from a gate's child collection,
-    // multiplicity kind, and count field.  The inverse of ParseGateExpression:
-    //
-    //   Once      -> XXX
-    //   Times     -> XXX*<FieldName>
-    //   UntilEnd  -> XXX*UntilEnd
-    //
-    // An empty child collection yields the empty string, representing a field with no gate.
-    //
-    // Parameters:
-    //   childCollection  - The child FieldCollection name.
-    //   kind             - The multiplicity rule.
-    //   countFieldName   - The count field for a Times gate; ignored for Once and UntilEnd.
-    //
-    // Returns:
-    //   The gate expression string, or the empty string when childCollection is empty.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private string FormatGateExpression(string childCollection, MultiplicityKind kind, string countFieldName)
-    {
-        if (string.IsNullOrWhiteSpace(childCollection) == true)
-        {
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.FormatGateExpression: empty child collection, "
-                + "returning empty expression", LogLevel.Warn);
-            return string.Empty;
-        }
-
-        string result;
-        switch (kind)
-        {
-            case MultiplicityKind.Once:
-                result = childCollection;
-                break;
-
-            case MultiplicityKind.Times:
-                result = childCollection + "*" + countFieldName;
-                break;
-
-            case MultiplicityKind.UntilEnd:
-                result = childCollection + "*UntilEnd";
-                break;
-
-            default:
-                DebugLog.Write(LogChannel.Fields, "CollectionEditor.FormatGateExpression: unhandled kind "
-                    + kind + " for child '" + childCollection + "', returning child name only", LogLevel.Warn);
-                result = childCollection;
-                break;
-        }
-
-        DebugLog.Write(LogChannel.Fields, "CollectionEditor.FormatGateExpression: child='" + childCollection
-            + "' kind=" + kind + " countField='" + countFieldName + "' -> '" + result + "'", LogLevel.Trace);
-        return result;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // CreateFieldsTable
     //
     // Builds the in-memory DataTable that backs FieldsGrid.  The id column auto-increments with a
@@ -406,9 +242,9 @@ public partial class CollectionEditor : Window
     //
     // The sequence column is the field's presentation sort order within the collection.
     //
-    // The gate column is a grid-only expression column; it does not map to a PacketField column
-    // directly.  The save path parses it into a Gate row named "Gate_<child>" and writes
-    // that name into the field's encoding.  The remaining columns map one-to-one to PacketField.
+    // The gate column is a grid-only column; it does not map to a PacketField column directly.
+    // When non-empty it holds a Gate.name string; the save path writes that name into the
+    // field's encoding.  The remaining columns map one-to-one to PacketField.
     //
     // The show_relative_to, show_gate, and show_predicate columns are view-only toggle state for
     // the second-line editors.  Each defaults to false; an editor shows when its value is non-empty
@@ -472,78 +308,6 @@ public partial class CollectionEditor : Window
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.RecomputeAnyDetail: field='"
             + (row["field_name"] as string ?? string.Empty) + "' relativeTo=" + relativeToShows
             + " gate=" + gateShows + " predicate=" + predicateShows + " anyDetail=" + anyDetail, LogLevel.Trace);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // LoadGateExpression
-    //
-    // Reads the Gate row named by gateName for the given patch level and formats it into
-    // the gate expression shown in the grid.  Called by LoadFieldsTable for a field whose encoding
-    // names a gate.  The row's kind, child_collection, and field_name are read and passed to
-    // FormatGateExpression.
-    //
-    // A missing row, or a row whose kind does not parse, is logged and yields the empty string so
-    // the field shows no gate rather than a malformed one; the underlying data is left untouched.
-    //
-    // Parameters:
-    //   patchLevel  - The patch level whose Gate row to read.
-    //   gateName    - The Gate.name, taken from the field's encoding (e.g. "Gate_XXX").
-    //
-    // Returns:
-    //   The formatted gate expression, or the empty string when the row is missing or invalid.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private string LoadGateExpression(PatchLevel patchLevel, string gateName)
-    {
-        string kindString = string.Empty;
-        string childCollection = string.Empty;
-        string countFieldName = string.Empty;
-        bool rowFound = false;
-
-        using (SqliteCommand cmd = _connection.CreateCommand())
-        {
-            cmd.CommandText = "SELECT kind, child_collection, field_name"
-                + " FROM Gate"
-                + " WHERE patch_date = @patchDate"
-                + " AND server_type = @serverType"
-                + " AND name = @name";
-            cmd.Parameters.AddWithValue("@patchDate", patchLevel.PatchDate);
-            cmd.Parameters.AddWithValue("@serverType", patchLevel.ServerType);
-            cmd.Parameters.AddWithValue("@name", gateName);
-
-            using SqliteDataReader reader = cmd.ExecuteReader();
-            if (reader.Read() == true)
-            {
-                rowFound = true;
-                kindString = reader.GetString(0);
-                childCollection = reader.GetString(1);
-                if (reader.IsDBNull(2) == false)
-                {
-                    countFieldName = reader.GetString(2);
-                }
-            }
-        }
-
-        if (rowFound == false)
-        {
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.LoadGateExpression: no Gate row "
-                + "named '" + gateName + "' for patchLevel=" + patchLevel + ", returning empty expression", LogLevel.Warn);
-            return string.Empty;
-        }
-
-        MultiplicityKind kind;
-        bool kindParsed = Enum.TryParse<MultiplicityKind>(kindString, out kind);
-        if (kindParsed == false)
-        {
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.LoadGateExpression: Gate '" + gateName
-                + "' has unparsable kind '" + kindString + "', returning empty expression", LogLevel.Warn);
-            return string.Empty;
-        }
-
-        string expression = FormatGateExpression(childCollection, kind, countFieldName);
-
-        DebugLog.Write(LogChannel.Fields, "CollectionEditor.LoadGateExpression: '" + gateName
-            + "' -> '" + expression + "' for patchLevel=" + patchLevel, LogLevel.Trace);
-        return expression;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -619,7 +383,8 @@ public partial class CollectionEditor : Window
                 if (encoding.StartsWith("Gate_", StringComparison.Ordinal) == true)
                 {
                     row["encoding"] = DBNull.Value;
-                    row["gate"] = LoadGateExpression(patchLevel, encoding);
+                    row["gate"] = encoding;
+                    row["show_gate"] = true;
                 }
                 else
                 {
@@ -860,9 +625,9 @@ public partial class CollectionEditor : Window
     // and Gate rows when the name differs from the loaded name; then walks the fields table
     // and writes its INSERT/UPDATE/DELETE statements.
     //
-    // A malformed gate expression or predicate string aborts the save with a message and rolls the
-    // transaction back, leaving the database unchanged.
-    //
+    // A malformed predicate string aborts the save with a message and rolls the transaction back,
+    // leaving the database unchanged.
+    //  
     // After a successful commit the collection dropdown is refreshed so a new or renamed collection
     // appears, and the saved collection is reselected.
     //
@@ -882,9 +647,8 @@ public partial class CollectionEditor : Window
         if (newName.Length == 0)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.SaveButton_Click: "
-                + "empty collection name, ignoring", LogLevel.Error);
-            MessageBox.Show(this, "Collection name is required.", "Save Failed",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+                + "empty collection name, ignoring", LogLevel.Trace);
+            SetStatus("Collection name is required.");
             return;
         }
 
@@ -899,7 +663,6 @@ public partial class CollectionEditor : Window
             ValidateFields();
             ApplyCollectionName(tx, patchLevel, newName);
             SaveFieldsTable(tx, patchLevel, newName);
-
             tx.Commit();
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.SaveButton_Click: committed", LogLevel.Trace);
         }
@@ -907,9 +670,8 @@ public partial class CollectionEditor : Window
         {
             tx.Rollback();
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.SaveButton_Click: rolled back, "
-                + ex.GetType().Name + ": " + ex.Message, LogLevel.Error);
-            MessageBox.Show(this, "Save failed: " + ex.Message, "Save Failed",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+                + ex.GetType().Name + ": " + ex.Message, LogLevel.Trace);
+            SetStatus("Save failed: " + ex.Message);
             return;
         }
 
@@ -966,11 +728,9 @@ public partial class CollectionEditor : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ToggleGateButton_Click
     //
-    // Flips the show_gate flag on the selected field row, opening or closing the second-line Gate
-    // editor for that row, then recomputes the row's any_detail so its details visibility tracks
-    // the change.  The editor is shown when the gate value is non-empty or the flag is true, so
-    // toggling the flag off on a row that already has a gate value leaves the editor shown.  No-op
-    // when no row is selected or the selection is the new-row placeholder rather than a DataRowView.
+    // Adds or removes the gate on the selected field row.  If show_gate is false, sets it
+    // true so the editor panel appears.  If show_gate is true, clears gate to null and sets
+    // show_gate false so Save will delete the gate from the database.
     //
     // sender:  The Gate toggle button.
     // e:       Standard event args; not inspected.
@@ -985,14 +745,24 @@ public partial class CollectionEditor : Window
             return;
         }
 
-        bool current = Convert.ToBoolean(selected["show_gate"]);
-        bool toggled = current == false;
-        selected["show_gate"] = toggled;
-        RecomputeAnyDetail(selected.Row);
+        string fieldName = selected["field_name"] as string ?? string.Empty;
+        bool editorOpen = Convert.ToBoolean(selected["show_gate"]);
 
-        DebugLog.Write(LogChannel.Fields, "CollectionEditor.ToggleGateButton_Click: "
-            + "field='" + (selected["field_name"] as string ?? string.Empty)
-            + "' show_gate " + current + " -> " + toggled, LogLevel.Trace);
+        if (editorOpen == false)
+        {
+            selected["show_gate"] = true;
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.ToggleGateButton_Click: "
+                + "field='" + fieldName + "' gate added", LogLevel.Trace);
+        }
+        else
+        {
+            selected["gate"] = DBNull.Value;
+            selected["show_gate"] = false;
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.ToggleGateButton_Click: "
+                + "field='" + fieldName + "' gate cleared", LogLevel.Trace);
+        }
+
+        RecomputeAnyDetail(selected.Row);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -1090,9 +860,6 @@ public partial class CollectionEditor : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void RenameCollection(SqliteTransaction tx, PatchLevel patchLevel, string oldName, string newName)
     {
-        string oldGate = "Gate_" + oldName;
-        string newGate = "Gate_" + newName;
-
         using (SqliteCommand cmd = _connection.CreateCommand())
         {
             cmd.Transaction = tx;
@@ -1123,108 +890,71 @@ public partial class CollectionEditor : Window
             cmd.ExecuteNonQuery();
         }
 
-        using (SqliteCommand cmd = _connection.CreateCommand())
-        {
-            cmd.Transaction = tx;
-            cmd.CommandText = "UPDATE PacketField"
-                + " SET encoding = @newGate"
-                + " WHERE patch_date = @patchDate"
-                + " AND server_type = @serverType"
-                + " AND encoding = @oldGate";
-            cmd.Parameters.AddWithValue("@newGate", newGate);
-            cmd.Parameters.AddWithValue("@patchDate", patchLevel.PatchDate);
-            cmd.Parameters.AddWithValue("@serverType", patchLevel.ServerType);
-            cmd.Parameters.AddWithValue("@oldGate", oldGate);
-            cmd.ExecuteNonQuery();
-        }
-
-        using (SqliteCommand cmd = _connection.CreateCommand())
-        {
-            cmd.Transaction = tx;
-            cmd.CommandText = "UPDATE Gate"
-                + " SET name = @newGate,"
-                + "     child_collection = @newName"
-                + " WHERE patch_date = @patchDate"
-                + " AND server_type = @serverType"
-                + " AND name = @oldGate";
-            cmd.Parameters.AddWithValue("@newGate", newGate);
-            cmd.Parameters.AddWithValue("@newName", newName);
-            cmd.Parameters.AddWithValue("@patchDate", patchLevel.PatchDate);
-            cmd.Parameters.AddWithValue("@serverType", patchLevel.ServerType);
-            cmd.Parameters.AddWithValue("@oldGate", oldGate);
-            cmd.ExecuteNonQuery();
-        }
-
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.RenameCollection: renamed '" + oldName
-            + "' to '" + newName + "' (gate '" + oldGate + "' to '" + newGate
-            + "') for patchLevel=" + patchLevel, LogLevel.Trace);
+            + "' to '" + newName, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ResolveFieldEncoding
     //
-    // Determines the encoding string to store for a field row and ensures any gate it carries has a
-    // Gate row.  When the row's gate cell is non-empty it is parsed, the parsed gate's
-    // Gate row named "Gate_<child>" is upserted, and that gate name is returned as the
-    // field's encoding.  When the gate cell is empty the row's scalar encoding cell is returned
-    // unchanged.
+    // Returns the encoding string to store for a field row.  When the row's gate cell holds a
+    // non-empty string that string is the gate name and becomes the field's encoding directly.
+    // Otherwise the row's scalar encoding cell is returned unchanged.
     //
-    // The gate name is prefixed with "Gate_" only when the child collection does not already carry
-    // that prefix, so a child that already reads "Gate_<child>" is not prefixed a second time.
+    // A gate name that does not match any Gate row in the database is logged as a warning; the
+    // name is still stored, because incomplete wiring is normal during schema authoring.
     //
-    // Gate expressions are already validated by ValidateFields before any write, so a parse failure
-    // here is unexpected; it throws so the save aborts rather than writing a half-formed gate.
-    //
-    // tx:          The transaction within which a gate upsert runs.
-    // patchLevel:  The patch level the field belongs to.
+    // patchLevel:  The patch level the field belongs to; used for the gate existence check.
     // row:         The grid row whose encoding to resolve.
     //
     // Returns:
-    //   The encoding string to store: a "Gate_<child>" name for a gated field, or the scalar
-    //   encoding for an ungated field.
-    //
-    // Throws:
-    //   InvalidOperationException when the gate expression fails to parse.
+    //   The gate name for a gated field, or the scalar encoding for an ungated field.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private string ResolveFieldEncoding(SqliteTransaction tx, PatchLevel patchLevel, DataRow row)
+    private string ResolveFieldEncoding(PatchLevel patchLevel, DataRow row)
     {
         string fieldName = row["field_name"] as string ?? string.Empty;
         string? gateRaw = row["gate"] as string;
 
-        if (string.IsNullOrWhiteSpace(gateRaw) == true)
+        if (string.IsNullOrWhiteSpace(gateRaw) == false)
         {
-            string scalarEncoding = row["encoding"] as string ?? string.Empty;
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.ResolveFieldEncoding: field '"
-                + fieldName + "' ungated, encoding='" + scalarEncoding + "'", LogLevel.Trace);
-            return scalarEncoding;
+            string gateName = gateRaw.Trim();
+
+            bool gateExists;
+            using (SqliteCommand cmd = _connection.CreateCommand())
+            {
+                cmd.CommandText = "SELECT COUNT(*)"
+                    + " FROM Gate"
+                    + " WHERE patch_date = @patchDate"
+                    + " AND server_type = @serverType"
+                    + " AND name = @name";
+                cmd.Parameters.AddWithValue("@patchDate", patchLevel.PatchDate);
+                cmd.Parameters.AddWithValue("@serverType", patchLevel.ServerType);
+                cmd.Parameters.AddWithValue("@name", gateName);
+
+                object? scalar = cmd.ExecuteScalar();
+                gateExists = Convert.ToInt32(scalar) > 0;
+            }
+
+            if (gateExists == false)
+            {
+                DebugLog.Write(LogChannel.Fields, "CollectionEditor.ResolveFieldEncoding: field '"
+                    + fieldName + "' gate name '" + gateName
+                    + "' not found in Gate table for patchLevel=" + patchLevel
+                    + " — stored anyway, wiring incomplete", LogLevel.Warn);
+            }
+            else
+            {
+                DebugLog.Write(LogChannel.Fields, "CollectionEditor.ResolveFieldEncoding: field '"
+                    + fieldName + "' gated, encoding='" + gateName + "'", LogLevel.Trace);
+            }
+
+            return gateName;
         }
 
-        GateExpression gate;
-        bool gateOk = ParseGateExpression(gateRaw, out gate);
-        if (gateOk == false)
-        {
-            throw new InvalidOperationException("Field '" + fieldName
-                + "' has an invalid gate expression: '" + gateRaw + "'");
-        }
-
-        string gateName;
-        if (gate.ChildCollection.StartsWith("Gate_", StringComparison.Ordinal) == true)
-        {
-            gateName = GateNameFromCell(gateRaw);
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.ResolveFieldEncoding: field '"
-                + fieldName + "' child '" + gate.ChildCollection + "' already prefixed, "
-                + "using as gate name", LogLevel.Trace);
-        }
-        else
-        {
-            gateName = "Gate_" + gate.ChildCollection;
-        }
-
-        UpsertGate(tx, patchLevel, gateName, gate);
-
+        string scalarEncoding = row["encoding"] as string ?? string.Empty;
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.ResolveFieldEncoding: field '"
-            + fieldName + "' gated, encoding='" + gateName + "'", LogLevel.Trace);
-        return gateName;
+            + fieldName + "' ungated, encoding='" + scalarEncoding + "'", LogLevel.Trace);
+        return scalarEncoding;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -1321,6 +1051,24 @@ public partial class CollectionEditor : Window
             DataRow row = liveRows[rowIndex];
             string ownName = row["field_name"] as string ?? string.Empty;
 
+            if (ownName.Trim().Length == 0)
+            {
+                throw new InvalidOperationException("A field has a blank name. All fields must have a name.");
+            }
+
+            string? gateRaw = row["gate"] as string;
+            bool hasGate = string.IsNullOrWhiteSpace(gateRaw) == false;
+
+            string? encodingRaw = row["encoding"] as string;
+            bool hasEncoding = string.IsNullOrWhiteSpace(encodingRaw) == false;
+
+            if (hasGate == false && hasEncoding == false)
+            {
+                SetStatus("Field '" + ownName + "' has no encoding, aborting save");
+                throw new InvalidOperationException("Field '" + ownName
+                    + "' has no encoding and no gate.");
+            }
+
             string? predicateRaw = row["predicate"] as string;
             if (string.IsNullOrWhiteSpace(predicateRaw) == false)
             {
@@ -1334,26 +1082,6 @@ public partial class CollectionEditor : Window
                 {
                     throw new InvalidOperationException("Field '" + ownName
                         + "' predicate references unknown field '" + sourceName + "'");
-                }
-            }
-
-            string? gateRaw = row["gate"] as string;
-            if (string.IsNullOrWhiteSpace(gateRaw) == false)
-            {
-                GateExpression gate;
-                bool gateOk = ParseGateExpression(gateRaw, out gate);
-                if (gateOk == false)
-                {
-                    throw new InvalidOperationException("Field '" + ownName
-                        + "' has an invalid gate expression: '" + gateRaw + "'");
-                }
-                if (gate.Kind == MultiplicityKind.Times)
-                {
-                    if (indexByName.ContainsKey(gate.CountFieldName) == false)
-                    {
-                        throw new InvalidOperationException("Field '" + ownName
-                            + "' gate references unknown count field '" + gate.CountFieldName + "'");
-                    }
                 }
             }
         }
@@ -1471,99 +1199,6 @@ public partial class CollectionEditor : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // UpsertGate
-    //
-    // Inserts or updates the Gate row named gateName for the given patch level from a parsed
-    // gate expression.  When a row with that name already exists for the patch it is updated;
-    // otherwise a new row is inserted.  The row's kind is the expression's kind, its child_collection
-    // is the expression's child collection, and its field_name is the count field for a Times gate
-    // or null for Once and UntilEnd.
-    //
-    // Gate rows are keyed by name and may be shared by more than one parent field, so this
-    // upserts rather than always inserting: two fields gating the same child collection the same way
-    // resolve to the one row.
-    //
-    // tx:          The transaction within which the write runs.
-    // patchLevel:  The patch level the gate belongs to.
-    // gateName:    The Gate name, "Gate_<child>".
-    // gate:        The parsed gate expression supplying kind, child collection, and count field.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void UpsertGate(SqliteTransaction tx, PatchLevel patchLevel, string gateName, GateExpression gate)
-    {
-        object countFieldParam;
-        if (gate.Kind == MultiplicityKind.Times)
-        {
-            countFieldParam = gate.CountFieldName;
-        }
-        else
-        {
-            countFieldParam = DBNull.Value;
-        }
-
-        bool rowExists;
-        using (SqliteCommand cmd = _connection.CreateCommand())
-        {
-            cmd.Transaction = tx;
-            cmd.CommandText = "SELECT COUNT(*)"
-                + " FROM Gate"
-                + " WHERE patch_date = @patchDate"
-                + " AND server_type = @serverType"
-                + " AND name = @name";
-            cmd.Parameters.AddWithValue("@patchDate", patchLevel.PatchDate);
-            cmd.Parameters.AddWithValue("@serverType", patchLevel.ServerType);
-            cmd.Parameters.AddWithValue("@name", gateName);
-
-            object? scalar = cmd.ExecuteScalar();
-            int count = Convert.ToInt32(scalar);
-            rowExists = count > 0;
-        }
-
-        if (rowExists == true)
-        {
-            using SqliteCommand cmd = _connection.CreateCommand();
-            cmd.Transaction = tx;
-            cmd.CommandText = "UPDATE Gate"
-                + " SET kind = @kind,"
-                + "     child_collection = @childCollection,"
-                + "     field_name = @fieldName"
-                + " WHERE patch_date = @patchDate"
-                + " AND server_type = @serverType"
-                + " AND name = @name";
-            cmd.Parameters.AddWithValue("@kind", gate.Kind.ToString());
-            cmd.Parameters.AddWithValue("@childCollection", gate.ChildCollection);
-            cmd.Parameters.AddWithValue("@fieldName", countFieldParam);
-            cmd.Parameters.AddWithValue("@patchDate", patchLevel.PatchDate);
-            cmd.Parameters.AddWithValue("@serverType", patchLevel.ServerType);
-            cmd.Parameters.AddWithValue("@name", gateName);
-            cmd.ExecuteNonQuery();
-
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.UpsertGate: updated Gate '"
-                + gateName + "' kind=" + gate.Kind + " child='" + gate.ChildCollection
-                + "' countField='" + gate.CountFieldName + "' for patchLevel=" + patchLevel, LogLevel.Trace);
-            return;
-        }
-
-        using (SqliteCommand cmd = _connection.CreateCommand())
-        {
-            cmd.Transaction = tx;
-            cmd.CommandText = "INSERT INTO Gate"
-                + " (patch_date, server_type, name, kind, child_collection, field_name)"
-                + " VALUES (@patchDate, @serverType, @name, @kind, @childCollection, @fieldName)";
-            cmd.Parameters.AddWithValue("@patchDate", patchLevel.PatchDate);
-            cmd.Parameters.AddWithValue("@serverType", patchLevel.ServerType);
-            cmd.Parameters.AddWithValue("@name", gateName);
-            cmd.Parameters.AddWithValue("@kind", gate.Kind.ToString());
-            cmd.Parameters.AddWithValue("@childCollection", gate.ChildCollection);
-            cmd.Parameters.AddWithValue("@fieldName", countFieldParam);
-            cmd.ExecuteNonQuery();
-
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.UpsertGate: inserted Gate '"
-                + gateName + "' kind=" + gate.Kind + " child='" + gate.ChildCollection
-                + "' countField='" + gate.CountFieldName + "' for patchLevel=" + patchLevel, LogLevel.Trace);
-        }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // SaveFieldsTable
     //
     // Walks the changed rows in the fields table and issues PacketField INSERT/UPDATE/DELETE
@@ -1608,7 +1243,7 @@ public partial class CollectionEditor : Window
             }
             else if (row.RowState == DataRowState.Added)
             {
-                string encoding = ResolveFieldEncoding(tx, patchLevel, row);
+                string encoding = ResolveFieldEncoding(patchLevel, row);
 
                 using SqliteCommand cmd = _connection.CreateCommand();
                 cmd.Transaction = tx;
@@ -1633,9 +1268,7 @@ public partial class CollectionEditor : Window
             }
             else if (row.RowState == DataRowState.Modified)
             {
-                ReconcileOldGate(tx, patchLevel, row);
-
-                string encoding = ResolveFieldEncoding(tx, patchLevel, row);
+                string encoding = ResolveFieldEncoding(patchLevel, row);
 
                 using SqliteCommand cmd = _connection.CreateCommand();
                 cmd.Transaction = tx;
@@ -1671,95 +1304,6 @@ public partial class CollectionEditor : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // ReconcileOldGate
-    //
-    // Removes the Gate row a field's gate previously named when that gate is no longer the
-    // field's gate.  Computes the original gate name from the gate cell's original value and the
-    // new gate name from its current value, applying the "Gate_" prefix only when the parsed child
-    // collection does not already carry it, so both names match what is stored.  When the original
-    // name is non-empty and differs from the new name the original's Gate row is deleted,
-    // covering a cleared gate, a changed gate, and a renamed gate.  Nothing is deleted when the
-    // gate is unchanged, when there was no original gate, or when the original expression does not
-    // parse.  The new gate's Gate row is written by ResolveFieldEncoding, which the caller
-    // invokes after this method.
-    //
-    // tx:          The transaction within which the delete runs.
-    // patchLevel:  The patch level the gate belongs to.
-    // row:         The modified grid row whose gate transition to reconcile.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void ReconcileOldGate(SqliteTransaction tx, PatchLevel patchLevel, DataRow row)
-    {
-        string fieldName = row["field_name"] as string ?? string.Empty;
-
-        string originalName = GateNameFromCell(row["gate", DataRowVersion.Original] as string);
-        string newName = GateNameFromCell(row["gate", DataRowVersion.Current] as string);
-
-        if (originalName.Length == 0)
-        {
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.ReconcileOldGate: field '"
-                + fieldName + "' had no original gate, nothing to delete", LogLevel.Warn);
-            return;
-        }
-
-        if (originalName == newName)
-        {
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.ReconcileOldGate: field '"
-                + fieldName + "' gate unchanged ('" + originalName + "'), nothing to delete", LogLevel.Trace);
-            return;
-        }
-
-        using SqliteCommand cmd = _connection.CreateCommand();
-        cmd.Transaction = tx;
-        cmd.CommandText = "DELETE FROM Gate"
-            + " WHERE patch_date = @patchDate"
-            + " AND server_type = @serverType"
-            + " AND name = @name";
-        cmd.Parameters.AddWithValue("@patchDate", patchLevel.PatchDate);
-        cmd.Parameters.AddWithValue("@serverType", patchLevel.ServerType);
-        cmd.Parameters.AddWithValue("@name", originalName);
-        int affected = cmd.ExecuteNonQuery();
-
-        DebugLog.Write(LogChannel.Fields, "CollectionEditor.ReconcileOldGate: field '"
-            + fieldName + "' gate changed from '" + originalName + "' to '" + newName
-            + "', deleted old Gate for patchLevel=" + patchLevel + " rows=" + affected, LogLevel.Trace);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GateNameFromCell
-    //
-    // Returns the stored Gate name for a gate cell value.  Parses the expression and, on
-    // success, prefixes the child collection with "Gate_" only when it does not already carry that
-    // prefix.  Returns the empty string when the cell is empty or the expression does not parse,
-    // representing a field with no gate name.
-    //
-    // gateRaw:  The gate cell value to convert.
-    //
-    // Returns:
-    //   The "Gate_<child>" name, or the empty string when there is no parsable gate.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private string GateNameFromCell(string? gateRaw)
-    {
-        if (string.IsNullOrWhiteSpace(gateRaw) == true)
-        {
-            return string.Empty;
-        }
-
-        GateExpression gate;
-        bool gateOk = ParseGateExpression(gateRaw, out gate);
-        if (gateOk == false)
-        {
-            return string.Empty;
-        }
-
-        if (gate.ChildCollection.StartsWith("Gate_", StringComparison.Ordinal) == true)
-        {
-            return gate.ChildCollection;
-        }
-
-        return "Gate_" + gate.ChildCollection;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // NullableCell
     //
     // Returns the trimmed string value of a row cell, or DBNull when the cell is null, not a string,
@@ -1780,5 +1324,207 @@ public partial class CollectionEditor : Window
             return DBNull.Value;
         }
         return raw.Trim();
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetContextMenuRow
+    //
+    // Returns the DataRowView for the row that was right-clicked to open the context menu.
+    // The menu's PlacementTarget is the DataGridRow; its DataContext is the DataRowView bound
+    // to that row.  Returns null when the target is not a DataGridRow or its context is not a
+    // DataRowView.
+    //
+    // sender:  The MenuItem that was clicked.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private DataRowView? GetContextMenuRow(object sender)
+    {
+        MenuItem menuItem = (MenuItem)sender;
+        ContextMenu contextMenu = (ContextMenu)menuItem.Parent;
+        DataGridRow? row = contextMenu.PlacementTarget as DataGridRow;
+
+        if (row == null)
+        {
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.GetContextMenuRow: "
+                + "PlacementTarget is not a DataGridRow", LogLevel.Warn);
+            return null;
+        }
+
+        DataRowView? rowView = row.DataContext as DataRowView;
+
+        if (rowView == null)
+        {
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.GetContextMenuRow: "
+                + "DataContext is not a DataRowView", LogLevel.Warn);
+        }
+
+        return rowView;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // InsertRowHereMenuItem_Click
+    //
+    // Inserts a blank field row at the position of the right-clicked row, then re-sequences all
+    // rows from that position onward consecutively.  The new row takes the right-clicked row's
+    // sequence number; every row at or below that sequence number is shifted down by one before
+    // the insert.  No-op when no collection is loaded or the target row cannot be resolved.
+    //
+    // sender:  The Insert Row Here menu item.
+    // e:       Standard event args; not inspected.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void InsertRowHereMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (_fieldsTable == null)
+        {
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.InsertRowHereMenuItem_Click: "
+                + "no collection loaded, ignoring", LogLevel.Warn);
+            return;
+        }
+
+        DataRowView? rowView = GetContextMenuRow(sender);
+        if (rowView == null)
+        {
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.InsertRowHereMenuItem_Click: "
+                + "could not resolve context menu row, ignoring", LogLevel.Warn);
+            return;
+        }
+
+        object sequenceCell = rowView.Row["sequence"];
+        if (sequenceCell == DBNull.Value)
+        {
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.InsertRowHereMenuItem_Click: "
+                + "right-clicked row has no sequence number, ignoring", LogLevel.Warn);
+            return;
+        }
+
+        int insertSequence = Convert.ToInt32(sequenceCell);
+
+        DebugLog.Write(LogChannel.Fields, "CollectionEditor.InsertRowHereMenuItem_Click: "
+            + "inserting at sequence=" + insertSequence, LogLevel.Trace);
+
+        for (int rowIndex = 0; rowIndex < _fieldsTable.Rows.Count; rowIndex++)
+        {
+            DataRow row = _fieldsTable.Rows[rowIndex];
+            if (row.RowState == DataRowState.Deleted)
+            {
+                continue;
+            }
+
+            object cell = row["sequence"];
+            if (cell == DBNull.Value)
+            {
+                continue;
+            }
+
+            int sequence = Convert.ToInt32(cell);
+            if (sequence >= insertSequence)
+            {
+                row["sequence"] = sequence + 1;
+            }
+        }
+
+        DataRow newRow = _fieldsTable.NewRow();
+        newRow["sequence"] = insertSequence;
+        newRow["field_name"] = string.Empty;
+        newRow["bit_offset"] = 0;
+        newRow["bit_length"] = 0;
+        newRow["encoding"] = string.Empty;
+        newRow["divisor"] = 1.0;
+        newRow["relative_to"] = DBNull.Value;
+        newRow["predicate"] = DBNull.Value;
+        newRow["gate"] = DBNull.Value;
+
+        _fieldsTable.Rows.Add(newRow);
+
+        DebugLog.Write(LogChannel.Fields, "CollectionEditor.InsertRowHereMenuItem_Click: "
+            + "inserted blank row at sequence=" + insertSequence
+            + ", table now has " + _fieldsTable.Rows.Count + " row(s)", LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // RemoveGapsMenuItem_Click
+    //
+    // Re-sequences all rows from the right-clicked row's sequence number onward, making them
+    // consecutive with no gaps.  Rows above the right-clicked row are untouched.  No-op when no
+    // collection is loaded or the target row cannot be resolved.
+    //
+    // sender:  The Remove Gaps menu item.
+    // e:       Standard event args; not inspected.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void RemoveGapsMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (_fieldsTable == null)
+        {
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.RemoveGapsMenuItem_Click: "
+                + "no collection loaded, ignoring", LogLevel.Warn);
+            return;
+        }
+
+        DataRowView? rowView = GetContextMenuRow(sender);
+        if (rowView == null)
+        {
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.RemoveGapsMenuItem_Click: "
+                + "could not resolve context menu row, ignoring", LogLevel.Warn);
+            return;
+        }
+
+        object sequenceCell = rowView.Row["sequence"];
+        if (sequenceCell == DBNull.Value)
+        {
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.RemoveGapsMenuItem_Click: "
+                + "right-clicked row has no sequence number, ignoring", LogLevel.Warn);
+            return;
+        }
+
+        int startSequence = Convert.ToInt32(sequenceCell);
+
+        List<DataRow> affectedRows = new List<DataRow>();
+        for (int rowIndex = 0; rowIndex < _fieldsTable.Rows.Count; rowIndex++)
+        {
+            DataRow row = _fieldsTable.Rows[rowIndex];
+            if (row.RowState == DataRowState.Deleted)
+            {
+                continue;
+            }
+
+            object cell = row["sequence"];
+            if (cell == DBNull.Value)
+            {
+                continue;
+            }
+
+            if (Convert.ToInt32(cell) >= startSequence)
+            {
+                affectedRows.Add(row);
+            }
+        }
+
+        affectedRows.Sort((DataRow a, DataRow b) =>
+            Convert.ToInt32(a["sequence"]).CompareTo(Convert.ToInt32(b["sequence"])));
+
+        int next = startSequence;
+        for (int rowIndex = 0; rowIndex < affectedRows.Count; rowIndex++)
+        {
+            affectedRows[rowIndex]["sequence"] = next;
+            next = next + 1;
+        }
+
+        DebugLog.Write(LogChannel.Fields, "CollectionEditor.RemoveGapsMenuItem_Click: "
+            + "re-sequenced " + affectedRows.Count + " row(s) from sequence="
+            + startSequence, LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // SetStatus
+    //
+    // Sets the status bar text to the given message.  Null or empty clears the bar.
+    //
+    // message:  The text to display, or null or empty to clear.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void SetStatus(string? message)
+    {
+        StatusText.Text = message ?? string.Empty;
+
+        DebugLog.Write(LogChannel.Fields, "CollectionEditor.SetStatus: '"
+            + (message ?? string.Empty) + "'", LogLevel.Trace);
     }
 }

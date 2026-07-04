@@ -36,6 +36,8 @@ Look into the SlotID ancestor comment.
 CSV tokens are not decoded in the FieldExtractor but in the handler.
 
 
+Consider adding a new data type for blocks of bytes so that I do not need collections of single bytes.
+
 ISXGlass:
 
 Phase 3 (multi-machine operations):

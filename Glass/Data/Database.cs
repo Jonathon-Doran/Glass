@@ -429,6 +429,14 @@ public class Database
         {
             ApplyMigration(conn, 55, Migration_055);
         }
+        if (version < 56)
+        {
+            ApplyMigration(conn, 56, Migration_056);
+        }
+        if (version < 57)
+        {
+            ApplyMigration(conn, 57, Migration_057);
+        }
     }
 
     private int GetSchemaVersion()
@@ -1396,6 +1404,13 @@ public class Database
     private const string Migration_055 = @"
         ALTER TABLE Gate ADD COLUMN count INTEGER;
     ";
+    private const string Migration_056 = @"
+        ALTER TABLE PacketField ADD COLUMN blob_byte_count INTEGER NOT NULL DEFAULT 0;
+    ";
+    private const string Migration_057 = @"
+        ALTER TABLE PacketField DROP COLUMN blob_byte_count;
+    ";
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"

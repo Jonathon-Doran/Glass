@@ -345,6 +345,43 @@ public sealed class FieldBag
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // SliceArenaBytes
+    //
+    // Returns a read-only span over the given number of bytes beginning at the given arena
+    // offset.  The offset and length must fall within the written region [0, cursor); an
+    // out-of-range request is an integrity failure and halts the process via FailFast.
+    //
+    // This is mainly for BLOB support.
+    //
+    // offset:  Arena index of the first byte.
+    // length:  Number of bytes to slice.
+    //
+    // Returns:  A read-only span over the requested bytes.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    internal ReadOnlySpan<byte> SliceArenaBytes(ushort offset, uint length)
+    {
+        if (offset >= _arenaCursor)
+        {
+            string failure = CollectionName
+                + " FieldBag.SliceArenaBytes: offset " + offset
+                + " is at or past cursor " + _arenaCursor + ", arena reference is corrupt";
+            DebugLog.Write(LogChannel.Fields, failure, LogLevel.Error);
+            Environment.FailFast(failure);
+        }
+
+        if (offset + length > _arenaCursor)
+        {
+            string failure = CollectionName
+                + " FieldBag.SliceArenaBytes: offset " + offset + " + length " + length
+                + " exceeds cursor " + _arenaCursor + ", arena reference is corrupt";
+            DebugLog.Write(LogChannel.Fields, failure, LogLevel.Error);
+            Environment.FailFast(failure);
+        }
+
+        return _lease.AsReadOnlySpan().Slice((int)(_arenaOffset + offset), (int)length);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // TryGetSlotRef
     //
     // Returns a ref to the slot at the given index, or a null ref if the index is out of

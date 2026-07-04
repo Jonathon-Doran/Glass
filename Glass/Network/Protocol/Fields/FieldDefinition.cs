@@ -27,6 +27,8 @@
 // resolved from a field name to a slot index at load time, the same way RelativeToSlot and gate
 // count fields are resolved.
 //
+// BlobByteCount is the fixed size in bytes of a Blob-typed field.  Zero for all other field types.
+//
 // This is plain data — no methods, no validation.  Validation happens at load time in the
 // handler's load routine and at the FieldExtractor's string-table lookup.
 ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -38,7 +40,7 @@ public struct FieldDefinition
     public float Divisor;
     public uint? RelativeToSlot;
     public FieldEncoding Encoding;
-    public uint? OptionalGroupId;
+    public uint BlobByteCount;
     public GateDefinitionHandle Gate;
     public FieldPredicate Predicate;
     public uint Sequence;

@@ -72,6 +72,7 @@ public struct Collection
             _fields = value;
 
             uint stringFieldCount = 0;
+            uint blobByteTotal = 0;
             for (int fieldIndex = 0; fieldIndex < value.Length; fieldIndex++)
             {
                 FieldEncoding encoding = value[fieldIndex].Encoding;
@@ -80,11 +81,14 @@ public struct Collection
                 {
                     stringFieldCount++;
                 }
+
+                blobByteTotal += value[fieldIndex].BlobByteCount;
             }
 
             _slotCount = (ushort)value.Length;
             _arenaEstimate = ((uint)value.Length * NameArenaAllowance)
-                            + (stringFieldCount * StringArenaAllowance);
+                            + (stringFieldCount * StringArenaAllowance)
+                            + blobByteTotal;
         }
     }
 

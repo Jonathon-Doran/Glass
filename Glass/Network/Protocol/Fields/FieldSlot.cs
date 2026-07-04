@@ -283,6 +283,66 @@ public struct FieldSlot
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // SetBlob
+    //
+    // Stores raw blob bytes in the owning bag's arena and records the arena offset in the slot.
+    // The byte count is stored in the value field.  An empty input stores nothing and records
+    // the NoArenaData sentinel.
+    //
+    // bag:    The bag that owns this slot; receives the blob bytes into its arena.
+    // bytes:  The raw bytes to store.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public void SetBlob(FieldBag bag, ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length == 0)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.SetBlob: zero-length blob, storing NoArenaData", LogLevel.Trace);
+            _arenaOffset = NoArenaData;
+            _value = 0u;
+            _type = FieldType.Blob;
+            return;
+        }
+
+        _arenaOffset = bag.InsertIntoArena(bytes);
+        _value = (uint)bytes.Length;
+        _type = FieldType.Blob;
+
+        DebugLog.Write(LogChannel.Fields, "FieldSlot.SetBlob: stored " + bytes.Length
+            + " bytes at arena offset " + _arenaOffset, LogLevel.Trace);
+    }
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // TryGetBlobBytes
+    //
+    // Returns a read-only span over the slot's raw blob bytes, resolved from the owning bag's
+    // arena.  The byte count is carried in the value field.
+    //
+    // bag:    The bag that owns this slot; supplies the arena bytes.
+    // value:  Receives the span on success, an empty span on failure.
+    //
+    // Returns:  SlotReadResult.Success on success, SlotReadResult.TypeMismatch if the slot's
+    //           type is not Blob, SlotReadResult.EmptyPayload if no bytes were stored.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public SlotReadResult TryGetBlobBytes(FieldBag bag, out ReadOnlySpan<byte> value)
+    {
+        if (_type != FieldType.Blob)
+        {
+            value = ReadOnlySpan<byte>.Empty;
+            return SlotReadResult.TypeMismatch;
+        }
+
+        if (_arenaOffset == NoArenaData)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.TryGetBlobBytes: " + GetName(bag)
+                + " has no stored bytes, returning empty span", LogLevel.Warn);
+            value = ReadOnlySpan<byte>.Empty;
+            return SlotReadResult.EmptyPayload;
+        }
+
+        value = bag.SliceArenaBytes(_arenaOffset, _value);
+        return SlotReadResult.Success;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // SetGate
     //
     // Stores a GateHandle in the slot's value field as its raw uint.  The arena offset is
@@ -550,7 +610,22 @@ public struct FieldSlot
                         + " AsciiString read failed: " + result);
                     return string.Empty;
                 }
-
+            case FieldType.Blob:
+                {
+                    ReadOnlySpan<byte> bytes;
+                    SlotReadResult result = TryGetBlobBytes(bag, out bytes);
+                    if (result == SlotReadResult.Success)
+                    {
+                        return SoeHexDump.Format(bytes);
+                    }
+                    if (result == SlotReadResult.EmptyPayload)
+                    {
+                        return string.Empty;
+                    }
+                    DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName(bag)
+                        + " Blob read failed: " + result, LogLevel.Warn);
+                    return string.Empty;
+                }
             default:
                 {
                     DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName(bag)

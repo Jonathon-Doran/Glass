@@ -20,6 +20,6 @@ public enum FieldEncoding
     OptSignMagnitudeMsb,
     StringNullTerminated,
     StringLengthPrefixed,
-    OptionalGroup,
-    Gate
+    Gate,
+    Blob
 }

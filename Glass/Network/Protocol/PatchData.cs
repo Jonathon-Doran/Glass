@@ -274,7 +274,7 @@ public class PatchData
         _encodingsByString.Add("opt_signmag_msb", FieldEncoding.OptSignMagnitudeMsb);
         _encodingsByString.Add("string_null_terminated", FieldEncoding.StringNullTerminated);
         _encodingsByString.Add("string_length_prefixed", FieldEncoding.StringLengthPrefixed);
-        _encodingsByString.Add("optional_group", FieldEncoding.OptionalGroup);
+        _encodingsByString.Add("blob", FieldEncoding.Blob);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -442,13 +442,13 @@ public class PatchData
                     gateHandle = GateDefinitionHandle.None;
                     DebugLog.Write(LogChannel.Opcodes, "PatchData.LoadPatchOpcodes: opcode '"
                         + opcodeName + "' version " + version + " names gate '" + gateName
-                        + "' that is not loaded, storing GateDefinitionHandle.None");
+                        + "' that is not loaded, storing GateDefinitionHandle.None", LogLevel.Warn);
                 }
             }
             else
             {
                 DebugLog.Write(LogChannel.Opcodes, "PatchData.LoadPatchOpcodes: opcode '"
-                    + opcodeName + "' version " + version + " has no gate_name");
+                    + opcodeName + "' version " + version + " has no gate_name", LogLevel.Warn);
             }
 
             OpcodeRecord record;
@@ -517,6 +517,9 @@ public class PatchData
             string collectionName = reader.GetString(0);
             CollectionHandle handle = registry.RegisterCollection(this, index);
 
+            DebugLog.Write(LogChannel.Fields, "Collection '" + collectionName + "' has collection handle=" + handle,
+                LogLevel.Info);
+
             _collectionIndexByCollectionName[collectionName] = index;
             _collectionHandleByIndex[handleIndex] = handle;
             _collections[handleIndex] = new Collection(collectionName, PatchLevel);
@@ -570,7 +573,7 @@ public class PatchData
             if (kindParsed == false)
             {
                 DebugLog.Write(LogChannel.Fields, "PatchData.LoadGateDefinitions: gate '" + gateName
-                    + "' has unparsable kind '" + kindString + "', storing as Once");
+                    + "' has unparsable kind '" + kindString + "', storing as Once", LogLevel.Warn);
                 kind = MultiplicityKind.Once;
             }
 
@@ -584,7 +587,7 @@ public class PatchData
                     DebugLog.Write(LogChannel.Fields, "PatchData.LoadGateDefinitions: gate '" + gateName
                         + "' names child collection '" + childCollectionName
                         + "' that is not loaded for patchLevel=" + PatchLevel
-                        + ", storing CollectionIndex.None");
+                        + ", storing CollectionIndex.None", LogLevel.Warn);
                     childCollection = CollectionIndex.None;
                 }
             }
@@ -604,12 +607,13 @@ public class PatchData
             definition.FieldSlot = SlotId.None;
             definition.FieldSlotLocal = true;
             definition.Count = 0;
+            definition.CountFieldName = string.Empty;
 
             if (reader.IsDBNull(4) == false)
             {
                 definition.Count = (uint)reader.GetInt32(4);
                 DebugLog.Write(LogChannel.Fields, "PatchData.LoadGateDefinitions: gate '" + gateName
-                    + "' carries constant count " + definition.Count);
+                    + "' carries constant count " + definition.Count, LogLevel.Trace);
             }
 
             _gate[handle] = definition;
@@ -619,8 +623,9 @@ public class PatchData
             {
                 string fieldName = reader.GetString(3);
                 _gateFieldNamesByHandle![handle] = fieldName;
+                definition.CountFieldName = fieldName;
                 DebugLog.Write(LogChannel.Fields, "PatchData.LoadGateDefinitions: gate '" + gateName
-                    + "' carries count field '" + fieldName + "', pending resolution at reference time");
+                    + "' carries count field '" + fieldName + "', pending resolution at reference time", LogLevel.Trace);
             }
 
             handleIndex = handleIndex + 1;
@@ -643,7 +648,7 @@ public class PatchData
     private void LoadOpcodeMap(SqliteConnection conn)
     {
         DebugLog.Write(LogChannel.Opcodes, "PatchData.LoadOpcodeMap: querying PatchOpcode for PatchLevel = " +
-            PatchLevel);
+            PatchLevel, LogLevel.Trace);
 
         using SqliteCommand cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT DISTINCT opcode_name, opcode_value"
@@ -686,7 +691,8 @@ public class PatchData
         List<FieldDefinition> fields = new List<FieldDefinition>();
 
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT field_name, bit_offset, bit_length, encoding, divisor, relative_to, predicate, sequence"
+        cmd.CommandText = "SELECT field_name, bit_offset, bit_length, encoding, divisor, relative_to, " 
+                    + " predicate, sequence"
                     + " FROM PacketField"
                     + " WHERE patch_date = @patchDate"
                     + " AND server_type = @serverType"
@@ -728,7 +734,7 @@ public class PatchData
                         gate = GateDefinitionHandle.None;
                         DebugLog.Write(LogChannel.Fields, "PatchData.LoadFields: collection='"
                             + collectionName + "' field='" + fieldName + "' references gate '"
-                            + encodingString + "' that is not loaded, storing GateDefinitionHandle.None");
+                            + encodingString + "' that is not loaded, storing GateDefinitionHandle.None", LogLevel.Warn);
                     }
                     encoding = FieldEncoding.Gate;
                 }
@@ -739,7 +745,7 @@ public class PatchData
                     {
                         DebugLog.Write(LogChannel.Fields, "PatchData.LoadFields: unrecognized encoding '"
                             + encodingString + "' for collection='" + collectionName
-                            + "' fieldName='" + fieldName + "', storing as Unknown");
+                            + "' fieldName='" + fieldName + "', storing as Unknown", LogLevel.Warn);
                         encoding = FieldEncoding.Unknown;
                     }
                 }
@@ -771,10 +777,10 @@ public class PatchData
                 definition.Encoding = encoding;
                 definition.Divisor = divisor;
                 definition.RelativeToSlot = null;
-                definition.OptionalGroupId = null;
                 definition.Gate = gate;
                 definition.Predicate = default;
                 definition.Sequence = sequence;
+                definition.BlobByteCount = (encoding == FieldEncoding.Blob) ? bitLength / 8u : 0u;
                 fields.Add(definition);
                 _pendingRelativeNames!.Add(relativeToName);
 
@@ -828,7 +834,7 @@ public class PatchData
         {
             DebugLog.Write(LogChannel.Fields, "PatchData.ResolveRelativeAnchors: no field "
                 + "definitions for collection='" + GetCollectionNameFromIndex(collectionIndex)
-                + "', nothing to resolve");
+                + "', nothing to resolve", LogLevel.Warn);
             return;
         }
 
@@ -877,7 +883,7 @@ public class PatchData
                 DebugLog.Write(LogChannel.Fields, "PatchData.ResolveRelativeAnchors: collection='"
                     + GetCollectionNameFromIndex(collectionIndex) + "' field='" + ownName
                     + "' references unknown anchor '" + anchorName
-                    + "', will be left absolute");
+                    + "', will be left absolute", LogLevel.Warn);
                 continue;
             }
 
@@ -921,7 +927,7 @@ public class PatchData
                     DebugLog.Write(LogChannel.Fields, "PatchData.ResolveRelativeAnchors: collection='"
                         + GetCollectionNameFromIndex(collectionIndex) + "' field='"
                         + definitions[leftoverIndex].Name
-                        + "' has unresolved anchor dependency, appending in original order");
+                        + "' has unresolved anchor dependency, appending in original order", LogLevel.Warn);
                     ordered.Add(definitions[leftoverIndex]);
                 }
             }
@@ -950,7 +956,7 @@ public class PatchData
                 DebugLog.Write(LogChannel.Fields, "PatchData.ResolveRelativeAnchors: collection='"
                     + GetCollectionNameFromIndex(collectionIndex) + "' field='" + entry.Name
                     + "' references unknown anchor '" + anchorName
-                    + "', leaving RelativeToSlot null");
+                    + "', leaving RelativeToSlot null", LogLevel.Warn);
                 continue;
             }
 
@@ -964,16 +970,16 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ResolveGates
     //
-    // Resolves each gate's count field expression to a SlotId and writes it onto the gate's
-    // FieldSlot.  Run once after every collection's fields are loaded.  The expression has
-    // two forms: a bare field name ("count"), which resolves against the collection whose
-    // field references the gate, found by scanning the loaded field definitions; and a
-    // qualified name ("collection.count"), which resolves against the named collection.
+    // Resolves each gate's count field to a SlotId where possible and writes it onto the gate's
+    // FieldSlot.  Run once after every collection's fields are loaded.
     //
-    // A qualified name naming an unknown collection, a bare name on a gate that no loaded
-    // field references, or a field name that does not resolve in its collection is a broken
-    // patch definition: the failure is logged with a stack trace and the process is
-    // terminated.
+    // A qualified field name ("Collection.field") resolves the named collection at load time and
+    // stores the SlotId on the definition.  An unqualified (bare) field name cannot be resolved
+    // at load time because a shared gate does not uniquely identify the collection that contains
+    // it; the bare name is stored in CountFieldName for dynamic resolution at extraction time.
+    //
+    // A qualified name naming an unknown collection, or a field not present in the named
+    // collection, is logged and skipped.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void ResolveGates()
     {
@@ -984,93 +990,66 @@ public class PatchData
             GateDefinitionHandle gateHandle = entry.Key;
             string expression = entry.Value;
 
-            CollectionIndex sourceCollection = CollectionIndex.None;
-            string countFieldName;
-
             int dotIndex = expression.IndexOf('.');
 
-            // Qualified field name, search ancestor collections
             if (dotIndex >= 0)
             {
+                // Qualified: resolve collection and slot at load time.
                 string collectionName = expression.Substring(0, dotIndex).Trim();
-                countFieldName = expression.Substring(dotIndex + 1).Trim();
+                string countFieldName = expression.Substring(dotIndex + 1).Trim();
 
+                CollectionIndex sourceCollection;
                 bool collectionFound = _collectionIndexByCollectionName.TryGetValue(
                     collectionName, out sourceCollection);
                 if (collectionFound == false)
                 {
-                    string message = "PatchData.ResolveGates: gate '" + _gate[gateHandle].Name
-                        + "' count expression '" + expression + "' names collection '"
-                        + collectionName + "' that is not loaded for patchLevel=" + PatchLevel
-                        + " -- broken patch definition, aborting";
-
-                    DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
-                        + Environment.StackTrace);
-
-                    Environment.FailFast(message);
+                    DebugLog.Write(LogChannel.Fields, "PatchData.ResolveGates: gate '"
+                        + _gate[gateHandle].Name + "' count expression '" + expression
+                        + "' names collection '" + collectionName
+                        + "' that is not loaded for patchLevel=" + PatchLevel
+                        + ", skipping gate resolution", LogLevel.Warn);
+                    continue;
                 }
-            }
-            else    // base case of a local field
-            {
-                countFieldName = expression.Trim();
 
-                for (uint collectionIndex = 0; collectionIndex < _collections.Length; collectionIndex++)
+                SlotId slot = IndexOfField(sourceCollection, countFieldName);
+                if (slot.Exists == false)
                 {
-                    CollectionIndex collection = (CollectionIndex) collectionIndex;
-                    FieldDefinition[] definitions = GetFieldDefinitions(collection);
-                    if (definitions.Length == 0)
-                    {
-                        continue;
-                    }
-
-                    for (uint fieldIndex = 0; fieldIndex < definitions.Length; fieldIndex++)
-                    {
-                        if (definitions[fieldIndex].Gate == gateHandle)
-                        {
-                            sourceCollection = collection;
-                            break;
-                        }
-                    }
-
-                    if (sourceCollection.Exists == true)
-                    {
-                        break;
-                    }
+                    DebugLog.Write(LogChannel.Fields, "PatchData.ResolveGates: gate '"
+                        + _gate[gateHandle].Name + "' count field '" + countFieldName
+                        + "' not present in collection '"
+                        + GetCollectionNameFromIndex(sourceCollection) + "' for patchLevel="
+                        + PatchLevel + ", skipping gate resolution", LogLevel.Warn);
+                    continue;
                 }
 
-                if (sourceCollection.Exists == false)
-                {
-                    string message = "PatchData.ResolveGates: gate '" + _gate[gateHandle].Name
-                        + "' carries count field '" + countFieldName
-                        + "' but no loaded field references the gate for patchLevel=" + PatchLevel
-                        + " -- broken patch definition, aborting";
+                _gate[gateHandle].FieldSlot = slot;
+                _gate[gateHandle].FieldSlotLocal = false;
+                _gate[gateHandle].CountFieldName = string.Empty;
 
-                    DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
-                        + Environment.StackTrace);
+                DebugLog.Write(LogChannel.Fields, "PatchData.ResolveGates: gate '"
+                    + _gate[gateHandle].Name + "' qualified count field '" + countFieldName
+                    + "' resolved to slot " + slot + " in collection '" + collectionName
+                    + "' for patchLevel=" + PatchLevel, LogLevel.Trace);
 
-                    Environment.FailFast(message);
-                }
+                resolvedCount = resolvedCount + 1;
             }
-
-            SlotId slot = IndexOfField(sourceCollection, countFieldName);
-            if (slot.Exists == false)
+            else
             {
-                string message = "PatchData.ResolveGates: gate '" + _gate[gateHandle].Name
-                    + "' count field '" + countFieldName + "' not present in collection '"
-                    + GetCollectionNameFromIndex(sourceCollection) + "' for patchLevel="
-                    + PatchLevel + " -- broken patch definition, aborting";
+                // Bare name: store for dynamic resolution at extraction time.
+                string countFieldName = expression.Trim();
 
-                DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
-                    + Environment.StackTrace);
+                _gate[gateHandle].FieldSlot = SlotId.None;
+                _gate[gateHandle].FieldSlotLocal = true;
+                _gate[gateHandle].CountFieldName = countFieldName;
 
-                Environment.FailFast(message);
+                DebugLog.Write(LogChannel.Fields, "PatchData.ResolveGates: gate '"
+                    + _gate[gateHandle].Name + "' bare count field '" + countFieldName
+                    + "' stored for dynamic resolution at extraction time", LogLevel.Trace);
             }
-
-            _gate[gateHandle].FieldSlot = slot;
-            _gate[gateHandle].FieldSlotLocal = dotIndex < 0;
-            resolvedCount = resolvedCount + 1;
         }
 
+        DebugLog.Write(LogChannel.Fields, "PatchData.ResolveGates: " + resolvedCount
+            + " gate(s) resolved at load time for patchLevel=" + PatchLevel, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

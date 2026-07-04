@@ -37,6 +37,11 @@ public struct GateDefinition
     public SlotId FieldSlot;
     public Boolean FieldSlotLocal;
 
+    // The bare count field name for a local Times gate whose slot cannot be resolved at
+    // load time.  Non-empty when FieldSlot is None and FieldSlotLocal is true; empty
+    // otherwise.
+    public string CountFieldName;
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // ToString
     //
@@ -63,6 +68,7 @@ public struct GateDefinition
             + " count=" + Count
             + " child=" + registry.GetCollectionName(ChildCollection)
             + " fieldSlot=" + FieldSlot
+            + " countFieldName=" + CountFieldName
             + " (" + scope + ")";
     }
 }
