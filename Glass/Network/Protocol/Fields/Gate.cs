@@ -1,4 +1,6 @@
-﻿namespace Glass.Network.Protocol.Fields;
+﻿using Glass.Core;
+
+namespace Glass.Network.Protocol.Fields;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // Gate
@@ -43,4 +45,33 @@ public struct Gate
     public BagHandle Tail;
     public GateHandle Self;
     public uint BitsConsumed;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ToString
+    //
+    // Renders the gate as a single log-friendly line: the name of its gate definition,
+    // its multiplicity kind, and its instance bag count.  The name is resolved through the
+    // PatchRegistry; a definition handle that does not resolve renders a placeholder so
+    // this method never fails while composing a log message.
+    //
+    // Returns:  The log-friendly rendering of the gate.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public override string ToString()
+    {
+        string name;
+
+        GateDefinition gateDefinition;
+        bool gateFound = GlassContext.PatchRegistry.TryGetGateDefinition(
+            GlassContext.CurrentPatchLevel, Definition, out gateDefinition);
+        if (gateFound == true)
+        {
+            name = gateDefinition.Name;
+        }
+        else
+        {
+            name = "<unresolved definition " + Definition + ">";
+        }
+
+        return "Gate '" + name + "' kind=" + Kind + " bags=" + BagCount;
+    }
 }

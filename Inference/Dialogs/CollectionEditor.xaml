@@ -143,11 +143,13 @@
                         <DataTemplate>
                             <StackPanel Orientation="Horizontal"
                                         Margin="24,2,8,6">
-
                                 <!-- Relative To -->
                                 <Grid Margin="0,0,16,0">
                                     <Grid.Visibility>
-                                        <Binding Path="show_gate" Converter="{StaticResource BoolToVisibility}" Mode="OneWay" />
+                                        <MultiBinding Converter="{StaticResource StringToVisibility}" Mode="OneWay">
+                                            <Binding Path="relative_to" />
+                                            <Binding Path="show_relative_to" />
+                                        </MultiBinding>
                                     </Grid.Visibility>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />

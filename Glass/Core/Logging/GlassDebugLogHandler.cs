@@ -79,6 +79,7 @@ public class GlassDebugLogHandler : IHandleLogMessages
             if (_writer != null)
             {
                 _writer.WriteLine(message);
+                _writer.Flush();
             }
         }
     }

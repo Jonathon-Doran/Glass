@@ -25,7 +25,6 @@ public struct Collection
     private FieldDefinition[] _fields;
     private ushort _slotCount;
     private uint _arenaEstimate;
-    private readonly PatchLevel _patchLevel;
     private const uint NameArenaAllowance = 32;
     private const uint StringArenaAllowance = 64;
 
@@ -42,7 +41,6 @@ public struct Collection
     public Collection(string name, PatchLevel patchLevel)
     {
         _name = name;
-        _patchLevel = patchLevel;
         _fields = Array.Empty<FieldDefinition>();
         _slotCount = 0;
         _arenaEstimate = 0;

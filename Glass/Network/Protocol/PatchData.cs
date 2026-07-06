@@ -803,6 +803,11 @@ public class PatchData
             return;
         }
         _collections[index].Fields = fields.ToArray();
+
+        if (index == 7)
+        {
+            DebugLog.Write(LogChannel.Fields, "about to reorder strides", LogLevel.Trace);
+        }
         ResolveRelativeAnchors(index);
         ResolvePredicates(index);
 
@@ -1088,14 +1093,14 @@ public class PatchData
                     + " -- broken patch definition, aborting";
 
                 DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
-                    + Environment.StackTrace);
+                    + Environment.StackTrace, LogLevel.Error);
 
                 Environment.FailFast(message);
             }
 
             DebugLog.Write(LogChannel.Fields, "PatchData.ResolvePredicates: collection '"
                 + GetCollectionNameFromIndex(index) + "' has no fields and no pending "
-                + "predicates, nothing to resolve");
+                + "predicates, nothing to resolve", LogLevel.Warn);
             return;
         }
 
@@ -1114,7 +1119,7 @@ public class PatchData
                     + PatchLevel + " -- broken patch definition, aborting";
 
                 DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
-                    + Environment.StackTrace);
+                    + Environment.StackTrace, LogLevel.Error);
 
                 Environment.FailFast(message);
             }
@@ -1129,7 +1134,7 @@ public class PatchData
                     + " -- broken patch definition, aborting";
 
                 DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
-                    + Environment.StackTrace);
+                    + Environment.StackTrace, LogLevel.Error);
 
                 Environment.FailFast(message);
             }
@@ -1144,7 +1149,7 @@ public class PatchData
                     + PatchLevel + " -- broken patch definition, aborting";
 
                 DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
-                    + Environment.StackTrace);
+                    + Environment.StackTrace, LogLevel.Error);
 
                 Environment.FailFast(message);
             }
@@ -1159,7 +1164,7 @@ public class PatchData
                     + " -- broken patch definition, aborting";
 
                 DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
-                    + Environment.StackTrace);
+                    + Environment.StackTrace, LogLevel.Error);
 
                 Environment.FailFast(message);
             }
@@ -1245,7 +1250,7 @@ public class PatchData
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetGateDefinition
+    // TryGetGateDefinition
     //
     // Returns the GateDefinition for the given GateDefinitionHandle in this patch, by value.
     //
@@ -1263,23 +1268,21 @@ public class PatchData
     {
         if (gateHandle.Exists == false)
         {
-            string noneFailure = "PatchData.GetGateDefinition: GateDefinitionHandle.None passed for patchLevel="
+            string noneFailure = "PatchData.TryGetGateDefinition: GateDefinitionHandle.None passed for patchLevel="
                 + PatchLevel;
-            DebugLog.Write(LogChannel.Fields, noneFailure);
+            DebugLog.Write(LogChannel.Fields, noneFailure, LogLevel.Error);
             Environment.FailFast(noneFailure);
         }
 
         if (gateHandle >= _gate.Length)
         {
-            string rangeFailure = "PatchData.GetGateDefinition: gate handle " + gateHandle
+            string rangeFailure = "PatchData.TryGetGateDefinition: gate handle " + gateHandle
                 + " out of range, " + _gate.Length + " gate(s) loaded for patchLevel="
                 + PatchLevel;
-            DebugLog.Write(LogChannel.Fields, rangeFailure);
+            DebugLog.Write(LogChannel.Fields, rangeFailure, LogLevel.Trace);
             Environment.FailFast(rangeFailure);
         }
 
-        DebugLog.Write(LogChannel.Fields, "PatchData.GetGateDefinition: handle " + gateHandle
-            + " resolves to gate '" + _gate[gateHandle].Name + "'");
         return _gate[gateHandle];
     }
 
@@ -1306,7 +1309,7 @@ public class PatchData
         {
             string indexFailure = "GetCollectionNameFromIndex: Invalid CollectionIndex " + index + " passed in";
             DebugLog.WriteMultiline(LogChannel.Fields, indexFailure + Environment.NewLine
-                + Environment.StackTrace);
+                + Environment.StackTrace, LogLevel.Error);
             Environment.FailFast(indexFailure);
         }
 
@@ -1568,14 +1571,14 @@ public class PatchData
 
         if (raw == null)
         {
-            DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: null predicate string, parse failed");
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: null predicate string, parse failed", LogLevel.Warn);
             return false;
         }
 
         string trimmed = raw.Trim();
         if (trimmed.Length == 0)
         {
-            DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: empty predicate string, parse failed");
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: empty predicate string, parse failed", LogLevel.Warn);
             return false;
         }
 
@@ -1612,7 +1615,7 @@ public class PatchData
         if (operatorIndex < 0)
         {
             DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: no recognized operator in '"
-                + trimmed + "', parse failed");
+                + trimmed + "', parse failed", LogLevel.Warn);
             return false;
         }
 
@@ -1622,14 +1625,14 @@ public class PatchData
         if (leftPart.Length == 0)
         {
             DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: empty source name in '"
-                + trimmed + "', parse failed");
+                + trimmed + "', parse failed", LogLevel.Warn);
             return false;
         }
 
         if (rightPart.Length == 0)
         {
             DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: empty operand in '"
-                + trimmed + "', parse failed");
+                + trimmed + "', parse failed", LogLevel.Warn);
             return false;
         }
 
@@ -1665,7 +1668,7 @@ public class PatchData
         else
         {
             DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: unhandled operator '"
-                + operatorToken + "' in '" + trimmed + "', parse failed");
+                + operatorToken + "' in '" + trimmed + "', parse failed", LogLevel.Warn);
             return false;
         }
 
@@ -1680,7 +1683,7 @@ public class PatchData
             if (hexParsed == false)
             {
                 DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: hex operand '" + rightPart
-                    + "' in '" + trimmed + "' is not a valid 32-bit value, parse failed");
+                    + "' in '" + trimmed + "' is not a valid 32-bit value, parse failed", LogLevel.Warn);
                 return false;
             }
             parsedSignedOperand = unchecked((int)parsedOperand);
@@ -1692,7 +1695,7 @@ public class PatchData
             if (signedParsed == false)
             {
                 DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: signed operand '" + rightPart
-                    + "' in '" + trimmed + "' is not a valid 32-bit signed value, parse failed");
+                    + "' in '" + trimmed + "' is not a valid 32-bit signed value, parse failed", LogLevel.Warn);
                 return false;
             }
             parsedOperand = unchecked((uint)parsedSignedOperand);
@@ -1704,7 +1707,7 @@ public class PatchData
             if (unsignedParsed == false)
             {
                 DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: operand '" + rightPart
-                    + "' in '" + trimmed + "' is not a valid unsigned number, parse failed");
+                    + "' in '" + trimmed + "' is not a valid unsigned number, parse failed", LogLevel.Warn);
                 return false;
             }
             parsedSignedOperand = unchecked((int)parsedOperand);

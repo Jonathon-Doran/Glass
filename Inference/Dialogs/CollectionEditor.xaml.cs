@@ -695,12 +695,12 @@ public partial class CollectionEditor : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ToggleRelativeToButton_Click
     //
-    // Flips the show_relative_to flag on the selected field row, opening or closing the second-line
-    // Relative To editor for that row, then recomputes the row's any_detail so its details
-    // visibility tracks the change.  The editor is shown when the relative_to value is non-empty or
-    // the flag is true, so toggling the flag off on a row that already has a relative_to value
-    // leaves the editor shown.  No-op when no row is selected or the selection is the new-row
-    // placeholder rather than a DataRowView.
+    // Adds or removes the relative-to anchor on the selected field row.  If show_relative_to is
+    // false, sets it true so the editor panel appears.  If show_relative_to is true, clears
+    // relative_to to null and sets show_relative_to false so Save writes a null anchor and the
+    // field loads as absolute.  Recomputes the row's any_detail so its details visibility tracks
+    // the change.  No-op when no row is selected or the selection is the new-row placeholder
+    // rather than a DataRowView.
     //
     // sender:  The Relative To toggle button.
     // e:       Standard event args; not inspected.
@@ -715,14 +715,24 @@ public partial class CollectionEditor : Window
             return;
         }
 
-        bool current = Convert.ToBoolean(selected["show_relative_to"]);
-        bool toggled = current == false;
-        selected["show_relative_to"] = toggled;
-        RecomputeAnyDetail(selected.Row);
+        string fieldName = selected["field_name"] as string ?? string.Empty;
+        bool editorOpen = Convert.ToBoolean(selected["show_relative_to"]);
 
-        DebugLog.Write(LogChannel.Fields, "CollectionEditor.ToggleRelativeToButton_Click: "
-            + "field='" + (selected["field_name"] as string ?? string.Empty)
-            + "' show_relative_to " + current + " -> " + toggled, LogLevel.Trace);
+        if (editorOpen == false)
+        {
+            selected["show_relative_to"] = true;
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.ToggleRelativeToButton_Click: "
+                + "field='" + fieldName + "' relative-to added", LogLevel.Trace);
+        }
+        else
+        {
+            selected["relative_to"] = DBNull.Value;
+            selected["show_relative_to"] = false;
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.ToggleRelativeToButton_Click: "
+                + "field='" + fieldName + "' relative-to cleared", LogLevel.Trace);
+        }
+
+        RecomputeAnyDetail(selected.Row);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -1329,48 +1339,25 @@ public partial class CollectionEditor : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetContextMenuRow
     //
-    // Returns the DataRowView for the row that was right-clicked to open the context menu.
-    // The menu's PlacementTarget is the DataGridRow; its DataContext is the DataRowView bound
-    // to that row.  Returns null when the target is not a DataGridRow or its context is not a
-    // DataRowView.
+    // Returns the DataRowView for the currently selected row in FieldsGrid.  Used by context menu
+    // handlers to identify the target row.  Returns null when no row is selected or the selection
+    // is not a DataRowView.
     //
-    // sender:  The MenuItem that was clicked.
+    // sender:  The MenuItem that was clicked; not inspected.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private DataRowView? GetContextMenuRow(object sender)
     {
-        MenuItem menuItem = (MenuItem)sender;
-        ContextMenu contextMenu = (ContextMenu)menuItem.Parent;
-        DataGridRow? row = contextMenu.PlacementTarget as DataGridRow;
-
-        if (row == null)
-        {
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.GetContextMenuRow: "
-                + "PlacementTarget is not a DataGridRow", LogLevel.Warn);
-            return null;
-        }
-
-        DataRowView? rowView = row.DataContext as DataRowView;
+        DataRowView? rowView = FieldsGrid.SelectedItem as DataRowView;
 
         if (rowView == null)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.GetContextMenuRow: "
-                + "DataContext is not a DataRowView", LogLevel.Warn);
+                + "no DataRowView selected", LogLevel.Warn);
         }
 
         return rowView;
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // InsertRowHereMenuItem_Click
-    //
-    // Inserts a blank field row at the position of the right-clicked row, then re-sequences all
-    // rows from that position onward consecutively.  The new row takes the right-clicked row's
-    // sequence number; every row at or below that sequence number is shifted down by one before
-    // the insert.  No-op when no collection is loaded or the target row cannot be resolved.
-    //
-    // sender:  The Insert Row Here menu item.
-    // e:       Standard event args; not inspected.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     private void InsertRowHereMenuItem_Click(object sender, RoutedEventArgs e)
     {
         if (_fieldsTable == null)
@@ -1396,7 +1383,7 @@ public partial class CollectionEditor : Window
             return;
         }
 
-        int insertSequence = Convert.ToInt32(sequenceCell);
+        int insertSequence = Convert.ToInt32(sequenceCell) + 1;
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.InsertRowHereMenuItem_Click: "
             + "inserting at sequence=" + insertSequence, LogLevel.Trace);
@@ -1433,7 +1420,8 @@ public partial class CollectionEditor : Window
         newRow["predicate"] = DBNull.Value;
         newRow["gate"] = DBNull.Value;
 
-        _fieldsTable.Rows.Add(newRow);
+        int insertIndex = _fieldsTable.Rows.IndexOf(rowView.Row) + 1;
+        _fieldsTable.Rows.InsertAt(newRow, insertIndex);
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.InsertRowHereMenuItem_Click: "
             + "inserted blank row at sequence=" + insertSequence

@@ -24,20 +24,19 @@ namespace Glass.Network.Protocol.Fields;
 // On any type mismatch in a getter, the slot logs and returns a default value rather than
 // throwing — a misconfigured field definition should not crash the dispatch loop.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 18)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 20)]
 public struct FieldSlot
 {
     public const ushort NoArenaData = 0xFFFF;
-     
-    private uint   _value;
-    private uint   _wireBitOffset;
-    private ushort _wireBitLength;
+
+    private uint _value;
+    private uint _wireBitOffset;
+    private uint _wireBitLength;
     private ushort _sequence;
     private ushort _arenaOffset;
     private ushort _nameOffset;
-    private byte   _nameLength;
+    private byte _nameLength;
     private FieldType _type;
-
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Type
     //
@@ -70,7 +69,7 @@ public struct FieldSlot
     // is absent because its predicate did not hold, so a following field anchored on it
     // resolves to the same start bit the absent field would have yielded.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public ushort WireBitLength
+    public uint WireBitLength
     {
         get { return _wireBitLength; }
         set { _wireBitLength = value; }

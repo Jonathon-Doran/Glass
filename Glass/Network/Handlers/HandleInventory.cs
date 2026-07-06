@@ -77,12 +77,13 @@ public class HandleInventory : IHandleOpcodes
         FieldExtractor extractor = GlassContext.FieldExtractor;
         uint bagCount = 0;
 
+        DebugLog.Write(LogChannel.Opcodes, "Starting Inventory Extract", LogLevel.Info);
         try
         {
             GateHandle rootGate = extractor.Extract(_top_level_gate, data);
             bagCount = extractor.BagCount(rootGate);
 
-            DebugLog.Write(LogChannel.Opcodes, "Inventory top level sees " + bagCount + " bags");
+            DebugLog.Write(LogChannel.Opcodes, "Inventory top level sees " + bagCount + " bags", LogLevel.Info);
 
             for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
             {
@@ -93,6 +94,7 @@ public class HandleInventory : IHandleOpcodes
         finally
         {
             extractor.Release();
+            DebugLog.Write(LogChannel.Opcodes, "Finished with inventory packet", LogLevel.Info);
         }
     }
 

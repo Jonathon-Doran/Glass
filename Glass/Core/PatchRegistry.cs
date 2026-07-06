@@ -81,7 +81,7 @@ public class PatchRegistry
         _loadedPatches.Add(patchData);
 
         DebugLog.Write(LogChannel.Network, "PatchRegistry.LoadPatchLevel: loaded patchLevel "
-            + patchLevel);
+            + patchLevel, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -107,7 +107,7 @@ public class PatchRegistry
         LoadPatchLevel(patchLevel);
 
         DebugLog.Write(LogChannel.Network, "PatchRegistry.LoadLatestPatchLevel: returning "
-            + patchLevel);
+            + patchLevel, LogLevel.Trace);
         return patchLevel;
     }
 
@@ -139,13 +139,14 @@ public class PatchRegistry
         object? result = cmd.ExecuteScalar();
         if (result == null || result == DBNull.Value)
         {
+            DebugLog.Write(LogChannel.Network, "no patches for servertype '" + serverType + '"', LogLevel.Error);
             throw new InvalidOperationException("PatchRegistry.ResolveLatestPatchDate: "
                 + "no patches for serverType='" + serverType + "'");
         }
 
         string latestDate = (string)result;
         DebugLog.Write(LogChannel.Network, "PatchRegistry.ResolveLatestPatchDate: latest "
-            + "patch_date for serverType=" + serverType + " is " + latestDate);
+            + "patch_date for serverType=" + serverType + " is " + latestDate, LogLevel.Trace);
         return latestDate;
     }
 
@@ -250,25 +251,37 @@ public class PatchRegistry
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // GetGateDefinition
+    // TryGetGateDefinition
     //
-    // Returns the GateDefinition for the given GateDefinitionHandle in the given patch level, by
-    // value.  Looks the patch up in the loaded set and delegates to its PatchData.
+    // Resolves the GateDefinition for the given GateDefinitionHandle in the given patch
+    // level, by value.  Looks the patch up in the loaded set and delegates to its PatchData.
+    // A None handle is rejected here rather than delegated, since PatchData has no
+    // representation for "no gate".
     //
     // Throws InvalidOperationException if the patch level is not loaded.
     //
     // Parameters:
-    //   patchLevel  - The patch identifier.  Must already be loaded.
-    //   gateHandle  - The gate to look up.  Must be a real handle issued by that patch's
-    //                 PatchData.
+    //   patchLevel      - The patch identifier.  Must already be loaded.
+    //   gateHandle      - The gate to look up.
+    //   gateDefinition  - Receives the GateDefinition on success; default on failure.
     //
     // Returns:
-    //   The GateDefinition stored at the handle.
+    //   true when the handle resolved to a gate; false when the handle is None.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public GateDefinition GetGateDefinition(PatchLevel patchLevel, GateDefinitionHandle gateHandle)
+    public bool TryGetGateDefinition(PatchLevel patchLevel, GateDefinitionHandle gateHandle,
+        out GateDefinition gateDefinition)
     {
+        if (gateHandle.Exists == false)
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchRegistry.TryGetGateDefinition: "
+                + "GateDefinitionHandle.None passed for patchLevel " + patchLevel, LogLevel.Warn);
+            gateDefinition = default;
+            return false;
+        }
+
         PatchData patchData = FindPatchData(patchLevel);
-        return patchData.GetGateDefinition(gateHandle);
+        gateDefinition = patchData.GetGateDefinition(gateHandle);
+        return true;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -290,7 +303,7 @@ public class PatchRegistry
         if (patchOpcode.Exists == false)
         {
             string failure = "PatchRegistry.GetOpcodeGateDefinition: PatchOpcode.None passed";
-            DebugLog.Write(LogChannel.Fields, failure + Environment.NewLine + Environment.StackTrace);
+            DebugLog.Write(LogChannel.Fields, failure + Environment.NewLine + Environment.StackTrace, LogLevel.Error);
             Environment.FailFast(failure);
         }
 

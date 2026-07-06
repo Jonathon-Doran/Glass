@@ -21,7 +21,7 @@ namespace Glass.Network.Protocol.Fields;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public sealed class FieldBag
 {
-    public const uint SlotSizeBytes = 18;
+    public const uint SlotSizeBytes = 20;
 
     private BufferLease _lease;
     private uint _arenaOffset;
