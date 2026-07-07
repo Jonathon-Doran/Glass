@@ -1473,7 +1473,7 @@ public class PatchData
         {
             DebugLog.Write(LogChannel.Fields, "PatchData.IndexOfField: no field definitions for collection '"
                 + GetCollectionNameFromIndex(collection) + "' in patchLevel=" + PatchLevel
-                + ", returning None");
+                + ", returning None", LogLevel.Warn);
             return SlotId.None;
         }
 

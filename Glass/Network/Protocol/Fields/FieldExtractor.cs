@@ -58,6 +58,10 @@ public class FieldExtractor
     // EnterGate; BagHandle.None until the first EnterGate of an extraction.
     private BagHandle _activeBag;
 
+    // The root gate of the extraction in progress.  GateHandle.None when no extraction
+    // has completed.
+    private GateHandle _rootGate;
+
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // FieldExtractor (constructor)
     //
@@ -73,6 +77,7 @@ public class FieldExtractor
         _freeBags = new Stack<FieldBag>();
         _childIndex = Array.Empty<BagHandle>();
         _activeBag = BagHandle.None;
+        _rootGate = GateHandle.None;
     }
     ///////////////////////////////////////////////////////////////////////////////////////////
     // SetCursor
@@ -145,6 +150,7 @@ public class FieldExtractor
 
         GateHandle rootGate = ExpandMultiplicity(gateDefinitionHandle, BagHandle.None, payload);
         _activeBag = _gates[(int)(uint)rootGate].Head;
+        _rootGate = rootGate;
 
         DebugLog.Write(LogChannel.Fields, "FieldExtractor.Extract: descent complete, root gate " +
             rootGate + " (" + gateName + "): " + _bags.Count + " bag(s) filled",
@@ -1848,6 +1854,292 @@ public class FieldExtractor
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // ParsePathSegment
+    //
+    // Splits one path segment into a collection name and an instance index.  A segment is
+    // either a bare name ("Item"), giving index 0, or a name with a bracketed index
+    // ("Item[3]").  The name must be non-empty and the index must be a valid unsigned
+    // decimal number.
+    //
+    // segment:  The path segment to parse.
+    // name:     Receives the collection name, or empty string on failure.
+    // index:    Receives the instance index, or 0 on failure.
+    //
+    // Returns:  true when the segment parsed; false when the segment is malformed.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private bool ParsePathSegment(string segment, out string name, out uint index)
+    {
+        name = string.Empty;
+        index = 0u;
+
+        if (string.IsNullOrEmpty(segment) == true)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.ParsePathSegment: empty segment",
+                LogLevel.Warn);
+            return false;
+        }
+
+        int bracketStart = segment.IndexOf('[');
+        if (bracketStart < 0)
+        {
+            name = segment;
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.ParsePathSegment: '" + segment
+                + "' parsed as name '" + name + "' index 0", LogLevel.Trace);
+            return true;
+        }
+
+        if (bracketStart == 0)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.ParsePathSegment: segment '"
+                + segment + "' has no name before bracket", LogLevel.Warn);
+            return false;
+        }
+
+        if (segment.EndsWith("]") == false)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.ParsePathSegment: segment '"
+                + segment + "' has unterminated bracket", LogLevel.Warn);
+            return false;
+        }
+
+        string indexText = segment.Substring(bracketStart + 1,
+            segment.Length - bracketStart - 2);
+        if (uint.TryParse(indexText, out index) == false)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.ParsePathSegment: segment '"
+                + segment + "' has non-numeric index '" + indexText + "'", LogLevel.Warn);
+            return false;
+        }
+
+        name = segment.Substring(0, bracketStart);
+        DebugLog.Write(LogChannel.Fields, "FieldExtractor.ParsePathSegment: '" + segment
+            + "' parsed as name '" + name + "' index " + index, LogLevel.Trace);
+        return true;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FindChildGate
+    //
+    // Walks the child-gate chain of the given bag looking for the gate whose child
+    // collection matches the given handle.  The walk follows FirstChildGate through each
+    // gate's NextSibling.
+    //
+    // bag:         The handle of the bag whose child gates to search.
+    // collection:  The handle of the collection to match.
+    //
+    // Returns:  The handle of the matching gate, or GateHandle.None when the bag has no
+    //           child gate for that collection.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private GateHandle FindChildGate(BagHandle bag, CollectionHandle collection)
+    {
+        if (bag.Exists == false)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.FindChildGate: BagHandle.None "
+                + "passed while looking for collection (" + CollectionNameOf(collection) + ")",
+                LogLevel.Warn);
+            return GateHandle.None;
+        }
+
+        GateHandle walk = _bags[(int)(uint)bag].FirstChildGate;
+        while (walk.Exists == true)
+        {
+            Gate gate = _gates[(int)(uint)walk];
+
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.FindChildGate: bag has child "
+                + "gate for collection (" + CollectionNameOf(gate.ChildCollection) + ")",
+                LogLevel.Info);
+
+            if (gate.ChildCollection == collection)
+            {
+                DebugLog.Write(LogChannel.Fields, "FieldExtractor.FindChildGate: found gate '"
+                    + GateNameOf(walk) + "' for collection (" + CollectionNameOf(collection)
+                    + ")", LogLevel.Info);
+                return walk;
+            }
+            walk = gate.NextSibling;
+        }
+
+        DebugLog.Write(LogChannel.Fields, "FieldExtractor.FindChildGate: no child gate for "
+            + "collection (" + CollectionNameOf(collection) + ")", LogLevel.Warn);
+        return GateHandle.None;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ResolveGate
+    //
+    // Resolves a path of collection names to the gate addressed by the final segment.  A
+    // path beginning with '/' resolves from the root gate's first instance bag; any other
+    // path resolves from the active bag.  Segments are separated by '/'.  A segment is a
+    // collection name with an optional bracketed instance index ("Item[3]", default 0),
+    // "." for the current bag, or ".." for the parent bag.  Intermediate segments descend
+    // through the named gate into its indexed instance bag; the final segment's gate is
+    // returned without descending, so an index on the final segment is ignored.
+    //
+    // path:  The path to resolve.
+    //
+    // Returns:  The handle of the gate the final segment names, or GateHandle.None when
+    //           any segment fails to resolve.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public GateHandle ResolveGate(string path)
+    {
+        if (string.IsNullOrEmpty(path) == true)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.ResolveGate: empty path",
+                LogLevel.Warn);
+            return GateHandle.None;
+        }
+
+        PatchLevel patchLevel = GlassContext.CurrentPatchLevel;
+        BagHandle currentBag;
+
+        if (path[0] == '/')
+        {
+            if (_rootGate.Exists == false)
+            {
+                DebugLog.Write(LogChannel.Fields, "FieldExtractor.ResolveGate: absolute path '"
+                    + path + "' but no extraction has completed", LogLevel.Warn);
+                return GateHandle.None;
+            }
+            currentBag = _gates[(int)(uint)_rootGate].Head;
+        }
+        else
+        {
+            currentBag = _activeBag;
+        }
+
+        if (currentBag.Exists == false)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.ResolveGate: path '" + path
+                + "' has no starting bag", LogLevel.Warn);
+            return GateHandle.None;
+        }
+
+        string[] segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.ResolveGate: path '" + path
+                + "' has no segments", LogLevel.Warn);
+            return GateHandle.None;
+        }
+
+        for (uint segmentIndex = 0; segmentIndex < (uint)segments.Length; segmentIndex++)
+        {
+            string segment = segments[segmentIndex];
+            bool isFinalSegment = (segmentIndex == (uint)segments.Length - 1u);
+
+            if (segment == ".")
+            {
+                if (isFinalSegment == true)
+                {
+                    DebugLog.Write(LogChannel.Fields, "FieldExtractor.ResolveGate: path '"
+                        + path + "' ends in '.', no gate to return", LogLevel.Warn);
+                    return GateHandle.None;
+                }
+                DebugLog.Write(LogChannel.Fields, "FieldExtractor.ResolveGate: '.' segment, "
+                    + "staying at current bag", LogLevel.Trace);
+                continue;
+            }
+
+            if (segment == "..")
+            {
+                GateHandle parentGate = _bags[(int)(uint)currentBag].ParentGate;
+                if (parentGate.Exists == false)
+                {
+                    DebugLog.Write(LogChannel.Fields, "FieldExtractor.ResolveGate: path '"
+                        + path + "' segment '..' at root, no parent", LogLevel.Warn);
+                    return GateHandle.None;
+                }
+                if (isFinalSegment == true)
+                {
+                    DebugLog.Write(LogChannel.Fields, "FieldExtractor.ResolveGate: path '"
+                        + path + "' resolved to parent gate for collection ("
+                        + CollectionNameOf(_gates[(int)(uint)parentGate].ChildCollection)
+                        + ")", LogLevel.Trace);
+                    return parentGate;
+                }
+                currentBag = _gates[(int)(uint)parentGate].ParentBag;
+                if (currentBag.Exists == false)
+                {
+                    DebugLog.Write(LogChannel.Fields, "FieldExtractor.ResolveGate: path '"
+                        + path + "' segment '..' reached the top, no parent bag",
+                        LogLevel.Warn);
+                    return GateHandle.None;
+                }
+                DebugLog.Write(LogChannel.Fields, "FieldExtractor.ResolveGate: '..' segment, "
+                    + "moved up to collection ("
+                    + CollectionNameOf(_bags[(int)(uint)currentBag].Collection) + ")",
+                    LogLevel.Trace);
+                continue;
+            }
+
+            string segmentName;
+            uint instanceIndex;
+            if (ParsePathSegment(segment, out segmentName, out instanceIndex) == false)
+            {
+                DebugLog.Write(LogChannel.Fields, "FieldExtractor.ResolveGate: path '" + path
+                    + "' segment '" + segment + "' is malformed", LogLevel.Warn);
+                return GateHandle.None;
+            }
+
+            CollectionHandle collection = GlassContext.PatchRegistry.GetCollectionHandle(
+                patchLevel, segmentName);
+            if (collection.Exists == false)
+            {
+                DebugLog.Write(LogChannel.Fields, "FieldExtractor.ResolveGate: path '" + path
+                    + "' segment '" + segmentName + "' is not a collection in this patch",
+                    LogLevel.Warn);
+                return GateHandle.None;
+            }
+
+            GateHandle segmentGate = FindChildGate(currentBag, collection);
+            if (segmentGate.Exists == false)
+            {
+                DebugLog.Write(LogChannel.Fields, "FieldExtractor.ResolveGate: path '" + path
+                    + "' collection (" + segmentName + ") has no gate here", LogLevel.Warn);
+                return GateHandle.None;
+            }
+
+            if (isFinalSegment == true)
+            {
+                if (segment.IndexOf('[') >= 0)
+                {
+                    DebugLog.Write(LogChannel.Fields, "FieldExtractor.ResolveGate: path '"
+                        + path + "' final segment index ignored, result is a gate",
+                        LogLevel.Warn);
+                }
+                DebugLog.Write(LogChannel.Fields, "FieldExtractor.ResolveGate: path '" + path
+                    + "' resolved to gate for collection (" + segmentName + ")",
+                    LogLevel.Trace);
+                return segmentGate;
+            }
+
+            Gate gate = _gates[(int)(uint)segmentGate];
+            if (instanceIndex >= gate.BagCount)
+            {
+                DebugLog.Write(LogChannel.Fields, "FieldExtractor.ResolveGate: path '" + path
+                    + "' collection (" + segmentName + ") index " + instanceIndex
+                    + " out of range [0, " + gate.BagCount + ")", LogLevel.Warn);
+                return GateHandle.None;
+            }
+
+            BagHandle walk = gate.Head;
+            for (uint step = 0; step < instanceIndex; step++)
+            {
+                walk = _bags[(int)(uint)walk].NextBag;
+            }
+            currentBag = walk;
+
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.ResolveGate: descended into "
+                + "collection (" + segmentName + ") instance " + instanceIndex,
+                LogLevel.Trace);
+        }
+
+        DebugLog.Write(LogChannel.Fields, "FieldExtractor.ResolveGate: path '" + path
+            + "' walk ended without resolving a gate", LogLevel.Warn);
+        return GateHandle.None;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // GateNameOf
     //
     // Resolves the display name of the gate addressed by the given GateHandle.  Reads the
@@ -2004,6 +2296,7 @@ public class FieldExtractor
         _bags.Clear();
         _gates.Clear();
         _activeBag = BagHandle.None;
+        _rootGate = GateHandle.None;
 
         DebugLog.Write(LogChannel.Fields, "FieldExtractor.Release: free list after " + _freeBags.Count, LogLevel.Trace);
     }

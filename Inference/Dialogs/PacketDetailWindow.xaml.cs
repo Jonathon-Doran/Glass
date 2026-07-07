@@ -6,8 +6,12 @@ using Inference.Models;
 using Inference.UI;
 using Microsoft.VisualBasic.FileIO;
 using System;
+using System.Collections.Generic;
 using System.Text;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 using static Glass.Network.Protocol.SoeConstants;
 
 namespace Inference.Dialogs;
@@ -26,6 +30,11 @@ namespace Inference.Dialogs;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public partial class PacketDetailWindow : Window
 {
+    private FieldDisplayNode? _dragAnchor;
+    private List<FieldDisplayNode> _visibleNodes = new List<FieldDisplayNode>();
+    private bool _anchorWasHighlighted = false;
+    private bool _dragOccurred = false;
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // PacketDetailWindow (constructor)
     //
@@ -63,7 +72,7 @@ public partial class PacketDetailWindow : Window
         HeaderChannel.Text = StreamAbbrev[packet.Metadata.Channel];
         HeaderCharacter.Text = characterName;
 
-        DebugLog.Write(LogChannel.InferenceDebug,
+        DebugLog.Write(LogChannel.Opcodes,
             "PacketDetailWindow: opening packetIndex=" + packet.PacketIndex
             + " opcode=" + opcodeHex + " (" + opcodeName + ")"
             + " length=" + payloadLength, LogLevel.Trace);
@@ -76,7 +85,7 @@ public partial class PacketDetailWindow : Window
         else
         {
             FieldTree.ItemsSource = null;
-            DebugLog.Write(LogChannel.InferenceDebug,
+            DebugLog.Write(LogChannel.Opcodes,
                 "PacketDetailWindow: no field tree for " + packet.Metadata.Opcode, LogLevel.Trace);
         }
         HexDumpTextBox.Text = HexDumpFormatter.Format(payload, int.MaxValue);
@@ -125,7 +134,7 @@ public partial class PacketDetailWindow : Window
 
         if (root == null)
         {
-            DebugLog.Write(LogChannel.InferenceDebug,
+            DebugLog.Write(LogChannel.Opcodes,
                 "PacketDetailWindow.BuildFieldTree: no handler for " + metadata.Opcode
                 + ", no field tree", LogLevel.Trace);
         }
@@ -134,187 +143,366 @@ public partial class PacketDetailWindow : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // ExtractInventoryItems
+    // FieldTree_PreviewKeyDown
     //
-    // Decodes the items in a 0x7E9B inventory payload by segmenting on the ItemString that
-    // begins each item.  Scans the payload for each 16-byte ItemString, slices the payload at
-    // that offset, and extracts the given collection against the slice so each item decodes
-    // from the start of its own bytes.  Bindings for each item are appended under a header line
-    // carrying the item ordinal and the byte offset of its ItemString.  Items appear in wire
-    // order.
+    // Copies the selected field nodes to the clipboard when Ctrl+C is pressed over the field
+    // tree.  Walks the bound roots depth-first, appending each node whose IsSelected flag is set
+    // as an indented line.  Copies nothing when no node is selected.  Ignores all other keys.
     //
-    // patchLevel:   The active patch level.
-    // collection:   The collection extracted against each item slice.
-    // patchOpcode:  The packet's versioned opcode, used to rent a bag.
-    // payload:      The full inventory payload.
+    // sender:  The key event source.
+    // e:       The key event args.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private static string ExtractInventoryItems(PatchLevel patchLevel, CollectionHandle collection,
-        PatchOpcode patchOpcode, ReadOnlySpan<byte> payload)
+    private void FieldTree_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        /*
-        StringBuilder sb = new StringBuilder();
-        int itemOrdinal = 0;
-        int scanOffset = 0;
-
-        while (scanOffset < payload.Length)
+        if (e.Key != Key.C || (Keyboard.Modifiers & ModifierKeys.Control) != ModifierKeys.Control)
         {
-            int anchorOffset = FindNextItemString(payload, scanOffset);
-            if (anchorOffset < 0)
-            {
-                break;
-            }
-
-            sb.Append("---- item ");
-            sb.Append(itemOrdinal);
-            sb.Append(" at 0x");
-            sb.Append(anchorOffset.ToString("x"));
-            sb.Append(" ----\n");
-
-            ReadOnlySpan<byte> itemSlice = payload.Slice(anchorOffset);
-
-            FieldBag bag = GlassContext.PatchRegistry.Rent(collection);
-            try
-            {
-                GlassContext.FieldExtractor.ExtractCollection(patchLevel, collection, itemSlice, bag);
-
-                BagWalker walker = bag.Walk();
-                FieldBinding? binding = walker.Next();
-                while (binding != null)
-                {
-                    FieldBinding b = binding.Value;
-                    sb.Append(b.Name);
-                    sb.Append(" = ");
-                    sb.Append(b.Value);
-                    sb.Append('\n');
-                    binding = walker.Next();
-                }
-            }
-            finally
-            {
-                bag.Release();
-            }
-
-            itemOrdinal++;
-            scanOffset = anchorOffset + 16;
+            return;
         }
 
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "PacketDetailWindow.ExtractInventoryItems: segmented " + itemOrdinal + " items");
-        return sb.ToString();
-        */
+        if (FieldTree.ItemsSource == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "PacketDetailWindow.FieldTree_PreviewKeyDown: no field tree to copy", LogLevel.Warn);
+            return;
+        }
 
-        return "";
+        StringBuilder builder = new StringBuilder();
+        foreach (FieldDisplayNode root in (FieldDisplayNode[])FieldTree.ItemsSource)
+        {
+            AppendSelectedNodes(root, 0u, false, builder);
+        }
+
+        if (builder.Length == 0u)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "PacketDetailWindow.FieldTree_PreviewKeyDown: no nodes selected", LogLevel.Trace);
+            return;
+        }
+
+        Clipboard.SetText(builder.ToString());
+        e.Handled = true;
+        DebugLog.Write(LogChannel.Opcodes, "PacketDetailWindow.FieldTree_PreviewKeyDown: copied " + builder.Length + " chars", LogLevel.Info);
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // FindNextItemString
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FieldTree_PreviewMouseLeftButtonDown
     //
-    // Scans the payload forward from startOffset for the next item-key string: a run of exactly
-    // sixteen printable ASCII bytes (0x20 through 0x7E) that contains no space, is immediately
-    // followed by a non-printable byte, and is preceded by a non-printable byte or the payload
-    // start.  This is the on-wire signature of the inventory item-key string (the "D9" string),
-    // sixteen characters terminated by a null.
+    // Records the node under the pointer as the drag anchor when the left button goes down over
+    // the field tree, captures the anchor's highlight state before any drag can alter it, and
+    // clears the drag-occurred flag so button-up can distinguish a plain click from a drag.
+    // Does nothing when the pointer is over the expander toggle or not over a node.
     //
-    // The no-space rule separates the item-key serials from sixteen-character item display names
-    // that also appear in the payload; display names contain spaces, serials do not.
-    //
-    // Returns the byte offset of the first character of the matched run, or -1 when no further
-    // match exists from startOffset to the end of the payload.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private static int FindNextItemString(ReadOnlySpan<byte> payload, int startOffset)
+    // sender:  The mouse event source.
+    // e:       The mouse event args.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void FieldTree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "PacketDetailWindow.FindNextItemString: scanning from offset 0x"
-            + startOffset.ToString("x") + " in payload of " + payload.Length + " bytes");
+        DependencyObject? hitSource = e.OriginalSource as DependencyObject;
+        DependencyObject? walk = hitSource;
 
-        if (startOffset < 0)
+        while (walk != null)
         {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "PacketDetailWindow.FindNextItemString: negative startOffset, returning -1");
-            return -1;
+            if (walk is System.Windows.Controls.Primitives.ToggleButton)
+            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "PacketDetailWindow.FieldTree_PreviewMouseLeftButtonDown: click on expander, ignoring. Severity=Trace",
+                    LogLevel.Trace);
+                return;
+            }
+            walk = VisualTreeHelper.GetParent(walk);
         }
 
-        int scanOffset = startOffset;
-        while (scanOffset + 16 <= payload.Length)
+        TreeViewItem? item = FindAncestorTreeViewItem(hitSource);
+        if (item == null)
         {
-            bool runIsAllPrintable = true;
-            bool runHasSpace = false;
-            for (int runIndex = 0; runIndex < 16; runIndex++)
-            {
-                byte candidate = payload[scanOffset + runIndex];
-                if (candidate < 0x20 || candidate > 0x7E)
-                {
-                    runIsAllPrintable = false;
-                    break;
-                }
-                if (candidate == 0x20)
-                {
-                    runHasSpace = true;
-                }
-            }
-
-            if (runIsAllPrintable == false)
-            {
-                scanOffset = scanOffset + 1;
-                continue;
-            }
-
-            if (runHasSpace == true)
-            {
-                scanOffset = scanOffset + 1;
-                continue;
-            }
-
-            int followingIndex = scanOffset + 16;
-            bool boundedByNonPrintable;
-            if (followingIndex >= payload.Length)
-            {
-                boundedByNonPrintable = true;
-            }
-            else
-            {
-                byte following = payload[followingIndex];
-                boundedByNonPrintable = following < 0x20 || following > 0x7E;
-            }
-
-            if (boundedByNonPrintable == false)
-            {
-                DebugLog.Write(LogChannel.InferenceDebug,
-                    "PacketDetailWindow.FindNextItemString: 16-char run at 0x"
-                    + scanOffset.ToString("x") + " is followed by a printable byte, run is longer than 16, skipping");
-                scanOffset = scanOffset + 1;
-                continue;
-            }
-
-            bool precededByNonPrintable;
-            if (scanOffset == 0)
-            {
-                precededByNonPrintable = true;
-            }
-            else
-            {
-                byte preceding = payload[scanOffset - 1];
-                precededByNonPrintable = preceding < 0x20 || preceding > 0x7E;
-            }
-
-            if (precededByNonPrintable == false)
-            {
-                DebugLog.Write(LogChannel.InferenceDebug,
-                    "PacketDetailWindow.FindNextItemString: 16-char run at 0x"
-                    + scanOffset.ToString("x") + " is preceded by a printable byte, not a run start, skipping");
-                scanOffset = scanOffset + 1;
-                continue;
-            }
-
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "PacketDetailWindow.FindNextItemString: matched item key at 0x"
-                + scanOffset.ToString("x"));
-            return scanOffset;
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.FieldTree_PreviewMouseLeftButtonDown: no item under pointer. Severity=Trace",
+                LogLevel.Trace);
+            return;
         }
 
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "PacketDetailWindow.FindNextItemString: no further item key found from 0x"
-            + startOffset.ToString("x"));
-        return -1;
+        FieldDisplayNode? node = item.DataContext as FieldDisplayNode;
+        if (node == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.FieldTree_PreviewMouseLeftButtonDown: item has no node. Severity=Warn",
+                LogLevel.Warn);
+            return;
+        }
+
+        _visibleNodes = new List<FieldDisplayNode>();
+        foreach (FieldDisplayNode root in (FieldDisplayNode[])FieldTree.ItemsSource)
+        {
+            FlattenVisibleNodes(root, FieldTree, _visibleNodes);
+        }
+
+        _dragAnchor = node;
+        _anchorWasHighlighted = node.IsHighlighted;
+        _dragOccurred = false;
+
+        DebugLog.Write(LogChannel.Opcodes,
+            "PacketDetailWindow.FieldTree_PreviewMouseLeftButtonDown: anchor='" + node.Text
+            + "' anchorWasHighlighted=" + _anchorWasHighlighted
+            + " visibleCount=" + _visibleNodes.Count + ". Severity=Trace",
+            LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FieldTree_PreviewMouseLeftButtonUp
+    //
+    // Ends a highlight gesture.  When a drag occurred, the range highlight applied during
+    // mouse move is left in place.  When no drag occurred, the gesture is a plain click:
+    // all highlights are cleared, then the anchor's subtree is highlighted unless the anchor
+    // was already highlighted before the click, making the click a toggle.  Clears the drag
+    // anchor in all cases.
+    //
+    // sender:  The mouse event source.
+    // e:       The mouse event args.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void FieldTree_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (FieldTree.IsMouseCaptured == true)
+        {
+            FieldTree.ReleaseMouseCapture();
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.FieldTree_PreviewMouseLeftButtonUp: released mouse capture. Severity=Trace",
+                LogLevel.Trace);
+        }
+
+        if (_dragAnchor == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.FieldTree_PreviewMouseLeftButtonUp: no drag anchor. Severity=Trace",
+                LogLevel.Trace);
+            return;
+        }
+
+        if (_dragOccurred == true)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.FieldTree_PreviewMouseLeftButtonUp: drag ended, range highlight retained. Severity=Trace",
+                LogLevel.Trace);
+            _dragAnchor = null;
+            return;
+        }
+
+        bool newState = !_anchorWasHighlighted;
+        DebugLog.Write(LogChannel.Opcodes,
+            "PacketDetailWindow.FieldTree_PreviewMouseLeftButtonUp: click on anchor='" + _dragAnchor.Text
+            + "' anchorWasHighlighted=" + _anchorWasHighlighted + " newState=" + newState + ". Severity=Trace",
+            LogLevel.Trace);
+
+        foreach (FieldDisplayNode root in (FieldDisplayNode[])FieldTree.ItemsSource)
+        {
+            SetHighlightDescendants(root, false);
+        }
+
+        if (newState == true)
+        {
+            SetHighlightDescendants(_dragAnchor, true);
+        }
+
+        _dragAnchor = null;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // AppendSelectedNodes
+    //
+    // Appends the given node's subtree to the builder when its IsSelected flag is set: the node
+    // and all its descendants are emitted as indented lines regardless of the descendants' own
+    // flags.  When the node is not selected it contributes no line, but its children are still
+    // visited so a selected descendant is found.  Indentation is two spaces per depth level.
+    //
+    // node:      The node to test and append.
+    // depth:     The node's depth in the tree, used for indentation.
+    // selected:  True when an ancestor was already selected, forcing this node to emit.
+    // builder:   The builder receiving the text lines.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static void AppendSelectedNodes(FieldDisplayNode node, uint depth, bool selected, StringBuilder builder)
+    {
+        if (node == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "PacketDetailWindow.AppendSelectedNodes: null node at depth " + depth, LogLevel.Warn);
+            return;
+        }
+
+        bool emit = node.IsHighlighted;
+
+        if (emit == true)
+        {
+            builder.Append(' ', (int)(depth * 2u));
+            builder.Append(node.Text);
+            builder.Append('\n');
+        }
+
+        foreach (FieldDisplayNode child in node.Children)
+        {
+            AppendSelectedNodes(child, depth + 1u, emit, builder);
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FieldTree_MouseMove
+    //
+    // Extends a range highlight as the pointer drags over the field tree with the left button
+    // held.  Hit-tests the pointer position to find the node under it, flattens the visible
+    // nodes in display order, and sets IsHighlighted true across the inclusive range from the
+    // drag anchor to that node and false elsewhere.  Marks the gesture as a drag once the
+    // pointer reaches a node other than the anchor.  Does nothing when the left button is up,
+    // no anchor is set, or the pointer is not over a node.
+    //
+    // sender:  The mouse event source.
+    // e:       The mouse event args.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void FieldTree_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        if (_dragAnchor == null)
+        {
+            return;
+        }
+
+        Point point = e.GetPosition(FieldTree);
+        HitTestResult hit = VisualTreeHelper.HitTest(FieldTree, point);
+        if (hit == null)
+        {
+            return;
+        }
+
+        TreeViewItem? item = FindAncestorTreeViewItem(hit.VisualHit);
+        if (item == null)
+        {
+            return;
+        }
+
+        FieldDisplayNode? current = item.DataContext as FieldDisplayNode;
+        if (current == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.FieldTree_MouseMove: item has no node. Severity=Warn",
+                LogLevel.Warn);
+            return;
+        }
+
+        if (current != _dragAnchor)
+        {
+            _dragOccurred = true;
+        }
+
+        if (_dragOccurred == false)
+        {
+            return;
+        }
+
+        int anchorIndex = _visibleNodes.IndexOf(_dragAnchor);
+        int currentIndex = _visibleNodes.IndexOf(current);
+        if (anchorIndex < 0 || currentIndex < 0)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.FieldTree_MouseMove: anchor or current not visible"
+                + " anchor='" + _dragAnchor.Text + "' current='" + current.Text + "'. Severity=Warn",
+                LogLevel.Warn);
+            return;
+        }
+
+        uint low = (uint)System.Math.Min(anchorIndex, currentIndex);
+        uint high = (uint)System.Math.Max(anchorIndex, currentIndex);
+
+        for (uint i = 0u; i < (uint)_visibleNodes.Count; i++)
+        {
+            _visibleNodes[(int)i].IsHighlighted = (i >= low && i <= high);
+        }
+
+        DebugLog.Write(LogChannel.Opcodes,
+            "PacketDetailWindow.FieldTree_MouseMove: highlighted [" + low + ".." + high + "]. Severity=Trace",
+            LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FindAncestorTreeViewItem
+    //
+    // Walks up the visual tree from the given element and returns the nearest TreeViewItem
+    // ancestor, or null when none is found above it.
+    //
+    // start:    The element to walk up from.  May be null, in which case null is returned.
+    //
+    // Returns:  The nearest enclosing TreeViewItem, or null when none exists above start.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static TreeViewItem? FindAncestorTreeViewItem(DependencyObject? start)
+    {
+        if (start == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "PacketDetailWindow.FindAncestorTreeViewItem: null start", LogLevel.Trace);
+            return null;
+        }
+
+        DependencyObject? current = start;
+        while (current != null)
+        {
+            TreeViewItem? item = current as TreeViewItem;
+            if (item != null)
+            {
+                return item;
+            }
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FlattenVisibleNodes
+    //
+    // Appends the given node and its visible descendants to the list in display order: a node is
+    // added, then its children are visited only when the corresponding TreeViewItem container is
+    // expanded.  Produces the ordered run of nodes a range selection spans between two endpoints.
+    //
+    // node:     The node to append and descend from.
+    // parent:   The ItemsControl whose container generator resolves this node's TreeViewItem.
+    // visible:  The list receiving the nodes in display order.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static void FlattenVisibleNodes(FieldDisplayNode node, ItemsControl parent, List<FieldDisplayNode> visible)
+    {
+        if (node == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "PacketDetailWindow.FlattenVisibleNodes: null node", LogLevel.Warn);
+            return;
+        }
+
+        visible.Add(node);
+
+        TreeViewItem? container = parent.ItemContainerGenerator.ContainerFromItem(node) as TreeViewItem;
+        if (container == null || container.IsExpanded == false)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.FlattenVisibleNodes: node='" + node.Text + "' not expanded or no container",
+                LogLevel.Trace);
+            return;
+        }
+
+        foreach (FieldDisplayNode child in node.Children)
+        {
+            FlattenVisibleNodes(child, container, visible);
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // SetHighlightDescendants
+    //
+    // Sets IsHighlighted to the given value on the node and all its descendants.
+    //
+    // node:      The root of the subtree to update.
+    // highlight: The value to assign to IsHighlighted.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static void SetHighlightDescendants(FieldDisplayNode node, bool highlight)
+    {
+        node.IsHighlighted = highlight;
+
+        foreach (FieldDisplayNode child in node.Children)
+        {
+            SetHighlightDescendants(child, highlight);
+        }
     }
 }

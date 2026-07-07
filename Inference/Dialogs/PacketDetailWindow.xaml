@@ -70,7 +70,6 @@
 
                             <Border x:Name="Bd"
                                     Grid.Row="0" Grid.Column="1"
-                                    Background="{TemplateBinding Background}"
                                     Padding="{TemplateBinding Padding}"
                                     SnapsToDevicePixels="True">
                                 <ContentPresenter x:Name="PART_Header"
@@ -89,6 +88,13 @@
                             <Trigger Property="HasItems" Value="False">
                                 <Setter TargetName="Expander" Property="Visibility" Value="Hidden"/>
                             </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="Transparent"/>
+                            </Trigger>
+                            <DataTrigger Binding="{Binding IsHighlighted, NotifyOnTargetUpdated=True}" Value="True">
+                                <Setter TargetName="Bd" Property="Background"
+                                     Value="{DynamicResource SystemControlHighlightListAccentLowBrush}"/>
+                            </DataTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -146,7 +152,11 @@
                 <TreeView x:Name="FieldTree"
                           Margin="8,0,4,8"
                           BorderThickness="0"
+                          PreviewKeyDown="FieldTree_PreviewKeyDown"
                           Background="Transparent"
+                          PreviewMouseMove="FieldTree_MouseMove" 
+                          PreviewMouseLeftButtonDown="FieldTree_PreviewMouseLeftButtonDown"
+                          PreviewMouseLeftButtonUp="FieldTree_PreviewMouseLeftButtonUp"
                           ItemContainerStyle="{StaticResource TightTreeViewItem}">
                     <TreeView.ItemTemplate>
                         <HierarchicalDataTemplate ItemsSource="{Binding Children}">

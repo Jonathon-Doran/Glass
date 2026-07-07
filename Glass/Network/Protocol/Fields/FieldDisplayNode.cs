@@ -22,7 +22,7 @@ public sealed class FieldDisplayNode : System.ComponentModel.INotifyPropertyChan
     private event System.Action? _spansChanged;
     private bool _enableTrace = false;
     private uint _packetIndex;
-
+    private bool _isHighlighted = false;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // FieldDisplayNode (constructor)
@@ -206,6 +206,33 @@ public sealed class FieldDisplayNode : System.ComponentModel.INotifyPropertyChan
             + " under '" + _text + "', range count now " + _ranges.Count, LogLevel.Trace);
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // IsHighlighted
+    //
+    // Whether the node is highlighted as part of a drag selection.  Bound one-way to the
+    // displaying TreeViewItem's border background so the drag range is visually marked without
+    // interference from the TreeView's own selection model.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public bool IsHighlighted
+    {
+        get { return _isHighlighted; }
+        set
+        {
+            if (_isHighlighted == value)
+            {
+                return;
+            }
+
+            _isHighlighted = value;
+
+            DebugLog.Write(LogChannel.Opcodes,
+                "FieldDisplayNode.IsHighlighted: set to " + value + " under '" + _text + "'",
+                LogLevel.Info);
+
+            PropertyChanged?.Invoke(this,
+                new System.ComponentModel.PropertyChangedEventArgs(nameof(IsHighlighted)));
+        }
+    }
     ///////////////////////////////////////////////////////////////////////////////////////////
     // AddChild
     //
