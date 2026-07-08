@@ -953,7 +953,6 @@ public partial class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void LocateHexDumpHighlights(OpcodeTraceRow row, SearchMode mode, ref uint rowTextOffset)
     {
-        DebugLog.Write(LogChannel.Opcodes, "MaxHexBytes=" + _maxHexBytes, LogLevel.Info);
         if (mode == SearchMode.Fast && !row.IsExpanded)
         {
             return;

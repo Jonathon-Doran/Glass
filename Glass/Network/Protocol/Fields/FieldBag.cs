@@ -616,6 +616,37 @@ public sealed class FieldBag
         return fieldSlot.GetByteRange();
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetWireBitLengthFor
+    //
+    // Returns the number of bits this slot occupied on the wire.  Zero for an absent field
+    // whose predicate did not hold.
+    //
+    // slot:     The ID of the slot to query.
+    //
+    // Returns:  The wire bit length, or zero if the slot index is out of range.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public uint GetWireBitLengthFor(SlotId slot)
+    {
+        if (slot.Index >= _slotsInUse)
+        {
+            DebugLog.Write(LogChannel.Fields, CollectionName
+                + " FieldBag.GetWireBitLengthFor: slot.Index " + slot.Index
+                + " out of range [0, " + _slotsInUse + "), returning 0 [Warn]",
+                LogLevel.Warn);
+            return 0;
+        }
+
+        ref FieldSlot fieldSlot = ref SlotAt(slot.Index);
+        uint bits = fieldSlot.WireBitLength;
+
+        DebugLog.Write(LogChannel.Fields, CollectionName
+            + " FieldBag.GetWireBitLengthFor: slot.Index " + slot.Index
+            + " wire bit length = " + bits + " [Trace]", LogLevel.Trace);
+
+        return bits;
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetTypeAt
     //

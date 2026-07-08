@@ -2239,6 +2239,21 @@ public class FieldExtractor
         return _bags[(int)(uint)_activeBag].GetByteRangeFor(slot);
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetWireBitLengthFor
+    //
+    // Returns the number of bits this slot occupies on the wire.  Zero for an absent field
+    // whose predicate did not hold.
+    //
+    // slot:     The ID of the slot to query.
+    //
+    // Returns:  The wire bit length, or zero if the slot index is out of range.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+
+    public uint GetBitLengthOf(SlotId slot)
+    {
+        return _bags[(int)(uint)_activeBag].GetWireBitLengthFor(slot);
+    }
     ///////////////////////////////////////////////////////////////////////////////////////////
     // WalkBag
     //
