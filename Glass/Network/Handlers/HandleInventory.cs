@@ -295,6 +295,7 @@ public class HandleInventory : IHandleOpcodes
         _DF_4_Slot = _registry.IndexOfField(itemCollection, "DF_4");
         _Weight_Slot = _registry.IndexOfField(itemCollection, "Weight");
         _Item_ID_Slot = _registry.IndexOfField(itemCollection, "Item_ID");
+        _DF_7_Slot = _registry.IndexOfField(itemCollection, "DF_7");
         _DF_8_Slot = _registry.IndexOfField(itemCollection, "DF_8");
         _DF_9_Slot = _registry.IndexOfField(itemCollection, "DF_9");
         _Size_Slot = _registry.IndexOfField(itemCollection, "Field_E8");
@@ -1436,7 +1437,6 @@ public class HandleInventory : IHandleOpcodes
     const uint RACE_Erudite = 1 << 2;
     const uint RACE_Barbarian = 1 << 1;
     const uint RACE_Human = 1;
-
     private string DecodeRaceMask(uint mask)
     {
         List<string> races = new List<string>();

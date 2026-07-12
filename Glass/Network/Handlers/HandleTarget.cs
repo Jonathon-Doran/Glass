@@ -114,6 +114,37 @@ public class HandleTarget : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Describe
+    //
+    // Extracts OP_Target against the active patch and builds a display tree: a root node for
+    // the collection with one leaf child per field each carrying its payload byte range.
+    //
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
+    //
+    // Returns:   The root FieldDisplayNode.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    {
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        FieldDisplayNode root = new FieldDisplayNode();
+
+        try
+        {
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+
+            FieldNodes.AddUIntNode(extractor, _spawnIdSlot, "Spawn ID", root, "X4");
+        }
+        finally
+        {
+            extractor.Release();
+        }
+
+        root.Text = "Target";
+        return root;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeHandled
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public PatchOpcode OpcodeHandled

@@ -150,10 +150,66 @@ public class HandleSetChatServer : IHandleOpcodes
         string serverName = serverDotCharacter.Substring(0, dotIndex);
         string characterName = serverDotCharacter.Substring(dotIndex + 1);
 
+        /*
         DebugLog.Write(LogChannel.Opcodes, "HandleSetChatServer: server=" + serverName
             + " character=" + characterName
             + " chatServer=" + chatServer
             + " chatPort=" + chatPort);
+        */
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Describe
+    //
+    // Extracts OP_Death against the active patch and builds a display tree: a root node for
+    // the collection with one leaf child per field each carrying its payload byte range.
+    //
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
+    //
+    // Returns:   The root FieldDisplayNode.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    {
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        FieldDisplayNode root = new FieldDisplayNode();
+
+        try
+        {
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            string payload = extractor.GetStringAt(_payloadSlot);
+            string[] csvFields = payload.Split(',');
+
+            if (csvFields.Length < 4)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleSetChatServer: malformed payload, field count="
+                    + csvFields.Length + " raw='" + payload + "'", LogLevel.Error);
+                return root;
+            }
+
+            string chatServer = csvFields[_serverCsvIndex];
+            string chatPort = csvFields[_portCsvIndex];
+            string serverDotCharacter = csvFields[_characterCsvIndex];
+
+            FieldDisplayNode serverNode = new FieldDisplayNode("Chat Server: " + chatServer);
+            serverNode.AddByteRange(extractor.GetByteRangeFor(_payloadSlot));
+            root.AddChild(serverNode);
+
+            FieldDisplayNode portNode = new FieldDisplayNode("Port: " + chatPort);
+            portNode.AddByteRange(extractor.GetByteRangeFor(_payloadSlot));
+            root.AddChild(portNode);
+
+            FieldDisplayNode charNode = new FieldDisplayNode("Character: " + serverDotCharacter);
+            charNode.AddByteRange(extractor.GetByteRangeFor(_payloadSlot));
+            root.AddChild(charNode);
+        }
+        finally
+        {
+            extractor.Release();
+        }
+
+        root.Text = "Set Chat Server";
+        return root;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

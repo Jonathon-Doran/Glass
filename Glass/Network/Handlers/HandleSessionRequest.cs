@@ -94,13 +94,37 @@ public class HandleSessionRequest : IHandleOpcodes
         {
             extractor.Release();
         }
+    }
 
-        /*
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-                     + _opcodeName + " length=" + data.Length);
-        DebugLog.Write(LogChannel.Opcodes, "session ID: 0x" + sessionId.ToString("x8") +
-                        ", maxLength = " + maxLength);
-        */
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Describe
+    //
+    // Extracts OP_SessionRequest against the active patch and builds a display tree: a root node for
+    // the collection with one leaf child per field each carrying its payload byte range.
+    //
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
+    //
+    // Returns:   The root FieldDisplayNode.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    {
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        FieldDisplayNode root = new FieldDisplayNode();
+
+        try
+        {
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            FieldNodes.AddUIntNode(extractor, _sessionIdSlot, "Session ID", root);
+            FieldNodes.AddUIntNode(extractor, _maxLengthSlot, "Maximum Length", root);
+        }
+        finally
+        {
+            extractor.Release();
+        }
+
+        root.Text = "Session Request";
+        return root;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

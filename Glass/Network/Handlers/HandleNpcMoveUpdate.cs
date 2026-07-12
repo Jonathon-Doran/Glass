@@ -192,6 +192,82 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Describe
+    //
+    // Extracts OP_NPCMoveUpdate against the active patch and builds a display tree: a root node for
+    // the collection with one leaf child per field each carrying its payload byte range.
+    //
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
+    //
+    // Returns:   The root FieldDisplayNode.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    {
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        FieldDisplayNode root = new FieldDisplayNode();
+
+        try
+        {
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+
+            uint spawnId = extractor.GetUIntAt(_spawnIdSlot);
+            float xPos = extractor.GetFloatAt(_xPosSlot);
+            float yPos = extractor.GetFloatAt(_yPosSlot);
+            float zPos = extractor.GetFloatAt(_zPosSlot);
+            float headingRaw = extractor.GetFloatAt(_headingSlot);
+            float headingDegrees = headingRaw * 360.0f / 2048.0f;
+            uint  flags = extractor.GetUIntAt(_flagsSlot);
+
+            FieldDisplayNode spawnIdNode = new FieldDisplayNode("spawnId = 0x" + spawnId.ToString("X4"));
+            spawnIdNode.AddByteRange(extractor.GetByteRangeFor(_spawnIdSlot));
+            root.AddChild(spawnIdNode);
+
+            FieldDisplayNode positionNode = new FieldDisplayNode("Position = (" +
+                xPos.ToString("F2") + "," + yPos.ToString("F2") + "," + zPos.ToString("F2") + ")");
+            positionNode.AddByteRange(extractor.GetByteRangeFor(_xPosSlot));
+            positionNode.AddByteRange(extractor.GetByteRangeFor(_yPosSlot));
+            positionNode.AddByteRange(extractor.GetByteRangeFor(_zPosSlot));
+            root.AddChild(positionNode);
+
+            FieldDisplayNode headingNode = new FieldDisplayNode("heading (degrees) = " + headingDegrees.ToString("F2"));
+            headingNode.AddByteRange(extractor.GetByteRangeFor(_headingSlot));
+            root.AddChild(headingNode);
+
+            FieldDisplayNode flagsNode = new FieldDisplayNode("flags = " + flags.ToString("B"));
+            flagsNode.AddByteRange(extractor.GetByteRangeFor(_flagsSlot));
+            root.AddChild(flagsNode);
+        }
+        finally
+        {
+            extractor.Release();
+        }
+
+        root.Text = "NPCMoveUpdate";
+        return root;
+    }
+
+    /*
+     * 
+         _spawnIdSlot = _registry.IndexOfField(_collectionHandle, "spawn_id");
+        _xPosSlot = _registry.IndexOfField(_collectionHandle, "x_pos");
+        _yPosSlot = _registry.IndexOfField(_collectionHandle, "y_pos");
+        _zPosSlot = _registry.IndexOfField(_collectionHandle, "z_pos");
+        _headingSlot = _registry.IndexOfField(_collectionHandle, "heading");
+        _pitchSlot = _registry.IndexOfField(_collectionHandle, "pitch");
+        _headingDeltaSlot = _registry.IndexOfField(_collectionHandle, "heading_delta");
+        _velocitySlot = _registry.IndexOfField(_collectionHandle, "velocity");
+        _dxSlot = _registry.IndexOfField(_collectionHandle, "dx");
+        _dySlot = _registry.IndexOfField(_collectionHandle, "dy");
+        _dzSlot = _registry.IndexOfField(_collectionHandle, "dz");
+
+        _flagsSlot = _registry.IndexOfField(_collectionHandle, "flags");
+     * 
+     */
+
+
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeHandled
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public PatchOpcode OpcodeHandled

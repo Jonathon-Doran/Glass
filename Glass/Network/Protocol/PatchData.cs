@@ -1333,12 +1333,35 @@ public class PatchData
 
         if (_collectionIndexByCollectionName.TryGetValue(collectionName, out index) == false)
         {
-            return CollectionHandle.None;  
+            return CollectionHandle.None;
         }
 
         return _collectionHandleByIndex[index];
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetGateDefinitionHandleFromName
+    //
+    // Resolves a gate's name to the GateDefinitionHandle assigned to it at load time.  The lookup
+    // is against the name-to-handle map built when this patch's Gate rows were read.
+    //
+    // gateName:  The gate name to resolve.
+    //
+    // Returns:   The GateDefinitionHandle for the named gate, or GateDefinitionHandle.None when no
+    //            gate of that name is loaded for this patch level.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public GateDefinitionHandle GetGateDefinitionHandleFromName(string gateName)
+    {
+        GateDefinitionHandle handle;
+        if (_gateHandlesByName.TryGetValue(gateName, out handle) == false)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PatchData.GetGateHandleFromName: no gate named '" + gateName
+                + "' in patchLevel=" + PatchLevel + ", returning None", LogLevel.Warn);
+            return GateDefinitionHandle.None;
+        }
+        return handle;
+    }
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetSlotCount
     //

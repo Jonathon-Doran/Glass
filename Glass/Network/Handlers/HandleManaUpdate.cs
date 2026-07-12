@@ -130,6 +130,52 @@ public class HandleManaUpdate : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Describe
+    //
+    // Extracts OP_ManaUpdate against the active patch and builds a display tree: a root node for
+    // the collection with one leaf child per field each carrying its payload byte range.
+    //
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
+    //
+    // Returns:   The root FieldDisplayNode.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    {
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        FieldDisplayNode root = new FieldDisplayNode();
+        string characterName = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
+
+        try
+        {
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+
+            uint playerId = extractor.GetUIntAt(_playerIdSlot);
+            uint currentMana = extractor.GetUIntAt(_currentManaSlot);
+            uint maxMana = extractor.GetUIntAt(_maxManaSlot);
+
+            FieldDisplayNode playerIdNode = new FieldDisplayNode("playerId = 0x" + playerId.ToString("X4"));
+            playerIdNode.AddByteRange(extractor.GetByteRangeFor(_playerIdSlot));
+            root.AddChild(playerIdNode);
+
+            FieldDisplayNode currentManaNode = new FieldDisplayNode("Current Mana = " + currentMana);
+            currentManaNode.AddByteRange(extractor.GetByteRangeFor(_currentManaSlot));
+            root.AddChild(currentManaNode);
+
+            FieldDisplayNode maxManaNode = new FieldDisplayNode("Maximum Mana = " + maxMana);
+            maxManaNode.AddByteRange(extractor.GetByteRangeFor(_maxManaSlot));
+            root.AddChild(maxManaNode);
+        }
+        finally
+        {
+            extractor.Release();
+        }
+
+        root.Text = "Mana Update (" + characterName + ")";
+        return root;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeHandled
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public PatchOpcode OpcodeHandled

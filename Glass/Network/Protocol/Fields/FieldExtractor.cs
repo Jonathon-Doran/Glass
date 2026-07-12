@@ -30,7 +30,7 @@ namespace Glass.Network.Protocol.Fields;
 public class FieldExtractor
 {
     // a list of collectoins to trace
-    private readonly HashSet<uint> _traceCollections = new HashSet<uint> { 1u, 6u , 7u, 5u };
+    private readonly HashSet<uint> _traceCollections = new HashSet<uint> { 18u };
 
     // The Gate forest for the extraction in progress, indexed by GateHandle.  Reset between
     // extractions.

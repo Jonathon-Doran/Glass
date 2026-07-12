@@ -184,10 +184,40 @@ public class PatchRegistry
         return patchLevels;
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetGateDefinitionHandle
+    //
+    // Resolves a gate's name to its GateDefinitionHandle in the given patch level by locating the
+    // patch's PatchData and delegating the name lookup to it.
+    //
+    // patchLevel:  The patch level whose gate definitions are searched.
+    // gateName:    The gate name to resolve.
+    //
+    // Returns:     The GateDefinitionHandle for the named gate, or GateDefinitionHandle.None when no
+    //              gate of that name is loaded for the patch level.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     public CollectionHandle GetCollectionHandle(PatchLevel patchLevel, string collectionName)
     {
         PatchData patchData = FindPatchData(patchLevel);
         return patchData.GetCollectionHandleFromName(collectionName);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetGateDefinitionHandle
+    //
+    // Resolves a gate's name to its GateDefinitionHandle in the given patch level by locating the
+    // patch's PatchData and delegating the name lookup to it.
+    //
+    // patchLevel:  The patch level whose gate definitions are searched.
+    // gateName:    The gate name to resolve.
+    //
+    // Returns:     The GateDefinitionHandle for the named gate, or GateDefinitionHandle.None when no
+    //              gate of that name is loaded for the patch level.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public GateDefinitionHandle GetGateDefinitionHandle(PatchLevel patchLevel, string gateName)
+    {
+        PatchData patchData = FindPatchData(patchLevel);
+        return patchData.GetGateDefinitionHandleFromName(gateName);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

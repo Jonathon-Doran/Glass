@@ -4,8 +4,10 @@ using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
+using SQLitePCL;
 using System;
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Glass.Network.Handlers;
@@ -187,6 +189,67 @@ public class HandlePlayerProfile : IHandleOpcodes
         {
             extractor.Release();
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Describe
+    //
+    // Extracts OP_Death against the active patch and builds a display tree: a root node for
+    // the collection with one leaf child per field each carrying its payload byte range.
+    //
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
+    //
+    // Returns:   The root FieldDisplayNode.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    {
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        FieldDisplayNode root = new FieldDisplayNode();
+        string name;
+
+        try
+        {
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+
+            name = extractor.GetStringAt(_nameSlot);
+            uint playerClass = extractor.GetUIntAt(_playerClassSlot);
+
+            FieldNodes.AddStringNode(extractor, _nameSlot, "Name", root);
+            FieldNodes.AddUIntNode(extractor, _levelSlot, "Level", root, "D");
+
+            FieldDisplayNode classNode = new FieldDisplayNode("Class: " + GetClassName(playerClass));
+            classNode.AddByteRange(extractor.GetByteRangeFor(_playerClassSlot));
+            root.AddChild(classNode);
+
+            FieldNodes.AddUIntNode(extractor, _practicePointsSlot, "Practice Points", root, "D");
+            FieldNodes.AddUIntNode(extractor, _manaSlot, "Mana", root, "D");
+            FieldNodes.AddUIntNode(extractor, _hitpointsSlot, "HP", root, "D");
+
+            FieldDisplayNode statsSubtree = new FieldDisplayNode("Stats");
+            root.AddChild(statsSubtree);
+            FieldNodes.AddUIntNode(extractor, _strengthSlot, "Strength", statsSubtree, "D");
+            FieldNodes.AddUIntNode(extractor, _staminaSlot, "Stamina", statsSubtree, "D");
+            FieldNodes.AddUIntNode(extractor, _charismaSlot, "Charisma", statsSubtree, "D");
+            FieldNodes.AddUIntNode(extractor, _dexteritySlot, "Dexterity", statsSubtree, "D");
+            FieldNodes.AddUIntNode(extractor, _intelligenceSlot, "Intelligence", statsSubtree, "D");
+            FieldNodes.AddUIntNode(extractor, _agilitySlot, "Agility", statsSubtree, "D");
+            FieldNodes.AddUIntNode(extractor, _wisdomSlot, "Wisdom", statsSubtree, "D");
+
+            FieldDisplayNode moneySubtree = new FieldDisplayNode("Money");
+            root.AddChild(moneySubtree);
+            FieldNodes.AddUIntNode(extractor, _platinumCarriedSlot, "Platinum", moneySubtree, "D");
+            FieldNodes.AddUIntNode(extractor, _goldCarriedSlot, "Gold", moneySubtree, "D");
+            FieldNodes.AddUIntNode(extractor, _silverCarriedSlot, "Silver", moneySubtree, "D");
+            FieldNodes.AddUIntNode(extractor, _copperCarriedSlot, "Copper", moneySubtree, "D");
+        }
+        finally
+        {
+            extractor.Release();
+        }
+
+        root.Text = "Player Profile (" + name + ")";
+        return root;
     }
 
     private static readonly Dictionary<uint, string> ClassNames = new Dictionary<uint, string>()

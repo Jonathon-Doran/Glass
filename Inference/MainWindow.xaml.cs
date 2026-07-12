@@ -126,7 +126,7 @@ public partial class MainWindow : Window
     }
     private void InitializeLogging()
     {
-        DebugLog.SetMinimumLevel(LogLevel.Trace);
+        DebugLog.SetMinimumLevel(LogLevel.Info);
 
         GlassDebugLogHandler glassDebugLogHandler = new GlassDebugLogHandler("glass.log");
         DebugLog.AddHandler(LogSink.GlassDebugLogfile, glassDebugLogHandler);
