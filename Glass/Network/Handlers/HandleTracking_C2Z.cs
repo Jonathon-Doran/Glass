@@ -138,39 +138,6 @@ public class HandleTracking_C2Z : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Describe
-    //
-    // Extracts OP_Tracking against the active patch and builds a display tree: a root node for
-    // the collection with one leaf child per field each carrying its payload byte range.
-    //
-    // data:      The application payload
-    // metadata:  Packet metadata (timestamp, source/dest)
-    //
-    // Returns:   The root FieldDisplayNode.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
-    {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
-        FieldDisplayNode root = new FieldDisplayNode();
-
-        try
-        {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-
-            FieldNodes.AddStringNode(extractor, _nameSlot, "Name", root);
-            FieldNodes.AddUIntNode(extractor, _spawnIdSlot, "Spawn ID", root);
-            FieldNodes.AddUIntNode(extractor, _levelSlot, "Level", root);
-        }
-        finally
-        {
-            extractor.Release();
-        }
-
-        root.Text = "Tracking";
-        return root;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // ResolveVersion
     //
     // Determine the packet version by examining the payload.  This is a little more complicated, as we need
