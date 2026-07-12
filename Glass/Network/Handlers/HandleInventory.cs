@@ -569,7 +569,14 @@ public class HandleInventory : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////
     public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
+
+
         FieldDisplayNode root = new FieldDisplayNode();
+        if (data.Length == 0)
+        {
+            return root;
+        }
+
         string characterName = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
         try
         {

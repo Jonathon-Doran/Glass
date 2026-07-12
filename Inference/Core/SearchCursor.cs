@@ -231,13 +231,18 @@ public partial class OpcodeTracePresenter
                 DebugLog.Write(LogChannel.Opcodes,
                     "SearchCursor.BringCursorIntoView: scrolling match at packetIndex "
                     + match.PacketIndex + " into view, paint deferred to settled", LogLevel.Trace);
-                return;
             }
 
-            _owner.CenterRowInList(_currentRow);
-            DebugLog.Write(LogChannel.Opcodes,
-                "SearchCursor.BringCursorIntoView: centered bare row at packetIndex "
-                + _currentRow.PacketIndex, LogLevel.Trace);
+            /*
+            Investigating selection loop
+            else
+            {
+                _owner.CenterRowInList(_currentRow);
+                DebugLog.Write(LogChannel.Opcodes,
+                    "SearchCursor.BringCursorIntoView: centered bare row at packetIndex "
+                    + _currentRow.PacketIndex, LogLevel.Trace);
+            }
+            */
         }
 
         ///////////////////////////////////////////////////////////////////////////////////////
@@ -250,8 +255,10 @@ public partial class OpcodeTracePresenter
         // no row, the cursor is left unchanged.
         //
         // messageIndex:  The message index of the row to move to.
-        ///////////////////////////////////////////////////////////////////////////////////////
-        public void MoveToMessage(uint messageIndex)
+        // centerInView:  True to center the landing in the list, false to leave the scroll
+        //                position unchanged.  Defaults to true.
+        ///////////////////////////////////////////////////////////////////////////////////////////
+        public void MoveToMessage(uint messageIndex, bool centerInView = true)
         {
             DebugLog.Write(LogChannel.Opcodes,
                 "SearchCursor.MoveToMessage: message index " + messageIndex, LogLevel.Info);
@@ -354,8 +361,6 @@ public partial class OpcodeTracePresenter
             else if (_state == CursorState.OnMatch && !_matchIndexValid)
             {
                 globalMatchIndex = StartIndexForAnchorForward();
-
-                SearchMatch match = _owner._matches[(int) globalMatchIndex];
             }
             else
             {

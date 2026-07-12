@@ -126,7 +126,7 @@ public partial class MainWindow : Window
     }
     private void InitializeLogging()
     {
-        DebugLog.SetMinimumLevel(LogLevel.Info);
+        DebugLog.SetMinimumLevel(LogLevel.Trace);
 
         GlassDebugLogHandler glassDebugLogHandler = new GlassDebugLogHandler("glass.log");
         DebugLog.AddHandler(LogSink.GlassDebugLogfile, glassDebugLogHandler);
@@ -1745,6 +1745,7 @@ public partial class MainWindow : Window
         }
 
         OpcodeTraceList.SelectedItem = target;
+        _opcodeTracePresenter.CenterRowForPacketIndex(target.PacketIndex);
         StatusBarRowText.Text = "Message " + target.PacketIndex;
 
         DebugLog.Write(LogChannel.Opcodes,

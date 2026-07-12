@@ -397,15 +397,10 @@ public class OpcodeTraceRow : INotifyPropertyChanged
         OpcodeTraceRow? other = obj as OpcodeTraceRow;
         if (other == null)
         {
-            DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTraceRow.Equals: other is not an OpcodeTraceRow, not equal", LogLevel.Trace);
             return false;
         }
 
         bool equal = other.PacketIndex == PacketIndex;
-        DebugLog.Write(LogChannel.Opcodes,
-            "OpcodeTraceRow.Equals: this.PacketIndex=" + PacketIndex
-            + " other.PacketIndex=" + other.PacketIndex + " equal=" + equal, LogLevel.Trace);
         return equal;
     }
 

@@ -19,11 +19,7 @@ SessionRegistry is not checking for an existing Connection properly
 CharacterId standardization would be a good thhing
 The OpcodeRowPresenter logs are very verbose.
 
-
-Inference/Core/InferenceDebugLog and InferenceLog need to go away 
-
 Inference should check that New/Open/Recent patches all load data correctly.
-
 
 PatchData.SlotDefinedBefore needs an ancestor check to validate collection handles.
 
@@ -35,8 +31,11 @@ Look into the SlotID ancestor comment.
 
 CSV tokens are not decoded in the FieldExtractor but in the handler.
 
+Future function:
+    More repositories for data extracted from the network
+    Multi-machine support
+    Spell packets
 
-Consider adding a new data type for blocks of bytes so that I do not need collections of single bytes.
 
 ISXGlass:
 
