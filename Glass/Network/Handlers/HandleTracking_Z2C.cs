@@ -144,8 +144,6 @@ public class HandleTracking_Z2C : IHandleOpcodes
             }
 
             uint bagCount = extractor.BagCount(entriesGate);
-            DebugLog.Write(LogChannel.Opcodes,
-                "HandleTracking_Z2C.HandleZoneToClient: " + bagCount + " tracking entries", LogLevel.Info);
 
             for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
             {
@@ -219,52 +217,6 @@ public class HandleTracking_Z2C : IHandleOpcodes
         }
         root.Text = "Tracking";
         return root;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // ResolveVersion
-    //
-    // Determine the packet version by examining the payload.  This is a little more complicated, as we need
-    // to extract a collection. A minimal "discriminator" collection was created for this.
-    //
-    // data:  Slice of the application payload starting at the entry boundary.
-    // metadata:  Packet metadata (timestamp, source/dest)
-    //
-    // Returns: The detected version number
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
-    {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
-        uint version = 0;
-
-        if (data.Length == 0)
-        {
-            return version;
-        }
-
-        try
-        {
-            GateHandle rootGate = extractor.Extract(_discriminator, data);
-            uint magic = extractor.GetUIntAt(_magicSlot);
-            DebugLog.Write(LogChannel.Opcodes, "Magic number is " + magic.ToString("X8"), LogLevel.Info);
-
-            if (magic == TRACKING_MAGIC_NUMBER)
-            {
-                DebugLog.Write(LogChannel.Opcodes, "Matches V1 signature (unhandled) ", LogLevel.Info);
-                version = 1;
-            }
-            else
-            {
-                version = 2;
-                DebugLog.Write(LogChannel.Opcodes, "Matches V2 signature (handled)", LogLevel.Info);
-            }
-        }
-        finally
-        {
-            extractor.Release();
-        }
-
-        return version;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

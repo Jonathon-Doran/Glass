@@ -260,9 +260,6 @@ public partial class OpcodeTracePresenter
         ///////////////////////////////////////////////////////////////////////////////////////////
         public void MoveToMessage(uint messageIndex, bool centerInView = true)
         {
-            DebugLog.Write(LogChannel.Opcodes,
-                "SearchCursor.MoveToMessage: message index " + messageIndex, LogLevel.Info);
-
             OpcodeTraceRow? row;
             if (!_owner._rowByPacketIndex.TryGetValue(messageIndex, out row))
             {
@@ -303,19 +300,11 @@ public partial class OpcodeTracePresenter
                     return;
                 }
 
-                DebugLog.Write(LogChannel.Opcodes,
-                    "SearchCursor.MoveToMessage: row message " + messageIndex
-                    + " owns matches, landing on first at global index " + globalIndex, LogLevel.Info);
-
                 SetCursorOnMatch((uint)globalIndex);
 
                 BringCursorIntoView(outgoingElement);
                 return;
             }
-
-            DebugLog.Write(LogChannel.Opcodes,
-                "SearchCursor.MoveToMessage: row message " + messageIndex
-                + " owns no matches, parking on row", LogLevel.Info);
 
             _state = CursorState.OnRow;
             _rowPacketIndex = messageIndex;
@@ -338,12 +327,9 @@ public partial class OpcodeTracePresenter
         {
             if (_owner._matches.Count == 0)
             {
-                DebugLog.Write(LogChannel.Opcodes,
-                    "SearchCursor.AdvanceForward: empty match list, cursor unchanged", LogLevel.Info);
                 return;
             }
 
-            DebugLog.Write(LogChannel.Opcodes, "AdvanceForward, matches=" + _owner._matches.Count, LogLevel.Info);
 
             // capture the outgoing match's element before the walk, while _matchIndex still names
             // the pre-move match; a mid-walk prune can shift the list past recovery afterward
@@ -366,8 +352,6 @@ public partial class OpcodeTracePresenter
             {
                 globalMatchIndex = StartIndexForRow();
             }
-
-            DebugLog.Write(LogChannel.Opcodes, "globalMatchIndex is " +  globalMatchIndex, LogLevel.Info);
 
             uint examined = 0u;
             uint limit = (uint)_owner._matches.Count;
@@ -395,14 +379,7 @@ public partial class OpcodeTracePresenter
                     continue;
                 }
 
-                DebugLog.Write(LogChannel.Opcodes,
-                    "SearchCursor.AdvanceForward: live match found at index " + globalMatchIndex,
-                    LogLevel.Info);
                 SearchMatch matchTest = _owner._matches[(int) globalMatchIndex];
-                DebugLog.Write(LogChannel.Opcodes,
-                    "This match is packetIndex=" + matchTest.PacketIndex + ", RowTextOffset="
-                    + matchTest.Element.RowTextOffset + ", Anchor.Start=" + matchTest.Anchor.Start,
-                    LogLevel.Info);
 
                 SetCursorOnMatch(globalMatchIndex);
 
@@ -419,9 +396,6 @@ public partial class OpcodeTracePresenter
                 BringCursorIntoView(outgoingElement);
                 return;
             }
-
-            DebugLog.Write(LogChannel.Opcodes,
-                "SearchCursor.AdvanceForward: cursor unchanged, no live match found", LogLevel.Info);
         }
 
         ///////////////////////////////////////////////////////////////////////////////////////
@@ -585,11 +559,6 @@ public partial class OpcodeTracePresenter
             {
                 SearchMatch candidate = _owner._matches[(int)i];
 
-                DebugLog.Write(LogChannel.Opcodes,
-                    "candidate PacketIndex=" + candidate.PacketIndex + ", RowTextOffset=" +
-                    candidate.Element.RowTextOffset + ", Anchor.Start=" + candidate.Anchor.Start,
-                    LogLevel.Info);
-
                 HighlightSpan anchor = candidate.Anchor;
                 if (anchor.Generation < _owner._highlightGenerationMap.CurrentGeneration(anchor.OverrideColor))
                 {
@@ -599,25 +568,15 @@ public partial class OpcodeTracePresenter
                 if (candidate.PacketIndex == _rowPacketIndex
                     && candidate.Element.RowTextOffset + candidate.Anchor.Start >= _anchorTextOffset)
                 {
-                    DebugLog.Write(LogChannel.Opcodes,
-                        "SearchCursor.StartIndexForAnchorForward: resolved to index " + i
-                        + " same packet, rowTextOffset=" + candidate.Element.RowTextOffset, LogLevel.Info);
                     return i;
                 }
 
                 if (candidate.PacketIndex > _rowPacketIndex)
                 {
-                    DebugLog.Write(LogChannel.Opcodes,
-                        "SearchCursor.StartIndexForAnchorForward: resolved to index " + i
-                        + " packetIndex=" + candidate.PacketIndex, LogLevel.Info);
                     return i;
                 }
             }
 
-            DebugLog.Write(LogChannel.Opcodes,
-                "SearchCursor.StartIndexForAnchorForward: no match at or after anchor packetIndex "
-                + _rowPacketIndex + " rowTextOffset=" + _anchorTextOffset
-                + ", returning end index", LogLevel.Info);
             return (uint)_owner._matches.Count;
         }
 
@@ -736,9 +695,6 @@ public partial class OpcodeTracePresenter
         public void InvalidateMatchIndex()
         {
             _matchIndexValid = false;
-
-            DebugLog.Write(LogChannel.Opcodes,
-                "SearchCursor.InvalidateMatchIndex: anchor will drive the next advance", LogLevel.Info);
         }
 
         ///////////////////////////////////////////////////////////////////////////////////////
@@ -765,17 +721,11 @@ public partial class OpcodeTracePresenter
                 uint candidateIndex = i - 1u;
                 if (_owner._matches[(int)candidateIndex].PacketIndex <= _rowPacketIndex)
                 {
-                    DebugLog.Write(LogChannel.Opcodes,
-                        "SearchCursor.StartIndexForRowBackward: row packetIndex " + _rowPacketIndex
-                        + " resolved to match index " + candidateIndex, LogLevel.Info);
                     found = true;
                     return candidateIndex;
                 }
             }
 
-            DebugLog.Write(LogChannel.Opcodes,
-                "SearchCursor.StartIndexForRowBackward: no match at or before row packetIndex "
-                + _rowPacketIndex + ", cursor will be left unchanged", LogLevel.Info);
             found = false;
             return 0u;
         }
@@ -797,16 +747,10 @@ public partial class OpcodeTracePresenter
             {
                 if (_owner._matches[(int)i].PacketIndex >= _rowPacketIndex)
                 {
-                    DebugLog.Write(LogChannel.Opcodes,
-                        "SearchCursor.StartIndexForRow: row packetIndex " + _rowPacketIndex
-                        + " resolved to match index " + i, LogLevel.Info);
                     return i;
                 }
             }
 
-            DebugLog.Write(LogChannel.Opcodes,
-                "SearchCursor.StartIndexForRow: no match at or after row packetIndex "
-                + _rowPacketIndex + ", returning end index " + _owner._matches.Count, LogLevel.Info);
             return (uint)_owner._matches.Count;
         }
 
@@ -879,8 +823,7 @@ public partial class OpcodeTracePresenter
             _anchorElement = null;
             _anchorTextOffset = 0;
             _matchIndexValid = false;
-            DebugLog.Write(LogChannel.Opcodes,
-                "SearchCursor.Reset: cursor reset to initial state", LogLevel.Info);
+
         }
 
         ///////////////////////////////////////////////////////////////////////////////////////

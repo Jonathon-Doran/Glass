@@ -1339,9 +1339,6 @@ public partial class OpcodeTracePresenter
     {
         if (query == _searchQuery)
         {
-            DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.RebuildIfChanged: query unchanged, matches kept",
-                LogLevel.Info);
             return;
         }
 
@@ -1354,10 +1351,6 @@ public partial class OpcodeTracePresenter
         {
             _matchCount += RecomputeRowHighlights(_rows[i], mode);
         }
-
-        DebugLog.Write(LogChannel.Opcodes,
-            "OpcodeTracePresenter.RebuildIfChanged: rebuilt, " + _matches.Count
-            + " matches across " + rowCount + " rows", LogLevel.Info);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1684,7 +1677,6 @@ public partial class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     public SearchMatch? FindNext(string query, SearchMode mode)
     {
-        DebugLog.Write(LogChannel.Opcodes, "FindNext", LogLevel.Info);
         RebuildIfChanged(query, mode);
 
         _searchCursor.AdvanceForward();
