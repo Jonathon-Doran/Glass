@@ -33,7 +33,7 @@ public class Character
     public uint? Level { get; set; }
     public uint? PracticePoints { get; set; }
     public uint? CurrentHP { get; set; }
-
+    public uint? CurrentZone { get; set; }
     public uint? MaxHP { get; set; }
     public uint? CurrentMana { get; set; }
     public uint? MaxMana { get; set; }

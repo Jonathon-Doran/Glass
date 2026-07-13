@@ -27,7 +27,6 @@ public class HandleTracking_C2Z : IHandleOpcodes
     private readonly SlotId _magicSlot;         // for ResolveVersion
 
     private readonly SlotId _spawnIdSlot;  
-    private readonly SlotId _countSlot;
     private readonly SlotId _levelSlot;
     private readonly SlotId _nameSlot;
 

@@ -6,6 +6,7 @@ using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using System;
 using System.Buffers.Binary;
+using System.Security.Policy;
 
 namespace Glass.Network.Handlers;
 
@@ -97,6 +98,15 @@ public class HandleTarget : IHandleOpcodes
     private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         FieldExtractor extractor = GlassContext.FieldExtractor;
+        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+
+        if (character == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "Target: metadata cannot be "
+                + "mapped to a character.  Dropping mob data.", LogLevel.Warn);
+            return;
+        }
+
         uint spawnId;
 
         try
@@ -108,9 +118,6 @@ public class HandleTarget : IHandleOpcodes
         {
             extractor.Release();
         }
-
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName);
-        DebugLog.Write(LogChannel.Opcodes, "Target = 0x" + spawnId.ToString("x4"));
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -126,21 +133,54 @@ public class HandleTarget : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
+        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+
         FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
+        uint spawnId;
+        uint? zoneId;
+        string targetName;
+
+        if (character == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "Target: metadata cannot be "
+                + "mapped to a character.  Dropping mob data.", LogLevel.Warn);
+            root.Text = "Target <Unknown>";
+            return root;
+        }
+
+        zoneId = character.CurrentZone.Value;
 
         try
         {
             GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            spawnId = extractor.GetUIntAt(_spawnIdSlot);
+
+            if (!MobRepository.Instance.TryGetBySpawnId(zoneId, spawnId, out Spawn? spawn))
+            {
+                DebugLog.Write(LogChannel.Opcodes, "TargetResolver: spawnId=" + spawnId
+                    + " unknown.", LogLevel.Trace);
+                targetName = "<unknown>";
+            }
+            else
+            {
+                targetName = spawn.Name;
+            }
 
             FieldNodes.AddUIntNode(extractor, _spawnIdSlot, "Spawn ID", root, "X4");
+
+            FieldDisplayNode nameNode = new FieldDisplayNode("Target: " + targetName);
+            nameNode.AddByteRange(extractor.GetByteRangeFor(_spawnIdSlot));
+            root.AddChild(nameNode);
         }
         finally
         {
             extractor.Release();
         }
 
-        root.Text = "Target";
+
+
+        root.Text = "Target (" + targetName + ")";
         return root;
     }
 

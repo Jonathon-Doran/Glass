@@ -28,6 +28,7 @@ public class HandlePlayerProfile : IHandleOpcodes
 
     private readonly SlotId _nameSlot;
     private readonly SlotId _levelSlot;
+    private readonly SlotId _zoneIdSlot;
     private readonly SlotId _playerClassSlot;
     private readonly SlotId _practicePointsSlot;
     private readonly SlotId _manaSlot;
@@ -67,6 +68,7 @@ public class HandlePlayerProfile : IHandleOpcodes
 
         _nameSlot = _registry.IndexOfField(_collectionHandle, "name");
         _levelSlot = _registry.IndexOfField(_collectionHandle, "level");
+        _zoneIdSlot = _registry.IndexOfField(_collectionHandle, "zone_id");
         _playerClassSlot = _registry.IndexOfField(_collectionHandle, "player_class");
         _practicePointsSlot = _registry.IndexOfField(_collectionHandle, "practice_points");
         _manaSlot = _registry.IndexOfField(_collectionHandle, "mana");
@@ -144,8 +146,7 @@ public class HandlePlayerProfile : IHandleOpcodes
 
             for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
             {
-                ReadOnlySpan<byte> nameBytes = extractor.GetBytesAt(_nameSlot);
-                string name = Encoding.ASCII.GetString(nameBytes);
+                string name = extractor.GetStringAt(_nameSlot);
 
                 Character? character = CharacterRepository.Instance.GetByName(name);
                 if (character == null)
@@ -171,6 +172,7 @@ public class HandlePlayerProfile : IHandleOpcodes
                 character.Silver = extractor.GetUIntAt(_silverCarriedSlot);
                 character.Copper = extractor.GetUIntAt(_copperCarriedSlot);
 
+                character.CurrentZone = extractor.GetUIntAt(_zoneIdSlot);
                 // PlayerProfile is the first time we see the character name on the network.
                 if (metadata.SessionId == -1)
                 {
@@ -214,6 +216,7 @@ public class HandlePlayerProfile : IHandleOpcodes
 
             name = extractor.GetStringAt(_nameSlot);
             uint playerClass = extractor.GetUIntAt(_playerClassSlot);
+            uint zoneId = extractor.GetUIntAt(_zoneIdSlot);
 
             FieldNodes.AddStringNode(extractor, _nameSlot, "Name", root);
             FieldNodes.AddUIntNode(extractor, _levelSlot, "Level", root, "D");
@@ -221,6 +224,10 @@ public class HandlePlayerProfile : IHandleOpcodes
             FieldDisplayNode classNode = new FieldDisplayNode("Class: " + GetClassName(playerClass));
             classNode.AddByteRange(extractor.GetByteRangeFor(_playerClassSlot));
             root.AddChild(classNode);
+
+            FieldDisplayNode zoneNode = new FieldDisplayNode("Zone: " + GetZoneName(zoneId) + " (" + zoneId + ")");
+            zoneNode.AddByteRange(extractor.GetByteRangeFor(_zoneIdSlot));
+            root.AddChild(zoneNode);
 
             FieldNodes.AddUIntNode(extractor, _practicePointsSlot, "Practice Points", root, "D");
             FieldNodes.AddUIntNode(extractor, _manaSlot, "Mana", root, "D");
@@ -279,7 +286,7 @@ public class HandlePlayerProfile : IHandleOpcodes
     // Looks up a class name by its byte value. Returns a descriptive string for unknown values
     // rather than throwing — an unknown class id should log and continue, not crash.
     //
-    // classId:    The class byte from OP_PlayerProfile at offset 0x1a
+    // classId:    The class ID to query
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public static string GetClassName(uint classId)
     {
@@ -292,6 +299,34 @@ public class HandlePlayerProfile : IHandleOpcodes
         return $"Unknown(0x{classId:X2})";
     }
 
+    private static readonly Dictionary<uint, string> ZoneNames = new Dictionary<uint, string>()
+    {
+        { 13, "North Karana" },
+        { 14, "South Karana" },
+        { 29, "Halas" },
+        {118, "Great Divide" },
+        {202, "Plane of Knowledge" },
+        {394, "Crescent Reach" }
+    };
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetZoneName
+    //
+    // Looks up a zone name by its byte value. Returns a descriptive string for unknown values
+    // rather than throwing.
+    //
+    // zoneId:    The zoneId to query
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public static string GetZoneName(uint zoneId)
+    {
+        if (ZoneNames.TryGetValue(zoneId, out string? name))
+        {
+            return name;
+        }
+
+        DebugLog.Write(LogChannel.Opcodes, $"[GetZoneName] zoneId=0x{zoneId:X2} not in map, returning 'Unknown'", LogLevel.Warn);
+        return $"Unknown(0x{zoneId:X2})";
+    }
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeHandled
     ///////////////////////////////////////////////////////////////////////////////////////////////

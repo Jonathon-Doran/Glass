@@ -6,6 +6,7 @@ using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using System;
 using System.Buffers.Binary;
+using System.Security.Policy;
 using System.Text;
 
 namespace Glass.Network.Handlers;
@@ -87,29 +88,53 @@ public class HandleZoneEntry_Z2C : IHandleOpcodes
     public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         FieldExtractor extractor = GlassContext.FieldExtractor;
+        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+
+        if (character == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "ZoneEntry: metadata cannot be "
+                + "mapped to a character.  Dropping mob data.", LogLevel.Warn);
+            return;
+        }
         string name;
-        uint spawn_id;
+        uint spawnId;
         uint level;
+        uint? zoneId = character.CurrentZone;
+
+        // Cannot store data if we do not know what zone we are in yet
+        if (! zoneId.HasValue)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "HandleSpawn: character '" + character.Name
+                + "' has no zone id; spawn data discarded.", LogLevel.Warn);
+            return;
+        }
 
         try
         {
             GateHandle rootGate = extractor.Extract(_top_level_gate, data);
 
             name = extractor.GetStringAt(_nameSlot);
-            spawn_id = extractor.GetUIntAt(_spawnIdSlot);
+            spawnId = extractor.GetUIntAt(_spawnIdSlot);
             level = extractor.GetUIntAt(_levelSlot);
-            
         }
         finally
         {
             extractor.Release();
         }
-        /*
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName + " length=" + data.Length);
-        DebugLog.Write(LogChannel.Opcodes, "name=\"" + name + "\"  id=(0x" + spawn_id.ToString("x4")+")");
-        DebugLog.Write(LogChannel.Opcodes, "SpawnId= 0x" + spawn_id.ToString("x4"));
-        DebugLog.Write(LogChannel.Opcodes, "Level=" + level + " (0x" + level.ToString("x4") + ")");
- */
+
+        if (!MobRepository.Instance.TryGetBySpawnId(zoneId.Value, spawnId, out Spawn? spawn))
+        {
+            spawn = new Spawn();
+            spawn.Name = name;
+            spawn.ZoneId = zoneId.Value;
+            spawn.SpawnId = spawnId;
+            MobRepository.Instance.Add(spawn);
+            DebugLog.Write(LogChannel.Opcodes, "SpawnHandler: created new record for " + name + ", zoneId=" + zoneId
+                + " spawnId=" + spawnId.ToString("X4") + ".", LogLevel.Info);
+        }
+
+        spawn.Name = name;
+        spawn.Level = (ushort) level;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

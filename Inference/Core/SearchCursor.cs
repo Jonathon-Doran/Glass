@@ -199,17 +199,21 @@ public partial class OpcodeTracePresenter
         ///////////////////////////////////////////////////////////////////////////////////////
         // BringCursorIntoView
         //
-        // Centers the cursor's current position in the trace list and paints it in the cursor
-        // color.  The paint is deferred until any scroll has settled so the color does not flash
-        // mid-scroll.  Does nothing when the trace has no rows.
+        // Paints the cursor's current position in the cursor color, optionally centering it in
+        // the trace list first.  When centering, the paint is deferred until the scroll has
+        // settled so the color does not flash mid-scroll.  When not centering, the paint runs
+        // immediately and the scroll position is left where the user has it.  Does nothing when
+        // the trace has no rows.
         //
         // Reads cursor state, so the cursor must already hold its new position when this is called.
         //
         // outgoingElement:  The element the cursor painted at its prior position, or null when the
         //                   cursor had no prior paint.  Used to clear that prior cursor span when
         //                   the paint runs.
+        // centerInView:     True to scroll the cursor's position to center before painting, false
+        //                   to paint in place without scrolling.
         ///////////////////////////////////////////////////////////////////////////////////////
-        private void BringCursorIntoView(FieldDisplayNode? outgoingElement)
+        private void BringCursorIntoView(FieldDisplayNode? outgoingElement, bool centerInView)
         {
             if (_currentRow == null)
             {
@@ -223,6 +227,15 @@ public partial class OpcodeTracePresenter
             {
                 SearchMatch match = _owner._matches[(int)_matchIndex];
 
+                if (centerInView == false)
+                {
+                    Repaint(outgoingElement);
+                    DebugLog.Write(LogChannel.Opcodes,
+                        "SearchCursor.BringCursorIntoView: painted match at packetIndex "
+                        + match.PacketIndex + " in place, no scroll", LogLevel.Trace);
+                    return;
+                }
+
                 // Repaint is not called directly.  It is wrapped as the scroll's settled action and
                 // runs at the end of the scroll's final layout phase, after the viewport settles, so
                 // the cursor color does not flash mid-scroll.
@@ -232,17 +245,6 @@ public partial class OpcodeTracePresenter
                     "SearchCursor.BringCursorIntoView: scrolling match at packetIndex "
                     + match.PacketIndex + " into view, paint deferred to settled", LogLevel.Trace);
             }
-
-            /*
-            Investigating selection loop
-            else
-            {
-                _owner.CenterRowInList(_currentRow);
-                DebugLog.Write(LogChannel.Opcodes,
-                    "SearchCursor.BringCursorIntoView: centered bare row at packetIndex "
-                    + _currentRow.PacketIndex, LogLevel.Trace);
-            }
-            */
         }
 
         ///////////////////////////////////////////////////////////////////////////////////////
@@ -296,13 +298,13 @@ public partial class OpcodeTracePresenter
                     _rowPacketIndex = messageIndex;
                     _matchIndex = 0u;
 
-                    BringCursorIntoView(outgoingElement);
+                    BringCursorIntoView(outgoingElement, centerInView);
                     return;
                 }
 
                 SetCursorOnMatch((uint)globalIndex);
 
-                BringCursorIntoView(outgoingElement);
+                BringCursorIntoView(outgoingElement, centerInView);
                 return;
             }
 
@@ -310,7 +312,7 @@ public partial class OpcodeTracePresenter
             _rowPacketIndex = messageIndex;
             _matchIndex = 0u;
 
-            BringCursorIntoView(outgoingElement);
+            BringCursorIntoView(outgoingElement, centerInView);
         }
 
         ///////////////////////////////////////////////////////////////////////////////////////
@@ -393,7 +395,7 @@ public partial class OpcodeTracePresenter
                 }
 
                 TransitionToRow(newRow);
-                BringCursorIntoView(outgoingElement);
+                BringCursorIntoView(outgoingElement, true);
                 return;
             }
         }
@@ -527,7 +529,7 @@ public partial class OpcodeTracePresenter
                 }
 
                 TransitionToRow(newRow);
-                BringCursorIntoView(outgoingElement);
+                BringCursorIntoView(outgoingElement, true);
                 return;
             }
 

@@ -84,29 +84,7 @@ public class HandleZoneEntry_C2Z: IHandleOpcodes
             + _opcodeName + " length=" + data.Length);
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // ResolveVersion
-    //
-    // Returns the opcode version for a packet.
-    //
-    // data:      The application payload.
-    // metadata:  Packet metadata
-    //
-    // Returns:   The resolved version number.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
-    {
-        switch (metadata.Channel)
-        {
-            case SoeConstants.StreamId.StreamZoneToClient:
-                return 1;
-
-            case SoeConstants.StreamId.StreamClientToZone:
-                return 2;
-        }
-
-        return 0;
-    }
+    // V2 handlers do not need the Resolver code
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeHandled

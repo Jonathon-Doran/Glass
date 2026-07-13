@@ -122,7 +122,7 @@ public class CharacterRepository
                level, practice_points, max_hp, max_mana,
                strength, stamina, charisma, dexterity,
                intelligence, agility, wisdom,
-               platinum, gold, silver, copper
+               platinum, gold, silver, copper, current_zone
         FROM Characters
         WHERE id IN (" + idPlaceholders + @")
         ORDER BY account_id, name";
@@ -145,7 +145,7 @@ public class CharacterRepository
     // ReadCharacterRow
     //
     // Builds a Character from the current row of the supplied SqliteDataReader. The reader is expected
-    // to have been opened with the canonical 21-column SELECT used by Load. Caller is responsible for
+    // to have been opened with the canonical SELECT used by Load. Caller is responsible for
     // advancing the reader (this method does not call Read()).
     //
     // Persisted fields are populated from the reader. Ephemeral fields (SpawnId) remain null.
@@ -180,7 +180,9 @@ public class CharacterRepository
             Platinum = reader.IsDBNull(17) ? null : (uint?)reader.GetInt32(17),
             Gold = reader.IsDBNull(18) ? null : (uint?)reader.GetInt32(18),
             Silver = reader.IsDBNull(19) ? null : (uint?)reader.GetInt32(19),
-            Copper = reader.IsDBNull(20) ? null : (uint?)reader.GetInt32(20)
+            Copper = reader.IsDBNull(20) ? null : (uint?)reader.GetInt32(20),
+
+            CurrentZone = reader.IsDBNull(21) ? null : (uint?)reader.GetInt32(21)
         };
 
         return character;
@@ -262,7 +264,8 @@ public void Save(int characterId)
             platinum = @platinum,
             gold = @gold,
             silver = @silver,
-            copper = @copper
+            copper = @copper,
+            current_zone = @currentZone
         WHERE id = @id";
 
     cmd.Parameters.AddWithValue("@name", character.Name);
@@ -288,7 +291,7 @@ public void Save(int characterId)
     cmd.Parameters.AddWithValue("@gold",     character.Gold.HasValue     ? character.Gold.Value     : DBNull.Value);
     cmd.Parameters.AddWithValue("@silver",   character.Silver.HasValue   ? character.Silver.Value   : DBNull.Value);
     cmd.Parameters.AddWithValue("@copper",   character.Copper.HasValue   ? character.Copper.Value   : DBNull.Value);
-
+    cmd.Parameters.AddWithValue("@currentZone", character.CurrentZone.HasValue ? character.CurrentZone.Value : DBNull.Value);
     cmd.Parameters.AddWithValue("@id", character.CharacterId);
 
     cmd.ExecuteNonQuery();

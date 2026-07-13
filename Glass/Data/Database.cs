@@ -437,6 +437,10 @@ public class Database
         {
             ApplyMigration(conn, 57, Migration_057);
         }
+        if (version < 58)
+        {
+            ApplyMigration(conn, 58, Migration_058);
+        }
     }
 
     private int GetSchemaVersion()
@@ -1410,7 +1414,9 @@ public class Database
     private const string Migration_057 = @"
         ALTER TABLE PacketField DROP COLUMN blob_byte_count;
     ";
-
+    private const string Migration_058 = @"
+        ALTER TABLE Characters ADD COLUMN current_zone INTEGER;
+    ";
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"
