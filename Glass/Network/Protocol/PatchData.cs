@@ -187,8 +187,7 @@ public class PatchData
     //   3. Enumerate every PatchOpcode for this patch.  Allocate the parallel opcodeHandle-
     //      indexed arrays from the resulting count.
     //   4. For each PatchOpcode, store it under its opcodeHandle, then load its required field
-    //      definitions from PacketField, then append its optional field definitions from
-    //      PacketOptionalGroup / PacketOptionalField.
+    //      definitions from PacketField,
     //
     // Optional fields are folded into the same FieldDefinition[] as required fields.  Callers
     // see one flat list per opcode and cannot distinguish required from optional — by design.

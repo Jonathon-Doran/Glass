@@ -1,4 +1,5 @@
 ﻿using Glass.Core.Logging;
+using Glass.Network.Protocol;
 using Microsoft.Data.Sqlite;
 using System;
 using System.Collections.Generic;
@@ -13,14 +14,11 @@ namespace Inference.Core;
 // not modified.  Tables duplicated:
 //
 //     PatchOpcode
-//     PatchOpcodeChannel
 //     FieldCollection
 //     PacketField
 //     Gate
 //
-// PatchOpcode rows are inserted first and produce an old-to-new id map, which is used to
-// re-point the PatchOpcodeChannel rows at their new opcode ids.  FieldCollection,
-// PacketField, and Gate are keyed by (patch_date, server_type) identity rather than by a
+// FieldCollection, PacketField, and Gate are keyed by (patch_date, server_type) identity rather than by a
 // foreign key, so each is duplicated by reading the source rows, rewriting patch_date to
 // the target, and inserting.  The whole duplication runs in a single transaction.
 ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -117,6 +115,13 @@ public class PatchLevelDuplicator
                     "Target patch level (" + targetPatchDate + ", " + sourceServerType + ") already contains rows.");
             }
 
+            PatchLevelManager levelManager = new PatchLevelManager(_connection);
+            levelManager.Create(transaction, new PatchLevel(targetPatchDate, sourceServerType));
+
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "PatchLevelDuplicator.Duplicate: created PatchLevel row for ("
+                + targetPatchDate + "," + sourceServerType + ")", LogLevel.Trace);
+
             Dictionary<long, long> opcodeIdMap = DuplicatePatchOpcodes(
                 transaction, sourcePatchDate, sourceServerType, targetPatchDate);
 
@@ -131,10 +136,6 @@ public class PatchLevelDuplicator
                 transaction.Commit();
                 return 0;
             }
-
-            int channelCount = DuplicatePatchOpcodeChannels(transaction, opcodeIdMap);
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "PatchLevelDuplicator.Duplicate: duplicated " + channelCount + " PatchOpcodeChannel rows", LogLevel.Trace);
 
             int collectionCount = DuplicateFieldCollections(
                 transaction, sourcePatchDate, sourceServerType, targetPatchDate);
@@ -327,114 +328,6 @@ public class PatchLevelDuplicator
         DebugLog.Write(LogChannel.InferenceDebug,
             "PatchLevelDuplicator.DuplicatePatchOpcodes: inserted " + idMap.Count + " rows", LogLevel.Trace);
         return idMap;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // DuplicatePatchOpcodeChannels
-    //
-    // For every PatchOpcodeChannel row whose patch_opcode_id is a key in opcodeIdMap,
-    // inserts a copy that points at the corresponding new patch_opcode_id.  The channel
-    // string is carried over verbatim.
-    //
-    // Returns the number of rows inserted.
-    //
-    // transaction:  Active transaction.  All reads and writes run inside it.
-    // opcodeIdMap:  Source PatchOpcode.id -> new PatchOpcode.id, produced by
-    //               DuplicatePatchOpcodes.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private int DuplicatePatchOpcodeChannels(SqliteTransaction transaction, Dictionary<long, long> opcodeIdMap)
-    {
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "PatchLevelDuplicator.DuplicatePatchOpcodeChannels: " + opcodeIdMap.Count + " opcode ids in scope", LogLevel.Trace);
-
-        if (opcodeIdMap.Count == 0)
-        {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "PatchLevelDuplicator.DuplicatePatchOpcodeChannels: opcodeIdMap is empty; nothing to do", LogLevel.Warn);
-            return 0;
-        }
-
-        List<SourceChannelRow> sourceRows = new List<SourceChannelRow>();
-
-        using (SqliteCommand selectCommand = _connection.CreateCommand())
-        {
-            selectCommand.Transaction = transaction;
-            selectCommand.CommandText =
-                "SELECT patch_opcode_id, channel " +
-                "FROM PatchOpcodeChannel " +
-                "WHERE patch_opcode_id = @patch_opcode_id";
-            SqliteParameter patchOpcodeIdParameter = selectCommand.Parameters.Add("@patch_opcode_id", SqliteType.Integer);
-
-            foreach (KeyValuePair<long, long> entry in opcodeIdMap)
-            {
-                patchOpcodeIdParameter.Value = entry.Key;
-
-                using SqliteDataReader reader = selectCommand.ExecuteReader();
-                while (reader.Read())
-                {
-                    SourceChannelRow row = new SourceChannelRow();
-                    row.SourcePatchOpcodeId = reader.GetInt64(0);
-                    row.Channel = reader.GetString(1);
-                    sourceRows.Add(row);
-                }
-            }
-        }
-
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "PatchLevelDuplicator.DuplicatePatchOpcodeChannels: read " + sourceRows.Count + " source rows", LogLevel.Trace);
-
-        if (sourceRows.Count == 0)
-        {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "PatchLevelDuplicator.DuplicatePatchOpcodeChannels: no channels to duplicate", LogLevel.Warn);
-            return 0;
-        }
-
-        using SqliteCommand insertCommand = _connection.CreateCommand();
-        insertCommand.Transaction = transaction;
-        insertCommand.CommandText =
-            "INSERT INTO PatchOpcodeChannel (patch_opcode_id, channel) " +
-            "VALUES (@patch_opcode_id, @channel)";
-        SqliteParameter newOpcodeIdParameter = insertCommand.Parameters.Add("@patch_opcode_id", SqliteType.Integer);
-        SqliteParameter channelParameter = insertCommand.Parameters.Add("@channel", SqliteType.Text);
-
-        int insertedCount = 0;
-        for (int rowIndex = 0; rowIndex < sourceRows.Count; rowIndex++)
-        {
-            SourceChannelRow row = sourceRows[rowIndex];
-
-            long newOpcodeId;
-            if (!opcodeIdMap.TryGetValue(row.SourcePatchOpcodeId, out newOpcodeId))
-            {
-                DebugLog.Write(LogChannel.InferenceDebug,
-                    "PatchLevelDuplicator.DuplicatePatchOpcodeChannels: no mapping for source patch_opcode_id="
-                    + row.SourcePatchOpcodeId + " channel=" + row.Channel, LogLevel.Error);
-                throw new InvalidOperationException(
-                    "No mapping for source PatchOpcodeChannel.patch_opcode_id=" + row.SourcePatchOpcodeId + ".");
-            }
-
-            newOpcodeIdParameter.Value = newOpcodeId;
-            channelParameter.Value = row.Channel;
-
-            int affected = insertCommand.ExecuteNonQuery();
-            if (affected != 1)
-            {
-                DebugLog.Write(LogChannel.InferenceDebug,
-                    "PatchLevelDuplicator.DuplicatePatchOpcodeChannels: INSERT affected " + affected
-                    + " rows for source patch_opcode_id=" + row.SourcePatchOpcodeId + " channel=" + row.Channel, LogLevel.Error);
-                throw new InvalidOperationException(
-                    "Insert into PatchOpcodeChannel affected " + affected + " rows.");
-            }
-
-            insertedCount++;
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "PatchLevelDuplicator.DuplicatePatchOpcodeChannels: channel=" + row.Channel
-                + " source_opcode_id=" + row.SourcePatchOpcodeId + " new_opcode_id=" + newOpcodeId, LogLevel.Trace);
-        }
-
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "PatchLevelDuplicator.DuplicatePatchOpcodeChannels: inserted " + insertedCount + " rows", LogLevel.Trace);
-        return insertedCount;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -858,17 +751,5 @@ public class PatchLevelDuplicator
         public string ChildCollection = string.Empty;
         public string? FieldName;
         public int? Count;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // SourceChannelRow
-    //
-    // Carries one PatchOpcodeChannel row read from the source patch level.  Local staging
-    // type so the read pass closes its reader before the write pass begins.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private class SourceChannelRow
-    {
-        public long SourcePatchOpcodeId;
-        public string Channel = string.Empty;
     }
 }

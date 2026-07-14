@@ -13,6 +13,19 @@ namespace Inference.Dialogs;
 public partial class NewPatchLevelDialog : Window
 {
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // NewPatchLevelDialog
+    //
+    // Constructs the dialog and initializes the XAML-defined components.
+    //
+    // title:  The window title.  Defaults to "New Patch Level".
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public NewPatchLevelDialog(string title = "New Patch Level")
+    {
+        InitializeComponent();
+        Title = title;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // ServerType
     //
     // The selected server type. Valid after the dialog closes with OK.

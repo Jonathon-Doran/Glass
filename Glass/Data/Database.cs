@@ -441,6 +441,18 @@ public class Database
         {
             ApplyMigration(conn, 58, Migration_058);
         }
+        if (version < 59)
+        {
+            ApplyMigration(conn, 59, Migration_059);
+        }
+        if (version < 60)
+        {
+            ApplyMigration(conn, 60, Migration_060);
+        }
+        if (version < 61)
+        {
+            ApplyMigration(conn, 61, Migration_061);
+        }
     }
 
     private int GetSchemaVersion()
@@ -1416,6 +1428,25 @@ public class Database
     ";
     private const string Migration_058 = @"
         ALTER TABLE Characters ADD COLUMN current_zone INTEGER;
+    ";
+    private const string Migration_059 = @"
+        DROP TABLE IF EXISTS PacketOptionalField;
+        DROP TABLE IF EXISTS PacketOptionalGroup;
+    ";
+    private const string Migration_060 = @"
+        DROP TABLE IF EXISTS PatchOpcodeChannel;
+    ";
+
+    private const string Migration_061 = @"
+        CREATE TABLE PatchLevel (
+            id          INTEGER PRIMARY KEY,
+            patch_date  TEXT NOT NULL,
+            server_type TEXT NOT NULL,
+            UNIQUE (patch_date, server_type)
+        );
+
+        INSERT INTO PatchLevel (patch_date, server_type)
+        SELECT DISTINCT patch_date, server_type FROM PatchOpcode;
     ";
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

@@ -1,0 +1,39 @@
+﻿<Window x:Class="Inference.Dialogs.ManagePatchLevelsDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.modernwpf.com/2019"
+        ui:WindowHelper.UseModernWindowStyle="True"
+        Title="Manage Patch Levels" Height="420" Width="480"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <ListView x:Name="LevelListView" Grid.Row="0" Margin="0,0,0,12">
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn Header="Patch Date"   Width="140" DisplayMemberBinding="{Binding PatchDate}"/>
+                    <GridViewColumn Header="Server Type"  Width="120" DisplayMemberBinding="{Binding ServerType}"/>
+                    <GridViewColumn Header="Opcodes"      Width="80"  DisplayMemberBinding="{Binding OpcodeCount}"/>
+                </GridView>
+            </ListView.View>
+        </ListView>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,12">
+            <Button Content="New"       Click="Button_New_Click"       Padding="16,4" Margin="0,0,8,0"/>
+            <Button Content="Duplicate" Click="Button_Duplicate_Click" Padding="16,4" Margin="0,0,8,0"/>
+            <Button Content="Rename"    Click="Button_Rename_Click"    Padding="16,4" Margin="0,0,8,0"/>
+            <Button Content="Delete"    Click="Button_Delete_Click"    Padding="16,4" Margin="0,0,8,0"/>
+            <Button Content="Close"     Click="Button_Close_Click"     Padding="16,4"/>
+        </StackPanel>
+
+        <StatusBar Grid.Row="2" Margin="-16,0,-16,-16">
+            <StatusBarItem>
+                <TextBlock x:Name="StatusText" TextWrapping="NoWrap"/>
+            </StatusBarItem>
+        </StatusBar>
+    </Grid>
+</Window>
