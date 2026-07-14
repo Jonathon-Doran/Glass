@@ -205,12 +205,6 @@ public partial class MainWindow : Window
         DebugLog.Write(LogChannel.InferenceDebug, "MainWindow: loaded 2 dummy candidates for UI review");
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // RestoreLastPatchLevel
-    //
-    // Reads the LastOpenedPatchDate and LastOpenedPatchServerType settings and
-    // restores the working patch level if both are present.
-    ///////////////////////////////////////////////////////////////////////////////////////////
     private void RestoreLastPatchLevel()
     {
         string? savedPatchDate = Properties.Settings.Default.LastOpenedPatchDate;
@@ -221,11 +215,43 @@ public partial class MainWindow : Window
             return;
         }
 
-        GlassContext.CurrentPatchLevel = new PatchLevel(savedPatchDate, savedServerType);
+        PatchLevel savedLevel = new PatchLevel(savedPatchDate, savedServerType);
+
+        using (SqliteConnection connection = Glass.Data.Database.Instance.Connect())
+        {
+            connection.Open();
+            PatchLevelManager manager = new PatchLevelManager(connection);
+
+            if (!manager.Exists(savedLevel))
+            {
+                DebugLog.Write(LogChannel.InferenceDebug, "RestoreLastPatchLevel: saved level "
+                    + savedLevel + " no longer exists, falling back to latest", LogLevel.Warn);
+
+                List<PatchLevelSummary> levels = manager.GetAllLevels();
+                if (levels.Count == 0)
+                {
+                    DebugLog.Write(LogChannel.InferenceDebug,
+                        "RestoreLastPatchLevel: no patch levels exist", LogLevel.Warn);
+                    Properties.Settings.Default.LastOpenedPatchDate = string.Empty;
+                    Properties.Settings.Default.LastOpenedPatchServerType = string.Empty;
+                    Properties.Settings.Default.Save();
+                    return;
+                }
+
+                savedLevel = levels[levels.Count - 1].Level;
+                savedPatchDate = savedLevel.PatchDate;
+                savedServerType = savedLevel.ServerType;
+
+                Properties.Settings.Default.LastOpenedPatchDate = savedPatchDate;
+                Properties.Settings.Default.LastOpenedPatchServerType = savedServerType;
+                Properties.Settings.Default.Save();
+            }
+        }
+
+        GlassContext.CurrentPatchLevel = savedLevel;
 
         // TODO:  Why is _currentPatchLevel even used when we have GlassContext?
         _currentPatchLevel = GlassContext.CurrentPatchLevel;
-
         string displayServerType = savedServerType.Substring(0, 1).ToUpper() + savedServerType.Substring(1);
         StatusPatchLevel.Text = savedPatchDate + " (" + displayServerType + ")";
         UpdateRecentPatches(savedPatchDate, savedServerType);

@@ -96,6 +96,29 @@ public class PatchLevelManager
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // Exists
+    //
+    // Returns true if the given patch level is present in the PatchLevel table.
+    //
+    // level:  The patch level to test.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public bool Exists(PatchLevel level)
+    {
+        using SqliteCommand command = _connection.CreateCommand();
+        command.CommandText =
+            "SELECT COUNT(*) FROM PatchLevel " +
+            "WHERE patch_date = @patch_date AND server_type = @server_type";
+        command.Parameters.AddWithValue("@patch_date", level.PatchDate);
+        command.Parameters.AddWithValue("@server_type", level.ServerType);
+
+        int count = Convert.ToInt32(command.ExecuteScalar());
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "PatchLevelManager.Exists: " + level + " count=" + count, LogLevel.Trace);
+        return count > 0;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // Rename
     //
     // Reassigns every row belonging to the given patch level to a new patch level.  Runs
