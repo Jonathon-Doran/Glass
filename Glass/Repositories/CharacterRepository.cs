@@ -138,6 +138,7 @@ public class CharacterRepository
             Character character = ReadCharacterRow(reader);
             _characters.Add(character);
             _charactersById[character.CharacterId] = character;
+            DebugLog.Write(LogChannel.General, "Loaded character " + character.Name, LogLevel.Info);
         }
     }
 

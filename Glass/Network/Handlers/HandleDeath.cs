@@ -1,9 +1,12 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Data.Models;
+using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using System;
 using System.Buffers.Binary;
+using System.Security.Policy;
 
 namespace Glass.Network.Handlers;
 
@@ -128,6 +131,28 @@ public class HandleDeath : IHandleOpcodes
     {
         FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
+        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+
+        uint zoneId;
+        string targetName;
+        string killerName;
+
+        if (character == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "Target: metadata cannot be "
+                + "mapped to a character.  Dropping mob data.", LogLevel.Warn);
+            root.Text = "Target <Unknown>";
+            return root;
+        }
+        if (character.CurrentZone == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "Target: no current zone "
+                + "for character.", LogLevel.Warn);
+            root.Text = "Target <Unknown>";
+            return root;
+        }
+
+        zoneId = character.CurrentZone.Value;
 
         try
         {
@@ -136,20 +161,40 @@ public class HandleDeath : IHandleOpcodes
             uint spawnId = extractor.GetUIntAt(_spawnIdSlot);
             uint killerId = extractor.GetUIntAt(_killerIdSlot);
 
-            FieldDisplayNode spawnIdNode = new FieldDisplayNode("spawnId = 0x" + spawnId.ToString("X4"));
-            spawnIdNode.AddByteRange(extractor.GetByteRangeFor(_spawnIdSlot));
-            root.AddChild(spawnIdNode);
 
-            FieldDisplayNode killerIdNode = new FieldDisplayNode("killerId = 0x" + killerId.ToString("X4"));
-            killerIdNode.AddByteRange(extractor.GetByteRangeFor(_killerIdSlot));
-            root.AddChild(killerIdNode);
+            if (!MobRepository.Instance.TryGetBySpawnId(zoneId, spawnId, out Spawn? spawn))
+            {
+                DebugLog.Write(LogChannel.Opcodes, "Death: spawnId=" + spawnId
+                    + " unknown.", LogLevel.Trace);
+                targetName = "<unknown>";
+            }
+            else
+            {
+                targetName = spawn.Name!;
+            }
+
+            if (!MobRepository.Instance.TryGetBySpawnId(zoneId, killerId, out Spawn? spawn2))
+            {
+                DebugLog.Write(LogChannel.Opcodes, "Death: spawnId=" + killerId
+                    + " unknown.", LogLevel.Trace);
+                killerName = "<unknown>";
+            }
+            else
+            {
+                killerName = spawn2.Name!;
+            }
+
+            FieldNodes.AddLabeledNode(extractor, _spawnIdSlot, "Target: " + targetName
+                + " (" + spawnId.ToString("X4") + ")", root);
+            FieldNodes.AddLabeledNode(extractor, _killerIdSlot, "Killer: " + killerName
+                + " (" + killerId.ToString("X4") + ")", root);
         }
         finally
         {
             extractor.Release();
         }
 
-        root.Text = "Death";
+        root.Text = "Death (" + targetName + ")";
         return root;
     }
 

@@ -334,9 +334,12 @@ public partial class OpcodeTracePresenter
 
 
             // capture the outgoing match's element before the walk, while _matchIndex still names
-            // the pre-move match; a mid-walk prune can shift the list past recovery afterward
+            // the pre-move match; a mid-walk prune can shift the list past recovery afterward.
+            // an invalidated or out-of-range index means the outgoing match is already gone and
+            // there is no prior cursor span to clear
             FieldDisplayNode? outgoingElement = null;
-            if (_state == CursorState.OnMatch)
+            if (_state == CursorState.OnMatch && _matchIndexValid
+                && _matchIndex < (uint)_owner._matches.Count)
             {
                 outgoingElement = _owner._matches[(int)_matchIndex].Element;
             }
@@ -420,9 +423,12 @@ public partial class OpcodeTracePresenter
             }
 
             // capture the outgoing match's element before the walk, while _matchIndex still names
-            // the pre-move match; a mid-walk prune can shift the list past recovery afterward
+            // the pre-move match; a mid-walk prune can shift the list past recovery afterward.
+            // an invalidated or out-of-range index means the outgoing match is already gone and
+            // there is no prior cursor span to clear
             FieldDisplayNode? outgoingElement = null;
-            if (_state == CursorState.OnMatch)
+            if (_state == CursorState.OnMatch && _matchIndexValid
+                && _matchIndex < (uint)_owner._matches.Count)
             {
                 outgoingElement = _owner._matches[(int)_matchIndex].Element;
             }
@@ -535,6 +541,43 @@ public partial class OpcodeTracePresenter
 
             DebugLog.Write(LogChannel.Opcodes,
                 "SearchCursor.AdvanceBackward: cursor unchanged, no live match found", LogLevel.Trace);
+        }
+
+        ///////////////////////////////////////////////////////////////////////////////////////
+        // NotifyMatchRemoved
+        //
+        // Keeps the cursor's match index synchronized with the match list when an entry is
+        // removed.  A removal below the cursor's index shifts the cursor's match down one
+        // position, so the index is decremented to keep naming the same match.  A removal at
+        // the cursor's index means the cursor's own match is gone; the index is marked invalid
+        // so the next walk re-resolves from the durable anchor.  Removals above the cursor,
+        // and removals while the cursor is not on a match, need no adjustment.
+        //
+        // removedIndex:  The list index the match was removed from.
+        ///////////////////////////////////////////////////////////////////////////////////////
+        public void NotifyMatchRemoved(uint removedIndex)
+        {
+            if (_state != CursorState.OnMatch)
+            {
+                return;
+            }
+
+            if (removedIndex < _matchIndex)
+            {
+                _matchIndex = _matchIndex - 1u;
+                DebugLog.Write(LogChannel.Opcodes,
+                    "SearchCursor.NotifyMatchRemoved: removal at " + removedIndex
+                    + " below cursor, match index now " + _matchIndex, LogLevel.Trace);
+                return;
+            }
+
+            if (removedIndex == _matchIndex)
+            {
+                _matchIndexValid = false;
+                DebugLog.Write(LogChannel.Opcodes,
+                    "SearchCursor.NotifyMatchRemoved: cursor's own match removed at " + removedIndex
+                    + ", index invalidated for anchor re-resolve", LogLevel.Trace);
+            }
         }
 
         ///////////////////////////////////////////////////////////////////////////////////////

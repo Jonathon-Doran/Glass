@@ -1883,16 +1883,13 @@ public partial class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     // RemoveMatchIfStale
     //
-    // Removes the match at the given index when it is stale, leaving a live match in place.  A
-    // match is stale when its anchor span's generation no longer equals the current generation
-    // for that span's color; a stale match is removed from _matches in place, shifting the tail
-    // down by one.
+    // Removes the match at the given index from the match list when its generation is not the
+    // active match generation, notifying the search cursor of the removal so its match index
+    // stays synchronized with the shifted list.  A live match is left in place.
     //
-    // index:  The subscript into _matches to test.  Must be in range; callers walk only indices
-    //         they have bounds-checked.
+    // index:  The match list index to test.
     //
-    // returns:  True when the match was stale and removed; false when it was live and left in
-    //           place.
+    // returns:  True when the match was stale and removed, false when it was live and retained.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private bool RemoveMatchIfStale(uint index)
     {
@@ -1908,6 +1905,7 @@ public partial class OpcodeTracePresenter
         }
 
         _matches.RemoveAt((int)index);
+        _searchCursor.NotifyMatchRemoved(index);
         DebugLog.Write(LogChannel.Opcodes,
             "OpcodeTracePresenter.RemoveMatchIfStale: pruned stale match at index " + index
             + ", " + _matches.Count + " remaining", LogLevel.Trace);

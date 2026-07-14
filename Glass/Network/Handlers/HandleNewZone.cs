@@ -156,25 +156,12 @@ public class HandleNewZone : IHandleOpcodes
             }
 
             string shortName = extractor.GetStringAt(_shortNameSlot);
-            string longName = extractor.GetStringAt(_longNameSlot);
-            uint zoneId = extractor.GetUIntAt(_zoneIdSlot);
 
-            FieldDisplayNode shortNameNode = new FieldDisplayNode("short_name = " + shortName);
-            shortNameNode.AddByteRange(extractor.GetByteRangeFor(_shortNameSlot));
-            root.AddChild(shortNameNode);
-
-            FieldDisplayNode longNameNode = new FieldDisplayNode("long_name = " + longName);
-            longNameNode.AddByteRange(extractor.GetByteRangeFor(_longNameSlot));
-            root.AddChild(longNameNode);
-
-            FieldDisplayNode zoneIdNode = new FieldDisplayNode("zone_id = " + zoneId);
-            zoneIdNode.AddByteRange(extractor.GetByteRangeFor(_zoneIdSlot));
-            root.AddChild(zoneIdNode);
+            FieldNodes.AddStringNode(extractor, _shortNameSlot, "Short Name", root);
+            FieldNodes.AddStringNode(extractor, _longNameSlot, "Long Name", root);
+            FieldNodes.AddUIntNode(extractor, _zoneIdSlot, "Zone ID", root);
 
             root.Text = OpcodeName + " (" + shortName + ")";
-
-            DebugLog.Write(LogChannel.Fields,
-                "HandleNewZone.Describe: built root with " + root.Children.Count + " children", LogLevel.Trace);
         }
         finally
         {
