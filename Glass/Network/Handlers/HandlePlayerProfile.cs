@@ -220,14 +220,9 @@ public class HandlePlayerProfile : IHandleOpcodes
 
             FieldNodes.AddStringNode(extractor, _nameSlot, "Name", root);
             FieldNodes.AddUIntNode(extractor, _levelSlot, "Level", root, "D");
-
-            FieldDisplayNode classNode = new FieldDisplayNode("Class: " + GetClassName(playerClass));
-            classNode.AddByteRange(extractor.GetByteRangeFor(_playerClassSlot));
-            root.AddChild(classNode);
-
-            FieldDisplayNode zoneNode = new FieldDisplayNode("Zone: " + GetZoneName(zoneId) + " (" + zoneId + ")");
-            zoneNode.AddByteRange(extractor.GetByteRangeFor(_zoneIdSlot));
-            root.AddChild(zoneNode);
+            FieldNodes.AddLabeledNode(extractor, _playerClassSlot, "Class: " + GetClassName(playerClass), root);
+            FieldNodes.AddLabeledNode(extractor, _zoneIdSlot, "Zone: " + GetZoneName(zoneId) + 
+                    " (" + zoneId + ")", root);
 
             FieldNodes.AddUIntNode(extractor, _practicePointsSlot, "Practice Points", root, "D");
             FieldNodes.AddUIntNode(extractor, _manaSlot, "Mana", root, "D");

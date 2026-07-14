@@ -125,8 +125,10 @@ public partial class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     // CursorOrdinal
     //
-    // The 1-based position of the cursor's match within the match list, for display as
-    // "ordinal of total".  Returns 0 when the cursor is OnRow, meaning no match is current.
+    // The 1-based position of the cursor's match among the live matches of the active search,
+    // for display as "ordinal of total".  Stale matches from prior searches that remain in the
+    // match list awaiting lazy pruning are not counted.  Returns 0 when the cursor is OnRow,
+    // meaning no match is current.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public uint CursorOrdinal
     {
@@ -137,7 +139,22 @@ public partial class OpcodeTracePresenter
                 return 0u;
             }
 
-            return _searchCursor.MatchIndex + 1u;
+            uint liveOrdinal = 0u;
+            uint cursorIndex = _searchCursor.MatchIndex;
+
+            for (uint i = 0u; i <= cursorIndex; i++)
+            {
+                if (_matches[(int)i].Generation == _matchGeneration)
+                {
+                    liveOrdinal = liveOrdinal + 1u;
+                }
+            }
+
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTracePresenter.CursorOrdinal: subscript " + cursorIndex
+                + " is live ordinal " + liveOrdinal, LogLevel.Trace);
+
+            return liveOrdinal;
         }
     }
 

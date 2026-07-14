@@ -11,43 +11,65 @@ using System.Security.Policy;
 namespace Glass.Network.Handlers;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// HandleTarget
+// HandleBuffTimers
 //
-// Handles OP_TargetMouse packets.  
+// Handles OP_BuffTimers packets.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleTarget : IHandleOpcodes
+public class HandleBuffTimers : IHandleOpcodes
 {
-    private readonly string _opcodeName = "OP_TargetMouse";
+    private readonly string _opcodeName = "OP_Buff_Timers";
     private readonly PatchOpcode _opcodeHandled;
     private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
     private readonly GateDefinitionHandle _top_level_gate;
 
-    private readonly SlotId _spawnIdSlot;
+    private readonly SlotId _buffPosSlot;
+    private readonly SlotId _spellIdSlot;
+    private readonly SlotId _ticksRemainingSlot;
+    private readonly SlotId _casterNameSlot;
+
+    private readonly SlotId _playerIdSlot;
+    private readonly SlotId _interTickGapSlot;
+    private readonly SlotId _kindSlot;
+    private readonly SlotId _countSlot;
+    private readonly SlotId _buffsGateSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleTarget  (constructor)
+    // HandleBuffTimers  (constructor)
     //
-    // Resolves the wire opcode and loads the field definitions for OP_Target  from
+    // Resolves the wire opcode and loads the field definitions for OP_BuffTimers from
     // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
     // Caches the index of each field the handler reads so the hot path can access the bag
     // by integer index without name lookup.
     //
-    // If the current patch does not define OP_Target , GetOpcodeValue returns 0 and
+    // If the current patch does not define OP_BuffTimers , GetOpcodeValue returns 0 and
     // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
     // with a zero opcode, so this handler simply will not receive packets.  All field
     // index lookups resolve to -1 in that case but are never consulted.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleTarget()
+    public HandleBuffTimers()
     {
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_TargetMouse");
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "Buff Timers Header");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
-        _spawnIdSlot = _registry.IndexOfField(_collectionHandle, "spawn_id");
+        // header slots
+        _playerIdSlot = _registry.IndexOfField(_collectionHandle, "PlayerID");
+        _interTickGapSlot = _registry.IndexOfField(_collectionHandle, "InterTick_Gap");
+        _kindSlot = _registry.IndexOfField(_collectionHandle, "Kind");
+
+        _buffsGateSlot = _registry.IndexOfField(_collectionHandle, "Buffs");
+
+        CollectionHandle buffEntryCollection = _registry.GetCollectionHandle(_patchLevel, "Buff Timer Entry");
+        
+        // Per-entry slots
+        _buffPosSlot = _registry.IndexOfField(buffEntryCollection, "Buff_Slot");
+        _spellIdSlot = _registry.IndexOfField(buffEntryCollection, "Spell_ID");
+        _ticksRemainingSlot = _registry.IndexOfField(buffEntryCollection, "Ticks_Remaining");
+        _casterNameSlot = _registry.IndexOfField(buffEntryCollection, "Caster_Name");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -82,7 +104,7 @@ public class HandleTarget : IHandleOpcodes
         switch (metadata.Channel)
         {
             case SoeConstants.StreamId.StreamClientToZone:
-                HandleClientToZone(data, metadata);
+                HandleZoneToClient(data, metadata);
                 break;
         }
     }
@@ -95,24 +117,38 @@ public class HandleTarget : IHandleOpcodes
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         FieldExtractor extractor = GlassContext.FieldExtractor;
-        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
-
-        if (character == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "Target: metadata cannot be "
-                + "mapped to a character.  Dropping mob data.", LogLevel.Warn);
-            return;
-        }
-
-        uint spawnId;
-
         try
         {
             GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-            spawnId = extractor.GetUIntAt(_spawnIdSlot);
+
+            if (extractor.IsPresent(_buffsGateSlot) == false)
+            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "HandleBuffTimers: no Buffs gate present", LogLevel.Warn);
+                return;
+            }
+
+            GateHandle entriesGate = extractor.GetGateAt(_buffsGateSlot);
+            if (entriesGate.Exists == false)
+            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "HandleBuffTimers: Buffs present but no gate", LogLevel.Warn);
+                return;
+            }
+
+            uint bagCount = extractor.BagCount(entriesGate);
+
+            for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
+            {
+                extractor.EnterGate(entriesGate, bagIndex);
+
+                uint playerID = extractor.GetUIntAt(_playerIdSlot);
+                uint interTickGap = extractor.GetUIntAt(_interTickGapSlot);
+                uint kind = extractor.GetUIntAt(_kindSlot);
+            }
         }
         finally
         {
@@ -123,7 +159,7 @@ public class HandleTarget : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Describe
     //
-    // Extracts OP_Target against the active patch and builds a display tree: a root node for
+    // Extracts OP_BuffTimers against the active patch and builds a display tree: a root node for
     // the collection with one leaf child per field each carrying its payload byte range.
     //
     // data:      The application payload
@@ -133,61 +169,57 @@ public class HandleTarget : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
-
         FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
-        uint spawnId;
-        uint? zoneId;
-        string targetName;
-
-        if (character == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "Target: metadata cannot be "
-                + "mapped to a character.  Dropping mob data.", LogLevel.Warn);
-            root.Text = "Target <Unknown>";
-            return root;
-        }
-        if (character.CurrentZone == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "Target: no current zone "
-                + "for character.", LogLevel.Warn);
-            root.Text = "Target <Unknown>";
-            return root;
-        }
-
-        zoneId = character.CurrentZone.Value;
-
         try
         {
             GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-            spawnId = extractor.GetUIntAt(_spawnIdSlot);
 
-            if (!MobRepository.Instance.TryGetBySpawnId(zoneId, spawnId, out Spawn? spawn))
+            if (extractor.IsPresent(_buffsGateSlot) == false)
             {
-                DebugLog.Write(LogChannel.Opcodes, "TargetResolver: spawnId=" + spawnId
-                    + " unknown.", LogLevel.Trace);
-                targetName = "<unknown>";
-            }
-            else
-            {
-                targetName = spawn.Name!;
+                DebugLog.Write(LogChannel.Opcodes,
+                    "HandleBuffTimers.Describe: no Buffs gate present", LogLevel.Warn);
+                root.Text = "Buff Timers";
+                return root;
             }
 
-            FieldNodes.AddUIntNode(extractor, _spawnIdSlot, "Spawn ID", root, "X4");
+            GateHandle entriesGate = extractor.GetGateAt(_buffsGateSlot);
+            if (entriesGate.Exists == false)
+            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "HandleBuffTimers.Describe: Buffs present but no gate", LogLevel.Warn);
+                root.Text = "Buff Timers";
+                return root;
+            }
 
-            FieldDisplayNode nameNode = new FieldDisplayNode("Target: " + targetName);
-            nameNode.AddByteRange(extractor.GetByteRangeFor(_spawnIdSlot));
-            root.AddChild(nameNode);
+            FieldNodes.AddUIntNode(extractor, _playerIdSlot, "Player ID", root);
+            FieldNodes.AddUIntNode(extractor, _interTickGapSlot, "Inter-Tick Gap", root);
+            FieldNodes.AddUIntNode(extractor, _kindSlot, "Kind", root, "D");
+
+
+
+            uint bagCount = extractor.BagCount(entriesGate);
+            DebugLog.Write(LogChannel.Opcodes,
+                "HandleBuffTimers.Describe: walking " + bagCount + " buff entries", LogLevel.Trace);
+
+            for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
+            {
+                extractor.EnterGate(entriesGate, bagIndex);
+                FieldDisplayNode entryNode = new FieldDisplayNode("Entry " + (bagIndex + 1));
+                root.AddChild(entryNode);
+
+                FieldNodes.AddUIntNode(extractor, _buffPosSlot, "Buff Position", entryNode, "D");
+                FieldNodes.AddUIntNode(extractor, _spellIdSlot, "Spell ID", entryNode);
+                FieldNodes.AddUIntNode(extractor, _ticksRemainingSlot, "Ticks Remaining", entryNode, "D");
+                FieldNodes.AddStringNode(extractor, _casterNameSlot, "Caster", entryNode);
+
+            }
         }
         finally
         {
             extractor.Release();
         }
-
-
-
-        root.Text = "Target (" + targetName + ")";
+        root.Text = "Buff Timers";
         return root;
     }
 
@@ -199,4 +231,5 @@ public class HandleTarget : IHandleOpcodes
         get { return _opcodeHandled; }
     }
 }
+
 

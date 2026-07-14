@@ -1,5 +1,6 @@
 ﻿using Glass.Network.Protocol.Fields;
 using Glass.Network.Protocol;
+using System.Configuration;
 
 namespace Glass.Network.Handlers;
 
@@ -29,7 +30,7 @@ public static class FieldNodes
     //             to ToString directly.  Defaults to "X".
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    public static void AddUIntNode(FieldExtractor extractor, SlotId slotId, string label,
+    public static uint AddUIntNode(FieldExtractor extractor, SlotId slotId, string label,
         FieldDisplayNode parent, string format = "X")
     {
         uint value = extractor.GetUIntAt(slotId);
@@ -49,6 +50,7 @@ public static class FieldNodes
         FieldDisplayNode newNode = new FieldDisplayNode(label + ": " + valueString);
         newNode.AddByteRange(extractor.GetByteRangeFor(slotId));
         parent.AddChild(newNode);
+        return value;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -66,7 +68,7 @@ public static class FieldNodes
     //             beginning with 'X' renders hex with a 0x prefix; any other format is passed
     //             to ToString directly.  Defaults to "X".
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public static void AddIntNode(FieldExtractor extractor, SlotId slotId, string label,
+    public static int AddIntNode(FieldExtractor extractor, SlotId slotId, string label,
         FieldDisplayNode parent, string format = "X")
     {
         int value = extractor.GetIntAt(slotId);
@@ -86,6 +88,7 @@ public static class FieldNodes
         FieldDisplayNode newNode = new FieldDisplayNode(label + ": " + valueString);
         newNode.AddByteRange(extractor.GetByteRangeFor(slotId));
         parent.AddChild(newNode);
+        return value;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -101,13 +104,14 @@ public static class FieldNodes
     // parent:     The display node's parent.
     // format:     Numeric format string passed to ToString.  Defaults to "F".
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public static void AddFloatNode(FieldExtractor extractor, SlotId slotId, string label,
+    public static float AddFloatNode(FieldExtractor extractor, SlotId slotId, string label,
         FieldDisplayNode parent, string format = "F")
     {
         float value = extractor.GetFloatAt(slotId);
         FieldDisplayNode newNode = new FieldDisplayNode(label + ": " + value.ToString(format));
         newNode.AddByteRange(extractor.GetByteRangeFor(slotId));
         parent.AddChild(newNode);
+        return value;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -122,11 +126,32 @@ public static class FieldNodes
     // label:      The label to use in the new display node.
     // parent:     The display node's parent.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public static void AddStringNode(FieldExtractor extractor, SlotId slotId, string label,
+    public static string AddStringNode(FieldExtractor extractor, SlotId slotId, string label,
         FieldDisplayNode parent)
     {
         string value = extractor.GetStringAt(slotId);
         FieldDisplayNode newNode = new FieldDisplayNode(label + ": \"" + value + "\"");
+        newNode.AddByteRange(extractor.GetByteRangeFor(slotId));
+        parent.AddChild(newNode);
+        return value;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // AddLabeledNode
+    //
+    // Builds a display node carrying the supplied label text verbatim and adds it beneath the
+    // supplied parent, attaching the slot's byte range.  The caller formats the label, including
+    // any field values or lookups it embeds; no field is read here.
+    //
+    // extractor:  The extractor holding the byte range for the slot.
+    // slotId:     The slot whose byte range the new node carries.
+    // label:      The complete display text for the new node.
+    // parent:     The display node's parent.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public static void AddLabeledNode(FieldExtractor extractor, SlotId slotId, string label,
+        FieldDisplayNode parent)
+    {
+        FieldDisplayNode newNode = new FieldDisplayNode(label);
         newNode.AddByteRange(extractor.GetByteRangeFor(slotId));
         parent.AddChild(newNode);
     }

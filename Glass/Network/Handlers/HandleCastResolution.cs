@@ -6,48 +6,57 @@ using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using System;
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using System.Security.Policy;
 
 namespace Glass.Network.Handlers;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// HandleTarget
+// HandleCastResolution
 //
-// Handles OP_TargetMouse packets.  
+// Handles OP_CastResolution packets.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleTarget : IHandleOpcodes
+public class HandleCastResolution: IHandleOpcodes
 {
-    private readonly string _opcodeName = "OP_TargetMouse";
+    private readonly string _opcodeName = "OP_Cast_Resolution";
     private readonly PatchOpcode _opcodeHandled;
     private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
     private readonly GateDefinitionHandle _top_level_gate;
 
-    private readonly SlotId _spawnIdSlot;
+    private readonly SlotId _manaSlot;
+    private readonly SlotId _spellIdSlot;
+    private readonly SlotId _unknown2Slot;
+    private readonly SlotId _unknown4Slot;
+    private readonly SlotId _resolutionSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleTarget  (constructor)
+    // HandleStartCast  (constructor)
     //
-    // Resolves the wire opcode and loads the field definitions for OP_Target  from
+    // Resolves the wire opcode and loads the field definitions for OP_StartCast  from
     // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
     // Caches the index of each field the handler reads so the hot path can access the bag
     // by integer index without name lookup.
     //
-    // If the current patch does not define OP_Target , GetOpcodeValue returns 0 and
+    // If the current patch does not define OP_StartCast , GetOpcodeValue returns 0 and
     // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
     // with a zero opcode, so this handler simply will not receive packets.  All field
     // index lookups resolve to -1 in that case but are never consulted.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleTarget()
+    public HandleCastResolution()
     {
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_TargetMouse");
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "Cast Resolution");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
-        _spawnIdSlot = _registry.IndexOfField(_collectionHandle, "spawn_id");
+        _manaSlot = _registry.IndexOfField(_collectionHandle, "New_Mana");
+        _spellIdSlot = _registry.IndexOfField(_collectionHandle, "Spell_ID");
+        _resolutionSlot = _registry.IndexOfField(_collectionHandle, "Resolution");
+        _unknown2Slot = _registry.IndexOfField(_collectionHandle, "Unknown_2");
+        _unknown4Slot = _registry.IndexOfField(_collectionHandle, "Unknown_4");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -102,17 +111,22 @@ public class HandleTarget : IHandleOpcodes
 
         if (character == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "Target: metadata cannot be "
+            DebugLog.Write(LogChannel.Opcodes, "StartCast: metadata cannot be "
                 + "mapped to a character.  Dropping mob data.", LogLevel.Warn);
             return;
         }
 
-        uint spawnId;
+        uint mana, spell_id, unknown_2, unknown_4;
+        int resolution;
 
         try
         {
             GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-            spawnId = extractor.GetUIntAt(_spawnIdSlot);
+            mana = extractor.GetUIntAt(_manaSlot);
+            spell_id = extractor.GetUIntAt(_spellIdSlot);
+            unknown_2 = extractor.GetUIntAt(_unknown2Slot);
+            unknown_4 = extractor.GetUIntAt(_unknown4Slot);
+            resolution = extractor.GetIntAt(_resolutionSlot);
         }
         finally
         {
@@ -123,7 +137,7 @@ public class HandleTarget : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Describe
     //
-    // Extracts OP_Target against the active patch and builds a display tree: a root node for
+    // Extracts OP_CastResolution against the active patch and builds a display tree: a root node for
     // the collection with one leaf child per field each carrying its payload byte range.
     //
     // data:      The application payload
@@ -137,57 +151,22 @@ public class HandleTarget : IHandleOpcodes
 
         FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
-        uint spawnId;
-        uint? zoneId;
-        string targetName;
-
-        if (character == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "Target: metadata cannot be "
-                + "mapped to a character.  Dropping mob data.", LogLevel.Warn);
-            root.Text = "Target <Unknown>";
-            return root;
-        }
-        if (character.CurrentZone == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "Target: no current zone "
-                + "for character.", LogLevel.Warn);
-            root.Text = "Target <Unknown>";
-            return root;
-        }
-
-        zoneId = character.CurrentZone.Value;
-
+     
         try
         {
             GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-            spawnId = extractor.GetUIntAt(_spawnIdSlot);
-
-            if (!MobRepository.Instance.TryGetBySpawnId(zoneId, spawnId, out Spawn? spawn))
-            {
-                DebugLog.Write(LogChannel.Opcodes, "TargetResolver: spawnId=" + spawnId
-                    + " unknown.", LogLevel.Trace);
-                targetName = "<unknown>";
-            }
-            else
-            {
-                targetName = spawn.Name!;
-            }
-
-            FieldNodes.AddUIntNode(extractor, _spawnIdSlot, "Spawn ID", root, "X4");
-
-            FieldDisplayNode nameNode = new FieldDisplayNode("Target: " + targetName);
-            nameNode.AddByteRange(extractor.GetByteRangeFor(_spawnIdSlot));
-            root.AddChild(nameNode);
+            FieldNodes.AddUIntNode(extractor, _manaSlot, "New Mana", root, "D");
+            FieldNodes.AddUIntNode(extractor, _spellIdSlot, "Spell ID", root);
+            FieldNodes.AddUIntNode(extractor, _unknown2Slot, "Unknown 2", root);
+            FieldNodes.AddUIntNode(extractor, _unknown4Slot, "Unknown 4", root);
+            FieldNodes.AddIntNode(extractor, _resolutionSlot, "Resolution", root);
         }
         finally
         {
             extractor.Release();
         }
 
-
-
-        root.Text = "Target (" + targetName + ")";
+        root.Text = "Cast Resolution";
         return root;
     }
 

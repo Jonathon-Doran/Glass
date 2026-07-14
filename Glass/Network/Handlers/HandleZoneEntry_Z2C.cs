@@ -138,6 +138,68 @@ public class HandleZoneEntry_Z2C : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Describe
+    //
+    // Extracts OP_Death against the active patch and builds a display tree: a root node for
+    // the collection with one leaf child per field each carrying its payload byte range.
+    //
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
+    //
+    // Returns:   The root FieldDisplayNode.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    {
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        FieldDisplayNode root = new FieldDisplayNode();
+        string Label;
+        uint zoneId = 0;
+
+        // I would think that zone-id would be in the data...
+
+        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+
+        if (character == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "ZoneEntry: metadata cannot be "
+                + "mapped to a character.  Zone name unavailable.", LogLevel.Warn);
+            root.Text = "ZoneEntry to Unknown Zone";
+            return root;
+        }
+        if (character.CurrentZone == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "ZoneEntry: no current zone "
+                + "for character.", LogLevel.Warn);
+            root.Text = "ZoneEntry to Unknown Zone";
+            return root;
+        }
+
+        zoneId = character.CurrentZone.Value;
+        string zoneName = ZoneRepository.Instance.GetZoneName(zoneId);
+        Label = "ZoneEntry to " + zoneName;
+
+        try
+        {
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+
+            uint spawnId = extractor.GetUIntAt(_spawnIdSlot);
+
+            FieldNodes.AddLabeledNode(extractor, _spawnIdSlot, "spawnId = 0x" +
+                spawnId.ToString("X4"), root);
+            string name = FieldNodes.AddStringNode(extractor, _nameSlot, "Name", root);
+            FieldNodes.AddUIntNode(extractor, _levelSlot, "Level", root, "D");
+            Label += " (" + name + ")";
+        }
+        finally
+        {
+            extractor.Release();
+        }
+
+        root.Text = Label;
+        return root;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // ResolveVersion
     //
     // Returns the opcode version for a packet.

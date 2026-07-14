@@ -11,43 +11,47 @@ using System.Security.Policy;
 namespace Glass.Network.Handlers;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// HandleTarget
+// HandleStartCast
 //
-// Handles OP_TargetMouse packets.  
+// Handles OP_StartCast packets.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleTarget : IHandleOpcodes
+public class HandleStartCast: IHandleOpcodes
 {
-    private readonly string _opcodeName = "OP_TargetMouse";
+    private readonly string _opcodeName = "OP_StartCast";
     private readonly PatchOpcode _opcodeHandled;
     private readonly CollectionHandle _collectionHandle;
     private readonly PatchRegistry _registry;
     private readonly PatchLevel _patchLevel;
     private readonly GateDefinitionHandle _top_level_gate;
 
-    private readonly SlotId _spawnIdSlot;
+    private readonly SlotId _gemSlot;
+    private readonly SlotId _spellIdSlot;
+    private readonly SlotId _targetIdSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleTarget  (constructor)
+    // HandleStartCast  (constructor)
     //
-    // Resolves the wire opcode and loads the field definitions for OP_Target  from
+    // Resolves the wire opcode and loads the field definitions for OP_StartCast  from
     // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
     // Caches the index of each field the handler reads so the hot path can access the bag
     // by integer index without name lookup.
     //
-    // If the current patch does not define OP_Target , GetOpcodeValue returns 0 and
+    // If the current patch does not define OP_StartCast , GetOpcodeValue returns 0 and
     // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
     // with a zero opcode, so this handler simply will not receive packets.  All field
     // index lookups resolve to -1 in that case but are never consulted.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleTarget()
+    public HandleStartCast()
     {
         _registry = GlassContext.PatchRegistry;
         _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_TargetMouse");
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "Start Cast");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
-        _spawnIdSlot = _registry.IndexOfField(_collectionHandle, "spawn_id");
+        _gemSlot = _registry.IndexOfField(_collectionHandle, "Gem");
+        _spellIdSlot = _registry.IndexOfField(_collectionHandle, "Spell_ID");
+        _targetIdSlot = _registry.IndexOfField(_collectionHandle, "Target_ID");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -102,17 +106,19 @@ public class HandleTarget : IHandleOpcodes
 
         if (character == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "Target: metadata cannot be "
+            DebugLog.Write(LogChannel.Opcodes, "StartCast: metadata cannot be "
                 + "mapped to a character.  Dropping mob data.", LogLevel.Warn);
             return;
         }
 
-        uint spawnId;
+        uint gem, spellId, targetId;
 
         try
         {
             GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-            spawnId = extractor.GetUIntAt(_spawnIdSlot);
+            gem = extractor.GetUIntAt(_gemSlot);
+            spellId = extractor.GetUIntAt(_spellIdSlot);
+            targetId = extractor.GetUIntAt(_targetIdSlot);
         }
         finally
         {
@@ -123,7 +129,7 @@ public class HandleTarget : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Describe
     //
-    // Extracts OP_Target against the active patch and builds a display tree: a root node for
+    // Extracts OP_StartCast against the active patch and builds a display tree: a root node for
     // the collection with one leaf child per field each carrying its payload byte range.
     //
     // data:      The application payload
@@ -137,35 +143,36 @@ public class HandleTarget : IHandleOpcodes
 
         FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
-        uint spawnId;
         uint? zoneId;
         string targetName;
 
         if (character == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "Target: metadata cannot be "
-                + "mapped to a character.  Dropping mob data.", LogLevel.Warn);
+            DebugLog.Write(LogChannel.Opcodes, "StartCast: metadata cannot be "
+                + "mapped to a character.", LogLevel.Warn);
             root.Text = "Target <Unknown>";
             return root;
         }
         if (character.CurrentZone == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "Target: no current zone "
-                + "for character.", LogLevel.Warn);
+            DebugLog.Write(LogChannel.Opcodes, "StartCast: no current zone "
+                + "for caster.", LogLevel.Warn);
             root.Text = "Target <Unknown>";
             return root;
         }
-
         zoneId = character.CurrentZone.Value;
 
         try
         {
             GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-            spawnId = extractor.GetUIntAt(_spawnIdSlot);
 
-            if (!MobRepository.Instance.TryGetBySpawnId(zoneId, spawnId, out Spawn? spawn))
+            FieldNodes.AddUIntNode(extractor, _gemSlot, "Spell Gem", root, "D");
+            FieldNodes.AddUIntNode(extractor, _spellIdSlot, "Spell ID", root, "X8");
+            uint targetID = FieldNodes.AddUIntNode(extractor, _targetIdSlot, "Target ID", root, "X4");
+           
+            if (!MobRepository.Instance.TryGetBySpawnId(zoneId, targetID, out Spawn? spawn))
             {
-                DebugLog.Write(LogChannel.Opcodes, "TargetResolver: spawnId=" + spawnId
+                DebugLog.Write(LogChannel.Opcodes, "StartCast: targetId=" + targetID
                     + " unknown.", LogLevel.Trace);
                 targetName = "<unknown>";
             }
@@ -173,19 +180,13 @@ public class HandleTarget : IHandleOpcodes
             {
                 targetName = spawn.Name!;
             }
+            FieldNodes.AddLabeledNode(extractor, _targetIdSlot, "Target: " + targetName, root);
 
-            FieldNodes.AddUIntNode(extractor, _spawnIdSlot, "Spawn ID", root, "X4");
-
-            FieldDisplayNode nameNode = new FieldDisplayNode("Target: " + targetName);
-            nameNode.AddByteRange(extractor.GetByteRangeFor(_spawnIdSlot));
-            root.AddChild(nameNode);
         }
         finally
         {
             extractor.Release();
         }
-
-
 
         root.Text = "Target (" + targetName + ")";
         return root;

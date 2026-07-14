@@ -1,6 +1,7 @@
 ﻿using Glass.Core.Logging;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Glass.Data.Repositories;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -123,7 +124,7 @@ public class MobRepository
     //
     // Returns true if the record was found, false otherwise.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public bool TryGetBySpawnId(uint? zoneId, uint spawnId, out Spawn? spawn)
+    public bool TryGetBySpawnId(uint? zoneId, uint spawnId, [NotNullWhen(true)] out Spawn? spawn)
     {
         spawn = null;
 
