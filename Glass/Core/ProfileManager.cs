@@ -41,7 +41,8 @@ public class ProfileManager
     ///////////////////////////////////////////////////////////////////////////////////////////
     public void ClearActiveProfile()
     {
-        DebugLog.Write(LogChannel.Profiles, "ProfileManager.ClearActiveProfile: clearing active profile");
+        DebugLog.Write(LogChannel.Profiles, "ProfileManager.ClearActiveProfile: clearing active profile", LogLevel.Trace);
+        GlassContext.KeyboardManager.UnloadProfile();
         _activeProfile = null;
         _definedSlots.Clear();
     }
@@ -51,7 +52,8 @@ public class ProfileManager
     //
     // Launches all characters in the specified profile through ISXGlass.
     // Sends the layout to GlassVideo, then launches characters with small
-    // random delays between them to avoid overwhelming the login server.
+    // random delays between them to avoid overwhelming the login server.  Also loads
+    // keyboard pages and bindings.
     //
     // profileName:  The name of the profile to launch.
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -59,7 +61,7 @@ public class ProfileManager
     {
         if (_activeProfile != null)
         {
-            DebugLog.Write(LogChannel.Profiles, "ProfileManager.LaunchProfile: a profile is already active, refusing launch.");
+            DebugLog.Write(LogChannel.Profiles, "ProfileManager.LaunchProfile: a profile is already active, refusing launch.", LogLevel.Trace);
             return;
         }
 
@@ -69,9 +71,10 @@ public class ProfileManager
 
         _activeProfile = repo;
         _definedSlots.Clear();
+        GlassContext.KeyboardManager.LoadProfile(profileName);
 
         DebugLog.Write(LogChannel.ISXGlass, "ProfileManager.LaunchProfile: launching profile '" + profileName
-            + "' with " + slots.Count + " characters");
+            + "' with " + slots.Count + " characters", LogLevel.Trace);
 
         GlassContext.FocusTracker.Start();
         GlassContext.ISXGlassPipe.Send("new_profile");
@@ -83,7 +86,7 @@ public class ProfileManager
         }
         else
         {
-            DebugLog.Write(LogChannel.Profiles, "ProfileManager.LaunchProfile: no layout assigned to profile, skipping GlassVideo layout.");
+            DebugLog.Write(LogChannel.Profiles, "ProfileManager.LaunchProfile: no layout assigned to profile, skipping GlassVideo layout.", LogLevel.Warn);
         }
 
         Random rng = new Random();
@@ -93,14 +96,14 @@ public class ProfileManager
             if (character == null)
             {
                 DebugLog.Write(LogChannel.Profiles, "ProfileManager.LaunchProfile: no character found for id="
-                    + slot.CharacterId + ", skipping");
+                    + slot.CharacterId + ", skipping", LogLevel.Warn);
                 continue;
             }
 
             DebugLog.Write(LogChannel.ISXGlass, "ProfileManager.LaunchProfile: launching " + character.Name
                 + " accountId=" + character.AccountId
                 + " server=" + character.Server
-                + " id=" + character.CharacterId);
+                + " id=" + character.CharacterId, LogLevel.Trace);
 
             GlassContext.ISXGlassPipe.Send("launch " + character.AccountId
                 + " " + character.Name
@@ -111,7 +114,7 @@ public class ProfileManager
             await Task.Delay(delay);
         }
 
-        DebugLog.Write(LogChannel.Profiles, "ProfileManager.LaunchProfile: all characters launched");
+        DebugLog.Write(LogChannel.Profiles, "ProfileManager.LaunchProfile: all characters launched", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -126,7 +129,7 @@ public class ProfileManager
     {
         if (_activeProfile == null)
         {
-            DebugLog.Write(LogChannel.Video, "ProfileManager.SendGlassVideoLayout: no active profile.");
+            DebugLog.Write(LogChannel.Video, "ProfileManager.SendGlassVideoLayout: no active profile.", LogLevel.Error);
             return;
         }
 
@@ -143,7 +146,7 @@ public class ProfileManager
                     + " " + placement.Y
                     + " " + placement.Width
                     + " " + placement.Height;
-                DebugLog.Write(LogChannel.Video, "ProfileManager.SendGlassVideoLayout: sending " + cmd);
+                DebugLog.Write(LogChannel.Video, "ProfileManager.SendGlassVideoLayout: sending " + cmd, LogLevel.Trace);
                 GlassContext.GlassVideoPipe.Send(cmd);
                 _definedSlots.Add(placement.SlotNumber);
             }
@@ -161,14 +164,14 @@ public class ProfileManager
                     + " " + source.Y
                     + " " + source.Width
                     + " " + source.Height;
-                DebugLog.Write(LogChannel.Video, "ProfileManager.SendGlassVideoLayout: sending " + cmd);
+                DebugLog.Write(LogChannel.Video, "ProfileManager.SendGlassVideoLayout: sending " + cmd, LogLevel.Trace);
                 GlassContext.GlassVideoPipe.Send(cmd);
             }
-            DebugLog.Write(LogChannel.Video, "ProfileManager.SendGlassVideoLayout: sent " + sources.Count + " video sources.");
+            DebugLog.Write(LogChannel.Video, "ProfileManager.SendGlassVideoLayout: sent " + sources.Count + " video sources.", LogLevel.Trace);
         }
         else
         {
-            DebugLog.Write(LogChannel.Video, "ProfileManager.SendGlassVideoLayout: no UI skin assigned to layout, skipping video sources.");
+            DebugLog.Write(LogChannel.Video, "ProfileManager.SendGlassVideoLayout: no UI skin assigned to layout, skipping video sources.", LogLevel.Trace);
         }
 
         VideoDestinationRepository destRepo = new VideoDestinationRepository();
@@ -180,10 +183,10 @@ public class ProfileManager
                 + " " + dest.Y
                 + " " + dest.Width
                 + " " + dest.Height;
-            DebugLog.Write(LogChannel.Video, "ProfileManager.SendGlassVideoLayout: sending " + cmd);
+            DebugLog.Write(LogChannel.Video, "ProfileManager.SendGlassVideoLayout: sending " + cmd, LogLevel.Trace);
             GlassContext.GlassVideoPipe.Send(cmd);
         }
-        DebugLog.Write(LogChannel.Video, "ProfileManager.SendGlassVideoLayout: sent " + destinations.Count + " video destinations.");
+        DebugLog.Write(LogChannel.Video, "ProfileManager.SendGlassVideoLayout: sent " + destinations.Count + " video destinations.", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -200,7 +203,7 @@ public class ProfileManager
     {
         if (_activeProfile == null)
         {
-            DebugLog.Write(LogChannel.Profiles, "ProfileManager.GetCharacterNameByAccountId: no active profile");
+            DebugLog.Write(LogChannel.Profiles, "ProfileManager.GetCharacterNameByAccountId: no active profile", LogLevel.Trace);
             return string.Empty;
         }
 
@@ -210,12 +213,12 @@ public class ProfileManager
             if (character != null && character.AccountId == accountId)
             {
                 DebugLog.Write(LogChannel.Profiles, "ProfileManager.GetCharacterNameByAccountId: accountId=" + accountId
-                    + " character=" + character.Name);
+                    + " character=" + character.Name, LogLevel.Trace);
                 return character.Name;
             }
         }
 
-        DebugLog.Write(LogChannel.Profiles, "ProfileManager.GetCharacterNameByAccountId: no match for accountId=" + accountId);
+        DebugLog.Write(LogChannel.Profiles, "ProfileManager.GetCharacterNameByAccountId: no match for accountId=" + accountId, LogLevel.Trace);
         return string.Empty;
     }
 
@@ -231,7 +234,7 @@ public class ProfileManager
     {
         if (_activeProfile == null)
         {
-            DebugLog.Write(LogChannel.Profiles, "ProfileManager.GetSlotForCharacter: no active profile");
+            DebugLog.Write(LogChannel.Profiles, "ProfileManager.GetSlotForCharacter: no active profile", LogLevel.Error);
             return -1;
         }
 
@@ -240,11 +243,13 @@ public class ProfileManager
 
         if (assignment == null)
         {
-            DebugLog.Write(LogChannel.Profiles, "ProfileManager.GetSlotForCharacter: no slot for character '" + characterName + "'");
+            DebugLog.Write(LogChannel.Profiles, "ProfileManager.GetSlotForCharacter: no slot for character '" + 
+                    characterName + "'", LogLevel.Error);
             return -1;
         }
 
-        DebugLog.Write(LogChannel.Profiles, "ProfileManager.GetSlotForCharacter: character='" + characterName + "' slot=" + assignment.SlotNumber);
+        DebugLog.Write(LogChannel.Profiles, "ProfileManager.GetSlotForCharacter: character='" + 
+                characterName + "' slot=" + assignment.SlotNumber, LogLevel.Trace);
         return assignment.SlotNumber;
     }
 }

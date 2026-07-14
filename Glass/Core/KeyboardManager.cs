@@ -33,6 +33,10 @@ public class KeyboardManager
     // OSD windows keyed by device instance — created on LoadProfile, shown on trigger
     private readonly Dictionary<HidDeviceInstance, KeyboardOsdWindow> _osdWindows = new();
 
+    // Raised for every key state change from any device, regardless of profile state.
+    // Allows test/diagnostic UI to observe raw key activity.
+    public event EventHandler<HidKeyEventArgs>? KeyEvent;
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // KeyboardManager
     //
@@ -40,7 +44,7 @@ public class KeyboardManager
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public KeyboardManager()
     {
-        DebugLog.Write(LogChannel.Input, "KeyboardManager: initialized.");
+        DebugLog.Write(LogChannel.Input, "KeyboardManager: initialized.", LogLevel.Trace);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -54,7 +58,7 @@ public class KeyboardManager
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void LoadProfile(string profileName)
     {
-        DebugLog.Write(LogChannel.Profiles, $"KeyboardManager.LoadProfile: profileName='{profileName}'.");
+        DebugLog.Write(LogChannel.Input, $"KeyboardManager.LoadProfile: profileName='{profileName}'.", LogLevel.Info);
 
         UnloadProfile();
 
@@ -63,7 +67,7 @@ public class KeyboardManager
 
         if (profileId == 0)
         {
-            DebugLog.Write(LogChannel.Profiles, $"KeyboardManager.LoadProfile: profile '{profileName}' not found.");
+            DebugLog.Write(LogChannel.Profiles, $"KeyboardManager.LoadProfile: profile '{profileName}' not found.", LogLevel.Warn);
             return;
         }
 
@@ -72,7 +76,7 @@ public class KeyboardManager
 
         if (profilePages.Count == 0)
         {
-            DebugLog.Write(LogChannel.Profiles, $"KeyboardManager.LoadProfile: no pages assigned to profile '{profileName}'.");
+            DebugLog.Write(LogChannel.Profiles, $"KeyboardManager.LoadProfile: no pages assigned to profile '{profileName}'.", LogLevel.Warn);
             return;
         }
 
@@ -90,7 +94,7 @@ public class KeyboardManager
             var page = pageRepo.GetPage(profilePage.KeyPageId);
             if (page == null)
             {
-                DebugLog.Write(LogChannel.Profiles, $"KeyboardManager.LoadProfile: page id={profilePage.KeyPageId} not found, skipping.");
+                DebugLog.Write(LogChannel.Profiles, $"KeyboardManager.LoadProfile: page id={profilePage.KeyPageId} not found, skipping.", LogLevel.Warn);
                 continue;
             }
 
@@ -104,19 +108,19 @@ public class KeyboardManager
             if (profilePage.IsStartPage)
             {
                 _activePages[instance] = page;
-                DebugLog.Write(LogChannel.Profiles, $"KeyboardManager.LoadProfile: start page for {instance} is '{page.Name}'.");
+                DebugLog.Write(LogChannel.Profiles, $"KeyboardManager.LoadProfile: start page for {instance} is '{page.Name}'.", LogLevel.Trace);
 
                 CreateOsdWindow(instance, page);
             }
         }
 
-        DebugLog.Write(LogChannel.Profiles, $"KeyboardManager.LoadProfile: loaded {profilePages.Count} pages {_commandCache.Count} commands.");
+        DebugLog.Write(LogChannel.Profiles, $"KeyboardManager.LoadProfile: loaded {profilePages.Count} pages {_commandCache.Count} commands.", LogLevel.Trace);
 
         _hidKeyInput = new HidKeyInput();
         _hidKeyInput.KeyStateChanged += OnKeyStateChanged;
         _hidKeyInput.Start();
 
-        DebugLog.Write(LogChannel.Profiles, "KeyboardManager.LoadProfile: HidKeyInput started.");
+        DebugLog.Write(LogChannel.Profiles, "KeyboardManager.LoadProfile: HidKeyInput started.", LogLevel.Info);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -126,14 +130,14 @@ public class KeyboardManager
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void UnloadProfile()
     {
-        DebugLog.Write(LogChannel.Profiles, "KeyboardManager.UnloadProfile: unloading.");
+        DebugLog.Write(LogChannel.Profiles, "KeyboardManager.UnloadProfile: unloading.", LogLevel.Trace);
 
         if (_hidKeyInput != null)
         {
             _hidKeyInput.KeyStateChanged -= OnKeyStateChanged;
             _hidKeyInput.Stop();
             _hidKeyInput = null;
-            DebugLog.Write(LogChannel.Profiles, "KeyboardManager.UnloadProfile: HidKeyInput stopped.");
+            DebugLog.Write(LogChannel.Profiles, "KeyboardManager.UnloadProfile: HidKeyInput stopped.", LogLevel.Trace);
         }
 
         foreach (var osd in _osdWindows.Values)
@@ -147,7 +151,7 @@ public class KeyboardManager
         _bindingCache.Clear();
         _commandCache.Clear();
 
-        DebugLog.Write(LogChannel.Profiles, "KeyboardManager.UnloadProfile: complete.");
+        DebugLog.Write(LogChannel.Profiles, "KeyboardManager.UnloadProfile: complete.", LogLevel.Trace);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -159,18 +163,18 @@ public class KeyboardManager
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void ToggleOsd(HidDeviceInstance instance)
     {
-        DebugLog.Write(LogChannel.Input, $"KeyboardManager.ToggleOsd: {instance}.");
+        DebugLog.Write(LogChannel.Input, $"KeyboardManager.ToggleOsd: {instance}.", LogLevel.Trace);
 
         if (!_osdWindows.TryGetValue(instance, out var osd))
         {
-            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ToggleOsd: no OSD for {instance}.");
+            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ToggleOsd: no OSD for {instance}.", LogLevel.Trace);
             return;
         }
 
         if (osd.IsVisible)
         {
             osd.Hide();
-            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ToggleOsd: hidden.");
+            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ToggleOsd: hidden.", LogLevel.Trace);
         }
         else
         {
@@ -180,7 +184,7 @@ public class KeyboardManager
             {
                 PushOsdData(instance, page);
             }
-            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ToggleOsd: shown.");
+            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ToggleOsd: shown.", LogLevel.Trace);
         }
     }
 
@@ -195,14 +199,14 @@ public class KeyboardManager
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void CreateOsdWindow(HidDeviceInstance instance, KeyPage page)
     {
-        DebugLog.Write(LogChannel.Input, $"KeyboardManager.CreateOsdWindow: {instance} page='{page.Name}'.");
+        DebugLog.Write(LogChannel.Input, $"KeyboardManager.CreateOsdWindow: {instance} page='{page.Name}'.", LogLevel.Trace);
 
         var osd = new KeyboardOsdWindow(page.Device);
         _osdWindows[instance] = osd;
 
         PushOsdData(instance, page);
 
-        DebugLog.Write(LogChannel.Input, $"KeyboardManager.CreateOsdWindow: created for {instance}.");
+        DebugLog.Write(LogChannel.Input, $"KeyboardManager.CreateOsdWindow: created for {instance}.", LogLevel.Trace);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -248,7 +252,7 @@ public class KeyboardManager
 
         osd.SetPage(page.Name, keys);
 
-        DebugLog.Write(LogChannel.Input, $"KeyboardManager.PushOsdData: pushed {keys.Count} keys for page='{page.Name}'.");
+        DebugLog.Write(LogChannel.Input, $"KeyboardManager.PushOsdData: pushed {keys.Count} keys for page='{page.Name}'.", LogLevel.Trace);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -259,6 +263,8 @@ public class KeyboardManager
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void OnKeyStateChanged(object? sender, HidKeyEventArgs e)
     {
+        KeyEvent?.Invoke(this, e);
+
         if (!e.Device.HasValue)
         {
             return;
@@ -268,13 +274,13 @@ public class KeyboardManager
 
         if (!_activePages.TryGetValue(instance, out KeyPage? activePage))
         {
-            DebugLog.Write(LogChannel.Input, $"KeyboardManager.OnKeyStateChanged: no active page for {instance}.");
+            DebugLog.Write(LogChannel.Input, $"KeyboardManager.OnKeyStateChanged: no active page for {instance}.", LogLevel.Warn);
             return;
         }
 
         if (!_bindingCache.TryGetValue(activePage.Id, out List<KeyBinding>? bindings))
         {
-            DebugLog.Write(LogChannel.Input, $"KeyboardManager.OnKeyStateChanged: no bindings for page='{activePage.Name}'.");
+            DebugLog.Write(LogChannel.Input, $"KeyboardManager.OnKeyStateChanged: no bindings for page='{activePage.Name}'.", LogLevel.Trace);
             return;
         }
 
@@ -286,7 +292,7 @@ public class KeyboardManager
 
 
 
-        DebugLog.Write(LogChannel.Input, $"KeyboardManager.OnKeyStateChanged: key='{e.KeyName}'.");
+        DebugLog.Write(LogChannel.Input, $"KeyboardManager.OnKeyStateChanged: key='{e.KeyName}'.", LogLevel.Trace);
 
         ExecuteCommand(binding, instance);
     }
@@ -307,50 +313,50 @@ public class KeyboardManager
     {
         if (binding == null)
         {
-            DebugLog.Write(LogChannel.Input, "KeyboardManager.ExecuteCommand: binding is null.");
+            DebugLog.Write(LogChannel.Input, "KeyboardManager.ExecuteCommand: binding is null.", LogLevel.Warn);
             return;
         }
         if (!binding.CommandId.HasValue)
         {
-            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: binding key='{binding.Key}' has no command.");
+            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: binding key='{binding.Key}' has no command.", LogLevel.Warn);
             return;
         }
 
         if (!_commandCache.TryGetValue(binding.CommandId.Value, out Command? command))
         {
-            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: commandId={binding.CommandId.Value} not found in cache.");
+            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: commandId={binding.CommandId.Value} not found in cache.", LogLevel.Trace);
             return;
         }
 
         int target = binding.Target;
         bool roundrobin = binding.RoundRobin;
 
-        DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: command='{command.Name}' instance={instance} target={target} roundrobin={roundrobin}.");
+        DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: command='{command.Name}' instance={instance} target={target} roundrobin={roundrobin}.", LogLevel.Trace);
 
 
         if ((command.Steps == null) || (command.Steps.Count == 0))
         {
-            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: command='{command.Name}' has no steps.");
+            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: command='{command.Name}' has no steps.", LogLevel.Trace);
             return;
         }
 
         if (binding.KeyType == KeyType.Toggle)
         {
             binding.IsToggled = !binding.IsToggled;
-            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: toggle key='{binding.Key}' isToggled={binding.IsToggled}.");
+            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: toggle key='{binding.Key}' isToggled={binding.IsToggled}.", LogLevel.Trace);
 
             if (binding.RepeatIntervalMs > 0)
             {
                 if (binding.IsToggled)
                 {
                     string repeatMessage = $"cmd_repeat_start {command.Id} {target} {binding.RepeatIntervalMs} {(roundrobin ? 1 : 0)}";
-                    DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: sending: {repeatMessage}");
+                    DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: sending: {repeatMessage}", LogLevel.Trace);
                     GlassContext.ISXGlassPipe.Send(repeatMessage);
                 }
                 else
                 {
                     string stopMessage = $"cmd_repeat_stop {command.Id} {target}";
-                    DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: sending: {stopMessage}");
+                    DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: sending: {stopMessage}", LogLevel.Trace);
                     GlassContext.ISXGlassPipe.Send(stopMessage);
                 }
 
@@ -360,7 +366,7 @@ public class KeyboardManager
 
             if (!binding.IsToggled)
             {
-                DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: toggle off, skipping execution.");
+                DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: toggle off, skipping execution.", LogLevel.Trace);
                 return;
             }
         }
@@ -368,17 +374,17 @@ public class KeyboardManager
         if (target > 0)
         {
             string message = $"cmd_execute {command.Id} {target} {(roundrobin ? 1 : 0)}";
-            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: sending: {message}");
+            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: sending: {message}", LogLevel.Trace);
             GlassContext.ISXGlassPipe.Send(message);
         }
         else
         {
-            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: target={target} is not a valid group, skipping pipe send.");
+            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: target={target} is not a valid group, skipping pipe send.", LogLevel.Trace);
         }
 
         foreach (CommandStep step in command.Steps.OrderBy(s => s.Sequence))
         {
-            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: step={step.Sequence} type='{step.Type}' value='{step.Value}'.");
+            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: step={step.Sequence} type='{step.Type}' value='{step.Value}'.", LogLevel.Trace);
 
             if (step.Type == "pageload")
             {
@@ -386,7 +392,7 @@ public class KeyboardManager
             }
             else
             {
-                DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: step type='{step.Type}' handled by ISXGlass.");
+                DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecuteCommand: step type='{step.Type}' handled by ISXGlass.", LogLevel.Trace);
             }
         }
     }
@@ -401,11 +407,11 @@ public class KeyboardManager
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void UpdateKeyToggleState(HidDeviceInstance instance, KeyBinding binding)
     {
-        DebugLog.Write(LogChannel.Input, $"KeyboardManager.UpdateKeyToggleState: key='{binding.Key}' isToggled={binding.IsToggled}.");
+        DebugLog.Write(LogChannel.Input, $"KeyboardManager.UpdateKeyToggleState: key='{binding.Key}' isToggled={binding.IsToggled}.", LogLevel.Trace);
 
         if (!_osdWindows.TryGetValue(instance, out KeyboardOsdWindow? osd))
         {
-            DebugLog.Write(LogChannel.Input, $"KeyboardManager.UpdateKeyToggleState: no OSD for {instance}.");
+            DebugLog.Write(LogChannel.Input, $"KeyboardManager.UpdateKeyToggleState: no OSD for {instance}.", LogLevel.Trace);
             return;
         }
 
@@ -437,17 +443,65 @@ public class KeyboardManager
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void ExecutePageLoad(HidDeviceInstance instance, string pageName)
     {
-        DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecutePageLoad: instance={instance} pageName='{pageName}'.");
+        DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecutePageLoad: instance={instance} pageName='{pageName}'.", LogLevel.Trace);
 
         if (!_pageCache.TryGetValue((instance, pageName), out KeyPage? page))
         {
-            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecutePageLoad: page='{pageName}' not found in cache for {instance}, ignoring.");
+            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecutePageLoad: page='{pageName}' not found in cache for {instance}, ignoring.", LogLevel.Trace);
             return;
         }
 
         _activePages[instance] = page;
-        DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecutePageLoad: active page for {instance} set to '{page.Name}'.");
+        DebugLog.Write(LogChannel.Input, $"KeyboardManager.ExecutePageLoad: active page for {instance} set to '{page.Name}'.", LogLevel.Trace);
 
         PushOsdData(instance, page);
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Start
+    //
+    // Creates HidKeyInput, subscribes to key state events, and starts the
+    // device readers.  Called once at application startup so that keyboard
+    // hardware is active independent of profile state.  If already started,
+    // logs and returns without creating a second HidKeyInput.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void Start()
+    {
+        if (_hidKeyInput != null)
+        {
+            DebugLog.Write(LogChannel.Input, "KeyboardManager.Start: already started, ignoring.", LogLevel.Warn);
+            return;
+        }
+
+        DebugLog.Write(LogChannel.Input, "KeyboardManager.Start: creating HidKeyInput.", LogLevel.Trace);
+
+        _hidKeyInput = new HidKeyInput();
+        _hidKeyInput.KeyStateChanged += OnKeyStateChanged;
+        _hidKeyInput.Start();
+
+        DebugLog.Write(LogChannel.Input, "KeyboardManager.Start: HidKeyInput started.", LogLevel.Trace);
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Stop
+    //
+    // Unsubscribes from key state events, stops HidKeyInput, and releases it.
+    // Called once at application shutdown.  If not started, logs and returns.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void Stop()
+    {
+        if (_hidKeyInput == null)
+        {
+            DebugLog.Write(LogChannel.Input, "KeyboardManager.Stop: not started, ignoring.", LogLevel.Warn);
+            return;
+        }
+
+        DebugLog.Write(LogChannel.Input, "KeyboardManager.Stop: stopping HidKeyInput.", LogLevel.Trace);
+
+        _hidKeyInput.KeyStateChanged -= OnKeyStateChanged;
+        _hidKeyInput.Stop();
+        _hidKeyInput = null;
+
+        DebugLog.Write(LogChannel.Input, "KeyboardManager.Stop: stopped.", LogLevel.Trace);
     }
 }

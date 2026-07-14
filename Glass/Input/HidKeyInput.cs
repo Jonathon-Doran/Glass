@@ -56,7 +56,7 @@ public class HidKeyInput
     {
         foreach (var pid in pids)
         {
-            DebugLog.Write(LogChannel.Input, $"HidKeyInput.RegisterParser: pid='{pid}' device={parser.Device}.");
+            DebugLog.Write(LogChannel.Input, $"HidKeyInput.RegisterParser: pid='{pid}' device={parser.Device}.", LogLevel.Info);
             _parsers[pid] = parser;
         }
     }
@@ -70,13 +70,13 @@ public class HidKeyInput
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Start()
     {
-        DebugLog.Write(LogChannel.Input, "HidKeyInput.Start: enumerating devices.");
+        DebugLog.Write(LogChannel.Input, "HidKeyInput.Start: enumerating devices.", LogLevel.Info);
 
         var devices = EnumerateDevices();
 
         foreach (var (instance, devicePath) in devices)
         {
-            DebugLog.Write(LogChannel.Input, $"HidKeyInput.Start: creating reader for {instance}.");
+            DebugLog.Write(LogChannel.Input, $"HidKeyInput.Start: creating reader for {instance}.", LogLevel.Info);
             var parser = _parsers[instance.Pid];
             var reader = new HidDeviceReader(devicePath, instance, parser, _keyQueue, _axisQueue);
             _readers.Add(reader);
@@ -91,7 +91,7 @@ public class HidKeyInput
         };
         _dispatcherThread.Start();
 
-        DebugLog.Write(LogChannel.Input, $"HidKeyInput.Start: started {_readers.Count} readers.");
+        DebugLog.Write(LogChannel.Input, $"HidKeyInput.Start: started {_readers.Count} readers.", LogLevel.Info);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

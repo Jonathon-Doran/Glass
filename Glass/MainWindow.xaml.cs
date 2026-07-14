@@ -63,6 +63,7 @@ public partial class MainWindow : Window
         GlassContext.ISXGlassPipe.Start();
 
         GlassContext.KeyboardManager = new KeyboardManager();
+        GlassContext.KeyboardManager.Start();
 
         GlassContext.GlassVideoPipe = new PipeManager("GlassVideo", "GlassVideo_Cmd", "GlassVideo_Notify");
         GlassContext.GlassVideoPipe.Connected += () => Dispatcher.Invoke(() => SetGlassVideoStatus(true));
@@ -104,6 +105,7 @@ public partial class MainWindow : Window
         DebugLog.Write(LogChannel.General, "MainWindow.Window_Closing: shutting down.");
         DebugLog.Shutdown();
         GlassContext.KeyboardManager.UnloadProfile();
+        GlassContext.KeyboardManager.Stop();
         await GlassContext.ISXGlassPipe.StopAsync();
         GlassContext.ISXGlassPipe.Dispose();
         await GlassContext.GlassVideoPipe.StopAsync();
@@ -134,9 +136,9 @@ public partial class MainWindow : Window
         DebugLog.AddHandler(LogSink.Aux1LogFile, memoryLogHandler);
         DebugLog.Route(LogChannel.Memory, LogSink.Aux1LogFile);
 
-        GlassDebugLogHandler signalLogHandler = new GlassDebugLogHandler("signal.log");
-        DebugLog.AddHandler(LogSink.Aux3LogFile, signalLogHandler);
-        DebugLog.Route(LogChannel.SignalBus, LogSink.Aux3LogFile);
+        GlassDebugLogHandler inputLogHandler = new GlassDebugLogHandler("input.log");
+        DebugLog.AddHandler(LogSink.Aux3LogFile, inputLogHandler);
+        DebugLog.Route(LogChannel.Input, LogSink.Aux3LogFile);
 
         //        GlassDebugLogHandler lowNetLogHandler = new GlassDebugLogHandler("lowNetwork.log");
         //       DebugLog.AddHandler(LogSink.Aux2LogFile, lowNetLogHandler);
