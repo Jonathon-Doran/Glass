@@ -166,23 +166,14 @@ public partial class ManagePatchLevelsDialog : Window
             return;
         }
 
-        NewPatchLevelDialog dialog = new NewPatchLevelDialog { Owner = this };
-        if (dialog.ShowDialog() != true)
-        {
-            DebugLog.Write(LogChannel.InferenceDebug, "ManagePatchLevelsDialog.Duplicate: cancelled", LogLevel.Trace);
-            return;
-        }
-
-        PatchLevel target = GenerateUniqueTargetLevel(selected.Level);
-
+        PatchLevel target = _manager.GenerateUniqueLevel(selected.Level);
         DebugLog.Write(LogChannel.InferenceDebug,
             "ManagePatchLevelsDialog.Duplicate: source=" + selected.Level + " target=" + target, LogLevel.Trace);
-      
+
         try
         {
             PatchLevelDuplicator duplicator = new PatchLevelDuplicator(_connection);
             int opcodeCount = duplicator.Duplicate(selected.PatchDate, selected.ServerType, target.PatchDate);
-
             StatusText.Text = "Duplicated " + opcodeCount + " opcodes to " + target + ".";
         }
         catch (Exception ex)
@@ -194,43 +185,6 @@ public partial class ManagePatchLevelsDialog : Window
         }
 
         RefreshLevelList();
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // GenerateUniqueTargetLevel
-    //
-    // Produces a patch level that does not yet exist, using today's date and the source
-    // level's server type.  On collision, appends an incrementing numeric suffix to the
-    // date ("2026-07-14-2", "2026-07-14-3", ...) until a free level is found.
-    //
-    // source:  The level being duplicated.  Supplies the server type.
-    //
-    // Returns:  A patch level not present in the database.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private PatchLevel GenerateUniqueTargetLevel(PatchLevel source)
-    {
-        List<PatchLevelSummary> existing = _manager.GetAllLevels();
-        HashSet<PatchLevel> taken = new HashSet<PatchLevel>();
-
-        foreach (PatchLevelSummary summary in existing)
-        {
-            taken.Add(summary.Level);
-        }
-
-        string baseDate = DateTime.Today.ToString("yyyy-MM-dd");
-        PatchLevel candidate = new PatchLevel(baseDate, source.ServerType);
-
-        uint suffix = 2;
-        while (taken.Contains(candidate))
-        {
-            candidate = new PatchLevel(baseDate + "-" + suffix, source.ServerType);
-            suffix++;
-        }
-
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "ManagePatchLevelsDialog.GenerateUniqueTargetLevel: source=" + source
-            + " target=" + candidate, LogLevel.Trace);
-        return candidate;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

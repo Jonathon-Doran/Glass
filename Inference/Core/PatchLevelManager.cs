@@ -183,6 +183,34 @@ public class PatchLevelManager
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // GenerateUniqueLevel
+    //
+    // Produces a patch level that does not yet exist, using today's date and the source
+    // level's server type.  On collision, appends an incrementing numeric suffix to the
+    // date ("2026-07-14-2", "2026-07-14-3", ...) until a free level is found.
+    //
+    // source:  The level supplying the server type.
+    //
+    // Returns:  A patch level not present in the database.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public PatchLevel GenerateUniqueLevel(PatchLevel source)
+    {
+        string baseDate = DateTime.Today.ToString("yyyy-MM-dd");
+        PatchLevel candidate = new PatchLevel(baseDate, source.ServerType);
+
+        uint suffix = 2;
+        while (Exists(candidate))
+        {
+            candidate = new PatchLevel(baseDate + "-" + suffix, source.ServerType);
+            suffix++;
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "PatchLevelManager.GenerateUniqueLevel: source=" + source + " candidate=" + candidate, LogLevel.Trace);
+        return candidate;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // LevelHasOpcodes
     //
     // Returns true if any PatchOpcode row exists for the given (patch_date, server_type)

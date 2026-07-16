@@ -62,6 +62,13 @@ public class FieldExtractor
     // has completed.
     private GateHandle _rootGate;
 
+    // extraction abort guards: no legitimate collection approaches these
+    private const uint MaxMultiplicity = 10000;    // largest observed real count is 65
+    private const int MaxExpandDepth = 32;         // real nesting is 2-3 levels
+    private const int MaxBagsPerExtract = 2000;    // class-4 pool holds 4000 buffers
+    private int _expandDepth = 0;                  // current ExpandMultiplicity nesting depth
+    private int _bagsThisExtract = 0;              // bags created since Extract began
+
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // FieldExtractor (constructor)
     //
@@ -124,33 +131,51 @@ public class FieldExtractor
         ReadOnlySpan<byte> payload)
     {
         _bitCursor = 0u;
-
+        _expandDepth = 0;
+        _bagsThisExtract = 0;
         GateDefinition gateDefinition;
-        bool gateFound = GlassContext.PatchRegistry.TryGetGateDefinition(
-            GlassContext.CurrentPatchLevel, gateDefinitionHandle, out gateDefinition);
-        if (gateFound == false)
+        bool gateFound;
+        string gateName;
+        GateHandle rootGate;
+
+        try
         {
-            DebugLog.Write(LogChannel.Fields, "FieldExtractor.Extract: no gate definition for "
-                + "handle " + gateDefinitionHandle + ", returning GateHandle.None", LogLevel.Warn);
+
+            gateFound = GlassContext.PatchRegistry.TryGetGateDefinition(
+                GlassContext.CurrentPatchLevel, gateDefinitionHandle, out gateDefinition);
+            if (gateFound == false)
+            {
+                DebugLog.Write(LogChannel.Fields, "FieldExtractor.Extract: no gate definition for "
+                    + "handle " + gateDefinitionHandle + ", returning GateHandle.None", LogLevel.Warn);
+                return GateHandle.None;
+            }
+
+            gateName = gateDefinition.Name;
+
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.Extract: top-level gate '" + gateName
+                + "' (" + gateDefinitionHandle + "), payload " + payload.Length + " bytes",
+                LogLevel.Info);
+
+            if (payload.Length == 0)
+            {
+                DebugLog.Write(LogChannel.Fields, "FieldExtractor.Extract: 0 length payload passed "
+                    + "to extract for gate '" + gateName + "'", LogLevel.Warn);
+                return GateHandle.None;
+            }
+
+            rootGate = ExpandMultiplicity(gateDefinitionHandle, BagHandle.None, payload);
+            _activeBag = _gates[(int)(uint)rootGate].Head;
+            _rootGate = rootGate;
+        }
+        catch (ExtractionAbortedException aborted)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.Extract: aborted at bit "
+                + aborted.BitOffset + " depth " + aborted.Depth + " field '" + aborted.FieldName
+                + "' count " + aborted.ResolvedCount + ": " + aborted.Message
+                + "; returning GateHandle.None", LogLevel.Error);
             return GateHandle.None;
         }
 
-        String gateName = gateDefinition.Name;
-
-        DebugLog.Write(LogChannel.Fields, "FieldExtractor.Extract: top-level gate '" + gateName
-            + "' (" + gateDefinitionHandle + "), payload " + payload.Length + " bytes",
-            LogLevel.Info);
-
-        if (payload.Length == 0)
-        {
-            DebugLog.Write(LogChannel.Fields, "FieldExtractor.Extract: 0 length payload passed "
-                + "to extract for gate '" + gateName + "'", LogLevel.Warn);
-            return GateHandle.None;
-        }
-
-        GateHandle rootGate = ExpandMultiplicity(gateDefinitionHandle, BagHandle.None, payload);
-        _activeBag = _gates[(int)(uint)rootGate].Head;
-        _rootGate = rootGate;
 
         DebugLog.Write(LogChannel.Fields, "FieldExtractor.Extract: descent complete, root gate " +
             rootGate + " (" + gateName + "): " + _bags.Count + " bag(s) filled",
@@ -186,19 +211,23 @@ public class FieldExtractor
                 + "handle " + gateDefinitionHandle + ", returning GateHandle.None", LogLevel.Warn);
             return GateHandle.None;
         }
-
+        _expandDepth++;
+        if (_expandDepth > MaxExpandDepth)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExpandMultiplicity: depth "
+                + _expandDepth + " exceeds " + MaxExpandDepth + " at cursor " + _bitCursor
+                + ", aborting extraction", LogLevel.Error);
+            throw new ExtractionAbortedException("expansion depth exceeded",
+                _bitCursor, gateDefinition.Name, 0, _expandDepth);
+        }
         GateHandle gateHandle = CreateGate(gateDefinitionHandle, spawningBag);
         Gate gate = _gates[(int)(uint)gateHandle];
-
         String gateName = gateDefinition.Name;
-
         DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExpandMultiplicity: gate " + gateHandle +
             " (" + gateName + ") kind " + gate.Kind + " child " + gate.ChildCollection +
             " (" + CollectionNameOf(gate.ChildCollection) + ")", LogLevel.Trace);
-
         DebugLog.Write(LogChannel.Memory, "Starting Expand for '" + gateName + "'", LogLevel.Info);
         GlassContext.BufferPool.LogStatistics();
-
         switch (gate.Kind)
         {
             case MultiplicityKind.Once:
@@ -206,10 +235,8 @@ public class FieldExtractor
                     BagHandle bagHandle = CreateBag(gate.ChildCollection);
                     _bags[(int)(uint)bagHandle].ParentGate = gateHandle;
                     AppendInstanceBag(gateHandle, bagHandle);
-
                     uint cursorBefore = _bitCursor;
                     bool extracted = ExtractCollection(gate.ChildCollection, payload, bagHandle);
-
                     if (extracted == false)
                     {
                         string failure = "FieldExtractor.ExpandMultiplicity: gate '" + gateName
@@ -219,23 +246,30 @@ public class FieldExtractor
                             + Environment.StackTrace, LogLevel.Error);
                         Environment.FailFast(failure);
                     }
-
                     gate = _gates[(int)(uint)gateHandle];
                     gate.BitsConsumed += _bitCursor - cursorBefore;
                     _gates[(int)(uint)gateHandle] = gate;
-
                     DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExpandMultiplicity: gate " + gateHandle +
                         " (" + gateName + "):  Once bag " + bagHandle + " consumed "
                         + (_bitCursor - cursorBefore) + " bits, total " + gate.BitsConsumed, LogLevel.Trace);
                     break;
                 }
-
             case MultiplicityKind.Times:
-                { 
+                {
                     uint resolvedCount = ResolveCount(spawningBag, gateDefinition);
                     DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExpandMultiplicity: gate " + gateHandle +
                         " (" + gateName + ") Times count resolved to " + resolvedCount, LogLevel.Trace);
-
+                    uint remainingBits = (uint)payload.Length * 8u - _bitCursor;
+                    if (resolvedCount > MaxMultiplicity || resolvedCount > remainingBits)
+                    {
+                        DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExpandMultiplicity: gate "
+                            + gateHandle + " (" + gateName + ") Times count " + resolvedCount
+                            + " fails sanity (max " + MaxMultiplicity + ", remaining bits "
+                            + remainingBits + ") at cursor " + _bitCursor + " depth " + _expandDepth
+                            + ", aborting extraction", LogLevel.Error);
+                        throw new ExtractionAbortedException("implausible multiplicity",
+                            _bitCursor, gateName, resolvedCount, _expandDepth);
+                    }
                     for (uint instanceIndex = 0; instanceIndex < resolvedCount; instanceIndex++)
                     {
                         if (_traceCollections.Contains((uint)gate.ChildCollection))
@@ -244,14 +278,11 @@ public class FieldExtractor
                             DebugLog.Write(LogChannel.Fields, "Collection (" + name + ") Times iteration " +
                                 instanceIndex + " of " + resolvedCount + ":", LogLevel.Info);
                         }
-
                         BagHandle bagHandle = CreateBag(gate.ChildCollection);
                         _bags[(int)(uint)bagHandle].ParentGate = gateHandle;
                         AppendInstanceBag(gateHandle, bagHandle);
-
                         uint cursorBefore = _bitCursor;
                         bool extracted = ExtractCollection(gate.ChildCollection, payload, bagHandle);
-
                         if (extracted == false)
                         {
                             string failure = "FieldExtractor.ExpandMultiplicity: gate " + gateHandle
@@ -262,11 +293,9 @@ public class FieldExtractor
                                 + Environment.StackTrace, LogLevel.Error);
                             Environment.FailFast(failure);
                         }
-
                         gate = _gates[(int)(uint)gateHandle];
                         gate.BitsConsumed += _bitCursor - cursorBefore;
                         _gates[(int)(uint)gateHandle] = gate;
-
                         DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExpandMultiplicity: gate " + gateHandle
                             + " (" + gateName + ") Times instance " + instanceIndex + " of " + resolvedCount
                             + " bag " + bagHandle + " consumed " + (_bitCursor - cursorBefore)
@@ -274,7 +303,6 @@ public class FieldExtractor
                     }
                     break;
                 }
-
             case MultiplicityKind.UntilEnd:
                 {
                     uint payloadBits = (uint)payload.Length * 8u;
@@ -283,34 +311,27 @@ public class FieldExtractor
                         BagHandle bagHandle = CreateBag(gate.ChildCollection);
                         _bags[(int)(uint)bagHandle].ParentGate = gateHandle;
                         AppendInstanceBag(gateHandle, bagHandle);
-
                         uint cursorBefore = _bitCursor;
                         bool extracted = ExtractCollection(gate.ChildCollection, payload, bagHandle);
-
                         if (extracted == false)
                         {
                             RemoveInstanceBag(gateHandle, bagHandle);
                             _bags[(int)(uint)bagHandle].Release();
-
                             DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExpandMultiplicity: gate " + gateHandle
                                 + " (" + gateName + ") UntilEnd terminated at cursor " + _bitCursor + " of "
                                 + payloadBits + "; discarded partial bag " + bagHandle, LogLevel.Trace);
                             break;
                         }
-
                         uint consumed = _bitCursor - cursorBefore;
-
                         gate = _gates[(int)(uint)gateHandle];
                         gate.BitsConsumed += consumed;
                         _gates[(int)(uint)gateHandle] = gate;
-
                         DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExpandMultiplicity: gate " + gateHandle
                             + " (" + gateName + ") UntilEnd instance bag " + bagHandle + " consumed "
                             + consumed + " bits, cursor " + _bitCursor + " of " + payloadBits, LogLevel.Trace);
                     }
                     break;
                 }
-
             default:
                 {
                     string failure = "FieldExtractor.ExpandMultiplicity: gate " + gateHandle + " (" + gateName
@@ -321,11 +342,10 @@ public class FieldExtractor
                     break;
                 }
         }
-
         gate = _gates[(int)(uint)gateHandle];
         DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExpandMultiplicity: gate " + gateHandle + " (" + gateName
             + ") complete; head " + gate.Head + " tail " + gate.Tail, LogLevel.Trace);
-
+        _expandDepth--;
         return gateHandle;
     }
 

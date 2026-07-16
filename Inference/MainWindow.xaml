@@ -138,11 +138,15 @@
         </Menu>
         <StatusBar DockPanel.Dock="Bottom">
             <StatusBarItem>
-                <TextBlock x:Name="StatusPatchLevel" Text="No patch level"/>
+                <TextBlock x:Name="StatusPatchLevel" Text="No patch level"
+                           Cursor="Hand"
+                           MouseLeftButtonUp="StatusPatchLevel_MouseLeftButtonUp"/>
             </StatusBarItem>
             <Separator/>
             <StatusBarItem>
-                <TextBlock x:Name="StatusCapture" Text="Capture: Idle"/>
+                <TextBlock x:Name="StatusCapture" Text="Capture: Idle"
+                           Cursor="Hand"
+                           MouseLeftButtonUp="StatusCapture_MouseLeftButtonUp"/>
             </StatusBarItem>
             <Separator/>
             <StatusBarItem>
@@ -498,7 +502,7 @@
                     </ListView>
                 </DockPanel>
             </TabItem>
-            <TabItem Header="Analysis">
+            <TabItem Header="Comparison">
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4">
                         <ToggleButton x:Name="ToggleAccept" Content="Accept" Margin="4,0,8,0"
@@ -555,6 +559,48 @@
                      Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}">
                         <FlowDocument/>
                     </RichTextBox>
+                </DockPanel>
+            </TabItem>
+            <TabItem Header="Analysis">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4">
+                        <Button x:Name="ButtonRunIdentification" Content="Run Identification"
+                                Click="Button_RunIdentification_Click" Padding="8,4" Margin="0,0,12,0"
+                                IsEnabled="False"/>
+                        <TextBlock Text="Target level:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <TextBlock x:Name="IdentificationTargetLevel" Text="(none)"
+                                   VerticalAlignment="Center" Margin="0,0,12,0"/>
+                        <Button x:Name="ButtonAcceptProposal" Content="Accept"
+                                Click="Button_AcceptProposal_Click" Padding="8,4" Margin="0,0,4,0"
+                                IsEnabled="False"/>
+                        <Button x:Name="ButtonRejectProposal" Content="Reject"
+                                Click="Button_RejectProposal_Click" Padding="8,4"
+                                IsEnabled="False"/>
+                    </StackPanel>
+                    <DataGrid x:Name="ProposalGrid"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              SelectionMode="Single"
+                              HeadersVisibility="Column"
+                              SelectionChanged="ProposalGrid_SelectionChanged">
+                        <DataGrid.GroupStyle>
+                            <GroupStyle>
+                                <GroupStyle.HeaderTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Name}" FontWeight="Bold"
+                                                   Margin="4,8,0,2"/>
+                                    </DataTemplate>
+                                </GroupStyle.HeaderTemplate>
+                            </GroupStyle>
+                        </DataGrid.GroupStyle>
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Opcode"     Width="80"  Binding="{Binding OpcodeHex}"/>
+                            <DataGridTextColumn Header="Confidence" Width="100" Binding="{Binding Confidence}"/>
+                            <DataGridTextColumn Header="Count"      Width="80"  Binding="{Binding Count}"/>
+                            <DataGridTextColumn Header="Evidence"   Width="*"   Binding="{Binding Evidence}"/>
+                            <DataGridTextColumn Header="Status"     Width="90"  Binding="{Binding Status}"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
                 </DockPanel>
             </TabItem>
             <TabItem Header="Inference Log">

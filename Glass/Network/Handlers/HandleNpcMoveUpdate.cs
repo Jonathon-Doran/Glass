@@ -1,7 +1,10 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Data.Models;
+using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
+using System.Security.Policy;
 namespace Glass.Network.Handlers;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // HandleNpcMove
@@ -206,6 +209,26 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
     {
         FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
+        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+        uint? zoneId;
+        string npcName;
+
+        if (character == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "Target: metadata cannot be "
+                + "mapped to a character.  Dropping mob data.", LogLevel.Warn);
+            root.Text = "Target <Unknown>";
+            return root;
+        }
+        if (character.CurrentZone == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "Target: no current zone "
+                + "for character.", LogLevel.Warn);
+            root.Text = "Target <Unknown>";
+            return root;
+        }
+
+        zoneId = character.CurrentZone.Value;
 
         try
         {
@@ -219,9 +242,24 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
             float headingDegrees = headingRaw * 360.0f / 2048.0f;
             uint  flags = extractor.GetUIntAt(_flagsSlot);
 
-            FieldDisplayNode spawnIdNode = new FieldDisplayNode("spawnId = 0x" + spawnId.ToString("X4"));
-            spawnIdNode.AddByteRange(extractor.GetByteRangeFor(_spawnIdSlot));
-            root.AddChild(spawnIdNode);
+
+
+            spawnId = extractor.GetUIntAt(_spawnIdSlot);
+
+            if (!MobRepository.Instance.TryGetBySpawnId(zoneId, spawnId, out Spawn? spawn))
+            {
+                DebugLog.Write(LogChannel.Opcodes, "TargetResolver: spawnId=" + spawnId
+                    + " unknown.", LogLevel.Trace);
+                npcName = "<unknown>";
+            }
+            else
+            {
+                npcName = spawn.Name!;
+            }
+
+            FieldNodes.AddLabeledNode(extractor, _spawnIdSlot, "NPC: " + npcName +
+                " (0x" + spawnId.ToString("X4") + ")", root);
+
 
             FieldDisplayNode positionNode = new FieldDisplayNode("Position = (" +
                 xPos.ToString("F2") + "," + yPos.ToString("F2") + "," + zPos.ToString("F2") + ")");
@@ -243,7 +281,7 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
             extractor.Release();
         }
 
-        root.Text = "NPCMoveUpdate";
+        root.Text = "NPCMoveUpdate (" + npcName + ")";
         return root;
     }
 

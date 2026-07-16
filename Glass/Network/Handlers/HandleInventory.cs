@@ -582,6 +582,13 @@ public class HandleInventory : IHandleOpcodes
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            if (rootGate == GateHandle.None)
+            {
+                DebugLog.Write(LogChannel.Fields,
+                    "InventoryHandler.Describe: extraction aborted, nothing to describe", LogLevel.Warn);
+                return root;
+            }
+
             SlotId itemListSlot = _registry.IndexOfField(_extractor.CollectionOf(), "Item List");
             SlotId optional24 = _registry.IndexOfField(_extractor.CollectionOf(), "Optional24");
 

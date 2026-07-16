@@ -24,7 +24,7 @@ public class OpcodeRowPresenter
 {
     private readonly PacketCatalog _catalog;
     private readonly ObservableCollection<OpcodeEntry> _rows;
-    private readonly Dictionary<PatchOpcode, OpcodeEntry> _rowByOpcode;
+    private readonly Dictionary<OpcodeValue, OpcodeEntry> _rowByOpcode;
     public ObservableCollection<OpcodeEntry> Rows => _rows;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -42,7 +42,7 @@ public class OpcodeRowPresenter
     {
         _catalog = catalog;
         _rows = new ObservableCollection<OpcodeEntry>();
-        _rowByOpcode = new Dictionary<PatchOpcode, OpcodeEntry>();
+        _rowByOpcode = new Dictionary<OpcodeValue, OpcodeEntry>();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -57,10 +57,10 @@ public class OpcodeRowPresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     public void Update(PacketMetadata metadata, uint length)
     {
-        PatchOpcode patchOpcode = metadata.Opcode;
+        OpcodeValue wireValue = metadata.Opcode.Value;
 
         OpcodeEntry? row;
-        if (_rowByOpcode.TryGetValue(patchOpcode, out row))
+        if (_rowByOpcode.TryGetValue(wireValue, out row))
         {
             row.Count = row.Count + 1;
             if (length < row.MinSize)
@@ -74,14 +74,15 @@ public class OpcodeRowPresenter
             return;
         }
 
-        string opcodeHex = "0x" + patchOpcode.Value;
-        string name = GlassContext.PatchRegistry.GetOpcodeName(patchOpcode);
+        string opcodeHex = wireValue.ToString();
+        string name = GlassContext.PatchRegistry.GetOpcodeName(
+            new PatchOpcode(GlassContext.CurrentPatchLevel, wireValue));
         row = new OpcodeEntry(opcodeHex, metadata.Channel, length)
         {
-            RawOpcode = patchOpcode.Value,
+            RawOpcode = wireValue,
         };
         row.Name = name;
-        _rowByOpcode[patchOpcode] = row;
+        _rowByOpcode[wireValue] = row;
         _rows.Add(row);
     }
 

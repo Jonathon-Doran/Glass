@@ -9,6 +9,7 @@ using Glass.Network.Protocol.Fields;
 using Glass.UI;
 using Inference.Core;
 using Inference.Dialogs;
+using Inference.Identification;
 using Inference.Models;
 using Inference.UI;
 using Microsoft.Data.Sqlite;
@@ -21,6 +22,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -121,7 +123,7 @@ public partial class MainWindow : Window
 
         GlassContext.BufferPool = new BufferPool(
             new uint[] { 16, 64, 256, 512, 1024, 2048, 16384, 65536, 262144, 524288 },
-            new uint[] { 1000, 10000, 4000, 2000, 4000, 1000, 1000, 20, 20, 20 });
+            new uint[] { 1000, 10000, 5000, 2000, 4000, 1000, 1000, 20, 20, 20 });
         GcMonitor.Start(5);
     }
     private void InitializeLogging()
@@ -364,13 +366,6 @@ public partial class MainWindow : Window
     // Evaluates the current application state and enables or disables controls
     // according to context rules. Called whenever state changes that could affect
     // control availability.
-    //
-    // Rules:
-    //   Launch Profile:  enabled when a patch level is loaded
-    //   Save:            enabled when a patch level is loaded and unsaved changes exist
-    //   Undo:            enabled when the undo stack is not empty
-    //   Analyze:         enabled when a patch level is loaded and an opcode row is selected
-    //   Accept:          enabled when a candidate row is selected
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void UpdateControlStates()
     {
@@ -384,6 +379,7 @@ public partial class MainWindow : Window
         MenuUndo.IsEnabled = hasUndoHistory;
         ButtonAnalyze.IsEnabled = hasPatchLevel && hasOpcodeSelected;
         ToggleAccept.IsEnabled = hasCandidateSelected;
+        ButtonRunIdentification.IsEnabled = hasPatchLevel && (_packetCatalog != null) && _packetCatalog.HasPackets();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -758,6 +754,69 @@ public partial class MainWindow : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // StatusPatchLevel_MouseLeftButtonUp
+    //
+    // Opens the Open Patch Level dialog when the patch level status item is clicked,
+    // reusing the File menu handler.
+    //
+    // sender:  The status item that raised the event.
+    // e:       Event arguments.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void StatusPatchLevel_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        DebugLog.Write(LogChannel.InferenceDebug, "StatusPatchLevel_MouseLeftButtonUp: opening patch level dialog", LogLevel.Trace);
+        MenuItem_OpenPatchLevel_Click(sender, e);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // StatusCapture_MouseLeftButtonUp
+    //
+    // Stops live packet capture when the capture status item is clicked, if capture is
+    // running.  Updates the status text to reflect the stopped state.
+    //
+    // sender:  The status item that raised the event.
+    // e:       Event arguments.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void StatusCapture_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (_packetCapture == null || !_packetCapture.IsCapturing)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug, "StatusCapture_MouseLeftButtonUp: not capturing", LogLevel.Trace);
+            return;
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug, "StatusCapture_MouseLeftButtonUp: stopping capture", LogLevel.Trace);
+        _packetCapture.Stop();
+        UpdateCaptureStatus();
+        UpdateControlStates();
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // UpdateCaptureStatus
+    //
+    // Sets the capture status text and color from the current capture state.  Green when
+    // capturing, red when a capture object exists but is stopped, neutral when none exists.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void UpdateCaptureStatus()
+    {
+        if (_packetCapture != null && _packetCapture.IsCapturing)
+        {
+            StatusCapture.Text = "Capture: Active";
+            StatusCapture.Foreground = new SolidColorBrush(Colors.LimeGreen);
+        }
+        else if (_packetCapture != null)
+        {
+            StatusCapture.Text = "Capture: Stopped";
+            StatusCapture.Foreground = new SolidColorBrush(Colors.Red);
+        }
+        else
+        {
+            StatusCapture.Text = "Capture: Idle";
+            StatusCapture.Foreground = SystemColors.ControlTextBrush;
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // MenuItem_ManagePatchLevels_Click
     //
     // Opens the patch level management dialog.  The connection stays open for the
@@ -857,6 +916,7 @@ public partial class MainWindow : Window
         int routed = await Task.Run(() => reader.ProcessFile(dialog.FileName, null, progress));
 
         StatusCapture.Text = "Capture: Pcap complete (" + routed + " packets)";
+        UpdateControlStates();
 
         // restore the menu item
         StatusBarProgressPanel.Visibility = Visibility.Collapsed;
@@ -937,7 +997,7 @@ public partial class MainWindow : Window
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "MenuItem_LaunchProfile_Click: capture started", LogLevel.Info);
-        StatusCapture.Text = "Capture: Active";
+        UpdateCaptureStatus();
 
         await GlassContext.ProfileManager.LaunchProfile(dialog.SelectedProfileName);
     }
@@ -2639,6 +2699,133 @@ public partial class MainWindow : Window
             + row.PacketIndex, LogLevel.Trace);
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Button_RunIdentification_Click
+    //
+    // Runs opcode identification against the current catalog.  If capture is still running,
+    // prompts to stop it first; aborts if the operator declines.  Prepares the catalog,
+    // runs the scanner, and shows the proposals grouped by label in the grid.  Read-only:
+    // no patch level is created or modified here; a target level is created when a proposal
+    // is first accepted.
+    //
+    // sender:  The button that raised the event.
+    // e:       Event arguments.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void Button_RunIdentification_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentPatchLevel == null)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug, "Button_RunIdentification_Click: no current patch level", LogLevel.Warn);
+            return;
+        }
+        if (_packetCapture != null && _packetCapture.IsCapturing)
+        {
+            MessageBoxResult answer = MessageBox.Show(
+                "Capture is still running.  Stop capture and run identification?",
+                "Capture Active", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (answer != MessageBoxResult.Yes)
+            {
+                DebugLog.Write(LogChannel.InferenceDebug, "Button_RunIdentification_Click: aborted, capture still running", LogLevel.Trace);
+                return;
+            }
+            _packetCapture.Stop();
+            UpdateCaptureStatus();
+        }
+        IdentificationTargetLevel.Text = string.Empty;
+        _packetCatalog.Prepare();
+        InferenceScanner scanner = new InferenceScanner();
+        List<InferenceProposal> proposals = scanner.Scan(_packetCatalog);
+        proposals.Sort((a, b) =>
+        {
+            int labelCompare = string.Compare(a.Label, b.Label, System.StringComparison.Ordinal);
+            if (labelCompare != 0)
+            {
+                return labelCompare;
+            }
+            return b.Confidence.CompareTo(a.Confidence);
+        });
+        List<ProposalRow> rows = new List<ProposalRow>();
+        foreach (InferenceProposal proposal in proposals)
+        {
+            ProposalRow row = new ProposalRow();
+            row.Label = proposal.Label;
+            row.OpcodeHex = "0x" + proposal.Opcode.Value;
+            row.Confidence = proposal.Confidence.ToString("F2");
+            row.Count = _packetCatalog.CountFor(proposal.Opcode.Value);
+            row.Evidence = proposal.Evidence;
+            rows.Add(row);
+        }
+        ListCollectionView view = new ListCollectionView(rows);
+        view.GroupDescriptions.Add(new PropertyGroupDescription("Label"));
+        ProposalGrid.ItemsSource = view;
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "Button_RunIdentification_Click: " + rows.Count + " proposals shown", LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ProposalGrid_SelectionChanged
+    //
+    // Enables the Accept and Reject buttons when a proposal row is selected.
+    //
+    // sender:  The grid that raised the event.
+    // e:       Event arguments.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void ProposalGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        bool hasSelection = ProposalGrid.SelectedItem is ProposalRow;
+        ButtonAcceptProposal.IsEnabled = hasSelection;
+        ButtonRejectProposal.IsEnabled = hasSelection;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Button_AcceptProposal_Click
+    //
+    // Marks the selected proposal accepted.  Writing the wire value into the target level
+    // is added when the scanner is in place.
+    //
+    // sender:  The button that raised the event.
+    // e:       Event arguments.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void Button_AcceptProposal_Click(object sender, RoutedEventArgs e)
+    {
+        ProposalRow? selected = ProposalGrid.SelectedItem as ProposalRow;
+        if (selected == null)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug, "Button_AcceptProposal_Click: no selection", LogLevel.Trace);
+            return;
+        }
+
+        selected.Status = "Accepted";
+        ProposalGrid.Items.Refresh();
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "Button_AcceptProposal_Click: accepted " + selected.OpcodeHex, LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Button_RejectProposal_Click
+    //
+    // Marks the selected proposal rejected.
+    //
+    // sender:  The button that raised the event.
+    // e:       Event arguments.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void Button_RejectProposal_Click(object sender, RoutedEventArgs e)
+    {
+        ProposalRow? selected = ProposalGrid.SelectedItem as ProposalRow;
+        if (selected == null)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug, "Button_RejectProposal_Click: no selection", LogLevel.Trace);
+            return;
+        }
+
+        selected.Status = "Rejected";
+        ProposalGrid.Items.Refresh();
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "Button_RejectProposal_Click: rejected " + selected.OpcodeHex, LogLevel.Trace);
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////
     // ShowFindBar
     //
@@ -2706,6 +2893,23 @@ public partial class MainWindow : Window
         }
 
         applyAction(argb, row);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ProposalRow
+    //
+    // One opcode-identity proposal shown in the Analysis grid.  Properties rather than
+    // fields because WPF bindings require properties.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private class ProposalRow
+    {
+        public string OpcodeHex { get; set; } = string.Empty;
+        public string ProposedName { get; set; } = string.Empty;
+        public string Confidence { get; set; } = string.Empty;
+        public int Count { get; set; }
+        public string Evidence { get; set; } = string.Empty;
+        public string Label {  get; set; } = string.Empty;
+        public string Status { get; set; } = "Pending";
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -3024,6 +3228,8 @@ public partial class MainWindow : Window
         }
 
         CandidateGrid.ItemsSource = null;
+        ProposalGrid.ItemsSource = null;
+        IdentificationTargetLevel.Text = "(none)";
         HexDumpDisplay.Document.Blocks.Clear();
 
         if (AnalysisSessionFilter.Items.Count > 0)

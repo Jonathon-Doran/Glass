@@ -150,6 +150,26 @@ public class HandleMobUpdate : IHandleOpcodes
         FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
         uint spawnId;
+        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+        uint? zoneId;
+        string mobName;
+
+        if (character == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "MobUpdate: metadata cannot be "
+                + "mapped to a character.", LogLevel.Warn);
+            root.Text = "Mob <Unknown>";
+            return root;
+        }
+        if (character.CurrentZone == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "MobUpdate: no current zone "
+                + "for character.", LogLevel.Warn);
+            root.Text = "Mob <Unknown>";
+            return root;
+        }
+
+        zoneId = character.CurrentZone.Value;
 
         try
         {
@@ -161,9 +181,19 @@ public class HandleMobUpdate : IHandleOpcodes
             float zPos = extractor.GetFloatAt(_zPosSlot);
             uint headingRaw = extractor.GetUIntAt(_headingSlot);
 
-            FieldDisplayNode spawnIdNode = new FieldDisplayNode("spawnId = 0x" + spawnId.ToString("X4"));
-            spawnIdNode.AddByteRange(extractor.GetByteRangeFor(_spawnIdSlot));
-            root.AddChild(spawnIdNode);
+            if (!MobRepository.Instance.TryGetBySpawnId(zoneId, spawnId, out Spawn? spawn))
+            {
+                DebugLog.Write(LogChannel.Opcodes, "TargetResolver: spawnId=" + spawnId
+                    + " unknown.", LogLevel.Trace);
+                mobName = "<unknown>";
+            }
+            else
+            {
+                mobName = spawn.Name!;
+            }
+
+            FieldNodes.AddLabeledNode(extractor, _spawnIdSlot, "NPC: " + mobName +
+                " (0x" + spawnId.ToString("X4") + ")", root);
 
             FieldDisplayNode positionNode = new FieldDisplayNode("Position = (" + 
                 xPos.ToString("F2") + "," + yPos.ToString("F2") + "," + zPos.ToString("F2") + ")");
@@ -183,7 +213,7 @@ public class HandleMobUpdate : IHandleOpcodes
             extractor.Release();
         }
 
-        root.Text = "Mob Update (" + spawnId.ToString("X4") + ")";
+        root.Text = "Mob Update (" + mobName + ")";
         return root;
     }
 

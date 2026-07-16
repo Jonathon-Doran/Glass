@@ -35,6 +35,10 @@ public class PacketCatalog
     private readonly List<CatalogedPacket> _packets;
     private readonly Dictionary<OpcodeValue, List<CatalogedPacket>> _byOpcode;
     private readonly Dictionary<OpcodeValue, OpcodeStats> _stats;
+    private List<OpcodeValue> _byCountDescending;
+    private readonly Dictionary<int, int> _pooledSizeHistogram;
+    private readonly Dictionary<SoeConstants.StreamId, uint> _pooledChannelCounts;
+    private readonly Dictionary<SoeConstants.StreamId, int> _pureChannelOpcodeCounts;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // PacketCatalog (constructor)
@@ -52,7 +56,56 @@ public class PacketCatalog
         _packets = new List<CatalogedPacket>();
         _byOpcode = new Dictionary<OpcodeValue, List<CatalogedPacket>>();
         _stats = new Dictionary<OpcodeValue, OpcodeStats>();
+        _byCountDescending = new List<OpcodeValue>();
+        _pooledSizeHistogram = new Dictionary<int, int>();
+        _pooledChannelCounts = new Dictionary<SoeConstants.StreamId, uint>();
+        _pureChannelOpcodeCounts = new Dictionary<SoeConstants.StreamId, int>();
         GlassContext.PacketBus.Subscribe(HandleAppPacket);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // PureChannelOpcodeCounts
+    //
+    // Returns, per channel, the number of opcodes whose packets all rode that channel, as
+    // computed by the last Prepare call.  Opcodes seen on more than one channel are counted
+    // by no channel.  Empty until Prepare has run.  The returned dictionary is a fresh copy;
+    // the caller may iterate it without holding the catalog lock.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public Dictionary<SoeConstants.StreamId, int> PureChannelOpcodeCounts()
+    {
+        lock (_lock)
+        {
+            return new Dictionary<SoeConstants.StreamId, int>(_pureChannelOpcodeCounts);
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // PooledSizeHistogram
+    //
+    // Returns the packet count per observed length across all opcodes, as accumulated by the
+    // last Prepare call.  Empty until Prepare has run.  The returned dictionary is a fresh
+    // copy; the caller may iterate it without holding the catalog lock.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public Dictionary<int, int> PooledSizeHistogram()
+    {
+        lock (_lock)
+        {
+            return new Dictionary<int, int>(_pooledSizeHistogram);
+        }
+    }
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // PooledChannelCounts
+    //
+    // Returns the packet count per channel across all opcodes, as accumulated by the last
+    // Prepare call.  Empty until Prepare has run.  The returned dictionary is a fresh copy;
+    // the caller may iterate it without holding the catalog lock.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public Dictionary<SoeConstants.StreamId, uint> PooledChannelCounts()
+    {
+        lock (_lock)
+        {
+            return new Dictionary<SoeConstants.StreamId, uint>(_pooledChannelCounts);
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -98,15 +151,17 @@ public class PacketCatalog
             _packets.Add(cataloged);
 
             List<CatalogedPacket>? bucket;
+
+            // new opcode
             if (!_byOpcode.TryGetValue(wireValue, out bucket))
             {
                 bucket = new List<CatalogedPacket>();
                 _byOpcode[wireValue] = bucket;
 
                 OpcodeStats stats = new OpcodeStats();
-                stats.Channel = metadata.Channel;
                 stats.MinSize = length;
                 stats.MaxSize = length;
+                stats.Count = 1;
                 _stats[wireValue] = stats;
             }
             else
@@ -120,6 +175,7 @@ public class PacketCatalog
                 {
                     stats.MaxSize = length;
                 }
+                stats.Count++;
                 _stats[wireValue] = stats;
             }
             bucket.Add(cataloged);
@@ -185,6 +241,20 @@ public class PacketCatalog
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodesByCountDescending
+    //
+    // Returns the wire values ordered by packet count, highest first, as computed by the
+    // last Prepare call.  Empty until Prepare has run.  The returned list is a fresh copy.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public List<OpcodeValue> OpcodesByCountDescending()
+    {
+        lock (_lock)
+        {
+            return new List<OpcodeValue>(_byCountDescending);
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // StatsFor
     //
     // Returns the per-opcode aggregates (channel, min size, max size) for
@@ -228,6 +298,29 @@ public class PacketCatalog
                 return 0;
             }
             return bucket.Count;
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // CountAt
+    //
+    // Returns the packet count of the opcode at the given position in count-descending order,
+    // or zero if the position is out of range.  Position 0 is the highest-count opcode.
+    // Valid after Prepare has run.
+    //
+    // rank:  Zero-based position in count-descending order.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public uint CountAt(int rank)
+    {
+        lock (_lock)
+        {
+            if (rank < 0 || rank >= _byCountDescending.Count)
+            {
+                return 0;
+            }
+
+            OpcodeValue wireValue = _byCountDescending[rank];
+            return (uint) _byOpcode[wireValue].Count;
         }
     }
 
@@ -276,12 +369,183 @@ public class PacketCatalog
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // Prepare
+    //
+    // Cold-path pass that computes the length-distribution fields (ModalSize, ModalFraction,
+    // DistinctSizeCount, MeanSize, SizeVariance, SizeHistogram) and the per-channel packet
+    // counts (ChannelCounts) for every opcode from its retained packets.  The same pass
+    // accumulates the pooled size histogram, the pooled channel counts, and the per-channel
+    // tally of single-channel opcodes; all pooled tables are rebuilt from scratch on every
+    // call.  Intended to run once after capture has stopped and before analysis begins;
+    // running it while packets are still arriving produces stats that do not match later
+    // arrivals.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void Prepare()
+    {
+        DebugLog.Write(LogChannel.InferenceDebug, "PacketCatalog.Prepare: starting", LogLevel.Trace);
+        lock (_lock)
+        {
+            _pooledSizeHistogram.Clear();
+            _pooledChannelCounts.Clear();
+            _pureChannelOpcodeCounts.Clear();
+            foreach (KeyValuePair<OpcodeValue, List<CatalogedPacket>> entry in _byOpcode)
+            {
+                OpcodeValue wireValue = entry.Key;
+                List<CatalogedPacket> bucket = entry.Value;
+                Dictionary<int, int> lengthCounts = new Dictionary<int, int>();
+                Dictionary<SoeConstants.StreamId, uint> channelCounts =
+                    new Dictionary<SoeConstants.StreamId, uint>();
+                long lengthSum = 0;
+                long lengthSquaredSum = 0;
+                for (int i = 0; i < bucket.Count; i++)
+                {
+                    int length = bucket[i].Payload.Length;
+                    int seen;
+                    if (lengthCounts.TryGetValue(length, out seen))
+                    {
+                        lengthCounts[length] = seen + 1;
+                    }
+                    else
+                    {
+                        lengthCounts[length] = 1;
+                    }
+                    lengthSum += length;
+                    lengthSquaredSum += (long)length * length;
+                    SoeConstants.StreamId channel = bucket[i].Metadata.Channel;
+                    uint channelSeen;
+                    if (channelCounts.TryGetValue(channel, out channelSeen))
+                    {
+                        channelCounts[channel] = channelSeen + 1;
+                    }
+                    else
+                    {
+                        channelCounts[channel] = 1;
+                    }
+                }
+                foreach (KeyValuePair<int, int> lengthEntry in lengthCounts)
+                {
+                    int pooledSeen;
+                    if (_pooledSizeHistogram.TryGetValue(lengthEntry.Key, out pooledSeen))
+                    {
+                        _pooledSizeHistogram[lengthEntry.Key] = pooledSeen + lengthEntry.Value;
+                    }
+                    else
+                    {
+                        _pooledSizeHistogram[lengthEntry.Key] = lengthEntry.Value;
+                    }
+                }
+                foreach (KeyValuePair<SoeConstants.StreamId, uint> channelEntry in channelCounts)
+                {
+                    uint pooledChannelSeen;
+                    if (_pooledChannelCounts.TryGetValue(channelEntry.Key, out pooledChannelSeen))
+                    {
+                        _pooledChannelCounts[channelEntry.Key] = pooledChannelSeen + channelEntry.Value;
+                    }
+                    else
+                    {
+                        _pooledChannelCounts[channelEntry.Key] = channelEntry.Value;
+                    }
+                }
+                // an opcode whose packets all rode one channel counts toward that channel's
+                // pure-opcode tally; mixed opcodes are counted by no channel
+                if (channelCounts.Count == 1)
+                {
+                    foreach (KeyValuePair<SoeConstants.StreamId, uint> soleEntry in channelCounts)
+                    {
+                        int pureSeen;
+                        if (_pureChannelOpcodeCounts.TryGetValue(soleEntry.Key, out pureSeen))
+                        {
+                            _pureChannelOpcodeCounts[soleEntry.Key] = pureSeen + 1;
+                        }
+                        else
+                        {
+                            _pureChannelOpcodeCounts[soleEntry.Key] = 1;
+                        }
+                    }
+                }
+                int modalSize = 0;
+                int modalCount = 0;
+                foreach (KeyValuePair<int, int> lengthEntry in lengthCounts)
+                {
+                    if (lengthEntry.Value > modalCount)
+                    {
+                        modalCount = lengthEntry.Value;
+                        modalSize = lengthEntry.Key;
+                    }
+                }
+                double mean = bucket.Count > 0 ? (double)lengthSum / bucket.Count : 0.0;
+                double variance = bucket.Count > 0
+                    ? ((double)lengthSquaredSum / bucket.Count) - (mean * mean)
+                    : 0.0;
+                if (variance < 0.0)
+                {
+                    variance = 0.0;
+                }
+                OpcodeStats stats = _stats[wireValue];
+                stats.ModalSize = modalSize;
+                stats.ModalFraction = bucket.Count > 0 ? (double)modalCount / bucket.Count : 0.0;
+                stats.DistinctSizeCount = lengthCounts.Count;
+                stats.MeanSize = mean;
+                stats.SizeVariance = variance;
+                stats.SizeHistogram = lengthCounts;
+                stats.ChannelCounts = channelCounts;
+                _stats[wireValue] = stats;
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "PacketCatalog.Prepare: wireValue=0x" + wireValue
+                    + " modal=" + modalSize + " frac=" + stats.ModalFraction.ToString("F3")
+                    + " distinct=" + stats.DistinctSizeCount
+                    + " channels=" + channelCounts.Count, LogLevel.Trace);
+            }
+            _byCountDescending = new List<OpcodeValue>(_byOpcode.Keys);
+            _byCountDescending.Sort((a, b) => _byOpcode[b].Count.CompareTo(_byOpcode[a].Count));
+            foreach (KeyValuePair<SoeConstants.StreamId, int> pureEntry in _pureChannelOpcodeCounts)
+            {
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "PacketCatalog.Prepare: pure channel " + pureEntry.Key
+                    + " = " + pureEntry.Value + " opcodes", LogLevel.Info);
+            }
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "PacketCatalog.Prepare: sorted " + _byCountDescending.Count + " opcodes, pooled "
+                + _pooledSizeHistogram.Count + " lengths, " + _pooledChannelCounts.Count
+                + " channels", LogLevel.Info);
+        }
+        DebugLog.Write(LogChannel.InferenceDebug, "PacketCatalog.Prepare: done", LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // HasPackets
+    //
+    // Returns true if at least one packet has been cataloged this session.  Reads the
+    // arrival-order list count under the lock; no allocation.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public bool HasPackets()
+    {
+        lock (_lock)
+        {
+            return _packets.Count > 0;
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // TotalPacketCount
+    //
+    // Returns the total number of packets cataloged across all opcodes.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public ulong TotalPacketCount()
+    {
+        lock (_lock)
+        {
+            return (ulong)_packets.Count;
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // Clear
     //
-    // Removes every cataloged packet, every per-opcode bucket, and every
-    // per-opcode stats record.  Takes the catalog lock for the duration of
-    // the operation.
-    ///////////////////////////////////////////////////////////////////////////////////////
+    // Removes every cataloged packet, every per-opcode bucket, every per-opcode stats
+    // record, and both pooled background tables.  Takes the catalog lock for the duration
+    // of the operation.
+    ///////////////////////////////////////////////////////////////////////////////////////////
     public void Clear()
     {
         lock (_lock)
@@ -289,6 +553,10 @@ public class PacketCatalog
             _packets.Clear();
             _byOpcode.Clear();
             _stats.Clear();
+            _byCountDescending.Clear();
+            _pooledSizeHistogram.Clear();
+            _pooledChannelCounts.Clear();
+            _pureChannelOpcodeCounts.Clear();
         }
         DebugLog.Write(LogChannel.InferenceDebug, "PacketCatalog.Clear: cleared", LogLevel.Trace);
     }
