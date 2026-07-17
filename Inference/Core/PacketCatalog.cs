@@ -224,6 +224,184 @@ public class PacketCatalog
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // LogLeadingStringSurvey
+    //
+    // Writes, for every opcode in the catalog, the number of packets whose payload begins
+    // with a null-terminated printable-ASCII string at byte 0.  A packet qualifies when
+    // bytes 0..k-1 are all in the range 0x20-0x7E, byte k is 0x00, and k is greater than 4.
+    // Every opcode is reported, including those with no qualifying packets, so the survey
+    // shows non-matches as well as matches.  Output is one line per opcode with the
+    // qualifying count, total packet count, and fraction, followed by a summary line with
+    // opcode-level and packet-level totals.  Reads the retained payloads directly; does not
+    // require Prepare to have run.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void LogLeadingStringSurvey()
+    {
+        lock (_lock)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketCatalog.LogLeadingStringSurvey: surveying " + _byOpcode.Count
+                + " opcodes", LogLevel.Info);
+
+            int fullyQualifiedOpcodes = 0;
+            int opcodesWithAnyMatch = 0;
+            uint qualifyingPackets = 0;
+            uint surveyedPackets = 0;
+
+            foreach (KeyValuePair<OpcodeValue, List<CatalogedPacket>> entry in _byOpcode)
+            {
+                List<CatalogedPacket> bucket = entry.Value;
+                int qualifying = 0;
+
+                for (int i = 0; i < bucket.Count; i++)
+                {
+                    ReadOnlySpan<byte> payload = bucket[i].Payload.AsReadOnlySpan();
+                    int stringLength = 0;
+
+                    while (stringLength < payload.Length
+                        && payload[stringLength] >= 0x20 && payload[stringLength] <= 0x7E)
+                    {
+                        stringLength++;
+                    }
+
+
+
+                    // skip C2Z
+                    if (bucket[i].Metadata.Channel == SoeConstants.StreamId.StreamClientToZone)
+                    {
+                        continue;
+                    }
+
+                    // qualifies only when the run ended on an actual null terminator
+                    // and the string exceeds four bytes
+                    if (stringLength > 4
+                        && stringLength < payload.Length
+                        && payload[stringLength] == 0x00)
+                    {
+                        qualifying++;
+                    }
+                    else if (entry.Key == 0xA5BF)
+                    {
+
+                        DebugLog.Write(LogChannel.Opcodes,
+                            "Failed test:  " + bucket[i].PacketIndex, LogLevel.Info);
+                    }
+                }
+
+                surveyedPackets += (uint)bucket.Count;
+                qualifyingPackets += (uint)qualifying;
+
+                if (qualifying == bucket.Count)
+                {
+                    fullyQualifiedOpcodes++;
+                }
+                if (qualifying > 0)
+                {
+                    opcodesWithAnyMatch++;
+                }
+
+                if (qualifying == 0)
+                {
+                    continue;
+                }
+
+                double fraction = (double)qualifying / bucket.Count;
+                DebugLog.Write(LogChannel.Opcodes,
+                    "    0x" + entry.Key + ": " + qualifying + "/" + bucket.Count
+                    + " (" + fraction.ToString("F3") + ")", LogLevel.Info);
+            }
+
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketCatalog.LogLeadingStringSurvey: " + fullyQualifiedOpcodes
+                + " opcodes qualified on every packet, " + opcodesWithAnyMatch + "/"
+                + _byOpcode.Count + " opcodes with any match, " + qualifyingPackets + "/"
+                + surveyedPackets + " packets qualifying overall", LogLevel.Info);
+        }
+    }
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FindPlayerProfileCandidates
+    //
+    // Scans the arrival-order packet list for session responses (net opcode 0x0200 on the
+    // zone-to-client channel).  For each one, records its source/dest port pair and walks
+    // forward from it, considering only packets on that pair in either direction.  The
+    // first packet on the pair whose payload length meets minimumSize is recorded as that
+    // session's PlayerProfile candidate.  A session disconnect (net opcode 0x0500) on the
+    // pair ends that session's walk with no candidate.  Ordering is arrival order alone;
+    // timestamps are not consulted.
+    //
+    // minimumSize:  Payload length, in bytes, a packet must meet to be a candidate.
+    //
+    // Returns:  One candidate packet per qualifying session response, in the order the
+    //           session responses were seen.  Empty when none qualify.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public List<CatalogedPacket> FindPlayerProfileCandidates(int minimumSize)
+    {
+        List<CatalogedPacket> candidates = new List<CatalogedPacket>();
+        OpcodeValue sessionResponse = new OpcodeValue(SoeConstants.OP_SessionResponse);
+        OpcodeValue sessionDisconnect = new OpcodeValue(SoeConstants.OP_SessionDisconnect);
+
+        lock (_lock)
+        {
+            for (int i = 0; i < _packets.Count; i++)
+            {
+                CatalogedPacket start = _packets[i];
+
+                if (!start.Metadata.WireValue.Equals(sessionResponse))
+                {
+                    continue;
+                }
+                if (start.Metadata.Channel != SoeConstants.StreamId.StreamZoneToClient)
+                {
+                    continue;
+                }
+
+                int portA = start.Metadata.SourcePort;
+                int portB = start.Metadata.DestPort;
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "PacketCatalog.FindPlayerProfileCandidates: session response at index "
+                    + start.PacketIndex + ", ports " + portA + "/" + portB, LogLevel.Trace);
+
+                for (int j = i + 1; j < _packets.Count; j++)
+                {
+                    CatalogedPacket packet = _packets[j];
+
+                    bool onPair =
+                        (packet.Metadata.SourcePort == portA && packet.Metadata.DestPort == portB)
+                        || (packet.Metadata.SourcePort == portB && packet.Metadata.DestPort == portA);
+                    if (!onPair)
+                    {
+                        continue;
+                    }
+
+                    if (packet.Metadata.WireValue.Equals(sessionDisconnect))
+                    {
+                        DebugLog.Write(LogChannel.Opcodes,
+                            "PacketCatalog.FindPlayerProfileCandidates: disconnect at index "
+                            + packet.PacketIndex + ", no candidate for this session",
+                            LogLevel.Info);
+                        break;
+                    }
+
+                    if (packet.Payload.Length >= minimumSize)
+                    {
+                        candidates.Add(packet);
+                        DebugLog.Write(LogChannel.Opcodes,
+                            "PacketCatalog.FindPlayerProfileCandidates: candidate at index "
+                            + packet.PacketIndex + ", length " + packet.Payload.Length
+                            + ", ports " + portA + "/" + portB, LogLevel.Info);
+                        break;
+                    }
+                }
+            }
+
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketCatalog.FindPlayerProfileCandidates: " + candidates.Count
+                + " candidates", LogLevel.Info);
+            return candidates;
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // PacketsFor
     //
     // Returns packets recorded for the given opcode, optionally filtered by
@@ -553,7 +731,9 @@ public class PacketCatalog
         DebugLog.Write(LogChannel.InferenceDebug, "PacketCatalog.Prepare: done", LogLevel.Trace);
 
         OpcodeValue toDebug = new OpcodeValue(0x917c);
-        LogSizeHistogram(toDebug);
+        // LogSizeHistogram(toDebug);
+        // LogLeadingStringSurvey();
+        FindPlayerProfileCandidates(10000);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

@@ -582,6 +582,7 @@
                               IsReadOnly="True"
                               SelectionMode="Single"
                               HeadersVisibility="Column"
+                              Visibility="Collapsed"
                               SelectionChanged="ProposalGrid_SelectionChanged">
                         <DataGrid.GroupStyle>
                             <GroupStyle>

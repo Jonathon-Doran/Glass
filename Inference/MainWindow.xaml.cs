@@ -915,6 +915,12 @@ public partial class MainWindow : Window
 
         int routed = await Task.Run(() => reader.ProcessFile(dialog.FileName, null, progress));
 
+        Title = "Inference - " + System.IO.Path.GetFileName(dialog.FileName)
+            + " (" + routed + " packets)";
+        DebugLog.Write(LogChannel.Inference,
+            "MenuItem_OpenPcap_Click: title set to pcap " + dialog.FileName, LogLevel.Trace);
+
+
         StatusCapture.Text = "Capture: Pcap complete (" + routed + " packets)";
         UpdateControlStates();
 
@@ -2758,6 +2764,7 @@ public partial class MainWindow : Window
         ListCollectionView view = new ListCollectionView(rows);
         view.GroupDescriptions.Add(new PropertyGroupDescription("Label"));
         ProposalGrid.ItemsSource = view;
+        ProposalGrid.Visibility = Visibility.Visible;
         DebugLog.Write(LogChannel.InferenceDebug,
             "Button_RunIdentification_Click: " + rows.Count + " proposals shown", LogLevel.Trace);
     }
@@ -3246,6 +3253,7 @@ public partial class MainWindow : Window
 
         StatusBarRowText.Text = string.Empty;
         StatusBarSecondaryText.Text = string.Empty;
+        ProposalGrid.Visibility = Visibility.Collapsed;
 
         DebugLog.Write(LogChannel.InferenceDebug, "MainWindow.UIReset: complete", LogLevel.Trace);
     }
