@@ -22,4 +22,5 @@ public struct OpcodeStats
     public double SizeVariance;                 // variance of packet lengths; high with a few large outliers
     public Dictionary<int, int>? SizeHistogram; // packet count per observed length; null until Prepare runs
     public Dictionary<StreamId, uint>? ChannelCounts; // packet count per channel; null until Prepare runs
+    public uint LargestPacketIndex;             // arrival index (PacketIndex) of the largest payload seen
 }

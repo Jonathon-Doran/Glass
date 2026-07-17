@@ -26,7 +26,7 @@ public class InferMobUpdate : IInferOpcodes
     private const double BackgroundStrength = 2.0;         // breadth of the arbitrary-opcode share model
     private const int ExpectedFloor = 12;                  // TODO: smallest physically possible payload
     private const double FloorShortfallPenalty = 2.0;      // SizeFloorLogLR: log-LR per byte below floor
-    private const double ReportThreshold = 0.0;            // minimum posterior to emit a proposal
+    private const double ReportThreshold = 0.5;            // minimum posterior to emit a proposal
 
     // Fixed 14-byte payload in all prior captures.  The count encodes how well-sampled the
     // baseline is (it drives the Good-Turing escape mass); a large single-length count says

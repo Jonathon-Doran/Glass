@@ -162,6 +162,7 @@ public class PacketCatalog
                 stats.MinSize = length;
                 stats.MaxSize = length;
                 stats.Count = 1;
+                stats.LargestPacketIndex = cataloged.PacketIndex;
                 _stats[wireValue] = stats;
             }
             else
@@ -174,11 +175,51 @@ public class PacketCatalog
                 if (length > stats.MaxSize)
                 {
                     stats.MaxSize = length;
+                    stats.LargestPacketIndex = cataloged.PacketIndex;
                 }
+
                 stats.Count++;
                 _stats[wireValue] = stats;
             }
             bucket.Add(cataloged);
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // LogSizeHistogram
+    //
+    // Writes the given opcode's size histogram to the log as C# dictionary initializer
+    // lines, sorted by length ascending, for transcription into a baseline table.
+    // Requires Prepare to have run; logs a warning and writes nothing when the opcode has
+    // no histogram.
+    //
+    // opcode:  Wire opcode value whose histogram to write.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void LogSizeHistogram(OpcodeValue opcode)
+    {
+        lock (_lock)
+        {
+            OpcodeStats stats;
+            if (!_stats.TryGetValue(opcode, out stats)
+                || stats.SizeHistogram == null || stats.SizeHistogram.Count == 0)
+            {
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "PacketCatalog.LogSizeHistogram: no histogram for opcode 0x" + opcode
+                    + " (Prepare not run, or opcode unseen)", LogLevel.Warn);
+                return;
+            }
+
+            List<int> lengths = new List<int>(stats.SizeHistogram.Keys);
+            lengths.Sort();
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketCatalog.LogSizeHistogram: opcode 0x" + opcode + ", "
+                + lengths.Count + " lengths, " + stats.Count + " messages total", LogLevel.Info);
+            for (int lengthIndex = 0; lengthIndex < lengths.Count; lengthIndex++)
+            {
+                int length = lengths[lengthIndex];
+                DebugLog.Write(LogChannel.Opcodes,
+                    "    { " + length + ", " + stats.SizeHistogram[length] + " },", LogLevel.Info);
+            }
         }
     }
 
@@ -510,6 +551,9 @@ public class PacketCatalog
                 + " channels", LogLevel.Info);
         }
         DebugLog.Write(LogChannel.InferenceDebug, "PacketCatalog.Prepare: done", LogLevel.Trace);
+
+        OpcodeValue toDebug = new OpcodeValue(0x917c);
+        LogSizeHistogram(toDebug);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

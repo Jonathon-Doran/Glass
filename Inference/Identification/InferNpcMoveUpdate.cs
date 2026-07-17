@@ -22,14 +22,22 @@ public class InferNpcMoveUpdate : IInferOpcodes
     private const double MaxAbsLogLR = 12.0;               // clamp per feature, roughly +/- 52 decibans
     private const int CapturesObserved = 10;               // TODO: adequate captures in the stability record
     private const int CapturesAtRankOne = 9;               // TODO: of those, how many had NpcMoveUpdate at rank 0
-    private const int AdequateMinimumMessages = 2000;     // TODO: below this the rank feature abstains (~30 min)
+    private const int AdequateMinimumMessages = 200;     // TODO: below this the rank feature abstains (~30 min)
     private const int ExpectedFloor = 12;                  // smallest physically possible payload
     private const double FloorShortfallPenalty = 2.0;      // SizeFloorLogLR: log-LR per byte below floor
+    private const int EffectiveSampleCap = 100;            // fit: largest message count credited as independent
     private const double ReportThreshold = 0.1;            // minimum posterior to emit a proposal
 
-    // TODO: fill with the measured length-to-count table from the prior-patch capture
-    private static readonly Dictionary<int, int> BaselineSizeHistogram = new Dictionary<int, int>();
-
+    // Measured length-to-count table, merged from five captures (May-July 2026), 58364
+    // messages.  No singleton lengths: the Good-Turing escape mass floors at EscapeFloor,
+    // so lengths outside this support charge the full escape penalty.
+    private static readonly Dictionary<int, int> BaselineSizeHistogram = new Dictionary<int, int>
+    {
+        { 15, 1703 },
+        { 17, 4735 },
+        { 18, 51915 },
+        { 19, 11 },
+    };
     ///////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeName
     //
@@ -78,7 +86,7 @@ public class InferNpcMoveUpdate : IInferOpcodes
         ulong totalCount = catalog.TotalPacketCount();
         double priorOdds = 1.0 / opcodeCount;
         Dictionary<SoeConstants.StreamId, int> pureChannelOpcodes = catalog.PureChannelOpcodeCounts();
-        Dictionary<int, int> pooledSizes = catalog.PooledSizeHistogram();
+
         for (int rank = 0; rank < ranked.Count; rank++)
         {
             OpcodeValue wireValue = ranked[rank];
@@ -111,8 +119,8 @@ public class InferNpcMoveUpdate : IInferOpcodes
                     + totalCount + " messages), rank feature abstains", LogLevel.Trace);
                 rankLogLR = 0.0;
             }
-            double histogramLogLR = EvidenceScoring.SizeHistogramLogLR(stats.SizeHistogram,
-                BaselineSizeHistogram, pooledSizes, EscapeFloor, MaxAbsLogLR);
+            double histogramLogLR = EvidenceScoring.SizeFitLogLR(stats.SizeHistogram,
+                            BaselineSizeHistogram, EscapeFloor, EffectiveSampleCap, MaxAbsLogLR);
             double floorLogLR = EvidenceScoring.SizeFloorLogLR(stats.MinSize, ExpectedFloor,
                 FloorShortfallPenalty);
             double totalLogLR = directionLogLR + rankLogLR + histogramLogLR + floorLogLR;

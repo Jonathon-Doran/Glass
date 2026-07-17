@@ -25,6 +25,7 @@ public class InferenceScanner
         _handlers = new List<IInferOpcodes>();
         _handlers.Add(new InferNpcMoveUpdate());
         _handlers.Add(new InferMobUpdate());
+        _handlers.Add(new InferMovementHistory());
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferenceScanner.ctor: " + _handlers.Count + " handlers", LogLevel.Trace);

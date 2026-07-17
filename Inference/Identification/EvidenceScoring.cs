@@ -1,4 +1,5 @@
 ﻿using Glass.Core.Logging;
+using Inference.Models;
 using System;
 using System.Collections.Generic;
 using static Glass.Network.Protocol.SoeConstants;
@@ -459,6 +460,913 @@ public static class EvidenceScoring
             "EvidenceScoring.DominantRankLogLR: rank=" + observedRank
             + " pTop=" + pTop.ToString("F3") + " logLR=" + logLR.ToString("F3"), LogLevel.Trace);
         return logLR;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // SizeStrideLogLR
+    //
+    // Log likelihood ratio from whether the candidate's observed lengths fall on a fixed
+    // stride, for a hypothesis that the opcode is a repeating array of fixed-size records
+    // with a constant number of bytes outside the records.  A conforming length satisfies
+    //
+    //   length % stride == residue
+    //
+    // The unit of observation is the distinct length, not the message.  Message counts
+    // within one length arrive in correlated bursts and overstate the independent evidence;
+    // each distinct length is one honest draw from the length distribution, so a candidate
+    // showing many different lengths that all conform earns support that scales with that
+    // variety.
+    //
+    //   per conforming distinct length:
+    //     P(conforms | IS)  ~ 1
+    //     P(conforms | NOT) = q     smoothed fraction of other opcodes' distinct lengths
+    //                               that land on this residue by chance
+    //     log LR increment = -log(q)
+    //
+    //   per violating distinct length:
+    //     P(violation | IS)  = leakProbability
+    //     P(violation | NOT) = 1 - q
+    //     log LR increment = log(leakProbability) - log(1 - q)
+    //
+    // q is estimated from the pooled histogram with the candidate's own contribution
+    // removed: a length is counted only if some other opcode also produced it, so a
+    // high-volume candidate cannot dilute its own background.  q is Laplace-smoothed so
+    // neither it nor its complement is ever zero.  The total is clamped to +/- maxAbsLogLR.
+    //
+    // This feature should be used when the hypothesis predicts a length
+    // family rather than a fixed set of lengths; per the statistic-selection rule a handler
+    // uses at most one length measurement.
+    //
+    // observedHistogram:  Message count per length for the candidate, from OpcodeStats.
+    // stride:             The record size the hypothesis predicts.  Must be positive.
+    // residue:            The expected length modulo stride.
+    // pooledHistogram:    Message count per length across all opcodes including the
+    //                     candidate, from the catalog.  The candidate's own counts are
+    //                     subtracted here.
+    // leakProbability:    Per-distinct-length probability the hypothesis allows off the
+    //                     stride.  Small and nonzero.
+    // maxAbsLogLR:        Clamp magnitude for the returned value.
+    //
+    // Returns:  Natural-log likelihood ratio from stride conformance, clamped.  Zero when
+    //           observedHistogram is null or empty, or stride is not positive.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public static double SizeStrideLogLR(Dictionary<int, int>? observedHistogram, int stride,
+        int residue, Dictionary<int, int>? pooledHistogram, double leakProbability,
+        double maxAbsLogLR)
+    {
+        if (observedHistogram == null || observedHistogram.Count == 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.SizeStrideLogLR: missing observed histogram, returning 0",
+                LogLevel.Warn);
+            return 0.0;
+        }
+        if (stride <= 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.SizeStrideLogLR: stride " + stride + " is not positive, returning 0",
+                LogLevel.Error);
+            return 0.0;
+        }
+
+        int conformingLengths = 0;
+        int violatingLengths = 0;
+        foreach (KeyValuePair<int, int> entry in observedHistogram)
+        {
+            if ((entry.Key % stride) == residue)
+            {
+                conformingLengths++;
+            }
+            else
+            {
+                violatingLengths++;
+            }
+        }
+
+        int conformingOthers = 0;
+        int totalOthers = 0;
+        if (pooledHistogram != null)
+        {
+            foreach (KeyValuePair<int, int> entry in pooledHistogram)
+            {
+                int observedCount;
+                observedHistogram.TryGetValue(entry.Key, out observedCount);
+                if ((entry.Value - observedCount) <= 0)
+                {
+                    // the candidate is this length's only source; it is not background
+                    continue;
+                }
+                totalOthers++;
+                if ((entry.Key % stride) == residue)
+                {
+                    conformingOthers++;
+                }
+            }
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.SizeStrideLogLR: missing pooled histogram, using uninformative background",
+                LogLevel.Warn);
+        }
+        double q = (conformingOthers + 1.0) / (totalOthers + 2.0);
+
+        double logLR = (conformingLengths * -Math.Log(q))
+            + (violatingLengths * (Math.Log(leakProbability) - Math.Log(1.0 - q)));
+
+        if (logLR > maxAbsLogLR)
+        {
+            logLR = maxAbsLogLR;
+        }
+        if (logLR < -maxAbsLogLR)
+        {
+            logLR = -maxAbsLogLR;
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "EvidenceScoring.SizeStrideLogLR: stride=" + stride + " residue=" + residue
+            + " conforming=" + conformingLengths + " violating=" + violatingLengths
+            + " q=" + q.ToString("F3") + " logLR=" + logLR.ToString("F3"), LogLevel.Trace);
+        return logLR;
+    }
+
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // StrideSilhouetteLogLR
+    //
+    // Log likelihood ratio from how well a bucket's payloads match a per-offset printability
+    // template, for a hypothesis that every payload of the opcode is built from the same
+    // fixed-size structure.  The template (silhouette) is built from one designated payload:
+    // bytes are classed printable (0x20 through 0x7E) or non-printable, and each offset
+    // within the stride whose class is consistent across that payload's repetitions becomes
+    // a stable template position; inconsistent offsets are excluded from all scoring.  The
+    // designated payload itself is never scored — the template is fitted to it, so its
+    // agreement carries no information.
+    //
+    // Every other payload in the bucket is scored position by position at stable offsets:
+    //
+    //   P(class match | IS)  = matchRateIfPeriodic
+    //   P(class match | NOT) = q, that payload's mean agreement against the template at
+    //                          every misalignment (the template rotated by 1 to stride-1),
+    //                          so a payload's own class composition supplies its null
+    //
+    //   per payload:  k*(log(p) - log(q)) + (n-k)*(log(1-p) - log(1-q))
+    //
+    // with n the stable positions compared and k the matches.  Payload contributions sum,
+    // then log(shiftsScanned) is subtracted once — the charge for having selected the
+    // stride from that many scanned shifts.  Positions agree in field-sized runs rather
+    // than independently, so the nominal count overstates the independent evidence; the
+    // clamp bounds the total.
+    //
+    // A payload is skipped when it has no stable-offset positions to compare or when its
+    // misalignment agreement reaches the hypothesis rate (nothing to discriminate).
+    // Abstains (returns zero) when the bucket holds no scorable payload besides the
+    // designated one, or when no template offset is stable.
+    //
+    // bucket:               All cataloged packets for the candidate opcode.
+    // silhouetteIndex:      Position in bucket of the payload the template is built from.
+    // stride:               The structure size in bytes.  Must be at least 2.
+    // matchRateIfPeriodic:  Expected class agreement at stable offsets, between zero and
+    //                       one exclusive.
+    // stableThreshold:      Minimum class-consistency fraction for a template offset to be
+    //                       stable, between one half and one.
+    // shiftsScanned:        Number of shifts examined by the discovery that produced the
+    //                       stride; charged once as model selection.  At least 1.
+    // misalignmentSamples:  Largest number of misaligned rotations used to estimate q.
+    //                       Bounds the cost of the null on wide strides.  Must be at
+    //                       least 1.
+    // maxAbsLogLR:          Clamp magnitude for the returned value.
+    //
+    // Returns:  Natural-log likelihood ratio from silhouette agreement, clamped.  Zero on
+    //           abstention or invalid arguments.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public static double StrideSilhouetteLogLR(List<CatalogedPacket> bucket, int silhouetteIndex,
+            int stride, double matchRateIfPeriodic, double stableThreshold, int shiftsScanned,
+            int misalignmentSamples, double maxAbsLogLR)
+    {
+        if (bucket == null || bucket.Count == 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.StrideSilhouetteLogLR: empty bucket, returning 0", LogLevel.Warn);
+            return 0.0;
+        }
+        if (silhouetteIndex < 0 || silhouetteIndex >= bucket.Count)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.StrideSilhouetteLogLR: silhouette index " + silhouetteIndex
+                + " outside bucket of " + bucket.Count + ", returning 0", LogLevel.Error);
+            return 0.0;
+        }
+        if (stride < 2)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.StrideSilhouetteLogLR: stride " + stride
+                + " below 2, returning 0", LogLevel.Error);
+            return 0.0;
+        }
+        if (misalignmentSamples < 1)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.StrideSilhouetteLogLR: misalignmentSamples "
+                + misalignmentSamples + " below 1, returning 0", LogLevel.Error);
+            return 0.0;
+        }
+
+        // build the template: class-consistency per offset within the stride
+        ReadOnlySpan<byte> template = bucket[silhouetteIndex].Payload.AsReadOnlySpan();
+        int[] silhouette = new int[stride];
+        int stableOffsets = 0;
+        for (int offset = 0; offset < stride; offset++)
+        {
+            int printableCount = 0;
+            int total = 0;
+            for (int i = offset; i < template.Length; i += stride)
+            {
+                if ((template[i] >= 0x20) && (template[i] <= 0x7E))
+                {
+                    printableCount++;
+                }
+                total++;
+            }
+            double printableFraction = (total > 0) ? ((double)printableCount / total) : 0.0;
+            if (total > 0 && printableFraction >= stableThreshold)
+            {
+                silhouette[offset] = 1;
+                stableOffsets++;
+            }
+            else if (total > 0 && printableFraction <= (1.0 - stableThreshold))
+            {
+                silhouette[offset] = 0;
+                stableOffsets++;
+            }
+            else
+            {
+                silhouette[offset] = -1;
+            }
+        }
+        if (stableOffsets == 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.StrideSilhouetteLogLR: no stable offsets in template, abstaining",
+                LogLevel.Warn);
+            return 0.0;
+        }
+
+        int sampleCount = stride - 1;
+        if (sampleCount > misalignmentSamples)
+        {
+            sampleCount = misalignmentSamples;
+        }
+        int[] rotations = new int[sampleCount];
+        double rotationStep = (double)(stride - 1) / sampleCount;
+        for (int sample = 0; sample < sampleCount; sample++)
+        {
+            rotations[sample] = 1 + (int)(sample * rotationStep);
+        }
+
+        double totalLogLR = 0.0;
+        int scoredPayloads = 0;
+        int skippedPayloads = 0;
+        for (int packetIndex = 0; packetIndex < bucket.Count; packetIndex++)
+        {
+            if (packetIndex == silhouetteIndex)
+            {
+                continue;
+            }
+            ReadOnlySpan<byte> payload = bucket[packetIndex].Payload.AsReadOnlySpan();
+
+            // aligned agreement, and mean agreement over every misalignment
+            int alignedMatches = 0;
+            int alignedTotal = 0;
+            long rotatedMatches = 0;
+            long rotatedTotal = 0;
+
+            for (int i = 0; i < payload.Length; i++)
+            {
+                bool isPrintable = (payload[i] >= 0x20) && (payload[i] <= 0x7E);
+                int alignedExpected = silhouette[i % stride];
+                if (alignedExpected != -1)
+                {
+                    alignedTotal++;
+                    if ((alignedExpected == 1) == isPrintable)
+                    {
+                        alignedMatches++;
+                    }
+                }
+                for (int sample = 0; sample < rotations.Length; sample++)
+                {
+                    int expected = silhouette[(i + rotations[sample]) % stride];
+                    if (expected == -1)
+                    {
+                        continue;
+                    }
+                    rotatedTotal++;
+                    if ((expected == 1) == isPrintable)
+                    {
+                        rotatedMatches++;
+                    }
+                }
+            }
+
+            if (alignedTotal == 0 || rotatedTotal == 0)
+            {
+                skippedPayloads++;
+                continue;
+            }
+
+            double q = (double)rotatedMatches / rotatedTotal;
+            if (q < (1.0 / (alignedTotal + 2.0)))
+            {
+                q = 1.0 / (alignedTotal + 2.0);
+            }
+            if (q >= matchRateIfPeriodic)
+            {
+                skippedPayloads++;
+                continue;
+            }
+
+            totalLogLR += (alignedMatches * (Math.Log(matchRateIfPeriodic) - Math.Log(q)))
+                + ((alignedTotal - alignedMatches)
+                    * (Math.Log(1.0 - matchRateIfPeriodic) - Math.Log(1.0 - q)));
+            scoredPayloads++;
+        }
+
+        if (scoredPayloads == 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.StrideSilhouetteLogLR: no scorable payloads ("
+                + skippedPayloads + " skipped), abstaining", LogLevel.Warn);
+            return 0.0;
+        }
+
+        if (shiftsScanned >= 1)
+        {
+            totalLogLR -= Math.Log(shiftsScanned);
+        }
+
+        if (totalLogLR > maxAbsLogLR)
+        {
+            totalLogLR = maxAbsLogLR;
+        }
+        if (totalLogLR < -maxAbsLogLR)
+        {
+            totalLogLR = -maxAbsLogLR;
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "EvidenceScoring.StrideSilhouetteLogLR: stride=" + stride
+            + " stableOffsets=" + stableOffsets + " scored=" + scoredPayloads
+            + " skipped=" + skippedPayloads + " logLR=" + totalLogLR.ToString("F3"),
+            LogLevel.Trace);
+        return totalLogLR;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // TryDiscoverStride
+    //
+    // Discovers the fixed stride at which a payload's content repeats, from the payload
+    // alone.  Contributes no evidence: the return value is a gate, not a score.
+    //
+    // Bytes are reduced to two classes, printable (0x20 through 0x7E) and non-printable,
+    // so values that drift while staying in a similar range keep the same class.  Class
+    // agreement is measured at every shift from 2 up to a quarter of the payload's size or
+    // maxShiftCap, whichever is smaller; the best-agreeing shift, reduced to its smallest
+    // nearly-equal divisor, is the discovered stride.
+    //
+    // A stride qualifies only when its period carries both classes consistently — at least
+    // one offset stably printable and at least one stably non-printable across the
+    // repetitions.  A payload of one class throughout, unbroken text or dense binary,
+    // contains no strides.
+    //
+    // The background rate is the mean agreement over the remaining shifts (multiples of
+    // the candidate excluded), so a payload whose classes agree at every shift supplies
+    // its own null.  Discovery succeeds only when the agreement at the discovered stride
+    // reaches minimumAgreementRate and the background stays below it — the peak must both
+    // be high and stand out.  Fails when the payload is too small to scan, when the class
+    // mixture is absent, when no background shifts exist, or when either rate condition is
+    // not met.
+    //
+    // payload:               The payload bytes of one message.
+    // minimumAgreementRate:  Class agreement the discovered stride must reach, and the
+    //                        background must stay below, between zero and one exclusive.
+    // fundamentalTolerance:  Fraction of the best agreement a divisor shift must reach to
+    //                        be preferred as the fundamental stride, between zero and one.
+    // stableThreshold:       Minimum class-consistency fraction for an offset to count as
+    //                        stable in the mixture test, between one half and one.
+    // maxShiftCap:           Largest shift scanned, in bytes.  Bounds the cost of discovery
+    //                        on large payloads, which would otherwise scan a quarter of
+    //                        their own size.  A repeating structure wider than this cap
+    //                        cannot be discovered.  Must be at least 2.
+    // discoveredStride:      Receives the discovered stride in bytes; zero on failure.
+    // shiftsScanned:         Receives the number of shifts examined; zero when the payload
+    //                        was too small to scan.
+    //
+    // Returns:  True when a stride was discovered, carried both classes, and passed both
+    //           rate conditions; false otherwise.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public static bool TryDiscoverStride(ReadOnlySpan<byte> payload, double minimumAgreementRate,
+        double fundamentalTolerance, double stableThreshold, int maxShiftCap,
+        out int discoveredStride, out int shiftsScanned)
+    {
+        discoveredStride = 0;
+        shiftsScanned = 0;
+
+        int minShift = 2;
+        if (maxShiftCap < minShift)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.TryDiscoverStride: maxShiftCap " + maxShiftCap
+                + " below " + minShift + ", failing discovery", LogLevel.Error);
+            return false;
+        }
+        int maxShift = payload.Length / 4;
+        if (maxShift > maxShiftCap)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.TryDiscoverStride: scan capped at " + maxShiftCap
+                + " shifts for payload of " + payload.Length + " bytes", LogLevel.Trace);
+            maxShift = maxShiftCap;
+        }
+        if (maxShift < minShift)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.TryDiscoverStride: payload " + payload.Length
+                + " bytes too small to scan, failing discovery", LogLevel.Trace);
+            return false;
+        }
+        shiftsScanned = maxShift - minShift + 1;
+
+        bool[] printable = new bool[payload.Length];
+        for (int i = 0; i < payload.Length; i++)
+        {
+            printable[i] = (payload[i] >= 0x20) && (payload[i] <= 0x7E);
+        }
+
+        double[] rates = new double[maxShift + 1];
+        int bestShift = 0;
+        double bestRate = -1.0;
+        for (int shift = minShift; shift <= maxShift; shift++)
+        {
+            int positions = payload.Length - shift;
+            int matches = 0;
+            for (int i = 0; i < positions; i++)
+            {
+                if (printable[i] == printable[i + shift])
+                {
+                    matches++;
+                }
+            }
+            rates[shift] = (double)matches / positions;
+            if (rates[shift] > bestRate)
+            {
+                bestRate = rates[shift];
+                bestShift = shift;
+            }
+        }
+
+        int stride = bestShift;
+        for (int divisor = minShift; divisor < bestShift; divisor++)
+        {
+            if (((bestShift % divisor) == 0) && (rates[divisor] >= (bestRate * fundamentalTolerance)))
+            {
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "EvidenceScoring.TryDiscoverStride: divisor " + divisor + " of best shift "
+                    + bestShift + " agrees nearly as well, preferring it", LogLevel.Trace);
+                stride = divisor;
+                break;
+            }
+        }
+
+        int stablePrintable = 0;
+        int stableNonPrintable = 0;
+        for (int offset = 0; offset < stride; offset++)
+        {
+            int printableCount = 0;
+            int total = 0;
+            for (int i = offset; i < payload.Length; i += stride)
+            {
+                if (printable[i])
+                {
+                    printableCount++;
+                }
+                total++;
+            }
+            if (total == 0)
+            {
+                continue;
+            }
+            double printableFraction = (double)printableCount / total;
+            if (printableFraction >= stableThreshold)
+            {
+                stablePrintable++;
+            }
+            else if (printableFraction <= (1.0 - stableThreshold))
+            {
+                stableNonPrintable++;
+            }
+        }
+        if (stablePrintable == 0 || stableNonPrintable == 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.TryDiscoverStride: stride " + stride
+                + " lacks class mixture (stable printable=" + stablePrintable
+                + ", stable non-printable=" + stableNonPrintable
+                + "), failing discovery", LogLevel.Trace);
+            return false;
+        }
+
+        double backgroundSum = 0.0;
+        int backgroundShifts = 0;
+        for (int shift = minShift; shift <= maxShift; shift++)
+        {
+            if ((shift % stride) == 0)
+            {
+                continue;
+            }
+            backgroundSum += rates[shift];
+            backgroundShifts++;
+        }
+        if (backgroundShifts == 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.TryDiscoverStride: no background shifts outside stride "
+                + stride + ", failing discovery", LogLevel.Warn);
+            return false;
+        }
+        double background = backgroundSum / backgroundShifts;
+
+        if (rates[stride] < minimumAgreementRate)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.TryDiscoverStride: peak " + rates[stride].ToString("F3")
+                + " below required " + minimumAgreementRate.ToString("F3")
+                + ", failing discovery", LogLevel.Trace);
+            return false;
+        }
+        if (background >= minimumAgreementRate)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.TryDiscoverStride: background " + background.ToString("F3")
+                + " reaches required " + minimumAgreementRate.ToString("F3")
+                + ", nothing stands out, failing discovery", LogLevel.Trace);
+            return false;
+        }
+
+        discoveredStride = stride;
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "EvidenceScoring.TryDiscoverStride: stride=" + stride
+            + " peak=" + rates[stride].ToString("F3") + " background=" + background.ToString("F3")
+            + " stablePrintable=" + stablePrintable + " stableNonPrintable=" + stableNonPrintable
+            + " shiftsScanned=" + shiftsScanned, LogLevel.Trace);
+        return true;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // StrideConfirmationLogLR
+    //
+    // Log likelihood ratio from how many of a bucket's capable payloads demonstrate a given
+    // stride, for a hypothesis that every payload of the opcode is built from fixed-size
+    // structures of that stride.  A payload is capable when it is long enough to hold more
+    // than two repetitions (length > 2 * stride) — the minimum that can demonstrate a
+    // stride.  One designated payload is excluded: it selected the stride and does not get
+    // to vote for it.
+    //
+    // Each capable payload is tested, not re-scanned: bytes are reduced to printable
+    // (0x20 through 0x7E) and non-printable classes, class agreement is measured at the
+    // stride and at a deterministic, evenly spaced sample of control shifts (multiples of
+    // the stride excluded), and the payload demonstrates the stride when its agreement at
+    // the stride reaches minimumAgreementRate and exceeds the agreement at every control.
+    // By exchangeability, a payload with no stride tops m controls with probability
+    // 1 / (m + 1), which supplies the null exactly:
+    //
+    //   demonstrates:      log LR += log(agreeRateIfMatch) - log(1 / (m + 1))
+    //   fails:             log LR += log(1 - agreeRateIfMatch) - log(m / (m + 1))
+    //
+    // Contributions sum over capable payloads and the total is clamped.  When more capable
+    // payloads exist than the cost cap allows, the largest are scored and the truncation is
+    // logged — the reported counts are of scored payloads only.
+    //
+    // bucket:                All cataloged packets for the candidate opcode.
+    // excludePacketIndex:    PacketIndex of the payload that selected the stride.
+    // stride:                The structure size in bytes being confirmed.  At least 2.
+    // minimumAgreementRate:  Class agreement the stride must reach in a payload for it to
+    //                        count as demonstrating, between zero and one exclusive.
+    // agreeRateIfMatch:      Probability a true payload demonstrates its stride, between
+    //                        zero and one exclusive.
+    // controlShiftCount:     Number of control shifts sampled per payload.  At least 1.
+    // maxCapablePayloads:    Largest number of capable payloads scored, largest first.
+    //                        Bounds cost.  At least 1.
+    // maxAbsLogLR:           Clamp magnitude for the returned value.
+    // capableCount:          Receives the number of capable payloads scored.
+    // confirmedCount:        Receives how many of those demonstrated the stride.
+    //
+    // Returns:  Natural-log likelihood ratio from stride demonstration, clamped.  Zero
+    //           when no capable payload exists or the arguments are invalid.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public static double StrideConfirmationLogLR(List<CatalogedPacket> bucket,
+        uint excludePacketIndex, int stride, double minimumAgreementRate,
+        double agreeRateIfMatch, int controlShiftCount, int maxCapablePayloads,
+        double maxAbsLogLR, out int capableCount, out int confirmedCount)
+    {
+        capableCount = 0;
+        confirmedCount = 0;
+
+        if (bucket == null || bucket.Count == 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.StrideConfirmationLogLR: empty bucket, returning 0", LogLevel.Warn);
+            return 0.0;
+        }
+        if (stride < 2)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.StrideConfirmationLogLR: stride " + stride
+                + " below 2, returning 0", LogLevel.Error);
+            return 0.0;
+        }
+        if (controlShiftCount < 1 || maxCapablePayloads < 1)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.StrideConfirmationLogLR: controlShiftCount "
+                + controlShiftCount + " or maxCapablePayloads " + maxCapablePayloads
+                + " below 1, returning 0", LogLevel.Error);
+            return 0.0;
+        }
+
+        List<int> capable = new List<int>();
+        for (int packetIndex = 0; packetIndex < bucket.Count; packetIndex++)
+        {
+            if (bucket[packetIndex].PacketIndex == excludePacketIndex)
+            {
+                continue;
+            }
+            if (bucket[packetIndex].Payload.Length > (2 * stride))
+            {
+                capable.Add(packetIndex);
+            }
+        }
+        if (capable.Count == 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.StrideConfirmationLogLR: no capable payloads, abstaining",
+                LogLevel.Trace);
+            return 0.0;
+        }
+        if (capable.Count > maxCapablePayloads)
+        {
+            capable.Sort((a, b) => bucket[b].Payload.Length.CompareTo(bucket[a].Payload.Length));
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.StrideConfirmationLogLR: " + capable.Count
+                + " capable payloads truncated to " + maxCapablePayloads
+                + " largest", LogLevel.Warn);
+            capable.RemoveRange(maxCapablePayloads, capable.Count - maxCapablePayloads);
+        }
+
+        double totalLogLR = 0.0;
+        for (int capableIndex = 0; capableIndex < capable.Count; capableIndex++)
+        {
+            ReadOnlySpan<byte> payload = bucket[capable[capableIndex]].Payload.AsReadOnlySpan();
+
+            bool[] printable = new bool[payload.Length];
+            for (int i = 0; i < payload.Length; i++)
+            {
+                printable[i] = (payload[i] >= 0x20) && (payload[i] <= 0x7E);
+            }
+
+            double strideRate = AgreementRateAt(printable, stride);
+
+            // the control set is enumerated before any comparison: the null probability
+            // depends on the size of the comparison set, not on where a beating control sits
+            int controlRange = payload.Length / 2;
+            double controlStep = (double)(controlRange - 2) / controlShiftCount;
+            if (controlStep < 1.0)
+            {
+                controlStep = 1.0;
+            }
+            List<int> controls = new List<int>();
+            for (int sample = 0; sample < controlShiftCount; sample++)
+            {
+                int controlShift = 2 + (int)(sample * controlStep);
+                if (controlShift >= controlRange)
+                {
+                    break;
+                }
+                if ((controlShift % stride) == 0)
+                {
+                    continue;
+                }
+                controls.Add(controlShift);
+            }
+            if (controls.Count == 0)
+            {
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "EvidenceScoring.StrideConfirmationLogLR: no valid controls for payload of "
+                    + payload.Length + " bytes, payload skipped", LogLevel.Trace);
+                continue;
+            }
+            capableCount++;
+
+            double chanceTop = 1.0 / (controls.Count + 1.0);
+            bool beatenByControl = false;
+            for (int controlIndex = 0; controlIndex < controls.Count; controlIndex++)
+            {
+                if (AgreementRateAt(printable, controls[controlIndex]) >= strideRate)
+                {
+                    beatenByControl = true;
+                    break;
+                }
+            }
+
+            bool demonstrates = (strideRate >= minimumAgreementRate) && (beatenByControl == false);
+            if (demonstrates)
+            {
+                confirmedCount++;
+                totalLogLR += Math.Log(agreeRateIfMatch) - Math.Log(chanceTop);
+            }
+            else
+            {
+                totalLogLR += Math.Log(1.0 - agreeRateIfMatch) - Math.Log(1.0 - chanceTop);
+            }
+        }
+
+        if (totalLogLR > maxAbsLogLR)
+        {
+            totalLogLR = maxAbsLogLR;
+        }
+        if (totalLogLR < -maxAbsLogLR)
+        {
+            totalLogLR = -maxAbsLogLR;
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "EvidenceScoring.StrideConfirmationLogLR: stride=" + stride
+            + " confirmed=" + confirmedCount + "/" + capableCount
+            + " logLR=" + totalLogLR.ToString("F3"), LogLevel.Trace);
+        return totalLogLR;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // SizeFitLogLR
+    //
+    // Log likelihood ratio from how well a candidate's length support fits a baseline
+    // length distribution.  This feature can only refute or stand aside; it never
+    // supports.  Only presence and absence of lengths are scored — the proportions of a
+    // length mix are behavior-dependent and deliberately contribute nothing, so a capture
+    // where the mix drifts costs the true opcode nothing as long as the lengths appear.
+    //
+    //   missing length:  a baseline length absent from the candidate.  Under the
+    //                    hypothesis each message had chance p of taking it, so absence in
+    //                    nEff effective messages costs
+    //                        nEff * log(1 - p),  p = (1 - escapeMass) * baseline share
+    //                    A dominant length missing is damning; a rare one, negligible.
+    //
+    //   novel length:    an observed length the baseline never saw costs log(escapeMass)
+    //                    once per distinct length — message counts within a length are
+    //                    burst-correlated and add no independent evidence.
+    //
+    //   shared length:   present in both, contributes zero.
+    //
+    // escapeMass is estimated from the baseline by Good-Turing (the fraction of baseline
+    // messages whose length appeared exactly once), floored at escapeFloor and capped at
+    // one half.  nEff is the message count capped at effectiveSampleCap, the
+    // effective-sample-size correction for burst correlation.  The result is never
+    // positive and is clamped at -maxAbsLogLR.
+    //
+    // observedHistogram:   Message count per length for the candidate, from OpcodeStats.
+    // baselineHistogram:   Message count per length for the opcode at prior patch levels.
+    // escapeFloor:         Minimum escape mass.  Small and nonzero.
+    // effectiveSampleCap:  Largest message count credited as independent evidence.  At
+    //                      least 1.
+    // maxAbsLogLR:         Clamp magnitude for the returned value.
+    //
+    // Returns:  Natural-log likelihood ratio from length support fit, at most zero,
+    //           clamped.  Zero when either histogram is null or empty or arguments are
+    //           invalid.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public static double SizeFitLogLR(Dictionary<int, int>? observedHistogram,
+        Dictionary<int, int>? baselineHistogram, double escapeFloor, int effectiveSampleCap,
+        double maxAbsLogLR)
+    {
+        if (observedHistogram == null || observedHistogram.Count == 0
+            || baselineHistogram == null || baselineHistogram.Count == 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.SizeFitLogLR: missing histogram data, returning 0",
+                LogLevel.Trace);
+            return 0.0;
+        }
+        if (effectiveSampleCap < 1)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.SizeFitLogLR: effectiveSampleCap " + effectiveSampleCap
+                + " below 1, returning 0", LogLevel.Error);
+            return 0.0;
+        }
+
+        double baselineTotal = 0.0;
+        int singletonCount = 0;
+        foreach (KeyValuePair<int, int> baselineEntry in baselineHistogram)
+        {
+            baselineTotal += baselineEntry.Value;
+            if (baselineEntry.Value == 1)
+            {
+                singletonCount++;
+            }
+        }
+        double escapeMass = singletonCount / baselineTotal;
+        if (escapeMass < escapeFloor)
+        {
+            escapeMass = escapeFloor;
+        }
+        if (escapeMass > 0.5)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.SizeFitLogLR: escape mass " + escapeMass.ToString("F3")
+                + " capped at 0.5, baseline is mostly singletons", LogLevel.Warn);
+            escapeMass = 0.5;
+        }
+
+        double observedTotal = 0.0;
+        foreach (KeyValuePair<int, int> entry in observedHistogram)
+        {
+            observedTotal += entry.Value;
+        }
+        double effectiveSamples = observedTotal;
+        if (effectiveSamples > effectiveSampleCap)
+        {
+            effectiveSamples = effectiveSampleCap;
+        }
+
+        double logLR = 0.0;
+        int missingLengths = 0;
+        foreach (KeyValuePair<int, int> baselineEntry in baselineHistogram)
+        {
+            if (observedHistogram.ContainsKey(baselineEntry.Key))
+            {
+                continue;
+            }
+            missingLengths++;
+            double presenceChance = (1.0 - escapeMass) * (baselineEntry.Value / baselineTotal);
+            logLR += effectiveSamples * Math.Log(1.0 - presenceChance);
+        }
+
+        int novelLengths = 0;
+        foreach (KeyValuePair<int, int> entry in observedHistogram)
+        {
+            if (baselineHistogram.ContainsKey(entry.Key))
+            {
+                continue;
+            }
+            novelLengths++;
+            logLR += Math.Log(escapeMass);
+        }
+
+        if (logLR > 0.0)
+        {
+            logLR = 0.0;
+        }
+        if (logLR < -maxAbsLogLR)
+        {
+            logLR = -maxAbsLogLR;
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "EvidenceScoring.SizeFitLogLR: messages=" + observedTotal
+            + " nEff=" + effectiveSamples + " escape=" + escapeMass.ToString("F4")
+            + " missing=" + missingLengths + " novel=" + novelLengths
+            + " logLR=" + logLR.ToString("F3"), LogLevel.Trace);
+        return logLR;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // AgreementRateAt
+    //
+    // Computes the fraction of positions at which a class sequence agrees with itself at
+    // the given shift.
+    //
+    // classes:  Per-byte class values.
+    // shift:    The self-comparison shift, in elements.  Must be positive and smaller than
+    //           the sequence length.
+    //
+    // Returns:  Matching positions divided by positions compared.  Zero when the shift
+    //           leaves nothing to compare.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static double AgreementRateAt(bool[] classes, int shift)
+    {
+        int positions = classes.Length - shift;
+        if (positions <= 0)
+        {
+            return 0.0;
+        }
+        int matches = 0;
+        for (int i = 0; i < positions; i++)
+        {
+            if (classes[i] == classes[i + shift])
+            {
+                matches++;
+            }
+        }
+        return (double)matches / positions;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
