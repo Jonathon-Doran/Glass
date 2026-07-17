@@ -2758,6 +2758,7 @@ public partial class MainWindow : Window
             row.OpcodeHex = "0x" + proposal.Opcode.Value;
             row.Confidence = proposal.Confidence.ToString("F2");
             row.Count = _packetCatalog.CountFor(proposal.Opcode.Value);
+            row.WireValue = proposal.Opcode.Value;
             row.Evidence = proposal.Evidence;
             rows.Add(row);
         }
@@ -2804,6 +2805,7 @@ public partial class MainWindow : Window
 
         selected.Status = "Accepted";
         ProposalGrid.Items.Refresh();
+        AcceptedOpcodes.Instance.Accept(selected.WireValue, selected.Label);
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "Button_AcceptProposal_Click: accepted " + selected.OpcodeHex, LogLevel.Trace);
@@ -2916,6 +2918,7 @@ public partial class MainWindow : Window
         public int Count { get; set; }
         public string Evidence { get; set; } = string.Empty;
         public string Label {  get; set; } = string.Empty;
+        public OpcodeValue WireValue { get; set; }
         public string Status { get; set; } = "Pending";
     }
 
@@ -3254,6 +3257,7 @@ public partial class MainWindow : Window
         StatusBarRowText.Text = string.Empty;
         StatusBarSecondaryText.Text = string.Empty;
         ProposalGrid.Visibility = Visibility.Collapsed;
+        AcceptedOpcodes.Instance.Clear();
 
         DebugLog.Write(LogChannel.InferenceDebug, "MainWindow.UIReset: complete", LogLevel.Trace);
     }

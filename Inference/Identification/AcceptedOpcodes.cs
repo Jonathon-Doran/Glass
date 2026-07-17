@@ -97,6 +97,30 @@ public class AcceptedOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // WireValueFor
+    //
+    // Returns the wire value recorded this session under the given opcode name, or
+    // OpcodeValue.None when no accepted entry carries that name.  When more than one wire
+    // value was accepted under the same name, the first found is returned.
+    //
+    // opcodeName:  The opcode name to look up.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public OpcodeValue WireValueFor(string opcodeName)
+    {
+        foreach (KeyValuePair<OpcodeValue, string> entry in _accepted)
+        {
+            if (entry.Value == opcodeName)
+            {
+                return entry.Key;
+            }
+        }
+
+        DebugLog.Write(LogChannel.Inference,
+            "AcceptedOpcodes.WireValueFor: no accepted entry named " + opcodeName, LogLevel.Trace);
+        return OpcodeValue.None;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // Clear
     //
     // Removes every recorded identification.
