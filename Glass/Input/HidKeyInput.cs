@@ -38,8 +38,9 @@ public class HidKeyInput
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public HidKeyInput()
     {
-        RegisterParser(new G15ReportParser(), "046D-C222", "046D-C225", "046D-C226", "046D-C227", "046D-C22D");
+        RegisterParser(new G15ReportParser(), "046D-C222", "046D-C225", "046D-C226", "046D-C227");
         RegisterParser(new G13ReportParser(), "046D-C21C");
+        RegisterParser(new G510ReportParser(), "046D-C22D");
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -244,11 +245,11 @@ public class HidKeyInput
 
             var instance = new HidDeviceInstance(parser.Device, count, deviceId);
 
-            DebugLog.Write(LogChannel.Input, $"HidKeyInput.EnumerateDevices: found deviceId='{deviceId}', {instance}, path='{path}'.");
+            DebugLog.Write(LogChannel.Input, $"HidKeyInput.EnumerateDevices: found deviceId='{deviceId}', {instance}, path='{path}'.", LogLevel.Info);
             results.Add((instance, path));
         }
 
-        DebugLog.Write(LogChannel.Input, $"HidKeyInput.EnumerateDevices: found {results.Count} Logitech HID devices.");
+        DebugLog.Write(LogChannel.Input, $"HidKeyInput.EnumerateDevices: found {results.Count} Logitech HID devices.", LogLevel.Info);
         return results;
     }
 

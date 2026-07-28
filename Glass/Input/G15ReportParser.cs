@@ -67,12 +67,22 @@ public class G15ReportParser : IParseHidReport
     public IReadOnlyList<HidKeyEventArgs> Parse(byte[] report)
     {
         var results = new List<HidKeyEventArgs>();
+        if ((report == null) || (report.Length < ReportLength))
+        {
+            string hex = (report == null) ? "null" : BitConverter.ToString(report);
+            DebugLog.Write(LogChannel.Input,
+                $"G15ReportParser.Parse: invalid report length={report?.Length ?? 0} bytes=[{hex}].",
+                LogLevel.Warn);
+            return results;
+        }
+
 
         if ((report == null) || (report.Length < ReportLength))
         {
             DebugLog.Write(LogChannel.Input, $"G15ReportParser.Parse: invalid report length={report?.Length ?? 0}.");
             return results;
         }
+
 
         if (report[0] != ReportId)
         {
