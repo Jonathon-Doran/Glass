@@ -12,14 +12,9 @@ namespace Glass.Network.Handlers;
 //
 // Handles OP_Inventory packets.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleInventory : IHandleOpcodes
+public class HandleInventory : OpcodeHandler
 {
-    private readonly string _opcodeName = "OP_Inventory";
-    private readonly PatchOpcode _opcodeHandled;
-    private readonly PatchRegistry _registry;
-    private readonly PatchLevel _patchLevel;
     private readonly GateDefinitionHandle _top_level_gate;
-    private readonly FieldExtractor _extractor;
 
     private readonly SlotId _Item_String_Slot;
     private readonly SlotId _Current_Stack_Size_Slot;
@@ -237,19 +232,15 @@ public class HandleInventory : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleInventory (constructor)
     //
-    // Resolves the wire opcode and loads the field definitions for OP_Inventory from
-    // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
-    // Caches the index of each field the handler reads so the hot path can access the bag
-    // by integer index without name lookup.
+    // Resolves the opcode and caches the field slots this handler reads.
     //
+    // patchLevel:  The patch level this handler decodes against.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleInventory()
+    public HandleInventory(PatchLevel patchLevel)
+        :base(patchLevel, "OP_Inventory")
     {
-        _registry = GlassContext.PatchRegistry;
-        _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
-        _extractor = GlassContext.FieldExtractor;
 
         // handles of collections that we expect
         CollectionHandle itemCollection = _registry.GetCollectionHandle(_patchLevel, "Inventory Item");
@@ -473,33 +464,6 @@ public class HandleInventory : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Dispose
-    //
-    // Log any errors in the cold-path, dispose of any local storage. 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    public void Dispose()
-    {
-        GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return _opcodeName; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeHandled
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public PatchOpcode OpcodeHandled
-    {
-        get { return _opcodeHandled; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandlePacket
     //
     // Dispatches to direction-specific handlers.
@@ -507,7 +471,7 @@ public class HandleInventory : IHandleOpcodes
     // data:       The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         switch (metadata.Channel)
         {
@@ -568,10 +532,8 @@ public class HandleInventory : IHandleOpcodes
     //
     // Returns:  The root display node titled with the character name.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-
-
         FieldDisplayNode root = new FieldDisplayNode();
         if (data.Length == 0)
         {
@@ -704,236 +666,236 @@ public class HandleInventory : IHandleOpcodes
         FieldDisplayNode itemNode = new FieldDisplayNode(titlePrefix + itemName);
         itemNode.AddByteRange(_extractor.GetByteRangeFor(_Item_Name_Slot));
 
-        AddStringNode(_Item_Name_Slot, "Name", itemNode);
-        AddStringNode(_Item_Lore_Slot, "Lore", itemNode);
-        AddStringNode(_Item_String_Slot, "ID String", itemNode);
-        AddUIntNode(_Item_ID_Slot, "ID", itemNode, "D");
-        AddUIntNode(_Item_Type_Slot2, "Item Type2", itemNode);
-        AddUIntNode(_Item_Type_Slot, "Item_Type", itemNode, "D");
+        FieldNodes.AddStringNode(_extractor, _Item_Name_Slot, "Name", itemNode);
+        FieldNodes.AddStringNode(_extractor, _Item_Lore_Slot, "Lore", itemNode);
+        FieldNodes.AddStringNode(_extractor, _Item_String_Slot, "ID String", itemNode);
+        FieldNodes.AddUIntNode(_extractor, _Item_ID_Slot, "ID", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Item_Type_Slot2, "Item Type2", itemNode);
+        FieldNodes.AddUIntNode(_extractor, _Item_Type_Slot, "Item_Type", itemNode, "D");
         AddWornSlotNode(_Usable_Slot_Mask, "Slots", itemNode);
-        AddUIntNode(_Current_Stack_Size_Slot, "Current Stack Size", itemNode, "D");
-        AddUIntNode(_Max_Stack_Size_Slot, "Max Stack Size", itemNode, "D");
-        AddUIntNode(_ITFile_Slot, "IT File#", itemNode, "D");
-        AddUIntNode(_Icon_ID_Slot, "Icon ID", itemNode);
-        AddUIntNode(_Required_Level_Slot, "Required Level", itemNode, "D");
-        AddUIntNode(_Recommended_Level_Slot, "Recommended Level", itemNode, "D");
-        AddFloatNode(_Weight_Slot, "Weight", itemNode);
-        AddUIntNode(_Remaining_Charges_Slot, "Remaining Charges", itemNode, "D");
-        AddUIntNode(_Food_Drink_Value_Slot, "Food/Drink Value", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Current_Stack_Size_Slot, "Current Stack Size", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Max_Stack_Size_Slot, "Max Stack Size", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _ITFile_Slot, "IT File#", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Icon_ID_Slot, "Icon ID", itemNode);
+        FieldNodes.AddUIntNode(_extractor, _Required_Level_Slot, "Required Level", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Recommended_Level_Slot, "Recommended Level", itemNode, "D");
+        FieldNodes.AddFloatNode(_extractor, _Weight_Slot, "Weight", itemNode);
+        FieldNodes.AddUIntNode(_extractor, _Remaining_Charges_Slot, "Remaining Charges", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Food_Drink_Value_Slot, "Food/Drink Value", itemNode, "D");
         AddSizeNode(_Size_Slot, "Size", itemNode);
-        AddUIntNode(_Cost_Slot, "Cost", itemNode, "D");
-        AddUIntNode(_Color_Slot, "Color", itemNode);
+        FieldNodes.AddUIntNode(_extractor, _Cost_Slot, "Cost", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Color_Slot, "Color", itemNode);
 
         FieldDisplayNode bagSubtree = new FieldDisplayNode("Bag Fields");
         itemNode.AddChild(bagSubtree);
-        AddUIntNode(_Bag_Space_Slot, "Bag Slots", bagSubtree, "D");
+        FieldNodes.AddUIntNode(_extractor, _Bag_Space_Slot, "Bag Slots", bagSubtree, "D");
         AddSizeNode(_Bag_Size_Slot, "Content Size", bagSubtree);
-        AddUIntNode(_Weight_Reduction_Slot, "Weight Reduction (%)", bagSubtree, "D");
+        FieldNodes.AddUIntNode(_extractor, _Weight_Reduction_Slot, "Weight Reduction (%)", bagSubtree, "D");
 
         FieldDisplayNode weaponSubtree = new FieldDisplayNode("Weapon Fields");
         itemNode.AddChild(weaponSubtree);
-        AddUIntNode(_Weapon_Delay_Slot, "Weapon Delay", weaponSubtree, "D");
-        AddUIntNode(_Base_Damage_Slot, "Base Damage", weaponSubtree, "D");
+        FieldNodes.AddUIntNode(_extractor, _Weapon_Delay_Slot, "Weapon Delay", weaponSubtree, "D");
+        FieldNodes.AddUIntNode(_extractor, _Base_Damage_Slot, "Base Damage", weaponSubtree, "D");
         AddRatioNode(_Base_Damage_Slot, _Weapon_Delay_Slot, "Ratio", weaponSubtree);
 
         FieldDisplayNode saveSubtree = new FieldDisplayNode("Saves");
         itemNode.AddChild(saveSubtree);
-        AddIntNode(_Save_Cold_Slot, "Save vs Cold", saveSubtree, "D");
-        AddIntNode(_Save_Disease_Slot, "Save vs Disease", saveSubtree, "D");
-        AddIntNode(_Save_Poison_Slot, "Save vs Poison", saveSubtree, "D");
-        AddIntNode(_Save_Magic_Slot, "Save vs Magic", saveSubtree, "D");
-        AddIntNode(_Save_Fire_Slot, "Save vs Fire", saveSubtree, "D");
+        FieldNodes.AddIntNode(_extractor, _Save_Cold_Slot, "Save vs Cold", saveSubtree, "D");
+        FieldNodes.AddIntNode(_extractor, _Save_Disease_Slot, "Save vs Disease", saveSubtree, "D");
+        FieldNodes.AddIntNode(_extractor, _Save_Poison_Slot, "Save vs Poison", saveSubtree, "D");
+        FieldNodes.AddIntNode(_extractor, _Save_Magic_Slot, "Save vs Magic", saveSubtree, "D");
+        FieldNodes.AddIntNode(_extractor, _Save_Fire_Slot, "Save vs Fire", saveSubtree, "D");
 
         FieldDisplayNode statModSubtree = new FieldDisplayNode("Stat Modifiers");
         itemNode.AddChild(statModSubtree);
-        AddIntNode(_Plus_Strength_Slot, "Plus Strength", statModSubtree, "D");
-        AddIntNode(_Plus_Stamina_Slot, "Plus Stamina", statModSubtree, "D");
-        AddIntNode(_Plus_Agility_Slot, "Plus Agility", statModSubtree, "D");
-        AddIntNode(_Plus_Dexterity_Slot, "Plus Dexterity", statModSubtree, "D");
-        AddIntNode(_Plus_Charisma_Slot, "Plus Charisma", statModSubtree, "D");
-        AddIntNode(_Plus_Intelligence_Slot, "Plus Intelligence", statModSubtree, "D");
-        AddIntNode(_Plus_Wisdom_Slot, "Plus Wisdom", statModSubtree, "D");
-        AddIntNode(_Plus_HP_Slot, "Plus HP", statModSubtree, "D");
-        AddIntNode(_Plus_Mana_Slot, "Plus Mana", statModSubtree, "D");
-        AddIntNode(_Plus_AC_Slot, "Plus AC", statModSubtree, "D");
-        AddIntNode(_Plus_Endurance_Slot, "Plus Endurance", statModSubtree, "D");
-        AddUIntNode(_Heroic_Strength, "Heroic Strength", statModSubtree, "D");
-        AddUIntNode(_Heroic_Agility_Slot, "Heroic Agility", statModSubtree, "D");
-        AddUIntNode(_Plus_Attack_Slot, "Plus Attack", statModSubtree, "D");
+        FieldNodes.AddIntNode(_extractor, _Plus_Strength_Slot, "Plus Strength", statModSubtree, "D");
+        FieldNodes.AddIntNode(_extractor, _Plus_Stamina_Slot, "Plus Stamina", statModSubtree, "D");
+        FieldNodes.AddIntNode(_extractor, _Plus_Agility_Slot, "Plus Agility", statModSubtree, "D");
+        FieldNodes.AddIntNode(_extractor, _Plus_Dexterity_Slot, "Plus Dexterity", statModSubtree, "D");
+        FieldNodes.AddIntNode(_extractor, _Plus_Charisma_Slot, "Plus Charisma", statModSubtree, "D");
+        FieldNodes.AddIntNode(_extractor, _Plus_Intelligence_Slot, "Plus Intelligence", statModSubtree, "D");
+        FieldNodes.AddIntNode(_extractor, _Plus_Wisdom_Slot, "Plus Wisdom", statModSubtree, "D");
+        FieldNodes.AddIntNode(_extractor, _Plus_HP_Slot, "Plus HP", statModSubtree, "D");
+        FieldNodes.AddIntNode(_extractor, _Plus_Mana_Slot, "Plus Mana", statModSubtree, "D");
+        FieldNodes.AddIntNode(_extractor, _Plus_AC_Slot, "Plus AC", statModSubtree, "D");
+        FieldNodes.AddIntNode(_extractor, _Plus_Endurance_Slot, "Plus Endurance", statModSubtree, "D");
+        FieldNodes.AddUIntNode(_extractor, _Heroic_Strength, "Heroic Strength", statModSubtree, "D");
+        FieldNodes.AddUIntNode(_extractor, _Heroic_Agility_Slot, "Heroic Agility", statModSubtree, "D");
+        FieldNodes.AddUIntNode(_extractor, _Plus_Attack_Slot, "Plus Attack", statModSubtree, "D");
 
         AddAugmentFields(itemGate, itemIndex, itemNode);
         AddStrides(itemGate, itemIndex, itemNode);
 
-        AddIntNode(_HP_Regen_Slot, "HP Regen", itemNode, "D");
-        AddIntNode(_Mana_Regen_Slot, "Mana Regen", itemNode, "D");
+        FieldNodes.AddIntNode(_extractor, _HP_Regen_Slot, "HP Regen", itemNode, "D");
+        FieldNodes.AddIntNode(_extractor, _Mana_Regen_Slot, "Mana Regen", itemNode, "D");
 
         AddClassListNode(_Class_Mask_Slot, "Class Mask", itemNode);
         AddRaceListNode(_Race_Mask_Slot, "Race Mask", itemNode);
-        AddUIntNode(_Aug_Distiller_Needed, "Augmentation Distiller Needed", itemNode, "D");
-        AddUIntNode(_Bard_Value_Slot, "Bard Value", itemNode, "D");
-        AddUIntNode(_Material_Slot, "Material", itemNode, "D");
-        AddUIntNode(_Tradeskill_Slot, "Used in Tradeskills", itemNode, "D");
-        AddUIntNode(_Current_Location_Slot, "Inventory Slot", itemNode, "D");
-        AddUIntNode(_Lore_Group_Slot, "Lore Group", itemNode, "X");
-        AddUIntNode(_Backstab_Damage_Slot, "Backstab Dmg", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Aug_Distiller_Needed, "Augmentation Distiller Needed", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Bard_Value_Slot, "Bard Value", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Material_Slot, "Material", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Tradeskill_Slot, "Used in Tradeskills", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Current_Location_Slot, "Inventory Slot", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Lore_Group_Slot, "Lore Group", itemNode, "X");
+        FieldNodes.AddUIntNode(_extractor, _Backstab_Damage_Slot, "Backstab Dmg", itemNode, "D");
 
-        AddUIntNode(_Field_3_Slot, "Field 3", itemNode, "?");
-        AddUIntNode(_Field_5_Slot, "Field 5", itemNode, "?");
-        AddUIntNode(_Field_6_Slot, "Field 6", itemNode, "?");
-        AddUIntNode(_Field_7_Slot, "Field 7", itemNode, "?");
-        AddUIntNode(_Field_8_Slot, "Field 8", itemNode, "?");
-        AddUIntNode(_Field_9_Slot, "Field 9", itemNode, "?");
-        AddUIntNode(_Field_10_Slot, "Field 10", itemNode, "?");
-        AddUIntNode(_Field_11_Slot, "Timestamp", itemNode);
-        AddUIntNode(_Field_13_Slot, "Field 13", itemNode, "?");
-        AddUIntNode(_Field_14_Slot, "Field 14", itemNode, "?");
-        AddUIntNode(_Field_15_Slot, "Field 15", itemNode, "?");
-        AddUIntNode(_Field_16_Slot, "Field 16", itemNode, "?");
-        AddUIntNode(_Field_17_Slot, "Field 17", itemNode, "?");
-        AddUIntNode(_Field_19_Slot, "Field 19", itemNode, "?");
-        AddUIntNode(_Field_20_Slot, "Field 20", itemNode, "?");
-        AddUIntNode(_Field_21_Slot, "Field 21", itemNode, "?");
-        AddUIntNode(_Field_22_Slot, "Field 22", itemNode, "?");
-        AddUIntNode(_Field_23_Slot, "Field 23", itemNode, "?");
-        AddUIntNode(_Field_24_Slot, "Field 24", itemNode, "?");
-        AddUIntNode(_Field_25_Slot, "Field 25", itemNode, "?");
-        AddUIntNode(_Field_26_Slot, "Field 26", itemNode, "?");
-        AddUIntNode(_Field_27_Slot, "Field 27", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_3_Slot, "Field 3", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_5_Slot, "Field 5", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_6_Slot, "Field 6", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_7_Slot, "Field 7", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_8_Slot, "Field 8", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_9_Slot, "Field 9", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_10_Slot, "Field 10", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_11_Slot, "Timestamp", itemNode);
+        FieldNodes.AddUIntNode(_extractor, _Field_13_Slot, "Field 13", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_14_Slot, "Field 14", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_15_Slot, "Field 15", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_16_Slot, "Field 16", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_17_Slot, "Field 17", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_19_Slot, "Field 19", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_20_Slot, "Field 20", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_21_Slot, "Field 21", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_22_Slot, "Field 22", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_23_Slot, "Field 23", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_24_Slot, "Field 24", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_25_Slot, "Field 25", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_26_Slot, "Field 26", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_27_Slot, "Field 27", itemNode, "?");
 
-        AddUIntNode(_DF_4_Slot, "DF 4", itemNode, "?");
-        AddUIntNode(_DF_7_Slot, "DF 7", itemNode, "?");
-        AddUIntNode(_DF_8_Slot, "DF 8", itemNode, "?");
-        AddUIntNode(_DF_9_Slot, "DF 9", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _DF_4_Slot, "DF 4", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _DF_7_Slot, "DF 7", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _DF_8_Slot, "DF 8", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _DF_9_Slot, "DF 9", itemNode, "?");
 
-        AddUIntNode(_DF_13_Slot, "DF 13", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _DF_13_Slot, "DF 13", itemNode, "?");
 
-        AddUIntNode(_Field_2C_Slot, "Field 2C", itemNode, "?");
-        AddUIntNode(_Field_30_Slot, "Field 30", itemNode, "?");
-        AddUIntNode(_Field_48_Slot, "Field 48", itemNode, "?");
-        AddUIntNode(_Field_D3_Slot, "Field D3", itemNode, "?");
-        AddUIntNode(_Field_D4_Slot, "Field D4", itemNode, "?");
-        AddUIntNode(_Field_D5_Slot, "Field D5", itemNode, "?");
-        AddUIntNode(_Field_D6_Slot, "Field D6", itemNode, "?");
-        AddUIntNode(_Field_D7_Slot, "Field D7", itemNode, "?");
-        AddUIntNode(_Field_D8_Slot, "Field D8", itemNode, "?");
-        AddUIntNode(_Field_DC_Slot, "Field DC", itemNode, "?");
-        AddUIntNode(_Field_DD_Slot, "Field DD", itemNode, "?");
-        AddUIntNode(_Field_DE_Slot, "Field DE", itemNode, "?");
-        AddUIntNode(_Field_DF_Slot, "Field DF", itemNode, "?");
-        AddUIntNode(_Field_E0_Slot, "Field E0", itemNode, "?");
-        AddUIntNode(_Field_E4_Slot, "Field E4", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_2C_Slot, "Field 2C", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_30_Slot, "Field 30", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_48_Slot, "Field 48", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_D3_Slot, "Field D3", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_D4_Slot, "Field D4", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_D5_Slot, "Field D5", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_D6_Slot, "Field D6", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_D7_Slot, "Field D7", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_D8_Slot, "Field D8", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_DC_Slot, "Field DC", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_DD_Slot, "Field DD", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_DE_Slot, "Field DE", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_DF_Slot, "Field DF", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_E0_Slot, "Field E0", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_E4_Slot, "Field E4", itemNode, "?");
 
-        AddUIntNode(_Field_F0_Slot, "Field F0", itemNode, "?");
-        AddUIntNode(_Field_F4_Slot, "Field F4", itemNode, "?");
-        AddUIntNode(_Field_F5_Slot, "Field F5", itemNode, "?");
-        AddUIntNode(_Field_Fb_Slot, "Field Fb", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_F0_Slot, "Field F0", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_F4_Slot, "Field F4", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_F5_Slot, "Field F5", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_Fb_Slot, "Field Fb", itemNode, "?");
 
-        AddUIntNode(_Field_118_Slot, "Field 118", itemNode, "?");
-        AddUIntNode(_Field_11C_Slot, "Field 11C", itemNode, "?");
-        AddUIntNode(_Field_120_Slot, "Field 120", itemNode, "?");
-        AddUIntNode(_Field_124_Slot, "Field 124", itemNode, "?");
-        AddUIntNode(_Field_128_Slot, "Field 128", itemNode, "?");
-        AddUIntNode(_Field_12C_Slot, "Field 12C", itemNode, "?");
-        AddUIntNode(_Field_130_Slot, "Field 130", itemNode, "?");
-        AddUIntNode(_Field_134_Slot, "Field 134", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_118_Slot, "Field 118", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_11C_Slot, "Field 11C", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_120_Slot, "Field 120", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_124_Slot, "Field 124", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_128_Slot, "Field 128", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_12C_Slot, "Field 12C", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_130_Slot, "Field 130", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_134_Slot, "Field 134", itemNode, "?");
 
-        AddUIntNode(_Field_13C_Slot, "Field 13C", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_13C_Slot, "Field 13C", itemNode, "?");
 
-        AddUIntNode(_Field_148_Slot, "Field 148", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_148_Slot, "Field 148", itemNode, "?");
 
-        AddUIntNode(_Field_150_Slot, "Field 150", itemNode, "?");
-        AddUIntNode(_Field_151_Slot, "Field 151", itemNode, "?");
-        AddUIntNode(_Field_153_Slot, "Field 153", itemNode, "?");
-        AddUIntNode(_Field_154_Slot, "Field 154", itemNode, "?");
-        AddUIntNode(_Field_155_Slot, "Field 155", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_150_Slot, "Field 150", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_151_Slot, "Field 151", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_153_Slot, "Field 153", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_154_Slot, "Field 154", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_155_Slot, "Field 155", itemNode, "?");
 
-        AddUIntNode(_Field_164_Slot, "Field 164", itemNode, "?");
-        AddUIntNode(_Field_168_Slot, "Field 168", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_164_Slot, "Field 164", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_168_Slot, "Field 168", itemNode, "?");
 
-        AddUIntNode(_Field_170_Slot, "Field 170", itemNode, "?");
-        AddUIntNode(_Field_174_Slot, "Field 174", itemNode, "?");
-        AddUIntNode(_Field_178_Slot, "Field 178", itemNode, "?");
-        AddUIntNode(_Field_17C_Slot, "Field 17C", itemNode, "?");
-        AddUIntNode(_Field_180_Slot, "Field 180", itemNode, "?");
-        AddUIntNode(_Field_184_Slot, "Field 184", itemNode, "?");
-        AddUIntNode(_Field_188_Slot, "Field 188", itemNode, "?");
-        AddUIntNode(_Field_18C_Slot, "Field 18C", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_170_Slot, "Field 170", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_174_Slot, "Field 174", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_178_Slot, "Field 178", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_17C_Slot, "Field 17C", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_180_Slot, "Field 180", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_184_Slot, "Field 184", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_188_Slot, "Field 188", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_18C_Slot, "Field 18C", itemNode, "?");
 
-        AddUIntNode(_Field_198_Slot, "Field 198", itemNode, "?");
-        AddUIntNode(_Field_19C_Slot, "Field 19C", itemNode, "?");
-        AddUIntNode(_Field_1A0_Slot, "Field 1A0", itemNode, "?");
-        AddUIntNode(_Field_1A4_Slot, "Field 1A4", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_198_Slot, "Field 198", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_19C_Slot, "Field 19C", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_1A0_Slot, "Field 1A0", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_1A4_Slot, "Field 1A4", itemNode, "?");
 
-        AddUIntNode(_Field_1D8_Slot, "Field 1D8", itemNode, "?");
-        AddUIntNode(_Field_1DC_Slot, "Field 1DC", itemNode, "?");
-        AddUIntNode(_Field_1E0_Slot, "Field 1E0", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_1D8_Slot, "Field 1D8", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_1DC_Slot, "Field 1DC", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_1E0_Slot, "Field 1E0", itemNode, "?");
 
-        AddUIntNode(_Field_1E8_Slot, "Field 1E8", itemNode, "?");
-        AddUIntNode(_Field_1EC_Slot, "Field 1EC", itemNode, "?");
-        AddUIntNode(_Field_1F0_Slot, "Field 1F0", itemNode, "?");
-        AddUIntNode(_Field_1F4_Slot, "Field 1F4", itemNode, "?");
-        AddUIntNode(_Field_1F8_Slot, "Field 1F8", itemNode, "?");
-        AddStringNode(_String_1FC_Slot, "String 1FC", itemNode);
+        FieldNodes.AddUIntNode(_extractor, _Field_1E8_Slot, "Field 1E8", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_1EC_Slot, "Field 1EC", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_1F0_Slot, "Field 1F0", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_1F4_Slot, "Field 1F4", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_1F8_Slot, "Field 1F8", itemNode, "?");
+        FieldNodes.AddStringNode(_extractor, _String_1FC_Slot, "String 1FC", itemNode);
 
         // blob 4DC
 
-        AddUIntNode(_Field_21C_Slot, "Field 21C", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_21C_Slot, "Field 21C", itemNode, "?");
 
-        AddUIntNode(_Field_52C_Slot, "Field 52C", itemNode, "?");
-        AddUIntNode(_Field_530_Slot, "Field 530", itemNode, "?");
-        AddUIntNode(_Field_534_Slot, "Field 534", itemNode, "?");
-        AddUIntNode(_Field_53C_Slot, "Field 53C", itemNode, "?");  // 112
+        FieldNodes.AddUIntNode(_extractor, _Field_52C_Slot, "Field 52C", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_530_Slot, "Field 530", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_534_Slot, "Field 534", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_53C_Slot, "Field 53C", itemNode, "?");  // 112
 
 
-        AddUIntNode(_Field_540_Slot, "Field 540", itemNode, "?");
-        AddUIntNode(_Field_541_Slot, "Field 541", itemNode, "?");
-        AddStringNode(_String_542_Slot, "String 542", itemNode);
+        FieldNodes.AddUIntNode(_extractor, _Field_540_Slot, "Field 540", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_541_Slot, "Field 541", itemNode, "?");
+        FieldNodes.AddStringNode(_extractor, _String_542_Slot, "String 542", itemNode);
 
-        AddUIntNode(_Field_560_Slot, "Field 560", itemNode, "?");
-        AddUIntNode(_Field_564_Slot, "Field 564", itemNode, "?");
-        AddUIntNode(_Field_568_Slot, "Field 568", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_560_Slot, "Field 560", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_564_Slot, "Field 564", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_568_Slot, "Field 568", itemNode, "?");
 
-        AddUIntNode(_Field_57C_Slot, "Field 57C", itemNode, "?");
-        AddUIntNode(_Field_580_Slot, "Field 580", itemNode, "?");
-        AddUIntNode(_Field_584_Slot, "Field 584", itemNode, "?");
-        AddUIntNode(_Field_588_Slot, "Field 588", itemNode, "?");
-        AddUIntNode(_Field_58C_Slot, "Field 58C", itemNode, "?");
-        AddUIntNode(_Field_58D_Slot, "Field 58D", itemNode, "?");  // 130
+        FieldNodes.AddUIntNode(_extractor, _Field_57C_Slot, "Field 57C", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_580_Slot, "Field 580", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_584_Slot, "Field 584", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_588_Slot, "Field 588", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_58C_Slot, "Field 58C", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_58D_Slot, "Field 58D", itemNode, "?");  // 130
 
-        AddUIntNode(_Field_594_Slot, "Field 594", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_594_Slot, "Field 594", itemNode, "?");
 
-        AddUIntNode(_Field_598_Slot, "Field 598", itemNode, "?");
-        AddUIntNode(_Field_5A0_Slot, "Field 5A0", itemNode, "?");
-        AddUIntNode(_Field_5A4_Slot, "Field 5A4", itemNode, "?");
-        AddUIntNode(_Field_5A8_Slot, "Field 5A8", itemNode, "?");
-        AddUIntNode(_Field_5A9_Slot, "Field 5A9", itemNode, "?");
-        AddUIntNode(_Field_5AC_Slot, "Field 5AC", itemNode, "?");
-        AddUIntNode(_Field_5b0_Slot, "Field 5B0", itemNode, "?");
-        AddUIntNode(_Field_5b4_Slot, "Field 5B4", itemNode, "?");
-        AddUIntNode(_Field_5b8_Slot, "Field 5B8", itemNode, "?");
-        AddUIntNode(_Field_5bC_Slot, "Field 5BC", itemNode, "?");
-        AddUIntNode(_Field_5C0_Slot, "Field 5C0", itemNode, "?");
-        AddUIntNode(_Field_5C4_Slot, "Field 5C4", itemNode, "?");
-        AddFloatNode(_Field_5C8_Slot, "Field 5C8", itemNode);
-        AddFloatNode(_Field_5CC_Slot, "Field 5CC", itemNode);
-        AddUIntNode(_Field_5D0_Slot, "Field 5D0", itemNode, "?");
-        AddUIntNode(_Field_5D4_Slot, "Field 5D4", itemNode, "?");
-        AddStringNode(_String_5D8_Slot, "String 5D8", itemNode);
-        AddUIntNode(_Field_5F8_Slot, "Field 5F8", itemNode, "?");
-        AddUIntNode(_Field_5FC_Slot, "Field 5FC", itemNode, "?");
-        AddUIntNode(_Field_5FD_Slot, "Field 5FD", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_598_Slot, "Field 598", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_5A0_Slot, "Field 5A0", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_5A4_Slot, "Field 5A4", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_5A8_Slot, "Field 5A8", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_5A9_Slot, "Field 5A9", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_5AC_Slot, "Field 5AC", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_5b0_Slot, "Field 5B0", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_5b4_Slot, "Field 5B4", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_5b8_Slot, "Field 5B8", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_5bC_Slot, "Field 5BC", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_5C0_Slot, "Field 5C0", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_5C4_Slot, "Field 5C4", itemNode, "?");
+        FieldNodes.AddFloatNode(_extractor, _Field_5C8_Slot, "Field 5C8", itemNode);
+        FieldNodes.AddFloatNode(_extractor, _Field_5CC_Slot, "Field 5CC", itemNode);
+        FieldNodes.AddUIntNode(_extractor, _Field_5D0_Slot, "Field 5D0", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_5D4_Slot, "Field 5D4", itemNode, "?");
+        FieldNodes.AddStringNode(_extractor, _String_5D8_Slot, "String 5D8", itemNode);
+        FieldNodes.AddUIntNode(_extractor, _Field_5F8_Slot, "Field 5F8", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_5FC_Slot, "Field 5FC", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_5FD_Slot, "Field 5FD", itemNode, "?");
 
-        AddUIntNode(_Field_600_Slot, "Field 600", itemNode, "?");
-        AddFloatNode(_Field_604_Slot, "Field 604", itemNode);
-        AddUIntNode(_Field_608_Slot, "Field 608", itemNode, "?");
-        AddUIntNode(_Field_60C_Slot, "Field 60C", itemNode, "?");
-        AddUIntNode(_Field_610_Slot, "Field 610", itemNode, "?");
-        AddUIntNode(_Field_614_Slot, "Field 614", itemNode, "?");
- 
-        AddUIntNode(_Field_618_Slot, "Field 618", itemNode, "?");
-        AddStringNode(_String_61C_Slot, "String 61C", itemNode);
-        AddUIntNode(_Field_65C_Slot, "Field 65C", itemNode, "?");
-        AddUIntNode(_Child_Count_Slot, "Child Count", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_600_Slot, "Field 600", itemNode, "?");
+        FieldNodes.AddFloatNode(_extractor, _Field_604_Slot, "Field 604", itemNode);
+        FieldNodes.AddUIntNode(_extractor, _Field_608_Slot, "Field 608", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_60C_Slot, "Field 60C", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_610_Slot, "Field 610", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Field_614_Slot, "Field 614", itemNode, "?");
+
+        FieldNodes.AddUIntNode(_extractor, _Field_618_Slot, "Field 618", itemNode, "?");
+        FieldNodes.AddStringNode(_extractor, _String_61C_Slot, "String 61C", itemNode);
+        FieldNodes.AddUIntNode(_extractor, _Field_65C_Slot, "Field 65C", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Child_Count_Slot, "Child Count", itemNode, "?");
 
         AddOptional24(itemGate, itemIndex, itemNode);
         AddOptional4s(itemGate, itemIndex, itemNode);
@@ -1033,9 +995,9 @@ public class HandleInventory : IHandleOpcodes
             FieldDisplayNode bagNode = new FieldDisplayNode("Augment " + (bagIndex + 1));
             augmentFieldsNode.AddChild(bagNode);
 
-            AddUIntNode(_Augment_Field_1, "Field 1", bagNode, "?");
-            AddUIntNode(_Augment_Field_2, "Field 2", bagNode, "?");
-            AddUIntNode(_Augment_Field_3, "Field 3", bagNode, "?");
+            FieldNodes.AddUIntNode(_extractor, _Augment_Field_1, "Field 1", bagNode, "?");
+            FieldNodes.AddUIntNode(_extractor, _Augment_Field_2, "Field 2", bagNode, "?");
+            FieldNodes.AddUIntNode(_extractor, _Augment_Field_3, "Field 3", bagNode, "?");
         }
 
         DebugLog.Write(LogChannel.Opcodes, "AddAugmentFields: restoring item bag", LogLevel.Trace);
@@ -1084,17 +1046,17 @@ public class HandleInventory : IHandleOpcodes
             FieldDisplayNode bagNode = new FieldDisplayNode("Stride " + (bagIndex + 1));
             stridesNode.AddChild(bagNode);
 
-            AddUIntNode(_Field_220_Slot, "Field 220", bagNode, "?");
-            AddUIntNode(_Field_224_Slot, "Field 224", bagNode, "?");
-            AddUIntNode(_Field_225_Slot, "Field 225", bagNode, "?");
-            AddUIntNode(_Field_228_Slot, "Field 228", bagNode, "?");
-            AddUIntNode(_Field_22C_Slot, "Field 22C", bagNode, "?");
-            AddUIntNode(_Field_230_Slot, "Field 230", bagNode, "?");
-            AddUIntNode(_Field_234_Slot, "Field 234", bagNode, "?");
-            AddUIntNode(_Field_238_Slot, "Field 238", bagNode, "?");
-            AddUIntNode(_Field_23C_Slot, "Field 23C", bagNode, "?");
-            AddStringNode(_String_240_Slot, "String_240", bagNode);
-            AddUIntNode(_Field_280_Slot, "Field 280", bagNode, "?");
+            FieldNodes.AddUIntNode(_extractor, _Field_220_Slot, "Field 220", bagNode, "?");
+            FieldNodes.AddUIntNode(_extractor, _Field_224_Slot, "Field 224", bagNode, "?");
+            FieldNodes.AddUIntNode(_extractor, _Field_225_Slot, "Field 225", bagNode, "?");
+            FieldNodes.AddUIntNode(_extractor, _Field_228_Slot, "Field 228", bagNode, "?");
+            FieldNodes.AddUIntNode(_extractor, _Field_22C_Slot, "Field 22C", bagNode, "?");
+            FieldNodes.AddUIntNode(_extractor, _Field_230_Slot, "Field 230", bagNode, "?");
+            FieldNodes.AddUIntNode(_extractor, _Field_234_Slot, "Field 234", bagNode, "?");
+            FieldNodes.AddUIntNode(_extractor, _Field_238_Slot, "Field 238", bagNode, "?");
+            FieldNodes.AddUIntNode(_extractor, _Field_23C_Slot, "Field 23C", bagNode, "?");
+            FieldNodes.AddStringNode(_extractor, _String_240_Slot, "String_240", bagNode);
+            FieldNodes.AddUIntNode(_extractor, _Field_280_Slot, "Field 280", bagNode, "?");
         }
         _extractor.EnterGate(itemGate, itemIndex);
     }
@@ -1134,105 +1096,9 @@ public class HandleInventory : IHandleOpcodes
         for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
         {
             _extractor.EnterGate(optionalGate, bagIndex);
-            AddUIntNode(_Field_Optional_4_Byte_Slot, "Unknown", optionalNode, "?");
+            FieldNodes.AddUIntNode(_extractor, _Field_Optional_4_Byte_Slot, "Unknown", optionalNode, "?");
         }
         _extractor.EnterGate(itemGate, itemIndex);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // AddStringNode
-    //
-    // Builds a display node for a string field.
-    //
-    // slotId:  The slot to extract
-    // label:   The label to use in the new display node
-    // parent   The display node's parent
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private void AddStringNode(SlotId slotId, string label, FieldDisplayNode parent)
-    {
-        string value = _extractor.GetStringAt(slotId);
-        FieldDisplayNode newNode = new FieldDisplayNode(label + ": \"" + value + "\"");
-        newNode.AddByteRange(_extractor.GetByteRangeFor(slotId));
-        parent.AddChild(newNode);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // AddUintNode
-    //
-    // Builds a display node for a uint field.
-    //
-    // slotId:  The slot to extract
-    // label:   The label to use in the new display node
-    // parent   The display node's parent
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private void AddUIntNode(SlotId slotId, string label, FieldDisplayNode parent, string Format = "X")
-    {
-        uint value = _extractor.GetUIntAt(slotId);
-        string valueString;
-        if (Format == "?")
-        {
-            valueString = "0x" + value.ToString("X") + " (" + value.ToString("D") + ")";
-        }
-        else if (Format[0] == 'X')
-        {
-            valueString = "0x" + value.ToString(Format);
-        }
-        else
-        {
-            valueString = value.ToString(Format);
-        }
-
-        FieldDisplayNode newNode = new FieldDisplayNode(label + ": " + valueString);
-        newNode.AddByteRange(_extractor.GetByteRangeFor(slotId));
-        parent.AddChild(newNode);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // AddIntNode
-    //
-    // Builds a display node for an int field.
-    //
-    // slotId:  The slot to extract
-    // label:   The label to use in the new display node
-    // parent   The display node's parent
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private void AddIntNode(SlotId slotId, string label, FieldDisplayNode parent, string Format = "X")
-    {
-        int value = _extractor.GetIntAt(slotId);
-        string valueString;
-        if (Format == "?")
-        {
-            valueString = "0x" + value.ToString("X") + " (" + value.ToString("D") + ")";
-        }
-        else if (Format[0] == 'X')
-        {
-            valueString = "0x" + value.ToString(Format);
-        }
-        else
-        {
-            valueString = value.ToString(Format);
-        }
-
-        FieldDisplayNode newNode = new FieldDisplayNode(label + ": " + valueString);
-        newNode.AddByteRange(_extractor.GetByteRangeFor(slotId));
-        parent.AddChild(newNode);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // AddFloatNode
-    //
-    // Builds a display node for a float field.
-    //
-    // slotId:  The slot to extract
-    // label:   The label to use in the new display node
-    // parent   The display node's parent
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private void AddFloatNode(SlotId slotId, string label, FieldDisplayNode parent, string Format = "F")
-    {
-        float value = _extractor.GetFloatAt(slotId);
-        FieldDisplayNode newNode = new FieldDisplayNode(label + ": " + value.ToString(Format));
-        newNode.AddByteRange(_extractor.GetByteRangeFor(slotId));
-        parent.AddChild(newNode);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

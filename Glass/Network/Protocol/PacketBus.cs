@@ -174,3 +174,16 @@ public class PacketBus
         }
     }
 }
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+// BusState
+//
+// Named attachment states for a PacketBus subscriber.  Off means the subscriber is
+// detached from the bus: no delivery and no participation in the stream.  On is the
+// normal operating state.
+///////////////////////////////////////////////////////////////////////////////////////////////
+public enum BusState
+{
+    Off = 0,
+    On = 1
+}

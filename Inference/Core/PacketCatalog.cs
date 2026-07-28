@@ -318,88 +318,6 @@ public class PacketCatalog
                 + surveyedPackets + " packets qualifying overall", LogLevel.Info);
         }
     }
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // FindPlayerProfileCandidates
-    //
-    // Scans the arrival-order packet list for session responses (net opcode 0x0200 on the
-    // zone-to-client channel).  For each one, records its source/dest port pair and walks
-    // forward from it, considering only packets on that pair in either direction.  The
-    // first packet on the pair whose payload length meets minimumSize is recorded as that
-    // session's PlayerProfile candidate.  A session disconnect (net opcode 0x0500) on the
-    // pair ends that session's walk with no candidate.  Ordering is arrival order alone;
-    // timestamps are not consulted.
-    //
-    // minimumSize:  Payload length, in bytes, a packet must meet to be a candidate.
-    //
-    // Returns:  One candidate packet per qualifying session response, in the order the
-    //           session responses were seen.  Empty when none qualify.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public List<CatalogedPacket> FindPlayerProfileCandidates(int minimumSize)
-    {
-        List<CatalogedPacket> candidates = new List<CatalogedPacket>();
-        OpcodeValue sessionResponse = new OpcodeValue(SoeConstants.OP_SessionResponse);
-        OpcodeValue sessionDisconnect = new OpcodeValue(SoeConstants.OP_SessionDisconnect);
-
-        lock (_lock)
-        {
-            for (int i = 0; i < _packets.Count; i++)
-            {
-                CatalogedPacket start = _packets[i];
-
-                if (!start.Metadata.WireValue.Equals(sessionResponse))
-                {
-                    continue;
-                }
-                if (start.Metadata.Channel != SoeConstants.StreamId.StreamZoneToClient)
-                {
-                    continue;
-                }
-
-                int portA = start.Metadata.SourcePort;
-                int portB = start.Metadata.DestPort;
-                DebugLog.Write(LogChannel.InferenceDebug,
-                    "PacketCatalog.FindPlayerProfileCandidates: session response at index "
-                    + start.PacketIndex + ", ports " + portA + "/" + portB, LogLevel.Trace);
-
-                for (int j = i + 1; j < _packets.Count; j++)
-                {
-                    CatalogedPacket packet = _packets[j];
-
-                    bool onPair =
-                        (packet.Metadata.SourcePort == portA && packet.Metadata.DestPort == portB)
-                        || (packet.Metadata.SourcePort == portB && packet.Metadata.DestPort == portA);
-                    if (!onPair)
-                    {
-                        continue;
-                    }
-
-                    if (packet.Metadata.WireValue.Equals(sessionDisconnect))
-                    {
-                        DebugLog.Write(LogChannel.Opcodes,
-                            "PacketCatalog.FindPlayerProfileCandidates: disconnect at index "
-                            + packet.PacketIndex + ", no candidate for this session",
-                            LogLevel.Info);
-                        break;
-                    }
-
-                    if (packet.Payload.Length >= minimumSize)
-                    {
-                        candidates.Add(packet);
-                        DebugLog.Write(LogChannel.Opcodes,
-                            "PacketCatalog.FindPlayerProfileCandidates: candidate at index "
-                            + packet.PacketIndex + ", length " + packet.Payload.Length
-                            + ", ports " + portA + "/" + portB, LogLevel.Info);
-                        break;
-                    }
-                }
-            }
-
-            DebugLog.Write(LogChannel.Opcodes,
-                "PacketCatalog.FindPlayerProfileCandidates: " + candidates.Count
-                + " candidates", LogLevel.Info);
-            return candidates;
-        }
-    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // PacketsFor
@@ -462,8 +380,8 @@ public class PacketCatalog
     ///////////////////////////////////////////////////////////////////////////////////////////
     // OpcodesByCountDescending
     //
-    // Returns the wire values ordered by packet count, highest first, as computed by the
-    // last Prepare call.  Empty until Prepare has run.  The returned list is a fresh copy.
+    // Returns the wire values ordered by packet count, highest first.
+    //  
     ///////////////////////////////////////////////////////////////////////////////////////////
     public List<OpcodeValue> OpcodesByCountDescending()
     {
@@ -525,7 +443,7 @@ public class PacketCatalog
     //
     // Returns the packet count of the opcode at the given position in count-descending order,
     // or zero if the position is out of range.  Position 0 is the highest-count opcode.
-    // Valid after Prepare has run.
+    // 
     //
     // rank:  Zero-based position in count-descending order.
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -729,11 +647,6 @@ public class PacketCatalog
                 + " channels", LogLevel.Info);
         }
         DebugLog.Write(LogChannel.InferenceDebug, "PacketCatalog.Prepare: done", LogLevel.Trace);
-
-        OpcodeValue toDebug = new OpcodeValue(0x917c);
-        // LogSizeHistogram(toDebug);
-        // LogLeadingStringSurvey();
-        FindPlayerProfileCandidates(10000);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

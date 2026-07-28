@@ -12,15 +12,11 @@ namespace Glass.Network.Handlers;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // HandleSessionDisconnect
 //
-// Handles OP_PlayerProfile packets.  
+// Handles OP_SessionDisconnect packets.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleSessionDisconnect : IHandleOpcodes
+public class HandleSessionDisconnect : OpcodeHandler
 {
-    private readonly string _opcodeName = "OP_SessionDisconnect";
-    private readonly PatchOpcode _opcodeHandled;
     private readonly CollectionHandle _collectionHandle;
-    private readonly PatchRegistry _registry;
-    private readonly PatchLevel _patchLevel;
     private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _sessionIdSlot;
@@ -38,33 +34,14 @@ public class HandleSessionDisconnect : IHandleOpcodes
     // with a zero opcode, so this handler simply will not receive packets.  All field
     // index lookups resolve to -1 in that case but are never consulted.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleSessionDisconnect()
+    public HandleSessionDisconnect(PatchLevel patchLevel)
+        : base(patchLevel, "OP_SessionDisconnect")
     {
-        _registry = GlassContext.PatchRegistry;
-        _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_SessionDisconnect");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         _sessionIdSlot = _registry.IndexOfField(_collectionHandle, "session_id");
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Dispose
-    //
-    // Log any errors in the cold-path, dispose of any local storage. 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void Dispose()
-    {
-        GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return _opcodeName; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -75,26 +52,19 @@ public class HandleSessionDisconnect : IHandleOpcodes
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         uint sessionId;
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-            sessionId = extractor.GetUIntAt(_sessionIdSlot);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            sessionId = _extractor.GetUIntAt(_sessionIdSlot);
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
-
-        /*
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-                + _opcodeName + " length=" + data.Length);
-        DebugLog.Write(LogChannel.Opcodes, "sessionId=" + sessionId);
-        */
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -108,31 +78,22 @@ public class HandleSessionDisconnect : IHandleOpcodes
     //
     // Returns:   The root FieldDisplayNode.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-            FieldNodes.AddUIntNode(extractor, _sessionIdSlot, "Session ID", root);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            FieldNodes.AddUIntNode(_extractor, _sessionIdSlot, "Session ID", root);
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
 
         root.Text = "Session Disconnect";
         return root;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeHandled
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public PatchOpcode OpcodeHandled
-    {
-        get { return _opcodeHandled; }
     }
 }
 

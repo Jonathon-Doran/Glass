@@ -939,6 +939,91 @@ public partial class MainWindow : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // MenuItem_LoadCatalog_Click
+    //
+    // Handles the File > Open Pcap menu item.  Opens a file dialog to select
+    // a pcap file, sets the current patch level from the user's restored
+    // patch level, constructs the demux and file reader, and processes the
+    // file.  Packets flow through the PacketBus into the catalog and
+    // presenters in the normal way.
+    //
+    // sender:  The menu item that raised the event.
+    // e:       Event arguments.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private async void MenuItem_LoadCatalog_Click(object sender, RoutedEventArgs e)
+    {
+        Microsoft.Win32.OpenFileDialog dialog = new Microsoft.Win32.OpenFileDialog();
+        dialog.Filter = "Pcap files (*.pcap;*.pcapng)|*.pcap;*.pcapng|All files (*.*)|*.*";
+        dialog.Title = "Select a packet capture file";
+
+        bool? result = dialog.ShowDialog();
+        if (result != true)
+        {
+            return;
+        }
+
+        UIReset();
+
+        string localIp = PacketCapture.GetLocalIP()!;
+        if (localIp == null)
+        {
+            DebugLog.Write(LogChannel.Network,
+                "MenuItem_OpenPcap_Click: no local IP, aborting", LogLevel.Error);
+            return;
+        }
+
+        SessionDemux router = new SessionDemux(localIp);
+        PcapFileReader reader = new PcapFileReader(router);
+
+        // disable the menu item while the capture file is processed
+        MenuItem? menuItem = sender as MenuItem;
+        if (menuItem != null)
+        {
+            menuItem.IsEnabled = false;
+        }
+
+        StatusCapture.Text = "Capture: Reading pcap";
+        StatusBarProgressPanel.Visibility = Visibility.Visible;
+        StatusBarProgressText.Text = "Scanning...";
+        StatusBarProgressBar.Value = 0;
+        StatusBarRowText.Visibility = Visibility.Collapsed;
+        StatusBarSecondaryText.Visibility = Visibility.Collapsed;
+
+        // initialize the progress bar on the status bar
+        Progress<int> progress = new Progress<int>(percent =>
+        {
+            StatusBarProgressBar.Value = percent;
+            StatusBarProgressText.Text = "Loading " + percent + "%";
+        });
+
+        BusState previousBusState = OpcodeDispatch.Instance.SetBusState(BusState.Off);
+        int routed = await Task.Run(() => reader.ProcessFile(dialog.FileName, null, progress));
+        OpcodeDispatch.Instance.SetBusState(previousBusState);
+
+        Title = "Inference - " + System.IO.Path.GetFileName(dialog.FileName)
+            + " (" + routed + " packets)";
+        DebugLog.Write(LogChannel.Inference,
+            "MenuItem_OpenPcap_Click: title set to pcap " + dialog.FileName, LogLevel.Trace);
+
+
+        StatusCapture.Text = "Capture: Pcap complete (" + routed + " packets)";
+        UpdateControlStates();
+
+        // restore the menu item
+        StatusBarProgressPanel.Visibility = Visibility.Collapsed;
+        StatusBarRowText.Visibility = Visibility.Visible;
+        StatusBarSecondaryText.Visibility = Visibility.Visible;
+
+        if (menuItem != null)
+        {
+            menuItem.IsEnabled = true;
+        }
+
+        DebugLog.Write(LogChannel.Network,
+            "MenuItem_OpenPcap_Click: " + routed + " packets routed", LogLevel.Info);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // MenuItem_LaunchProfile_Click
     //
     // Handles the Profile > Launch Profile menu item click.  Opens the Launch

@@ -12,19 +12,15 @@ using System.Text;
 namespace Glass.Network.Handlers;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// HandleZoneEntry_Z2C
+// HandleZoneEntry_Z2C (Zone to Client)
 //
 // Handles OP_ZoneEntry packets.  Server-to-client packets contain NPC/mob
 // spawn data with a null-terminated name at offset 0.  Client-to-server
 // packets contain the player's own zone entry with a different layout.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleZoneEntry_Z2C : IHandleOpcodes
+public class HandleZoneEntry_Z2C : OpcodeHandler
 {
-    private readonly string _opcodeName = "OP_ZoneEntry_Z2C";
-    private readonly PatchOpcode _opcodeHandled;
     private readonly CollectionHandle _collectionHandle;
-    private PatchRegistry _registry;
-    private PatchLevel _patchLevel;
     private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _nameSlot;
@@ -34,20 +30,13 @@ public class HandleZoneEntry_Z2C : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleZoneEntry_Z2C (constructor)
     //
-    // Resolves the wire opcode and loads the field definitions for OP_ZoneEntry from
-    // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
-    // Caches the index of each field the handler reads so the hot path can access the bag
-    // by integer index without name lookup.
+    // Resolves the opcode and caches the field slots this handler reads.
     //
-    // If the current patch does not define OP_ZoneEntry, GetOpcodeValue returns 0 and
-    // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
-    // with a zero opcode, so this handler simply will not receive packets.  All field
-    // index lookups resolve to -1 in that case but are never consulted.
+    // patchLevel:  The patch level this handler decodes against.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleZoneEntry_Z2C()
+    public HandleZoneEntry_Z2C(PatchLevel patchLevel)
+        : base(patchLevel, "OP_ZoneEntry_Z2C")
     {
-        _registry = GlassContext.PatchRegistry;
-        _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_ZoneEntryV1");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
@@ -58,26 +47,6 @@ public class HandleZoneEntry_Z2C : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Dispose
-    //
-    // Log any errors in the cold-path, dispose of any local storage. 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    public void Dispose()
-    {
-        GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return _opcodeName; }
-    }
-
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandlePacket
     //
     // Processes zone-to-client OP_ZoneEntry.
@@ -85,9 +54,8 @@ public class HandleZoneEntry_Z2C : IHandleOpcodes
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
 
         if (character == null)
@@ -111,15 +79,15 @@ public class HandleZoneEntry_Z2C : IHandleOpcodes
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            name = extractor.GetStringAt(_nameSlot);
-            spawnId = extractor.GetUIntAt(_spawnIdSlot);
-            level = extractor.GetUIntAt(_levelSlot);
+            name = _extractor.GetStringAt(_nameSlot);
+            spawnId = _extractor.GetUIntAt(_spawnIdSlot);
+            level = _extractor.GetUIntAt(_levelSlot);
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
 
         if (!MobRepository.Instance.TryGetBySpawnId(zoneId.Value, spawnId, out Spawn? spawn))
@@ -148,9 +116,8 @@ public class HandleZoneEntry_Z2C : IHandleOpcodes
     //
     // Returns:   The root FieldDisplayNode.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
         string Label;
         uint zoneId = 0;
@@ -180,19 +147,19 @@ public class HandleZoneEntry_Z2C : IHandleOpcodes
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            uint spawnId = extractor.GetUIntAt(_spawnIdSlot);
+            uint spawnId = _extractor.GetUIntAt(_spawnIdSlot);
 
-            FieldNodes.AddLabeledNode(extractor, _spawnIdSlot, "spawnId = 0x" +
+            FieldNodes.AddLabeledNode(_extractor, _spawnIdSlot, "spawnId = 0x" +
                 spawnId.ToString("X4"), root);
-            string name = FieldNodes.AddStringNode(extractor, _nameSlot, "Name", root);
-            FieldNodes.AddUIntNode(extractor, _levelSlot, "Level", root, "D");
+            string name = FieldNodes.AddStringNode(_extractor, _nameSlot, "Name", root);
+            FieldNodes.AddUIntNode(_extractor, _levelSlot, "Level", root, "D");
             Label += " (" + name + ")";
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
 
         root.Text = Label;
@@ -209,7 +176,7 @@ public class HandleZoneEntry_Z2C : IHandleOpcodes
     //
     // Returns:   The resolved version number.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         switch (metadata.Channel)
         {
@@ -221,13 +188,5 @@ public class HandleZoneEntry_Z2C : IHandleOpcodes
         }
 
         return 0;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeHandled
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public PatchOpcode OpcodeHandled
-    {
-        get { return _opcodeHandled; }
     }
 }

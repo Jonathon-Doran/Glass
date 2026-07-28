@@ -1,26 +1,17 @@
 ﻿///////////////////////////////////////////////////////////////////////////////////////////////
-// HandleZoneSpawns
+// HandleTracking (Zone to Client)
 //
-// Handles OP_ZoneSpawns packets.  
+// Handles OP_Tracking_Z2C messages.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
 using Glass.Core;
 using Glass.Core.Logging;
-using Glass.Data.Models;
-using Glass.Data.Repositories;
 using Glass.Network.Handlers;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
-using System.Buffers.Binary;
-using System.Data;
-using System.Text;
 
-public class HandleTracking_Z2C : IHandleOpcodes
+public class HandleTracking_Z2C : OpcodeHandler
 {
-    private readonly string _opcodeName = "OP_Tracking_Z2C";
     private readonly CollectionHandle _collectionHandle;
-    private readonly PatchOpcode _opcodeHandled;
-    private readonly PatchRegistry _registry;
-    private readonly PatchLevel _patchLevel;
     private readonly GateDefinitionHandle _top_level_gate;
     private readonly GateDefinitionHandle _discriminator;
 
@@ -34,25 +25,17 @@ public class HandleTracking_Z2C : IHandleOpcodes
     private readonly SlotId _nameSlot;
 
     private readonly uint TRACKING_MAGIC_NUMBER = 0x4f348bff;
-    //private readonly bool _brief = false;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleTracking_Z2C (constructor)
     //
-    // Resolves the wire opcode and loads the field definitions for OP_TrackingUpdate from
-    // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
-    // Caches the index of each field the handler reads so the hot path can access the bag
-    // by integer index without name lookup.
+    // Resolves the opcode and caches the field slots this handler reads.
     //
-    // If the current patch does not define OP_TrackingUpdate, GetOpcodeValue returns 0 and
-    // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
-    // with a zero opcode, so this handler simply will not receive packets.  All field
-    // index lookups resolve to -1 in that case but are never consulted.
+    // patchLevel:  The patch level this handler decodes against.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleTracking_Z2C()
+    public HandleTracking_Z2C(PatchLevel patchLevel)
+        : base (patchLevel, "OP_Tracking_Z2C")
     {
-        _registry =   GlassContext.PatchRegistry;
-        _patchLevel = GlassContext.CurrentPatchLevel;
         PatchOpcode baseOpcode = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _opcodeHandled = baseOpcode with { Version = 2 };
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "Tracking_V2");
@@ -75,25 +58,6 @@ public class HandleTracking_Z2C : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Dispose
-    //
-    // Log any errors in the cold-path, dispose of any local storage. 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    public void Dispose()
-    {
-        GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return _opcodeName; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandlePacket
     //
     // Dispatches to direction-specific handlers.
@@ -101,7 +65,7 @@ public class HandleTracking_Z2C : IHandleOpcodes
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         switch (metadata.Channel)
         {
@@ -123,19 +87,18 @@ public class HandleTracking_Z2C : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            if (extractor.IsPresent(_trackingEntriesSlot) == false)
+            if (_extractor.IsPresent(_trackingEntriesSlot) == false)
             {
                 DebugLog.Write(LogChannel.Opcodes,
                     "HandleTracking_Z2C.HandleZoneToClient: no tracking_entries gate present", LogLevel.Warn);
                 return;
             }
 
-            GateHandle entriesGate = extractor.GetGateAt(_trackingEntriesSlot);
+            GateHandle entriesGate = _extractor.GetGateAt(_trackingEntriesSlot);
             if (entriesGate.Exists == false)
             {
                 DebugLog.Write(LogChannel.Opcodes,
@@ -143,19 +106,19 @@ public class HandleTracking_Z2C : IHandleOpcodes
                 return;
             }
 
-            uint bagCount = extractor.BagCount(entriesGate);
+            uint bagCount = _extractor.BagCount(entriesGate);
 
             for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
             {
-                extractor.EnterGate(entriesGate, bagIndex);
-                uint spawnId = extractor.GetUIntAt(_spawnIdSlot);
-                uint level = extractor.GetUIntAt(_levelSlot);
-                string name = extractor.GetStringAt(_nameSlot);
+                _extractor.EnterGate(entriesGate, bagIndex);
+                uint spawnId = _extractor.GetUIntAt(_spawnIdSlot);
+                uint level = _extractor.GetUIntAt(_levelSlot);
+                string name = _extractor.GetStringAt(_nameSlot);
             }
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
     }
 
@@ -172,15 +135,14 @@ public class HandleTracking_Z2C : IHandleOpcodes
     //
     // Returns:   The root FieldDisplayNode.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            if (extractor.IsPresent(_trackingEntriesSlot) == false)
+            if (_extractor.IsPresent(_trackingEntriesSlot) == false)
             {
                 DebugLog.Write(LogChannel.Opcodes,
                     "HandleTracking_Z2C.Describe: no tracking_entries gate present", LogLevel.Warn);
@@ -188,7 +150,7 @@ public class HandleTracking_Z2C : IHandleOpcodes
                 return root;
             }
 
-            GateHandle entriesGate = extractor.GetGateAt(_trackingEntriesSlot);
+            GateHandle entriesGate = _extractor.GetGateAt(_trackingEntriesSlot);
             if (entriesGate.Exists == false)
             {
                 DebugLog.Write(LogChannel.Opcodes,
@@ -197,34 +159,26 @@ public class HandleTracking_Z2C : IHandleOpcodes
                 return root;
             }
 
-            uint bagCount = extractor.BagCount(entriesGate);
+            uint bagCount = _extractor.BagCount(entriesGate);
             DebugLog.Write(LogChannel.Opcodes,
                 "HandleTracking_Z2C.Describe: walking " + bagCount + " tracking entries", LogLevel.Trace);
 
             for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
             {
-                extractor.EnterGate(entriesGate, bagIndex);
+                _extractor.EnterGate(entriesGate, bagIndex);
                 FieldDisplayNode entryNode = new FieldDisplayNode("Entry " + (bagIndex + 1));
                 root.AddChild(entryNode);
-                FieldNodes.AddStringNode(extractor, _nameSlot, "Name", entryNode);
-                FieldNodes.AddUIntNode(extractor, _spawnIdSlot, "Spawn ID", entryNode);
-                FieldNodes.AddUIntNode(extractor, _levelSlot, "Level", entryNode, "D");
+                FieldNodes.AddStringNode(_extractor, _nameSlot, "Name", entryNode);
+                FieldNodes.AddUIntNode(_extractor, _spawnIdSlot, "Spawn ID", entryNode);
+                FieldNodes.AddUIntNode(_extractor, _levelSlot, "Level", entryNode, "D");
             }
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
         root.Text = "Tracking";
         return root;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeHandled
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public PatchOpcode OpcodeHandled
-    {
-        get { return _opcodeHandled; }
     }
 }
 

@@ -14,15 +14,11 @@ namespace Glass.Network.Handlers;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // HandleHpUpdate
 //
-// Handles OP_PlayerProfile packets.  
+// Handles OP_HpUpdate messages.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleHpUpdate : IHandleOpcodes
+public class HandleHpUpdate : OpcodeHandler
 {
-    private readonly string _opcodeName = "OP_HpUpdate";
-    private readonly PatchOpcode _opcodeHandled;
     private readonly CollectionHandle _collectionHandle;
-    private readonly PatchRegistry _registry;
-    private readonly PatchLevel _patchLevel;
     private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _playerIdSlot;
@@ -32,20 +28,13 @@ public class HandleHpUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleHpUpdate (constructor)
     //
-    // Resolves the wire opcode and loads the field definitions for OP_HpUpdate from
-    // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
-    // Caches the index of each field the handler reads so the hot path can access the bag
-    // by integer index without name lookup.
+    // Resolves the opcode and caches the field slots this handler reads.
     //
-    // If the current patch does not define OP_HpUpdate, GetOpcodeValue returns 0 and
-    // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
-    // with a zero opcode, so this handler simply will not receive packets.  All field
-    // index lookups resolve to -1 in that case but are never consulted.
+    // patchLevel:  The patch level this handler decodes against.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleHpUpdate()
+    public HandleHpUpdate(PatchLevel patchLevel)
+        :base(patchLevel, "OP_HpUpdate")
     {
-        _registry = GlassContext.PatchRegistry;
-        _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_HpUpdate");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
@@ -56,25 +45,6 @@ public class HandleHpUpdate : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Dispose
-    //
-    // Log any errors in the cold-path, dispose of any local storage. 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    public void Dispose()
-    {
-        GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return _opcodeName; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandlePacket
     //
     // Dispatches to direction-specific handlers.
@@ -82,7 +52,7 @@ public class HandleHpUpdate : IHandleOpcodes
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         switch (metadata.Channel)
         {
@@ -130,14 +100,4 @@ public class HandleHpUpdate : IHandleOpcodes
             + _opcodeName + " length=" + data.Length);
         DebugLog.Write(LogChannel.Opcodes, "HP at " + character.CurrentHP + " / " + character.MaxHP);
     }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeHandled
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public PatchOpcode OpcodeHandled
-    {
-        get { return _opcodeHandled; }
-    }
 }
-
-

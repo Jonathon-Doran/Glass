@@ -13,15 +13,11 @@ namespace Glass.Network.Handlers;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // HandleDeath
 //
-// Handles OP_NpcMove packets.  
+// Handles OP_Death messages.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleDeath : IHandleOpcodes
+public class HandleDeath : OpcodeHandler
 {
-    private readonly string _opcodeName = "OP_Death";
     private readonly CollectionHandle _collectionHandle;
-    private readonly PatchOpcode _opcodeHandled;
-    private readonly PatchRegistry _registry;
-    private readonly PatchLevel _patchLevel;
     private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _spawnIdSlot;
@@ -40,35 +36,15 @@ public class HandleDeath : IHandleOpcodes
     // with a zero opcode, so this handler simply will not receive packets.  All field
     // index lookups resolve to -1 in that case but are never consulted.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleDeath()
+    public HandleDeath(PatchLevel patchLevel)
+        : base(patchLevel, "OP_Death")
     {
-        _registry = GlassContext.PatchRegistry;
-        _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_Death");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         _spawnIdSlot = _registry.IndexOfField(_collectionHandle, "spawn_id");
         _killerIdSlot = _registry.IndexOfField(_collectionHandle, "killer_id");
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Dispose
-    //
-    // Log any errors in the cold-path, dispose of any local storage. 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    public void Dispose()
-    {
-        GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return _opcodeName; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -79,7 +55,7 @@ public class HandleDeath : IHandleOpcodes
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         switch (metadata.Channel)
         {
@@ -127,7 +103,7 @@ public class HandleDeath : IHandleOpcodes
     //
     // Returns:   The root FieldDisplayNode.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
@@ -196,13 +172,5 @@ public class HandleDeath : IHandleOpcodes
 
         root.Text = "Death (" + targetName + ")";
         return root;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeHandled
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public PatchOpcode OpcodeHandled
-    {
-        get { return _opcodeHandled; }
     }
 }

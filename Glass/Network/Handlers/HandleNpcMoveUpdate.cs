@@ -11,13 +11,9 @@ namespace Glass.Network.Handlers;
 //
 // Handles OP_NpcMoveUpdate packets.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleNpcMoveUpdate : IHandleOpcodes
+public class HandleNpcMoveUpdate : OpcodeHandler
 {
-    private readonly string _opcodeName = "OP_NpcMoveUpdate";
-    private readonly PatchOpcode _opcodeHandled;
     private readonly CollectionHandle _collectionHandle;
-    private readonly PatchRegistry _registry;
-    private readonly PatchLevel _patchLevel;
     private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _spawnIdSlot;
@@ -37,20 +33,13 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleNpcMoveUpdate (constructor)
     //
-    // Resolves the wire opcode and loads the field definitions for OP_NpcMoveUpdate from
-    // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
-    // Caches the index of each field the handler reads so the hot path can access the bag
-    // by integer index without name lookup.
+    // Resolves the opcode and caches the field slots this handler reads.
     //
-    // If the current patch does not define OP_NpcMoveUpdate, GetOpcodeValue returns 0 and
-    // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
-    // with a zero opcode, so this handler simply will not receive packets.  All field
-    // index lookups resolve to -1 in that case but are never consulted.
+    // patchLevel:  The patch level this handler decodes against.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleNpcMoveUpdate()
+    public HandleNpcMoveUpdate(PatchLevel patchLevel)
+        : base(patchLevel, "OP_NpcMoveUpdate")
     {
-        _registry = GlassContext.PatchRegistry;
-        _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_NpcMoveUpdate");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
@@ -71,28 +60,6 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Dispose
-    //
-    // Log any errors in the cold-path, dispose of any local storage. 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    public void Dispose()
-    {
-        GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get
-        {
-            return _opcodeName;
-        }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandlePacket
     //
     // Dispatches to direction-specific handlers.
@@ -103,7 +70,7 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
     // opcode:     The application-level opcode
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         switch (metadata.Channel)
         {
@@ -183,15 +150,6 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
         {
             extractor.Release();
         }
-
-        /*
-        string timestamp = metadata.Timestamp.ToString("HH:mm:ss.fff");
-        DebugLog.Write(LogChannel.Opcodes, "[" + timestamp + "] " + _opcodeName
-            + " SpawnId=0x" + spawnId.ToString("x4")
-            + " pos=(" + x.ToString("F2") + "," + y.ToString("F2") + "," + z.ToString("F2") + ")"
-            + " heading=" + headingDegrees.ToString("0.00")
-            + optional.ToString());
-        */
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -205,7 +163,7 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
     //
     // Returns:   The root FieldDisplayNode.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
@@ -283,33 +241,5 @@ public class HandleNpcMoveUpdate : IHandleOpcodes
 
         root.Text = "NPCMoveUpdate (" + npcName + ")";
         return root;
-    }
-
-    /*
-     * 
-         _spawnIdSlot = _registry.IndexOfField(_collectionHandle, "spawn_id");
-        _xPosSlot = _registry.IndexOfField(_collectionHandle, "x_pos");
-        _yPosSlot = _registry.IndexOfField(_collectionHandle, "y_pos");
-        _zPosSlot = _registry.IndexOfField(_collectionHandle, "z_pos");
-        _headingSlot = _registry.IndexOfField(_collectionHandle, "heading");
-        _pitchSlot = _registry.IndexOfField(_collectionHandle, "pitch");
-        _headingDeltaSlot = _registry.IndexOfField(_collectionHandle, "heading_delta");
-        _velocitySlot = _registry.IndexOfField(_collectionHandle, "velocity");
-        _dxSlot = _registry.IndexOfField(_collectionHandle, "dx");
-        _dySlot = _registry.IndexOfField(_collectionHandle, "dy");
-        _dzSlot = _registry.IndexOfField(_collectionHandle, "dz");
-
-        _flagsSlot = _registry.IndexOfField(_collectionHandle, "flags");
-     * 
-     */
-
-
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeHandled
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public PatchOpcode OpcodeHandled
-    {
-        get { return _opcodeHandled; }
     }
 }

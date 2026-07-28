@@ -4,11 +4,6 @@ using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
-using System.Buffers.Binary;
-using System.Printing;
-using System.Security.Cryptography.X509Certificates;
-using System.Xml.Linq;
-
 
 namespace Glass.Network.Handlers;
 
@@ -17,13 +12,9 @@ namespace Glass.Network.Handlers;
 //
 // Handles OP_ClientUpdate packets.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleClientUpdate : IHandleOpcodes
+public class HandleClientUpdate : OpcodeHandler
 {
-    private readonly string _opcodeName = "OP_ClientUpdate";
     private readonly CollectionHandle _collectionHandle;
-    private readonly PatchOpcode _opcodeHandled;
-    private readonly PatchRegistry _registry;
-    private readonly PatchLevel _patchLevel;
     private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _sequenceSlot;
@@ -36,19 +27,13 @@ public class HandleClientUpdate : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleClientUpdate(constructor)
     //
-    // Resolves the wire opcode and loads the field definitions for OP_ClientUpdate from the
-    // active patch via GlassContext.FieldExtractor.  Caches the index of each field the
-    // handler reads so the hot path can access the bag by integer index without name lookup.
+    // Resolves the opcode and caches the field slots this handler reads.
     //
-    // If the active patch does not define OP_ClientUpdate, GetOpcodeValue returns 0 and the
-    // handler is effectively disabled — OpcodeDispatch refuses to register handlers with a
-    // zero opcode, so this handler simply will not receive packets.  All field index lookups
-    // resolve to -1 in that case but are never consulted.
+    // patchLevel:  The patch level this handler decodes against.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleClientUpdate()
+    public HandleClientUpdate(PatchLevel patchLevel)
+        : base(patchLevel, "OP_ClientUpdate")
     {
-        _registry = GlassContext.PatchRegistry;
-        _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
@@ -64,25 +49,6 @@ public class HandleClientUpdate : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Dispose
-    //
-    // Log any errors in the cold-path, dispose of any local storage. 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    public void Dispose()
-    {
-        GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return _opcodeName; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandlePacket
     //
     // Dispatches to direction-specific handlers.
@@ -90,7 +56,7 @@ public class HandleClientUpdate : IHandleOpcodes
     // data:       The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         switch (metadata.Channel)
         {
@@ -165,7 +131,7 @@ public class HandleClientUpdate : IHandleOpcodes
     //
     // Returns:   The root FieldDisplayNode.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
@@ -237,7 +203,7 @@ public class HandleClientUpdate : IHandleOpcodes
     //
     // Returns:   The resolved version number.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         switch (metadata.Channel)
         {
@@ -249,13 +215,5 @@ public class HandleClientUpdate : IHandleOpcodes
         }
 
         return 0;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeHandled
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public PatchOpcode OpcodeHandled
-    {
-        get { return _opcodeHandled; }
     }
 }

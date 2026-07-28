@@ -15,13 +15,9 @@ namespace Glass.Network.Handlers;
 //
 // Handles OP_NewZone packets.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleNewZone : IHandleOpcodes
+public class HandleNewZone :OpcodeHandler
 {
-    private readonly string _opcodeName = "OP_NewZone";
-    private readonly PatchOpcode _opcodeHandled;
     private readonly CollectionHandle _collectionHandle;
-    private readonly PatchRegistry _registry;
-    private readonly PatchLevel _patchLevel;
     private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _shortNameSlot;
@@ -31,20 +27,13 @@ public class HandleNewZone : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleNewZone(constructor)
     //
-    // Resolves the wire opcode and loads the field definitions for OP_NewZone from
-    // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
-    // Caches the index of each field the handler reads so the hot path can access the bag
-    // by integer index without name lookup.
+    // Resolves the opcode and caches the field slots this handler reads.
     //
-    // If the current patch does not define OP_NewZone, GetOpcodeValue returns 0 and
-    // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
-    // with a zero opcode, so this handler simply will not receive packets.  All field
-    // index lookups resolve to -1 in that case but are never consulted.
+    // patchLevel:  The patch level this handler decodes against.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleNewZone()
+    public HandleNewZone(PatchLevel patchLevel)
+        : base(patchLevel, "OP_NewZone")
     {
-        _registry = GlassContext.PatchRegistry;
-        _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_NewZone");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
@@ -55,24 +44,6 @@ public class HandleNewZone : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Dispose
-    //
-    // Log any errors in the cold-path, dispose of any local storage. 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void Dispose()
-    {
-        GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return _opcodeName; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandlePacket
     //
     // Dispatches to direction-specific handlers.
@@ -80,7 +51,7 @@ public class HandleNewZone : IHandleOpcodes
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         switch (metadata.Channel)
         {
@@ -116,11 +87,6 @@ public class HandleNewZone : IHandleOpcodes
         {
             extractor.Release();
         }
-
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-                    + _opcodeName + " length=" + data.Length);
-        DebugLog.Write(LogChannel.Opcodes, "Entered " + longName + "(" + shortName + "), zoneId="
-            + zoneId);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -135,7 +101,7 @@ public class HandleNewZone : IHandleOpcodes
     //
     // Returns:   The root FieldDisplayNode.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
@@ -169,13 +135,5 @@ public class HandleNewZone : IHandleOpcodes
         }
 
         return root;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeHandled
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public PatchOpcode OpcodeHandled
-    {
-        get { return _opcodeHandled; }
     }
 }

@@ -106,6 +106,7 @@
                 <Separator/>
                 <MenuItem x:Name="MenuSave" Header="_Save"
                             Click="MenuItem_Save_Click" IsEnabled="False"/>
+                <MenuItem Header="Load Catalog Only..." Click="MenuItem_LoadCatalog_Click"/>
                 <MenuItem Header="Open _Pcap..." Click="MenuItem_OpenPcap_Click"/>
                 <Separator/>
                 <MenuItem Header="E_xit" Click="MenuItem_Exit_Click"/>

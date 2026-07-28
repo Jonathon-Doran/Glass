@@ -24,8 +24,9 @@ public class OpcodeDispatch
 {
     private static OpcodeDispatch? _instance = null;
     private readonly PatchLevel _patchLevel;
-    private readonly FrozenDictionary<PatchOpcode, IHandleOpcodes> _handlers;
+    private readonly FrozenDictionary<PatchOpcode, OpcodeHandler> _handlers;
     private static readonly object _instanceLock = new object();
+    private static BusState _busState = BusState.On;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Instance
@@ -51,19 +52,20 @@ public class OpcodeDispatch
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeDispatch (constructor)
     //
-    // Private.  Scans the executing assembly for all non-abstract classes
-    // implementing IHandleOpcodes, instantiates each one via its default
-    // constructor, and registers it by opcode.
+    // Private.  Scans the executing assembly for all non-abstract classes deriving from
+    // OpcodeHandler, instantiates each one via its PatchLevel constructor, and registers
+    // it by opcode.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private OpcodeDispatch()
     {
         int opcodeCount = GlassContext.PatchRegistry.GetOpcodeCount(GlassContext.CurrentPatchLevel);
-        Dictionary<PatchOpcode, IHandleOpcodes> builder = new Dictionary<PatchOpcode, IHandleOpcodes>();
+        Dictionary<PatchOpcode, OpcodeHandler> builder = new Dictionary<PatchOpcode, OpcodeHandler>();
 
-        DebugLog.Write(LogChannel.Opcodes, "OpcodeDispatch: scanning assembly for IHandleOpcodes implementations");
+        DebugLog.Write(LogChannel.Opcodes,
+            "OpcodeDispatch: scanning assembly for OpcodeHandler implementations", LogLevel.Trace);
 
         Assembly assembly = Assembly.GetExecutingAssembly();
-        Type interfaceType = typeof(IHandleOpcodes);
+        Type baseType = typeof(OpcodeHandler);
 
         _patchLevel = GlassContext.CurrentPatchLevel;
 
@@ -74,41 +76,41 @@ public class OpcodeDispatch
                 continue;
             }
 
-            if (!interfaceType.IsAssignableFrom(type))
+            if (!baseType.IsAssignableFrom(type))
             {
                 continue;
             }
 
-            ConstructorInfo? constructor = type.GetConstructor(Type.EmptyTypes);
+            ConstructorInfo? constructor = type.GetConstructor(new Type[] { typeof(PatchLevel) });
 
             if (constructor == null)
             {
                 DebugLog.Write(LogChannel.Opcodes, "OpcodeDispatch: skipping " + type.Name
-                    + " — no default constructor");
+                    + " — no PatchLevel constructor", LogLevel.Warn);
                 continue;
             }
 
-            IHandleOpcodes handler = (IHandleOpcodes)constructor.Invoke(null);
+            OpcodeHandler handler = (OpcodeHandler)constructor.Invoke(new object[] { _patchLevel });
             PatchOpcode patchOpcode = handler.OpcodeHandled;
 
             if (patchOpcode.Exists == false)
             {
                 DebugLog.Write(LogChannel.Opcodes, "OpcodeDispatch: skipping " + type.Name
-                    + " — handler reports no opcode for patch level " + _patchLevel);
+                    + " — handler reports no opcode for patch level " + _patchLevel, LogLevel.Trace);
                 continue;
             }
 
             builder[patchOpcode] = handler;
 
             DebugLog.Write(LogChannel.Opcodes, "OpcodeDispatch: registered " + type.Name
-                + " for opcode " + patchOpcode );
+                + " for opcode " + patchOpcode, LogLevel.Trace);
         }
 
         _handlers = builder.ToFrozenDictionary();
 
         GlassContext.PacketBus.Subscribe(HandlePacket);
         DebugLog.Write(LogChannel.Opcodes, "OpcodeDispatch: scan complete, "
-            + _handlers.Count + " handlers registered");
+            + _handlers.Count + " handlers registered", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -175,7 +177,7 @@ public class OpcodeDispatch
     {
         if (Volatile.Read(ref _instance) == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "packet arrived at handler during shutdown");
+            DebugLog.Write(LogChannel.Opcodes, "packet arrived at handler during shutdown", LogLevel.Warn);
             return;
         }
 
@@ -185,7 +187,7 @@ public class OpcodeDispatch
             return;
         }
 
-        if (_handlers.TryGetValue(metadata.Opcode, out IHandleOpcodes? handler) == true)
+        if (_handlers.TryGetValue(metadata.Opcode, out OpcodeHandler? handler) == true)
         {
             handler.HandlePacket(data, metadata);
         }
@@ -211,7 +213,7 @@ public class OpcodeDispatch
     {
         PatchOpcode baseOpcode = new PatchOpcode(_patchLevel, opcodeValue, 1);
 
-        if (_handlers.TryGetValue(baseOpcode, out IHandleOpcodes? versionResolver) == false)
+        if (_handlers.TryGetValue(baseOpcode, out OpcodeHandler? versionResolver) == false)
         {
             return new PatchOpcode(_patchLevel, opcodeValue, 0);
         }
@@ -234,7 +236,7 @@ public class OpcodeDispatch
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public FieldDisplayNode? Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (_handlers.TryGetValue(metadata.Opcode, out IHandleOpcodes? handler) == true)
+        if (_handlers.TryGetValue(metadata.Opcode, out OpcodeHandler? handler) == true)
         {
             DebugLog.Write(LogChannel.Opcodes,
                 "OpcodeDispatch.Describe: describing " + metadata.Opcode, LogLevel.Trace);
@@ -244,5 +246,51 @@ public class OpcodeDispatch
         DebugLog.Write(LogChannel.Opcodes,
             "OpcodeDispatch.Describe: no handler for " + metadata.Opcode, LogLevel.Trace);
         return null;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // SetBusState
+    //
+    // Sets dispatch's attachment to the PacketBus and returns the prior state so the caller
+    // can restore it.  Off unsubscribes the live instance's HandlePacket when one exists.
+    // On resubscribes the live instance when one exists.  Setting the current state again
+    // is a logged no-op that still returns the prior state.
+    //
+    // state:  BusState.On or BusState.Off.
+    //
+    // Returns:  The state in effect before this call.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public BusState SetBusState(BusState state)
+    {
+        lock (_instanceLock)
+        {
+            BusState previous = _busState;
+
+            if (state == previous)
+            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "OpcodeDispatch.SetBusState: already " + state + ", no change", LogLevel.Warn);
+                return previous;
+            }
+
+            _busState = state;
+
+            if (state == BusState.Off)
+            {
+                GlassContext.PacketBus.Unsubscribe(_instance!.HandlePacket);
+                DebugLog.Write(LogChannel.Opcodes,
+                    "OpcodeDispatch.SetBusState: unsubscribed live instance, dispatch off",
+                    LogLevel.Info);
+            }
+            else
+            {
+                GlassContext.PacketBus.Subscribe(_instance!.HandlePacket);
+                DebugLog.Write(LogChannel.Opcodes,
+                    "OpcodeDispatch.SetBusState: resubscribed live instance, dispatch on",
+                    LogLevel.Info);
+            }
+
+            return previous;
+        }
     }
 }

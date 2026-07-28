@@ -1,26 +1,18 @@
 ﻿///////////////////////////////////////////////////////////////////////////////////////////////
-// HandleZoneSpawns
+// HandleTracking_C2Z
 //
-// Handles OP_ZoneSpawns packets.  
+// Handles OP_Tracking_C2Z packets. (Client-to-Zone)
 ///////////////////////////////////////////////////////////////////////////////////////////////
 using Glass.Core;
 using Glass.Core.Logging;
-using Glass.Data.Models;
-using Glass.Data.Repositories;
 using Glass.Network.Handlers;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
-using System.Buffers.Binary;
-using System.Data;
-using System.Text;
 
-public class HandleTracking_C2Z : IHandleOpcodes
+
+public class HandleTracking_C2Z : OpcodeHandler
 {
-    private readonly string _opcodeName = "OP_Tracking_C2Z";
     private readonly CollectionHandle _collectionHandle;
-    private readonly PatchOpcode _opcodeHandled;
-    private readonly PatchRegistry _registry;
-    private readonly PatchLevel _patchLevel;
     private readonly GateDefinitionHandle _top_level_gate;
     private readonly GateDefinitionHandle _discriminator;
 
@@ -31,25 +23,17 @@ public class HandleTracking_C2Z : IHandleOpcodes
     private readonly SlotId _nameSlot;
 
     private readonly uint TRACKING_MAGIC_NUMBER = 0x4f348bff;
-    //private readonly bool _brief = false;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleTracking_C2Z (constructor)
     //
-    // Resolves the wire opcode and loads the field definitions for OP_TrackingUpdate from
-    // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
-    // Caches the index of each field the handler reads so the hot path can access the bag
-    // by integer index without name lookup.
+    // Resolves the opcode and caches the field slots this handler reads.
     //
-    // If the current patch does not define OP_TrackingUpdate, 
-    // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
-    // with a zero opcode, so this handler simply will not receive packets.  All field
-    // index lookups resolve to -1 in that case but are never consulted.
+    // patchLevel:  The patch level this handler decodes against.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleTracking_C2Z()
+    public HandleTracking_C2Z(PatchLevel patchLevel)
+        : base (patchLevel, "OP_Tracking_C2Z")
     {
-        _registry =   GlassContext.PatchRegistry;
-        _patchLevel = GlassContext.CurrentPatchLevel;
         PatchOpcode baseOpcode = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _opcodeHandled = baseOpcode with { Version = 1 };
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "Tracking_Entries");
@@ -67,25 +51,6 @@ public class HandleTracking_C2Z : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Dispose
-    //
-    // Log any errors in the cold-path, dispose of any local storage. 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    public void Dispose()
-    {
-        GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return _opcodeName; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandlePacket
     //
     // Dispatches to direction-specific handlers.
@@ -93,7 +58,7 @@ public class HandleTracking_C2Z : IHandleOpcodes
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         switch (metadata.Channel)
         {
@@ -113,26 +78,24 @@ public class HandleTracking_C2Z : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
-
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            uint bagCount = extractor.BagCount(rootGate);
+            uint bagCount = _extractor.BagCount(rootGate);
             DebugLog.Write(LogChannel.Opcodes, bagCount.ToString() + " bags seen in tracking packet", LogLevel.Info);
 
             for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
             {
-                extractor.EnterGate(rootGate, bagIndex);
-                uint spawnId = extractor.GetUIntAt(_spawnIdSlot);
-                uint level = extractor.GetUIntAt(_levelSlot);
-                string name = extractor.GetStringAt(_nameSlot);
+                _extractor.EnterGate(rootGate, bagIndex);
+                uint spawnId = _extractor.GetUIntAt(_spawnIdSlot);
+                uint level = _extractor.GetUIntAt(_levelSlot);
+                string name = _extractor.GetStringAt(_nameSlot);
             }
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
     }
 
@@ -147,9 +110,8 @@ public class HandleTracking_C2Z : IHandleOpcodes
     //
     // Returns: The detected version number
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         uint version = 0;
 
         if (data.Length == 0)
@@ -159,8 +121,8 @@ public class HandleTracking_C2Z : IHandleOpcodes
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_discriminator, data);
-            uint magic = extractor.GetUIntAt(_magicSlot);
+            GateHandle rootGate = _extractor.Extract(_discriminator, data);
+            uint magic = _extractor.GetUIntAt(_magicSlot);
 
             if (magic == TRACKING_MAGIC_NUMBER)
             {
@@ -173,18 +135,10 @@ public class HandleTracking_C2Z : IHandleOpcodes
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
 
         return version;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeHandled
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public PatchOpcode OpcodeHandled
-    {
-        get { return _opcodeHandled; }
     }
 }
 

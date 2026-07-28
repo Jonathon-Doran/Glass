@@ -1,27 +1,19 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
-using Glass.Data.Models;
-using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
-using System;
-using System.Buffers.Binary;
-using System.Security.Policy;
+
 
 namespace Glass.Network.Handlers;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // HandleBuffTimers
 //
-// Handles OP_BuffTimers packets.  
+// Handles OP_BuffTimers messages.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleBuffTimers : IHandleOpcodes
+public class HandleBuffTimers : OpcodeHandler
 {
-    private readonly string _opcodeName = "OP_Buff_Timers";
-    private readonly PatchOpcode _opcodeHandled;
     private readonly CollectionHandle _collectionHandle;
-    private readonly PatchRegistry _registry;
-    private readonly PatchLevel _patchLevel;
     private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _buffPosSlot;
@@ -37,20 +29,13 @@ public class HandleBuffTimers : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleBuffTimers  (constructor)
     //
-    // Resolves the wire opcode and loads the field definitions for OP_BuffTimers from
-    // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
-    // Caches the index of each field the handler reads so the hot path can access the bag
-    // by integer index without name lookup.
+    // Resolves the opcode and caches the field slots this handler reads.
     //
-    // If the current patch does not define OP_BuffTimers , GetOpcodeValue returns 0 and
-    // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
-    // with a zero opcode, so this handler simply will not receive packets.  All field
-    // index lookups resolve to -1 in that case but are never consulted.
+    // patchLevel:  The patch level this handler decodes against.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleBuffTimers()
+    public HandleBuffTimers(PatchLevel patchLevel)
+        : base(patchLevel, "OP_Buff_Timers")
     {
-        _registry = GlassContext.PatchRegistry;
-        _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "Buff Timers Header");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
@@ -59,7 +44,6 @@ public class HandleBuffTimers : IHandleOpcodes
         _playerIdSlot = _registry.IndexOfField(_collectionHandle, "PlayerID");
         _interTickGapSlot = _registry.IndexOfField(_collectionHandle, "InterTick_Gap");
         _kindSlot = _registry.IndexOfField(_collectionHandle, "Kind");
-
         _buffsGateSlot = _registry.IndexOfField(_collectionHandle, "Buffs");
 
         CollectionHandle buffEntryCollection = _registry.GetCollectionHandle(_patchLevel, "Buff Timer Entry");
@@ -72,25 +56,6 @@ public class HandleBuffTimers : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Dispose
-    //
-    // Log any errors in the cold-path, dispose of any local storage. 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    public void Dispose()
-    {
-        GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return _opcodeName; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandlePacket
     //
     // Dispatches to direction-specific handlers.
@@ -98,7 +63,7 @@ public class HandleBuffTimers : IHandleOpcodes
     // data:       The application payload
     // metadata:   Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         switch (metadata.Channel)
         {
@@ -166,7 +131,7 @@ public class HandleBuffTimers : IHandleOpcodes
     //
     // Returns:   The root FieldDisplayNode.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
@@ -221,14 +186,4 @@ public class HandleBuffTimers : IHandleOpcodes
         root.Text = "Buff Timers";
         return root;
     }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeHandled
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public PatchOpcode OpcodeHandled
-    {
-        get { return _opcodeHandled; }
-    }
 }
-
-

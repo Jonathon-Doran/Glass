@@ -13,13 +13,9 @@ namespace Glass.Network.Handlers;
 //
 // Handles OP_CommonMessage packets.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleCommonMessage : IHandleOpcodes
+public class HandleCommonMessage : OpcodeHandler
 {
-    private readonly string _opcodeName = "OP_CommonMessage";
-    private readonly PatchOpcode _opcodeHandled;
     private CollectionHandle _collectionHandle;
-    private PatchRegistry _registry;
-    private PatchLevel _patchLevel;
     private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _senderIdSlot;
@@ -34,19 +30,14 @@ public class HandleCommonMessage : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleCommonMessage (constructor)
     //
-    // Resolves the wire opcode and loads the field definitions for OP_CommonMessage from the
-    // active patch via GlassContext.FieldExtractor.  Caches the index of each field the
-    // handler reads so the hot path can access the bag by integer index without name lookup.
+    // Resolves the opcode and caches the field slots this handler reads.
     //
-    // If the active patch does not define OP_CommonMessage, GetOpcodeValue returns 0 and the
-    // handler is effectively disabled — OpcodeDispatch refuses to register handlers with a
-    // zero opcode, so this handler simply will not receive packets.  All field index lookups
-    // resolve to -1 in that case but are never consulted. 
+    // patchLevel:  The patch level this handler decodes against.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
 
-    public HandleCommonMessage()
+    public HandleCommonMessage(PatchLevel patchLevel)
+        :base(patchLevel, "OP_CommonMessage")
     {
-        _registry = GlassContext.PatchRegistry;
-        _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_CommonMessage");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
@@ -57,25 +48,6 @@ public class HandleCommonMessage : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Dispose
-    //
-    // Log any errors in the cold-path, dispose of any local storage. 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    public void Dispose()
-    {
-        GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return _opcodeName; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandlePacket
     //
     // Dispatches to direction-specific handlers.
@@ -83,7 +55,7 @@ public class HandleCommonMessage : IHandleOpcodes
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         switch (metadata.Channel)
         {
@@ -140,7 +112,7 @@ public class HandleCommonMessage : IHandleOpcodes
     //
     // Returns:   The root FieldDisplayNode.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
@@ -205,7 +177,18 @@ public class HandleCommonMessage : IHandleOpcodes
         }
         return "unknown(" + channelId.ToString("x2") + ")";
     }
-    public uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ResolveVersion
+    //
+    // Returns the opcode version for a packet.
+    //
+    // data:      The application payload.
+    // metadata:  Packet metadata
+    //
+    // Returns:   The resolved version number.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public override uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         switch (metadata.Channel)
         {
@@ -217,13 +200,5 @@ public class HandleCommonMessage : IHandleOpcodes
         }
 
         return 0;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeHandled
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public PatchOpcode OpcodeHandled
-    {
-        get { return _opcodeHandled; }
     }
 }

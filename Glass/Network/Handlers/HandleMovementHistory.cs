@@ -11,20 +11,12 @@ namespace Glass.Network.Handlers;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // HandleMovementHistory
 //
-// Handles Unknown_d9d9 packets.  
+// Handles OP_MovementHistory messages.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleMovementHistory : IHandleOpcodes
+public class HandleMovementHistory : OpcodeHandler
 {
-    private readonly string _opcodeName = "OP_MovementHistory";
-    private readonly PatchOpcode _opcodeHandled;
     private readonly CollectionHandle _collectionHandle;
-    private readonly PatchRegistry _registry;
-    private readonly PatchLevel _patchLevel;
     private readonly GateDefinitionHandle _top_level_gate;
-
-    private bool _tooSmallObserved = false;
-    private bool _oddSizeObserved = false;
-    private bool _characterNotFound = false;
 
     private readonly SlotId _xPosSlot;
     private readonly SlotId _yPosSlot;
@@ -36,20 +28,13 @@ public class HandleMovementHistory : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleMovementHistory (constructor)
     //
-    // Resolves the wire opcode and loads the field definitions for OP_MovementHistory from
-    // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
-    // Caches the index of each field the handler reads so the hot path can access the bag
-    // by integer index without name lookup.
+    // Resolves the opcode and caches the field slots this handler reads.
     //
-    // If the current patch does not define OP_MovementHistory, GetOpcodeValue returns 0 and
-    // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
-    // with a zero opcode, so this handler simply will not receive packets.  All field
-    // index lookups resolve to -1 in that case but are never consulted.
+    // patchLevel:  The patch level this handler decodes against.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleMovementHistory()
+    public HandleMovementHistory(PatchLevel patchLevel)
+        : base(patchLevel, "OP_MovementHistory")
     {
-        _registry = GlassContext.PatchRegistry;
-        _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_MovementHistory");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
@@ -62,37 +47,6 @@ public class HandleMovementHistory : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Dispose
-    //
-    // Log any errors in the cold-path, dispose of any local storage. 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    public void Dispose()
-    {
-        if (_tooSmallObserved)
-        {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " had at least one undersized packet");
-        }
-        if (_oddSizeObserved)
-        {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " had at least one odd-size packet");
-        }
-        if (_characterNotFound)
-        {
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + " could not find one character from metadata");
-        }
-        GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return _opcodeName; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandlePacket
     //
     // Dispatches to direction-specific handlers.
@@ -100,7 +54,7 @@ public class HandleMovementHistory : IHandleOpcodes
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         switch (metadata.Channel)
         {
@@ -131,9 +85,9 @@ public class HandleMovementHistory : IHandleOpcodes
         uint moveState;
         uint timestamp;
 
+        // possibly too early to map the character
         if (character == null)
         {
-            _characterNotFound = true;
             return;
         }
 
@@ -174,7 +128,7 @@ public class HandleMovementHistory : IHandleOpcodes
     //
     // Returns:   The root FieldDisplayNode.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
@@ -202,13 +156,8 @@ public class HandleMovementHistory : IHandleOpcodes
                 positionNode.AddByteRange(extractor.GetByteRangeFor(_zPosSlot));
                 root.AddChild(positionNode);
 
-                FieldDisplayNode timestampNode = new FieldDisplayNode("Timestamp: " + timestamp);
-                timestampNode.AddByteRange(extractor.GetByteRangeFor(_timestampSlot));
-                root.AddChild(timestampNode);
-
-                FieldDisplayNode movestateNode = new FieldDisplayNode("MoveState: " + movestate);
-                movestateNode.AddByteRange(extractor.GetByteRangeFor(_movestateSlot));
-                root.AddChild(movestateNode);
+                FieldNodes.AddUIntNode(_extractor, _timestampSlot, "Timestamp", root);
+                FieldNodes.AddUIntNode(_extractor, _movestateSlot, "MoveState", root);
             }
         }
         finally
@@ -218,15 +167,6 @@ public class HandleMovementHistory : IHandleOpcodes
 
         root.Text = "Movement History";
         return root;
-    }
-
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeHandled
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public PatchOpcode OpcodeHandled
-    {
-        get { return _opcodeHandled; }
     }
 }
 

@@ -14,13 +14,9 @@ namespace Glass.Network.Handlers;
 //
 // Handles OP_SetChatServer -- World server tells clients what chat server to use 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleSetChatServer : IHandleOpcodes
+public class HandleSetChatServer : OpcodeHandler
 {
-    private readonly string _opcodeName = "OP_SetChatServer";
-    private readonly PatchOpcode _opcodeHandled;
     private readonly CollectionHandle _collectionHandle;
-    private readonly PatchRegistry _registry;
-    private readonly PatchLevel _patchLevel;
     private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _payloadSlot;
@@ -37,20 +33,13 @@ public class HandleSetChatServer : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleSetChatServer  (constructor)
     //
-    // Resolves the wire opcode and loads the field definitions for OP_SetChatServer  from
-    // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
-    // Caches the index of each field the handler reads so the hot path can access the bag
-    // by integer index without name lookup.
+    // Resolves the opcode and caches the field slots this handler reads.
     //
-    // If the current patch does not define OP_SetChatServer , GetOpcodeValue returns 0 and
-    // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
-    // with a zero opcode, so this handler simply will not receive packets.  All field
-    // index lookups resolve to -1 in that case but are never consulted.
+    // patchLevel:  The patch level this handler decodes against.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleSetChatServer()
+    public HandleSetChatServer(PatchLevel patchLevel)
+        : base(patchLevel, "OP_SetChatServer")
     {
-        _registry = GlassContext.PatchRegistry;
-        _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_SetChatServer");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
@@ -66,33 +55,14 @@ public class HandleSetChatServer : IHandleOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Dispose
-    //
-    // Log any errors in the cold-path, dispose of any local storage. 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    public void Dispose()
-    {
-        GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return _opcodeName; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandlePacket
     //
     // Dispatches to direction-specific handlers.
     //
     // data:      The application payload
-    // metadata:  Packet metadata (timestamp, source/dest)
+    // metadata:  Message metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         switch (metadata.Channel)
         {
@@ -112,17 +82,16 @@ public class HandleSetChatServer : IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleWorldToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         string payload;
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-            payload = extractor.GetStringAt(_payloadSlot);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            payload = _extractor.GetStringAt(_payloadSlot);
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
 
         string[] csvFields = payload.Split(',');
@@ -149,13 +118,6 @@ public class HandleSetChatServer : IHandleOpcodes
 
         string serverName = serverDotCharacter.Substring(0, dotIndex);
         string characterName = serverDotCharacter.Substring(dotIndex + 1);
-
-        /*
-        DebugLog.Write(LogChannel.Opcodes, "HandleSetChatServer: server=" + serverName
-            + " character=" + characterName
-            + " chatServer=" + chatServer
-            + " chatPort=" + chatPort);
-        */
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -169,15 +131,14 @@ public class HandleSetChatServer : IHandleOpcodes
     //
     // Returns:   The root FieldDisplayNode.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-            string payload = extractor.GetStringAt(_payloadSlot);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            string payload = _extractor.GetStringAt(_payloadSlot);
             string[] csvFields = payload.Split(',');
 
             if (csvFields.Length < 4)
@@ -192,31 +153,23 @@ public class HandleSetChatServer : IHandleOpcodes
             string serverDotCharacter = csvFields[_characterCsvIndex];
 
             FieldDisplayNode serverNode = new FieldDisplayNode("Chat Server: " + chatServer);
-            serverNode.AddByteRange(extractor.GetByteRangeFor(_payloadSlot));
+            serverNode.AddByteRange(_extractor.GetByteRangeFor(_payloadSlot));
             root.AddChild(serverNode);
 
             FieldDisplayNode portNode = new FieldDisplayNode("Port: " + chatPort);
-            portNode.AddByteRange(extractor.GetByteRangeFor(_payloadSlot));
+            portNode.AddByteRange(_extractor.GetByteRangeFor(_payloadSlot));
             root.AddChild(portNode);
 
             FieldDisplayNode charNode = new FieldDisplayNode("Character: " + serverDotCharacter);
-            charNode.AddByteRange(extractor.GetByteRangeFor(_payloadSlot));
+            charNode.AddByteRange(_extractor.GetByteRangeFor(_payloadSlot));
             root.AddChild(charNode);
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
 
         root.Text = "Set Chat Server";
         return root;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeHandled
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public PatchOpcode OpcodeHandled
-    {
-        get { return _opcodeHandled; }
     }
 }

@@ -16,13 +16,9 @@ namespace Glass.Network.Handlers;
 // Handles OP_ZoneEntry packets.  Client-to-zone
 // packets contain the player's own zone entry with a different layout.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleZoneEntry_C2Z: IHandleOpcodes
+public class HandleZoneEntry_C2Z: OpcodeHandler
 {
-    private readonly string _opcodeName = "OP_ZoneEntry_C2Z";
-    private readonly PatchOpcode _opcodeHandled;
     private readonly CollectionHandle _collectionHandle;
-    private readonly PatchRegistry _registry;
-    private readonly PatchLevel _patchLevel;
     private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _nameSlot;
@@ -30,44 +26,19 @@ public class HandleZoneEntry_C2Z: IHandleOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleZoneEntry_Z2C (constructor)
     //
-    // Resolves the wire opcode and loads the field definitions for OP_ZoneEntry from
-    // the current patch via GlassContext.FieldExtractor and GlassContext.CurrentPatchLevel.
-    // Caches the index of each field the handler reads so the hot path can access the bag
-    // by integer index without name lookup.
+    // Resolves the opcode and caches the field slots this handler reads.
     //
-    // If the current patch does not define OP_ZoneEntry, GetOpcodeValue returns 0 and
-    // the handler is effectively disabled — OpcodeDispatch refuses to register handlers
-    // with a zero opcode, so this handler simply will not receive packets.  All field
-    // index lookups resolve to -1 in that case but are never consulted.
+    // patchLevel:  The patch level this handler decodes against.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleZoneEntry_C2Z()
+    public HandleZoneEntry_C2Z(PatchLevel patchLevel)
+        : base(patchLevel, "OP_ZoneEntry_C2Z")
     {
-        _registry = GlassContext.PatchRegistry;
-        _patchLevel = GlassContext.CurrentPatchLevel;
         PatchOpcode baseOpcode = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _opcodeHandled = baseOpcode with { Version = 2 };
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_ZoneEntryV2");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         _nameSlot = _registry.IndexOfField(_collectionHandle, "name");
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Dispose
-    //
-    // Log any errors in the cold-path, dispose of any local storage. 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void Dispose()
-    {
-        GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return _opcodeName; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -78,19 +49,11 @@ public class HandleZoneEntry_C2Z: IHandleOpcodes
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_C2Z.HandleClientToZone: "
             + _opcodeName + " length=" + data.Length);
     }
 
     // V2 handlers do not need the Resolver code
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeHandled
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public PatchOpcode OpcodeHandled
-    {
-        get { return _opcodeHandled; }
-    }
 }

@@ -1,10 +1,6 @@
 ﻿using Glass.Core;
-using Glass.Core.Logging;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
-using System;
-using System.Buffers.Binary;
-using System.Text;
 
 namespace Glass.Network.Handlers;
 
@@ -13,13 +9,9 @@ namespace Glass.Network.Handlers;
 //
 // Handles OP_FormattedMessage packets.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleFormattedMessage : IHandleOpcodes
+public class HandleFormattedMessage : OpcodeHandler
 {
-    private readonly string _opcodeName = "OP_FormattedMessage";
-    private readonly PatchOpcode _opcodeHandled;
     private readonly CollectionHandle _collectionHandle;
-    private readonly PatchRegistry _registry;
-    private readonly PatchLevel _patchLevel;
     private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _messageIdSlot;
@@ -37,33 +29,14 @@ public class HandleFormattedMessage : IHandleOpcodes
     // with a zero opcode, so this handler simply will not receive packets.  All field
     // index lookups resolve to -1 in that case but are never consulted.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleFormattedMessage()
+    public HandleFormattedMessage(PatchLevel patchLevel)
+        :base(patchLevel, "OP_FormattedMessage")
     {
-        _registry = GlassContext.PatchRegistry;
-        _patchLevel = GlassContext.CurrentPatchLevel;
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_FormattedMessage");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         _messageIdSlot = _registry.IndexOfField(_collectionHandle, "msg_text");
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Dispose
-    //
-    // Log any errors in the cold-path, dispose of any local storage. 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void Dispose()
-    {
-        GC.SuppressFinalize(this);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return _opcodeName; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -74,7 +47,7 @@ public class HandleFormattedMessage : IHandleOpcodes
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public override void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         switch (metadata.Channel)
         {
@@ -106,14 +79,6 @@ public class HandleFormattedMessage : IHandleOpcodes
         {
             extractor.Release();
         }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeHandled
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public PatchOpcode OpcodeHandled
-    {
-        get { return _opcodeHandled; }
     }
 }
 
