@@ -29,6 +29,8 @@ namespace Inference.UI;
 public static class FieldHighlightBehavior
 {
     private static readonly Brush DefaultMatchBrush;
+    private static readonly Brush BlackForegroundBrush;
+    private static readonly Brush WhiteForegroundBrush;
     private static HighlightGenerationMap? _generationMap;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -42,6 +44,14 @@ public static class FieldHighlightBehavior
         SolidColorBrush brush = new SolidColorBrush(Color.FromArgb(0x80, 0xFF, 0xFF, 0x00));
         brush.Freeze();
         DefaultMatchBrush = brush;
+
+        SolidColorBrush blackBrush = new SolidColorBrush(Color.FromArgb(0xFF, 0x00, 0x00, 0x00));
+        blackBrush.Freeze();
+        BlackForegroundBrush = blackBrush;
+
+        SolidColorBrush whiteBrush = new SolidColorBrush(Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF));
+        whiteBrush.Freeze();
+        WhiteForegroundBrush = whiteBrush;
 
         DebugLog.Write(LogChannel.Fields,
             "FieldHighlightBehavior: default match brush built", LogLevel.Trace);
@@ -150,7 +160,9 @@ public static class FieldHighlightBehavior
     // empty Text clears the inlines.  Stale spans are pruned per color before painting.  Each
     // character's color is the color of the last span covering it, so overlapping spans resolve by
     // last-writer-wins; runs are emitted one per maximal run of identical color, with an
-    // uncolored run for characters no span covers.
+    // uncolored run for characters no span covers.  A colored run also receives a foreground
+    // brush chosen for contrast against its background, so text stays legible on both light and
+    // dark highlights; an uncolored run inherits the TextBlock's foreground.
     //
     // Runs on the UI thread; attached property callbacks are UI-thread by contract.
     //
@@ -289,6 +301,7 @@ public static class FieldHighlightBehavior
                     (byte)(argb & 0xFF)));
                 brush.Freeze();
                 run.Background = brush;
+                run.Foreground = ContrastForeground(segColor.Value);
             }
 
             block.Inlines.Add(run);
@@ -322,5 +335,41 @@ public static class FieldHighlightBehavior
         }
 
         return a.Value.Equals(b!.Value);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ContrastForeground
+    //
+    // Returns the text brush that reads legibly on the given highlight color: black on light
+    // backgrounds, white on dark ones.  Luminance is the ITU-R BT.601 weighting of the red,
+    // green, and blue channels; alpha is ignored because the highlight is painted over the
+    // TextBlock's own background and the effective lightness cannot be known here.  The
+    // returned brushes are frozen singletons, so no allocation occurs per run.
+    //
+    // color:  The packed ARGB highlight color the text is drawn on top of.
+    //
+    // Returns a frozen black or white brush.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static Brush ContrastForeground(ArgbColor color)
+    {
+        uint argb = color.Value;
+        uint red = (argb >> 16) & 0xFF;
+        uint green = (argb >> 8) & 0xFF;
+        uint blue = argb & 0xFF;
+
+        uint luminance = ((red * 299u) + (green * 587u) + (blue * 114u)) / 1000u;
+
+        if (luminance >= 128u)
+        {
+            DebugLog.Write(LogChannel.Fields,
+                "FieldHighlightBehavior.ContrastForeground: color=0x" + color.ToString("x8", null)
+                + " luminance=" + luminance + ", choosing black", LogLevel.Trace);
+            return BlackForegroundBrush;
+        }
+
+        DebugLog.Write(LogChannel.Fields,
+            "FieldHighlightBehavior.ContrastForeground: color=0x" + color.ToString("x8", null)
+            + " luminance=" + luminance + ", choosing white", LogLevel.Trace);
+        return WhiteForegroundBrush;
     }
 }
