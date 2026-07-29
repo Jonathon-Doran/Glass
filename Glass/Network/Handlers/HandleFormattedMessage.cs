@@ -1,4 +1,5 @@
 ﻿using Glass.Core;
+using Glass.Core.Logging;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 
@@ -15,6 +16,7 @@ public class HandleFormattedMessage : OpcodeHandler
     private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _messageIdSlot;
+    private readonly SlotId _messageCodeSlot;       // index into eqstr_us.txt
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleFormattedMessage(constructor)
@@ -37,6 +39,7 @@ public class HandleFormattedMessage : OpcodeHandler
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         _messageIdSlot = _registry.IndexOfField(_collectionHandle, "msg_text");
+        _messageCodeSlot = _registry.IndexOfField(_collectionHandle, "msg_code");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -68,17 +71,59 @@ public class HandleFormattedMessage : OpcodeHandler
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         FieldExtractor extractor = GlassContext.FieldExtractor;
-        string message;
 
         try
         {
             GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-            message = extractor.GetStringAt(_messageIdSlot);
+            string message = extractor.GetStringAt(_messageIdSlot);
+            uint code = extractor.GetUIntAt(_messageCodeSlot);
         }
         finally
         {
             extractor.Release();
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Describe
+    //
+    // Extracts OP_FormattedMessage against the active patch and builds a display tree: a root node for
+    // the collection with one leaf child per field each carrying its payload byte range.
+    //
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
+    //
+    // Returns:   The root FieldDisplayNode.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    {
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        FieldDisplayNode root = new FieldDisplayNode();
+        string characterName = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
+
+        try
+        {
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+
+            string message = extractor.GetStringAt(_messageIdSlot);
+            uint code = extractor.GetUIntAt(_messageCodeSlot);
+
+            FieldDisplayNode messageNode = new FieldDisplayNode("message = " + message);
+            messageNode.AddByteRange(extractor.GetByteRangeFor(_messageIdSlot));
+            root.AddChild(messageNode);
+
+            FieldDisplayNode codeNode = new FieldDisplayNode("code = " + code);
+            codeNode.AddByteRange(extractor.GetByteRangeFor(_messageCodeSlot));
+            root.AddChild(codeNode);
+
+        }
+        finally
+        {
+            extractor.Release();
+        }
+
+        root.Text = "Formatted Message (to " + characterName + ")";
+        return root;
     }
 }
 

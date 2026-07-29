@@ -22,8 +22,8 @@ public class HandleHpUpdate : OpcodeHandler
     private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _playerIdSlot;
-    private readonly SlotId _currentHPIdSlot;
-    private readonly SlotId _maxHPIdSlot;
+    private readonly SlotId _currentHPSlot;
+    private readonly SlotId _maxHPSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleHpUpdate (constructor)
@@ -40,8 +40,8 @@ public class HandleHpUpdate : OpcodeHandler
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         _playerIdSlot = _registry.IndexOfField(_collectionHandle, "player_id");
-        _currentHPIdSlot = _registry.IndexOfField(_collectionHandle, "current_hp");
-        _maxHPIdSlot = _registry.IndexOfField(_collectionHandle, "max_hp");
+        _currentHPSlot = _registry.IndexOfField(_collectionHandle, "current_hp");
+        _maxHPSlot = _registry.IndexOfField(_collectionHandle, "max_hp");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -88,16 +88,59 @@ public class HandleHpUpdate : OpcodeHandler
                 return;
             }
 
-            character.MaxHP = extractor.GetUIntAt(_maxHPIdSlot);
-            character.CurrentHP = extractor.GetUIntAt(_currentHPIdSlot);
+            character.MaxHP = extractor.GetUIntAt(_maxHPSlot);
+            character.CurrentHP = extractor.GetUIntAt(_currentHPSlot);
+        }
+        finally
+        {
+            extractor.Release();
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Describe
+    //
+    // Extracts OP_HpUpdate against the active patch and builds a display tree: a root node for
+    // the collection with one leaf child per field each carrying its payload byte range.
+    //
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
+    //
+    // Returns:   The root FieldDisplayNode.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    {
+        FieldExtractor extractor = GlassContext.FieldExtractor;
+        FieldDisplayNode root = new FieldDisplayNode();
+        string characterName = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
+
+        try
+        {
+            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+
+            uint playerId = extractor.GetUIntAt(_playerIdSlot);
+            uint currentHP = extractor.GetUIntAt(_currentHPSlot);
+            uint maxHP = extractor.GetUIntAt(_maxHPSlot);
+
+            FieldDisplayNode playerNode = new FieldDisplayNode("player = " + characterName + " ("
+                + playerId.ToString("X4") + ")");
+            playerNode.AddByteRange(extractor.GetByteRangeFor(_playerIdSlot));
+            root.AddChild(playerNode);
+
+            FieldDisplayNode hpNode = new FieldDisplayNode("current HP = " + currentHP);
+            hpNode.AddByteRange(extractor.GetByteRangeFor(_currentHPSlot));
+            root.AddChild(hpNode);
+
+            FieldDisplayNode maxHPNode = new FieldDisplayNode("max HP = " + maxHP);
+            maxHPNode.AddByteRange(extractor.GetByteRangeFor(_maxHPSlot));
+            root.AddChild(maxHPNode);
         }
         finally
         {
             extractor.Release();
         }
 
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-            + _opcodeName + " length=" + data.Length);
-        DebugLog.Write(LogChannel.Opcodes, "HP at " + character.CurrentHP + " / " + character.MaxHP);
+        root.Text = "HP Update";
+        return root;
     }
 }

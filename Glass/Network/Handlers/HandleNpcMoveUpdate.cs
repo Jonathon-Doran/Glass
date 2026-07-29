@@ -218,7 +218,6 @@ public class HandleNpcMoveUpdate : OpcodeHandler
             FieldNodes.AddLabeledNode(extractor, _spawnIdSlot, "NPC: " + npcName +
                 " (0x" + spawnId.ToString("X4") + ")", root);
 
-
             FieldDisplayNode positionNode = new FieldDisplayNode("Position = (" +
                 xPos.ToString("F2") + "," + yPos.ToString("F2") + "," + zPos.ToString("F2") + ")");
             positionNode.AddByteRange(extractor.GetByteRangeFor(_xPosSlot));

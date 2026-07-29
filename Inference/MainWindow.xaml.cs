@@ -88,6 +88,9 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         GlassContext.ProfileManager = new ProfileManager();
+        GlassContext.KeyboardManager = new KeyboardManager();
+        GlassContext.KeyboardManager.Start();
+
         InitializeLogging();
         DebugLog.Write(LogChannel.InferenceDebug, "Inference application started", LogLevel.Trace);
         DebugLog.Write(LogChannel.Inference, "Inference log initialized", LogLevel.Trace);
