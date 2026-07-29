@@ -1,7 +1,6 @@
 ﻿using Glass.Core.Logging;
-using Glass.UI;
 
-namespace Glass.Network.Protocol.Fields;
+namespace Glass.UI;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // HighlightSpan

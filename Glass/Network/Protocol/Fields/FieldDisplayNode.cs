@@ -1,5 +1,6 @@
 ﻿namespace Glass.Network.Protocol.Fields;
 
+using Glass.UI;
 using Glass.Core.Logging;
 using System.Collections.Generic;
 
