@@ -1046,6 +1046,13 @@ public partial class MainWindow : Window
             DebugLog.Write(LogChannel.General, "No patch level before launch.", LogLevel.Error);
             return;
         }
+        
+        if (! GlassContext.ISXGlassPipe.IsConnected)
+        {
+            MessageBox.Show("ISXGlassPipe is not connected.  Unable to launch sessions",
+                "ISX Disconnected", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
 
         GlassContext.CurrentPatchLevel = _currentPatchLevel.Value;
         string serverType = _currentPatchLevel.Value.ServerType;
