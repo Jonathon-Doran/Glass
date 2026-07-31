@@ -1,5 +1,6 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Data.Models;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using System.Printing;
@@ -83,9 +84,9 @@ public class HandleInventory : OpcodeHandler
     private readonly SlotId _Class_Mask_Slot;
     private readonly SlotId _Race_Mask_Slot;
     private readonly SlotId _Field_148_Slot;
-    private readonly SlotId _Field_11C_Slot;
-    private readonly SlotId _Field_120_Slot;
-    private readonly SlotId _Field_118_Slot;
+    private readonly SlotId _Skill_Percent_Change;
+    private readonly SlotId _Skill_Max_Change;
+    private readonly SlotId _Skill_Slot;
     private readonly SlotId _Field_124_Slot;
     private readonly SlotId _Field_128_Slot;
     private readonly SlotId _Field_12C_Slot;
@@ -101,7 +102,7 @@ public class HandleInventory : OpcodeHandler
     private readonly SlotId _Weapon_Delay_Slot;
     private readonly SlotId _Field_153_Slot;
     private readonly SlotId _Field_154_Slot;
-    private readonly SlotId _Field_155_Slot;
+    private readonly SlotId _Weapon_Range_Slot;
     private readonly SlotId _Base_Damage_Slot;
     private readonly SlotId _Color_Slot;
     private readonly SlotId _Field_18C_Slot;
@@ -227,7 +228,11 @@ public class HandleInventory : OpcodeHandler
     private readonly SlotId _Field_48_Slot;  // 199
 
     private readonly SlotId _Field_Optional_4_Byte_Slot;        // array of optional values seen
-
+    private readonly SlotId _Optional_24_Field1_Slot;
+    private readonly SlotId _Evolving_Current_Rank_Slot;
+    private readonly SlotId _Optional_24_Field3_Slot;
+    private readonly SlotId _Evolving_Max_Rank_Slot;
+    private readonly SlotId _Optional_24_Field5_Slot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleInventory (constructor)
@@ -242,12 +247,17 @@ public class HandleInventory : OpcodeHandler
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
+
         // handles of collections that we expect
         CollectionHandle itemCollection = _registry.GetCollectionHandle(_patchLevel, "Inventory Item");
-        _Gate_InventoryOptional24_Slot = _registry.IndexOfField(itemCollection, "Optional24");
+        CollectionHandle optional24Collection = _registry.GetCollectionHandle(_patchLevel, "InventoryOptional24");
         CollectionHandle augmentCollection = _registry.GetCollectionHandle(_patchLevel, "Inventory_AugmentFields");
         CollectionHandle strideCollection = _registry.GetCollectionHandle(_patchLevel, "Inventory_Stride");
         CollectionHandle optional4sCollection = _registry.GetCollectionHandle(_patchLevel, "Inventory_Optional_4s");
+
+        // child gates of interest
+        _Gate_InventoryOptional24_Slot = _registry.IndexOfField(itemCollection, "Optional24");
+
         _Item_Name_Slot = _registry.IndexOfField(itemCollection, "ItemName");
         _Item_Lore_Slot = _registry.IndexOfField(itemCollection, "ItemLore");
 
@@ -318,9 +328,9 @@ public class HandleInventory : OpcodeHandler
         _Class_Mask_Slot = _registry.IndexOfField(itemCollection, "Class Mask");
         _Race_Mask_Slot = _registry.IndexOfField(itemCollection, "Race Mask");
         _Field_148_Slot = _registry.IndexOfField(itemCollection, "Field_148");
-        _Field_11C_Slot = _registry.IndexOfField(itemCollection, "Field_11C");
-        _Field_120_Slot = _registry.IndexOfField(itemCollection, "Field_120");
-        _Field_118_Slot = _registry.IndexOfField(itemCollection, "Field_118");
+        _Skill_Percent_Change = _registry.IndexOfField(itemCollection, "Field_11C");
+        _Skill_Max_Change = _registry.IndexOfField(itemCollection, "Field_120");
+        _Skill_Slot = _registry.IndexOfField(itemCollection, "Field_118");
         _Field_124_Slot = _registry.IndexOfField(itemCollection, "Field_124");
         _Field_128_Slot = _registry.IndexOfField(itemCollection, "Field_128");
         _Field_12C_Slot = _registry.IndexOfField(itemCollection, "Field_12C");
@@ -336,7 +346,7 @@ public class HandleInventory : OpcodeHandler
         _Weapon_Delay_Slot = _registry.IndexOfField(itemCollection, "Weapon_Delay");
         _Field_153_Slot = _registry.IndexOfField(itemCollection, "Field_153");
         _Field_154_Slot = _registry.IndexOfField(itemCollection, "Field_154");
-        _Field_155_Slot = _registry.IndexOfField(itemCollection, "Field_155");
+        _Weapon_Range_Slot = _registry.IndexOfField(itemCollection, "Weapon_Range");
         _Base_Damage_Slot = _registry.IndexOfField(itemCollection, "Field_158");
         _Color_Slot = _registry.IndexOfField(itemCollection, "Field_14C");
         _Field_18C_Slot = _registry.IndexOfField(itemCollection, "Field_18C");
@@ -461,6 +471,11 @@ public class HandleInventory : OpcodeHandler
         _Field_48_Slot = _registry.IndexOfField(itemCollection, "Field_48");
 
         _Field_Optional_4_Byte_Slot = _registry.IndexOfField(optional4sCollection, "Unknown_Optional_Int");
+        _Optional_24_Field1_Slot = _registry.IndexOfField(optional24Collection, "Field1");
+        _Evolving_Current_Rank_Slot = _registry.IndexOfField(optional24Collection, "Field2");
+        _Optional_24_Field3_Slot = _registry.IndexOfField(optional24Collection, "Field3");
+        _Evolving_Max_Rank_Slot = _registry.IndexOfField(optional24Collection, "Field4");
+        _Optional_24_Field5_Slot = _registry.IndexOfField(optional24Collection, "Field5");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -616,8 +631,6 @@ public class HandleInventory : OpcodeHandler
         }
 
         uint childCount = _extractor.BagCount(childItemsGate);
-        DebugLog.Write(LogChannel.Opcodes, "DescribeItem: '" + title +
-                     "' is a container with " + childCount + " child slot(s)", LogLevel.Info);
 
         // Process child item gates
         for (uint c = 0; c < childCount; c++)
@@ -694,8 +707,10 @@ public class HandleInventory : OpcodeHandler
 
         FieldDisplayNode weaponSubtree = new FieldDisplayNode("Weapon Fields");
         itemNode.AddChild(weaponSubtree);
-        FieldNodes.AddUIntNode(_extractor, _Weapon_Delay_Slot, "Weapon Delay", weaponSubtree, "D");
+        FieldNodes.AddUIntNode(_extractor, _Weapon_Delay_Slot, "Delay", weaponSubtree, "D");
         FieldNodes.AddUIntNode(_extractor, _Base_Damage_Slot, "Base Damage", weaponSubtree, "D");
+        FieldNodes.AddUIntNode(_extractor, _Weapon_Range_Slot, "Range", weaponSubtree, "D");
+        FieldNodes.AddUIntNode(_extractor, _Backstab_Damage_Slot, "Backstab Dmg", weaponSubtree, "D");
         AddRatioNode(_Base_Damage_Slot, _Weapon_Delay_Slot, "Ratio", weaponSubtree);
 
         FieldDisplayNode saveSubtree = new FieldDisplayNode("Saves");
@@ -725,6 +740,7 @@ public class HandleInventory : OpcodeHandler
 
         AddAugmentFields(itemGate, itemIndex, itemNode);
         AddStrides(itemGate, itemIndex, itemNode);
+        AddEvolvingItem(itemGate, itemIndex, itemNode);
 
         FieldNodes.AddIntNode(_extractor, _HP_Regen_Slot, "HP Regen", itemNode, "D");
         FieldNodes.AddIntNode(_extractor, _Mana_Regen_Slot, "Mana Regen", itemNode, "D");
@@ -737,7 +753,13 @@ public class HandleInventory : OpcodeHandler
         FieldNodes.AddUIntNode(_extractor, _Tradeskill_Slot, "Used in Tradeskills", itemNode, "D");
         FieldNodes.AddUIntNode(_extractor, _Current_Location_Slot, "Inventory Slot", itemNode, "D");
         FieldNodes.AddUIntNode(_extractor, _Lore_Group_Slot, "Lore Group", itemNode, "X");
-        FieldNodes.AddUIntNode(_extractor, _Backstab_Damage_Slot, "Backstab Dmg", itemNode, "D");
+
+
+        uint skillID = _extractor.GetUIntAt(_Skill_Slot);
+
+        FieldNodes.AddLabeledNode(_extractor, _Skill_Slot, "Skill: " + Skills.GetSkillName(skillID), itemNode);
+        FieldNodes.AddUIntNode(_extractor, _Skill_Percent_Change, "Skill Percent Change", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Skill_Max_Change, "Skill Max Change", itemNode, "D");
 
         FieldNodes.AddUIntNode(_extractor, _Field_3_Slot, "Field 3", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_5_Slot, "Field 5", itemNode, "?");
@@ -790,9 +812,7 @@ public class HandleInventory : OpcodeHandler
         FieldNodes.AddUIntNode(_extractor, _Field_F5_Slot, "Field F5", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_Fb_Slot, "Field Fb", itemNode, "?");
 
-        FieldNodes.AddUIntNode(_extractor, _Field_118_Slot, "Field 118", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_11C_Slot, "Field 11C", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_120_Slot, "Field 120", itemNode, "?");
+
         FieldNodes.AddUIntNode(_extractor, _Field_124_Slot, "Field 124", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_128_Slot, "Field 128", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_12C_Slot, "Field 12C", itemNode, "?");
@@ -807,7 +827,7 @@ public class HandleInventory : OpcodeHandler
         FieldNodes.AddUIntNode(_extractor, _Field_151_Slot, "Field 151", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_153_Slot, "Field 153", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_154_Slot, "Field 154", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_155_Slot, "Field 155", itemNode, "?");
+
 
         FieldNodes.AddUIntNode(_extractor, _Field_164_Slot, "Field 164", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_168_Slot, "Field 168", itemNode, "?");
@@ -897,14 +917,14 @@ public class HandleInventory : OpcodeHandler
         FieldNodes.AddUIntNode(_extractor, _Field_65C_Slot, "Field 65C", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Child_Count_Slot, "Child Count", itemNode, "?");
 
-        AddOptional24(itemGate, itemIndex, itemNode);
+
         AddOptional4s(itemGate, itemIndex, itemNode);
 
         return itemNode;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // AddOptional24
+    // AddEvolvingItem
     //
     // Adds the Optional24 fields for the item in the extractor's active bag.  Resolves the
     // Optional24 gate slot on the active collection, and if the field is present and the gate
@@ -916,39 +936,42 @@ public class HandleInventory : OpcodeHandler
     // itemIndex:  The instance index of the current item within itemGate.
     // parent:     The display node the Optional24 fields are added beneath.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private void AddOptional24(GateHandle itemGate, uint itemIndex, FieldDisplayNode parent)
+    private void AddEvolvingItem(GateHandle itemGate, uint itemIndex, FieldDisplayNode parent)
     {
-        SlotId optional24Slot = GlassContext.PatchRegistry.IndexOfField(_extractor.CollectionOf(), "Optional24");
-        if (_extractor.IsPresent(optional24Slot) == false)
+        SlotId evolvingSlot = GlassContext.PatchRegistry.IndexOfField(_extractor.CollectionOf(), "Optional24");
+        if (_extractor.IsPresent(evolvingSlot) == false)
         {
-            DebugLog.Write(LogChannel.Opcodes, "AddOptional24: no Optional24 present", LogLevel.Trace);
+            DebugLog.Write(LogChannel.Opcodes, "AddEvolvingItem: no Optional24 present", LogLevel.Trace);
             return;
         }
 
-        GateHandle optional24Gate = _extractor.GetGateAt(optional24Slot);
-        if (optional24Gate.Exists == false)
+        GateHandle evolvingGate = _extractor.GetGateAt(evolvingSlot);
+        if (evolvingGate.Exists == false)
         {
-            DebugLog.Write(LogChannel.Opcodes, "AddOptional24: Optional24 slot present but no gate", LogLevel.Warn);
+            DebugLog.Write(LogChannel.Opcodes, "AddEvolvingItem: Optional24 slot present but no gate", LogLevel.Warn);
             return;
         }
 
-        uint bagCount = _extractor.BagCount(optional24Gate);
+        uint bagCount = _extractor.BagCount(evolvingGate);
         if (bagCount == 0)
         {
-            DebugLog.Write(LogChannel.Opcodes, "AddOptional24: Optional24 gate has no bag", LogLevel.Warn);
+            DebugLog.Write(LogChannel.Opcodes, "AddEvolvingItem: Optional24 gate has no bag", LogLevel.Warn);
             return;
         }
 
-        DebugLog.Write(LogChannel.Opcodes, "AddOptional24: entering Optional24 bag", LogLevel.Info);
-        _extractor.EnterGate(optional24Gate, 0u);
+        _extractor.EnterGate(evolvingGate, 0u);
 
-        FieldDisplayNode optional24Node = new FieldDisplayNode("Optional24");
-        parent.AddChild(optional24Node);
+        FieldDisplayNode evolvingNode = new FieldDisplayNode("Evolving Item");
+        parent.AddChild(evolvingNode);
 
-        // Optional24 fields go here, e.g.:
-        // AddUIntNode(_Field_XXX_Slot, "Field XXX", optional24Node, "?");
+        FieldNodes.AddUIntNode(_extractor, _Optional_24_Field1_Slot, "Field 1", evolvingNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Evolving_Current_Rank_Slot, "Current Rank", evolvingNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Evolving_Max_Rank_Slot, "Max Rank", evolvingNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Optional_24_Field3_Slot, "Field 3", evolvingNode, "?");
 
-        DebugLog.Write(LogChannel.Opcodes, "AddOptional24: restoring item bag", LogLevel.Trace);
+        FieldNodes.AddUIntNode(_extractor, _Optional_24_Field5_Slot, "Field 5", evolvingNode, "?");
+
+        // restore item bag
         _extractor.EnterGate(itemGate, itemIndex);
     }
 
@@ -1044,7 +1067,7 @@ public class HandleInventory : OpcodeHandler
             FieldDisplayNode bagNode = new FieldDisplayNode("Stride " + (bagIndex + 1));
             stridesNode.AddChild(bagNode);
 
-            FieldNodes.AddUIntNode(_extractor, _Field_220_Slot, "Field 220", bagNode, "?");
+            FieldNodes.AddUIntNode(_extractor, _Field_220_Slot, "Spell-ID", bagNode, "?");
             FieldNodes.AddUIntNode(_extractor, _Field_224_Slot, "Field 224", bagNode, "?");
             FieldNodes.AddUIntNode(_extractor, _Field_225_Slot, "Field 225", bagNode, "?");
             FieldNodes.AddUIntNode(_extractor, _Field_228_Slot, "Field 228", bagNode, "?");
@@ -1452,6 +1475,10 @@ public class HandleInventory : OpcodeHandler
         if ((mask & CLASS_Bard) != 0)
         {
             classes.Add("Bard");
+        }
+        if ((mask & CLASS_Monk) != 0)
+        {
+            classes.Add("Monk");
         }
         if ((mask & CLASS_Druid) != 0)
         {
