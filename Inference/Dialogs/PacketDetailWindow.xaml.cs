@@ -39,17 +39,38 @@ public partial class PacketDetailWindow : Window
     private bool _dragOccurred = false;
     private string _hexText = string.Empty;
     private List<HighlightSpan> _hexSpans = new List<HighlightSpan>();
+
+    // Hand-painted spans, kept apart from the find spans so no generation bump can reach them.
+    // These are removed only by an explicit erase.
+    private List<HighlightSpan> _manualSpans = new List<HighlightSpan>();
+
+    // Ranges currently painted by the find and the find cursor, in dump-text character offsets.
+    // These are the only ranges an erase of the find highlighting is allowed to touch.
+    private List<HighlightSpan> _findPaintedSpans = new List<HighlightSpan>();
+
     private HighlightGenerationMap _hexGenerationMap = new HighlightGenerationMap();
     private ArgbColor _activeHighlightColor;
     private List<ByteRange> _findMatches = new List<ByteRange>();
     private uint _findCursorByte;
     private bool _findCursorValid;
     private byte[] _payload = System.Array.Empty<byte>();
+
     // Never null after construction; the constructor arms a swatch before anything can read it.
     private Border _selectedSwatch = null!;
+
     // The cursor's own highlight color, deliberately outside the sixteen-swatch palette so the
     // current match can never be confused with a match painted in a selected color.
     private static readonly ArgbColor HexCursorColor = new ArgbColor(0xFFFF0000u);
+
+    // Character offset in the dump text at which each line begins, ascending.
+    private List<int> _lineStartOffsets = new List<int>();
+
+    // Text position at which each line begins, parallel to _lineStartOffsets.
+    private List<TextPointer> _lineStartPointers = new List<TextPointer>();
+
+    // The query text the current match list was built from, so a re-run of the same query can be
+    // told from a new one.
+    private string _lastFindQuery = string.Empty;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // PacketDetailWindow (constructor)
@@ -108,7 +129,7 @@ public partial class PacketDetailWindow : Window
                 "PacketDetailWindow: no field tree for " + packet.Metadata.Opcode, LogLevel.Trace);
         }
         _hexText = HexDumpFormatter.Format(payload, int.MaxValue);
-        RebuildHexDocument();
+        BuildHexDocument();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -159,8 +180,13 @@ public partial class PacketDetailWindow : Window
     // Momentary apply-then-reset toggle that colors the hex pane's current text selection in the
     // armed swatch's color.  The toggle is returned to its unchecked state on every path so it
     // behaves as a button rather than a mode.  An empty selection is not an error; there is simply
-    // nothing to color.  The span is stamped with the current generation for the armed color, so it
-    // stays live until that color's generation is bumped and is unaffected by bumps to other colors.
+    // nothing to color.
+    //
+    // The colored range is painted directly and recorded in the manual span list, which is never
+    // cleared by a find, so hand coloring outlives every subsequent query in any color and is
+    // restored underneath whenever find highlighting that covered it is removed.  The generation
+    // stamped on the recorded span is zero and is not read; it is present only because the span
+    // type carries the field.
     //
     // Offsets are taken against the dump text by normalizing the flow document's line breaks:
     // TextRange.Text reports a LineBreak as a carriage return and line feed pair, while the stored
@@ -212,15 +238,20 @@ public partial class PacketDetailWindow : Window
             return;
         }
 
-        uint generation = _hexGenerationMap.CurrentGeneration(_activeHighlightColor);
-        _hexSpans.Add(new HighlightSpan(start, length, _activeHighlightColor, generation));
+        if (!PaintHexRange(start, length, _activeHighlightColor))
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.Toggle_HexColorSelected_Click: could not paint range start="
+                + start + " length=" + length + ", nothing recorded", LogLevel.Warn);
+            return;
+        }
+
+        _manualSpans.Add(new HighlightSpan(start, length, _activeHighlightColor, 0u));
 
         DebugLog.Write(LogChannel.Opcodes,
             "PacketDetailWindow.Toggle_HexColorSelected_Click: colored selection start=" + start
             + " length=" + length + " color=0x" + _activeHighlightColor.ToString()
-            + " generation=" + generation + ", span count now " + _hexSpans.Count, LogLevel.Trace);
-
-        RebuildHexDocument();
+            + ", manual span count now " + _manualSpans.Count, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -471,6 +502,78 @@ public partial class PacketDetailWindow : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // HexColorPatch_MouseRightButtonUp
+    //
+    // Right-click handler shared by every color swatch above the hex pane.  Erases every
+    // hand-painted span whose color matches the clicked swatch, everywhere in the dump, and
+    // removes those spans from the manual span list.  Spans in other colors are untouched, and
+    // the armed swatch is not changed, so right-clicking is purely an erase gesture.
+    //
+    // A span whose paint cannot be cleared is kept in the list, so the record never claims a
+    // range is uncolored while it still shows color.  A swatch whose Tag cannot be read as a
+    // packed ARGB literal erases nothing.
+    //
+    // sender:  The Border that raised the event.
+    // e:       Standard mouse event args; not inspected.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void HexColorPatch_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        Border? swatch = sender as Border;
+        if (swatch == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.HexColorPatch_MouseRightButtonUp: sender was not a Border, "
+                + "ignoring", LogLevel.Error);
+            return;
+        }
+        string? tagText = swatch.Tag as string;
+        if (tagText == null || tagText.Length < 3)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.HexColorPatch_MouseRightButtonUp: swatch Tag missing or too "
+                + "short, nothing erased", LogLevel.Error);
+            return;
+        }
+        uint raw;
+        if (!uint.TryParse(tagText.Substring(2),
+            System.Globalization.NumberStyles.HexNumber, null, out raw))
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.HexColorPatch_MouseRightButtonUp: could not parse Tag '"
+                + tagText + "' as hex uint, nothing erased", LogLevel.Error);
+            return;
+        }
+        List<HighlightSpan> kept = new List<HighlightSpan>();
+        int cleared = 0;
+        for (int i = 0; i < _manualSpans.Count; i++)
+        {
+            HighlightSpan span = _manualSpans[i];
+            if (span.OverrideColor.Value != raw)
+            {
+                kept.Add(span);
+                continue;
+            }
+            if (PaintHexRange(span.Start, span.Length, null))
+            {
+                cleared++;
+            }
+            else
+            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "PacketDetailWindow.HexColorPatch_MouseRightButtonUp: could not clear span "
+                    + "start=" + span.Start + " length=" + span.Length + ", span kept",
+                    LogLevel.Warn);
+                kept.Add(span);
+            }
+        }
+        _manualSpans = kept;
+        DebugLog.Write(LogChannel.Opcodes,
+            "PacketDetailWindow.HexColorPatch_MouseRightButtonUp: color=0x"
+            + raw.ToString("x8") + " cleared " + cleared + " span(s), "
+            + _manualSpans.Count + " remain", LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // SelectHexColorSwatch
     //
     // Arms a color swatch and adopts its color as the window's selected highlight color.  The
@@ -704,25 +807,29 @@ public partial class PacketDetailWindow : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // RebuildHexDocument
+    // BuildHexDocument
     //
-    // Rebuilds the hex pane's FlowDocument from the stored dump text and span list.  Spans whose
-    // generation is behind the current generation for their own color are dropped before
-    // painting, so bumping one color's generation discards that color's spans and leaves
-    // every other color untouched.
+    // Builds the hex pane's FlowDocument once from the stored dump text, uncolored, and records the
+    // character offset and text position at which each line begins.  Called during construction and
+    // at no other time, so the pane's scroll position and text selection are never disturbed after
+    // the window opens.
     //
-    // Each character's color is the color of the last span covering it, so overlapping spans resolve
-    // by last-writer-wins; one Run is emitted per maximal run of identical color, with an
-    // uncolored Run for characters no span covers.  A colored Run also receives a contrast
-    // foreground so text stays legible on dark patch colors.  Newlines in the dump text are
-    // emitted as LineBreak elements rather than left inside a Run, so line breaks do not depend
-    // on how the flow layout treats a newline character; the character offsets the spans index
-    // are unaffected because each newline consumes exactly one offset either way.  The document
-    // is given an explicit PageWidth so 77-character lines scroll horizontally instead of
-    // wrapping, and zero page and paragraph padding so the dump is not double-spaced.
+    // One Run is emitted per line with a LineBreak between lines, rather than leaving newline
+    // characters inside a Run, so line breaks do not depend on how the flow layout treats a newline
+    // character.  A line that is empty contributes no Run, only its LineBreak.  Each newline
+    // consumes exactly one character offset either way, so offsets measured against the dump text
+    // address the document directly.
+    //
+    // The two recorded lists are parallel and ascending, and are what turns a character offset into
+    // a text position without walking the whole inline collection.  The document is given an
+    // explicit PageWidth so 77-character lines scroll horizontally instead of wrapping, and zero
+    // page and paragraph padding so the dump is not double-spaced.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private void RebuildHexDocument()
+    private void BuildHexDocument()
     {
+        _lineStartOffsets = new List<int>();
+        _lineStartPointers = new List<TextPointer>();
+
         FlowDocument document = new FlowDocument();
         document.PagePadding = new Thickness(0);
 
@@ -734,163 +841,79 @@ public partial class PacketDetailWindow : Window
         else
         {
             DebugLog.Write(LogChannel.Opcodes,
-                "PacketDetailWindow.RebuildHexDocument: no measurable width, leaving PageWidth "
-                + "at its default", LogLevel.Warn);
+                "PacketDetailWindow.BuildHexDocument: no measurable width, leaving PageWidth at "
+                + "its default", LogLevel.Warn);
         }
 
         Paragraph paragraph = new Paragraph();
         paragraph.Margin = new Thickness(0);
+        document.Blocks.Add(paragraph);
 
-        int textLength = _hexText.Length;
-        if (textLength == 0)
+        if (_hexText.Length == 0)
         {
-            document.Blocks.Add(paragraph);
             HexDumpBox.Document = document;
 
             DebugLog.Write(LogChannel.Opcodes,
-                "PacketDetailWindow.RebuildHexDocument: empty dump text, empty document",
+                "PacketDetailWindow.BuildHexDocument: empty dump text, empty document",
                 LogLevel.Warn);
             return;
         }
 
-        int pruned = 0;
-        for (int i = _hexSpans.Count - 1; i >= 0; i--)
+        string[] lines = _hexText.Split('\n');
+        int offset = 0;
+
+        for (int i = 0; i < lines.Length; i++)
         {
-            HighlightSpan span = _hexSpans[i];
-            uint currentGeneration = _hexGenerationMap.CurrentGeneration(span.OverrideColor);
-            if (span.Generation != currentGeneration)
+            _lineStartOffsets.Add(offset);
+
+            if (lines[i].Length > 0)
             {
+                Run run = new Run(lines[i]);
+                paragraph.Inlines.Add(run);
+                _lineStartPointers.Add(run.ContentStart);
+            }
+            else
+            {
+                LineBreak placeholder = new LineBreak();
+                paragraph.Inlines.Add(placeholder);
+                _lineStartPointers.Add(placeholder.ContentStart);
+
                 DebugLog.Write(LogChannel.Opcodes,
-                    "PacketDetailWindow.RebuildHexDocument: pruning stale span start="
-                    + span.Start + " color=0x" + span.OverrideColor.ToString()
-                    + " generation=" + span.Generation + " current=" + currentGeneration,
+                    "PacketDetailWindow.BuildHexDocument: line " + i + " is empty, no Run emitted",
                     LogLevel.Trace);
 
-                _hexSpans.RemoveAt(i);
-                pruned++;
-            }
-        }
-
-        if (pruned > 0)
-        {
-            DebugLog.Write(LogChannel.Opcodes,
-                "PacketDetailWindow.RebuildHexDocument: pruned " + pruned + " stale span(s), "
-                + _hexSpans.Count + " remaining", LogLevel.Trace);
-        }
-
-        ArgbColor?[] charColor = new ArgbColor?[textLength];
-        int applied = 0;
-        int skipped = 0;
-
-        for (int i = 0; i < _hexSpans.Count; i++)
-        {
-            HighlightSpan span = _hexSpans[i];
-            int spanStart = span.Start;
-            int spanLength = span.Length;
-
-            if (spanLength <= 0)
-            {
-                skipped++;
-                DebugLog.Write(LogChannel.Opcodes,
-                    "PacketDetailWindow.RebuildHexDocument: skipping span with non-positive "
-                    + "length " + spanLength + " at start=" + spanStart, LogLevel.Warn);
+                offset = offset + 1;
                 continue;
             }
 
-            if (spanStart < 0 || spanStart >= textLength)
-            {
-                skipped++;
-                DebugLog.Write(LogChannel.Opcodes,
-                    "PacketDetailWindow.RebuildHexDocument: skipping out of range span, start="
-                    + spanStart + " textLength=" + textLength, LogLevel.Warn);
-                continue;
-            }
+            offset = offset + lines[i].Length;
 
-            int spanEnd = spanStart + spanLength;
-            if (spanEnd > textLength)
+            if (i < lines.Length - 1)
             {
-                spanEnd = textLength;
+                paragraph.Inlines.Add(new LineBreak());
+                offset = offset + 1;
             }
-
-            for (int c = spanStart; c < spanEnd; c++)
-            {
-                charColor[c] = span.OverrideColor;
-            }
-            applied++;
-
-            DebugLog.Write(LogChannel.Opcodes,
-                "PacketDetailWindow.RebuildHexDocument: applied span start=" + spanStart
-                + " end=" + spanEnd + " color=0x" + span.OverrideColor.ToString(),
-                LogLevel.Trace);
         }
 
-        int segStart = 0;
-        int runCount = 0;
-        while (segStart < textLength)
-        {
-            ArgbColor? segColor = charColor[segStart];
-            int segEnd = segStart + 1;
-            while (segEnd < textLength && FieldHighlightBehavior.NullableColorEquals(charColor[segEnd], segColor))
-            {
-                segEnd++;
-            }
-
-            SolidColorBrush? background = null;
-            Brush? foreground = null;
-            if (segColor.HasValue)
-            {
-                uint argb = segColor.Value.Value;
-                background = new SolidColorBrush(Color.FromArgb(
-                    (byte)((argb >> 24) & 0xFF),
-                    (byte)((argb >> 16) & 0xFF),
-                    (byte)((argb >> 8) & 0xFF),
-                    (byte)(argb & 0xFF)));
-                background.Freeze();
-                foreground = FieldHighlightBehavior.ContrastForeground(segColor.Value);
-            }
-
-            string segText = _hexText.Substring(segStart, segEnd - segStart);
-            string[] pieces = segText.Split('\n');
-            for (int j = 0; j < pieces.Length; j++)
-            {
-                if (pieces[j].Length > 0)
-                {
-                    Run run = new Run(pieces[j]);
-                    if (background != null)
-                    {
-                        run.Background = background;
-                        run.Foreground = foreground;
-                    }
-                    paragraph.Inlines.Add(run);
-                    runCount++;
-                }
-
-                if (j < pieces.Length - 1)
-                {
-                    paragraph.Inlines.Add(new LineBreak());
-                }
-            }
-
-            segStart = segEnd;
-        }
-
-        document.Blocks.Add(paragraph);
         HexDumpBox.Document = document;
 
         DebugLog.Write(LogChannel.Opcodes,
-            "PacketDetailWindow.RebuildHexDocument: " + applied + " span(s) applied, "
-            + skipped + " skipped, " + runCount + " run(s) emitted", LogLevel.Trace);
+            "PacketDetailWindow.BuildHexDocument: " + lines.Length + " line(s) over "
+            + _hexText.Length + " character(s), " + _lineStartPointers.Count
+            + " line position(s) recorded", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // RunHexFind
     //
     // Re-runs the find over the retained payload from the current contents of the find text box
-    // and records the results as the window's match list.  The selected highlight color's
-    // generation is bumped first, so the previous query's spans in that color go stale while spans
-    // in every other color survive; the cursor is invalidated because match positions from the
-    // prior query no longer mean anything.  An empty or whitespace-only query leaves the match
-    // list empty, which is how a cleared find is expressed.
+    // and records the results as the window's match list.  An empty or whitespace-only query
+    // leaves the match list empty, which is how a cleared find is expressed.
+    //
+    // The cursor is dropped when the query text differs from the one the previous match list was
+    // built from, because a position taken from the old query's hits means nothing among the new
+    // one's.  A re-run of the same text keeps the cursor, so repeatedly starting the search walks
+    // through the matches instead of returning to the first one every time.
     //
     // The query is scanned in both byte forms: its parsed hex bytes when it satisfies the strict
     // hex rule, and always its ASCII bytes.  The whole payload is in scope because this window's
@@ -902,7 +925,17 @@ public partial class PacketDetailWindow : Window
     {
         string query = TextBoxHexFind.Text;
 
-        _hexGenerationMap.Bump(_activeHighlightColor);
+        if (query != _lastFindQuery)
+        {
+            _findCursorValid = false;
+            _findCursorByte = 0u;
+
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.RunHexFind: query changed from '" + _lastFindQuery + "' to '"
+                + query + "', cursor dropped", LogLevel.Trace);
+        }
+
+        _lastFindQuery = query;
         _findMatches.Clear();
 
         if (string.IsNullOrWhiteSpace(query))
@@ -962,45 +995,59 @@ public partial class PacketDetailWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     // PaintHexFindMatches
     //
-    // Stamps a highlight span pair over every recorded match and rebuilds the hex document so the
-    // matches appear.  Each match contributes one hex-column span and one ASCII-gutter span per
-    // dump line it covers, all in the selected highlight color at that color's current generation,
-    // so they are born live while the previous query's spans in the same color are still behind and
-    // get pruned during the rebuild.  Hand-painted spans in other colors are untouched.  An empty
-    // match list still rebuilds, which is what clears a previous query's highlights from view.
+    // Makes the pane's find highlighting equal the current match list.  The previous query's
+    // highlighting is removed first, so a match that is no longer in the list stops being painted,
+    // and every recorded match is then painted in the armed color.  Each match contributes one
+    // hex-column range and one ASCII-gutter range per dump line it covers.  Every range painted is
+    // recorded so a later query can find and remove it.
+    //
+    // Hand-painted spans are not part of this and survive; where a match overlaps one, the match is
+    // painted over it and the hand coloring is restored when this highlighting is next cleared.
+    //
+    // An empty match list still clears, which is how a cleared query stops showing its old hits.
+    //
+    // The generation handed to the span builder is zero and is not read; the ranges it returns are
+    // consumed for their offsets alone.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void PaintHexFindMatches()
     {
-        uint generation = _hexGenerationMap.CurrentGeneration(_activeHighlightColor);
-        int added = 0;
+        ClearHexFindPaint();
+
+        int painted = 0;
 
         for (int i = 0; i < _findMatches.Count; i++)
         {
             List<HighlightSpan> spans =
-                HexDumpSearch.BuildSpans(_findMatches[i], _activeHighlightColor, generation);
+                HexDumpSearch.BuildSpans(_findMatches[i], _activeHighlightColor, 0u);
 
             if (spans.Count == 0)
             {
                 DebugLog.Write(LogChannel.Opcodes,
                     "PacketDetailWindow.PaintHexFindMatches: match at byte "
-                    + _findMatches[i].Start + " produced no spans, skipped", LogLevel.Warn);
+                    + _findMatches[i].Start + " produced no ranges, skipped", LogLevel.Warn);
                 continue;
             }
 
             for (int s = 0; s < spans.Count; s++)
             {
-                _hexSpans.Add(spans[s]);
+                if (PaintHexRange(spans[s].Start, spans[s].Length, _activeHighlightColor))
+                {
+                    _findPaintedSpans.Add(spans[s]);
+                    painted++;
+                }
+                else
+                {
+                    DebugLog.Write(LogChannel.Opcodes,
+                        "PacketDetailWindow.PaintHexFindMatches: could not paint range start="
+                        + spans[s].Start + " length=" + spans[s].Length, LogLevel.Warn);
+                }
             }
-
-            added += spans.Count;
         }
 
         DebugLog.Write(LogChannel.Opcodes,
-            "PacketDetailWindow.PaintHexFindMatches: " + _findMatches.Count + " match(es) painted as "
-            + added + " span(s) in color 0x" + _activeHighlightColor.ToString()
-            + " at generation " + generation, LogLevel.Trace);
-
-        RebuildHexDocument();
+            "PacketDetailWindow.PaintHexFindMatches: " + _findMatches.Count
+            + " match(es) painted as " + painted + " range(s) in color 0x"
+            + _activeHighlightColor.ToString(), LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1146,7 +1193,7 @@ public partial class PacketDetailWindow : Window
 
         bool forward = (Keyboard.Modifiers & ModifierKeys.Shift) != ModifierKeys.Shift;
 
-        InitiateHexFind(true);
+        InitiateHexFind(forward);
 
         e.Handled = true;
 
@@ -1282,10 +1329,14 @@ public partial class PacketDetailWindow : Window
     // GetHexTextPointer
     //
     // Returns a TextPointer at the given character offset into the hex dump text, or null when the
-    // offset is past the end of the document or the document is not laid out as expected.  The
-    // paragraph's inlines are walked in order, each Run contributing its text length and each
-    // LineBreak contributing the single newline character it stands for, so the offsets counted
-    // here match the offsets the spans index into the dump text.
+    // offset cannot be resolved.  The line holding the offset is found by binary search over the
+    // recorded line start offsets, and the remainder is applied as a step forward from that line's
+    // recorded text position, so the cost does not grow with the size of the dump.
+    //
+    // An offset that lands exactly on a line's newline resolves to the end of that line's text
+    // rather than to a position inside the following line, so a range ending at a newline stops at
+    // the visible end of the line.  An empty line holds no text, so the only offset it can resolve
+    // is its own start.
     //
     // charOffset:  Zero-based character offset into the dump text.
     //
@@ -1301,63 +1352,93 @@ public partial class PacketDetailWindow : Window
             return null;
         }
 
-        Paragraph? paragraph = HexDumpBox.Document.Blocks.FirstBlock as Paragraph;
-        if (paragraph == null)
+        if (_lineStartOffsets.Count == 0)
         {
             DebugLog.Write(LogChannel.Opcodes,
-                "PacketDetailWindow.GetHexTextPointer: hex document has no paragraph",
+                "PacketDetailWindow.GetHexTextPointer: no line positions recorded",
                 LogLevel.Error);
             return null;
         }
 
-        int remaining = charOffset;
-
-        foreach (Inline inline in paragraph.Inlines)
+        if (charOffset > _hexText.Length)
         {
-            Run? run = inline as Run;
-            if (run != null)
-            {
-                int runLength = run.Text.Length;
-                if (remaining < runLength)
-                {
-                    TextPointer? pointer =
-                        run.ContentStart.GetPositionAtOffset(remaining, LogicalDirection.Forward);
-                    if (pointer == null)
-                    {
-                        DebugLog.Write(LogChannel.Opcodes,
-                            "PacketDetailWindow.GetHexTextPointer: GetPositionAtOffset returned "
-                            + "null for offset " + remaining + " within run of length " + runLength,
-                            LogLevel.Error);
-                    }
-                    return pointer;
-                }
-
-                remaining = remaining - runLength;
-                continue;
-            }
-
-            LineBreak? lineBreak = inline as LineBreak;
-            if (lineBreak != null)
-            {
-                if (remaining == 0)
-                {
-                    return lineBreak.ContentStart;
-                }
-
-                remaining = remaining - 1;
-                continue;
-            }
-
             DebugLog.Write(LogChannel.Opcodes,
-                "PacketDetailWindow.GetHexTextPointer: unexpected inline type "
-                + inline.GetType().Name + ", cannot traverse", LogLevel.Error);
+                "PacketDetailWindow.GetHexTextPointer: offset " + charOffset
+                + " is past the end of the dump text, length " + _hexText.Length, LogLevel.Warn);
             return null;
         }
 
-        DebugLog.Write(LogChannel.Opcodes,
-            "PacketDetailWindow.GetHexTextPointer: offset " + charOffset
-            + " is past the end of the dump text", LogLevel.Warn);
-        return null;
+        int low = 0;
+        int high = _lineStartOffsets.Count - 1;
+        int lineIndex = 0;
+
+        while (low <= high)
+        {
+            int middle = low + ((high - low) / 2);
+
+            if (_lineStartOffsets[middle] <= charOffset)
+            {
+                lineIndex = middle;
+                low = middle + 1;
+            }
+            else
+            {
+                high = middle - 1;
+            }
+        }
+
+        int lineStart = _lineStartOffsets[lineIndex];
+        int lineTextLength;
+
+        if (lineIndex + 1 < _lineStartOffsets.Count)
+        {
+            lineTextLength = _lineStartOffsets[lineIndex + 1] - lineStart - 1;
+        }
+        else
+        {
+            lineTextLength = _hexText.Length - lineStart;
+        }
+
+        if (lineTextLength < 0)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.GetHexTextPointer: line " + lineIndex
+                + " measured negative length " + lineTextLength, LogLevel.Error);
+            return null;
+        }
+
+        int delta = charOffset - lineStart;
+
+        if (delta > lineTextLength)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.GetHexTextPointer: offset " + charOffset
+                + " falls past the text of line " + lineIndex + ", clamping to its end",
+                LogLevel.Warn);
+            delta = lineTextLength;
+        }
+
+        TextPointer lineStartPointer = _lineStartPointers[lineIndex];
+
+        if (lineTextLength == 0)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.GetHexTextPointer: offset " + charOffset + " is on empty line "
+                + lineIndex, LogLevel.Trace);
+            return lineStartPointer;
+        }
+
+        TextPointer? pointer = AdvanceOverText(lineStartPointer, delta);
+        if (pointer == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.GetHexTextPointer: GetPositionAtOffset returned null for delta "
+                + delta + " on line " + lineIndex + " of text length " + lineTextLength,
+                LogLevel.Error);
+            return null;
+        }
+
+        return pointer;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1433,7 +1514,7 @@ public partial class PacketDetailWindow : Window
 
         DebugLog.Write(LogChannel.Opcodes,
             "PacketDetailWindow.ScrollHexCursorIntoView: match " + matchIndex + " at byte "
-            + _findCursorByte + " scrolled into view", LogLevel.Info);
+            + _findCursorByte + " scrolled into view", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1522,46 +1603,401 @@ public partial class PacketDetailWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     // PaintHexCursor
     //
-    // Repaints the cursor highlight so only the match the cursor sits on carries the cursor color.
-    // The cursor color's generation is bumped first, which stales the previous cursor highlight
-    // without touching spans in any other color, and the current match's spans are then stamped in
-    // that color at the new generation.  With no cursor placed, the bump alone leaves no cursor
-    // highlight at all.
+    // Paints the match the find cursor sits on in the cursor color, so the current stop is
+    // distinguishable from the other hits.  The ranges painted are recorded alongside the match
+    // ranges, so clearing the find highlighting removes the cursor with it.
     //
-    // The spans are appended after any match spans already recorded, so where the cursor's region
-    // overlaps a match painted in the selected color, last-writer-wins resolves the shared
-    // characters to the cursor color.  This therefore has to run after the matches are painted.
+    // No earlier cursor has to be removed here, because the match highlighting is repainted in full
+    // immediately before this runs and has already covered wherever the cursor previously sat.
+    // Painting after that is what puts the cursor color on top of the match color they share.
+    //
+    // With no cursor placed there is nothing to paint and the pane keeps the match highlighting
+    // alone.
+    //
+    // The generation handed to the span builder is zero and is not read; the ranges it returns are
+    // consumed for their offsets alone.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void PaintHexCursor()
     {
-        _hexGenerationMap.Bump(HexCursorColor);
-
         int matchIndex = CursorMatchIndex();
         if (matchIndex < 0)
         {
             DebugLog.Write(LogChannel.Opcodes,
-                "PacketDetailWindow.PaintHexCursor: no cursor match, cursor highlight cleared",
+                "PacketDetailWindow.PaintHexCursor: no cursor match, nothing painted",
                 LogLevel.Trace);
-
-            RebuildHexDocument();
             return;
         }
 
-        uint generation = _hexGenerationMap.CurrentGeneration(HexCursorColor);
-
         List<HighlightSpan> spans = HexDumpSearch.BuildSpans(
-            _findMatches[matchIndex], HexCursorColor, generation);
+            _findMatches[matchIndex], HexCursorColor, 0u);
+
+        int painted = 0;
 
         for (int i = 0; i < spans.Count; i++)
         {
-            _hexSpans.Add(spans[i]);
+            if (PaintHexRange(spans[i].Start, spans[i].Length, HexCursorColor))
+            {
+                _findPaintedSpans.Add(spans[i]);
+                painted++;
+            }
+            else
+            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "PacketDetailWindow.PaintHexCursor: could not paint range start="
+                    + spans[i].Start + " length=" + spans[i].Length, LogLevel.Warn);
+            }
         }
 
         DebugLog.Write(LogChannel.Opcodes,
             "PacketDetailWindow.PaintHexCursor: match " + matchIndex + " at byte "
-            + _findCursorByte + " painted as " + spans.Count + " cursor span(s) at generation "
-            + generation, LogLevel.Trace);
+            + _findCursorByte + " painted as " + painted + " cursor range(s)", LogLevel.Trace);
+    }
 
-        RebuildHexDocument();
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // PaintHexRange
+    //
+    // Applies or removes the background of one run of characters in the hex pane in place, without
+    // rebuilding the document.  A color paints that background across the range together with a
+    // contrast foreground so the text stays legible on a dark patch; no color removes the
+    // background and returns the foreground to the pane's own, which is what an erase looks like.
+    //
+    // The range is addressed by character offset into the dump text, the same offsets the search
+    // and the hand-coloring both produce, so no caller has to hold a text position.
+    //
+    // start:   Zero-based character offset of the first character to paint.
+    // length:  Number of characters to paint.  A non-positive length paints nothing.
+    // color:   The background color to apply, or null to remove the background.
+    //
+    // Returns true when the range was painted, false when it could not be resolved.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private bool PaintHexRange(int start, int length, ArgbColor? color)
+    {
+        if (length <= 0)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.PaintHexRange: non-positive length " + length + " at start="
+                + start + ", nothing painted", LogLevel.Warn);
+            return false;
+        }
+
+        TextPointer? startPointer = GetHexTextPointer(start);
+        if (startPointer == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.PaintHexRange: could not resolve start offset " + start,
+                LogLevel.Warn);
+            return false;
+        }
+
+        TextPointer? endPointer = GetHexTextPointer(start + length);
+        if (endPointer == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.PaintHexRange: could not resolve end offset "
+                + (start + length), LogLevel.Warn);
+            return false;
+        }
+
+        TextRange range = new TextRange(startPointer, endPointer);
+
+        if (color.HasValue)
+        {
+            uint argb = color.Value.Value;
+            SolidColorBrush background = new SolidColorBrush(Color.FromArgb(
+                (byte)((argb >> 24) & 0xFF),
+                (byte)((argb >> 16) & 0xFF),
+                (byte)((argb >> 8) & 0xFF),
+                (byte)(argb & 0xFF)));
+            background.Freeze();
+
+            range.ApplyPropertyValue(TextElement.BackgroundProperty, background);
+            range.ApplyPropertyValue(TextElement.ForegroundProperty,
+                FieldHighlightBehavior.ContrastForeground(color.Value));
+
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.PaintHexRange: painted start=" + start + " length=" + length
+                + " color=0x" + color.Value.ToString(), LogLevel.Trace);
+            return true;
+        }
+
+        range.ApplyPropertyValue(TextElement.BackgroundProperty, null);
+        range.ApplyPropertyValue(TextElement.ForegroundProperty, HexDumpBox.Foreground);
+
+        DebugLog.Write(LogChannel.Opcodes,
+            "PacketDetailWindow.PaintHexRange: cleared start=" + start + " length=" + length,
+            LogLevel.Trace);
+        return true;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ClearHexFindPaint
+    //
+    // Removes the background from every range the find and the find cursor have painted, and
+    // repaints the hand-painted spans afterwards so any hand coloring that lay under a find
+    // highlight is restored rather than erased along with it.  Leaves the painted-range list empty,
+    // which is the state a fresh query starts from.
+    //
+    // The hand-painted spans are all repainted rather than only those that overlap a cleared range,
+    // because the list is short and repainting a span that was already correct costs one property
+    // application over a few characters.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void ClearHexFindPaint()
+    {
+        int cleared = 0;
+
+        for (int i = 0; i < _findPaintedSpans.Count; i++)
+        {
+            HighlightSpan span = _findPaintedSpans[i];
+
+            if (PaintHexRange(span.Start, span.Length, null))
+            {
+                cleared++;
+            }
+            else
+            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "PacketDetailWindow.ClearHexFindPaint: could not clear range start="
+                    + span.Start + " length=" + span.Length, LogLevel.Warn);
+            }
+        }
+
+        _findPaintedSpans.Clear();
+
+        int repainted = 0;
+
+        for (int i = 0; i < _manualSpans.Count; i++)
+        {
+            HighlightSpan span = _manualSpans[i];
+
+            if (PaintHexRange(span.Start, span.Length, span.OverrideColor))
+            {
+                repainted++;
+            }
+            else
+            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "PacketDetailWindow.ClearHexFindPaint: could not repaint manual span start="
+                    + span.Start + " length=" + span.Length, LogLevel.Warn);
+            }
+        }
+
+        DebugLog.Write(LogChannel.Opcodes,
+            "PacketDetailWindow.ClearHexFindPaint: " + cleared + " find range(s) cleared, "
+            + repainted + " manual span(s) repainted", LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // AdvanceOverText
+    //
+    // Returns the position reached by moving forward over a given number of text characters from
+    // the supplied position, stepping over element boundaries without counting them.  This is what
+    // makes an offset measured against the dump text address the document correctly after a range
+    // has been given a background, because applying a property splits the Run it covers and every
+    // resulting boundary would otherwise be counted as a character.
+    //
+    // Line breaks are elements and are stepped over rather than counted, so the walk is only
+    // meaningful within a single line; a count that would run past the end of the line's text
+    // continues into the next line's text and is the caller's error.
+    //
+    // start:  The position to walk forward from.
+    // count:  Number of text characters to move over.  Zero returns the starting position.
+    //
+    // Returns the position reached, or null when the document ends before the count is satisfied.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static TextPointer? AdvanceOverText(TextPointer start, int count)
+    {
+        if (start == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.AdvanceOverText: null start position", LogLevel.Error);
+            return null;
+        }
+
+        if (count < 0)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.AdvanceOverText: negative count " + count, LogLevel.Error);
+            return null;
+        }
+
+        if (count == 0)
+        {
+            return start;
+        }
+
+        TextPointer? current = start;
+        int remaining = count;
+
+        while (current != null && remaining > 0)
+        {
+            TextPointerContext context = current.GetPointerContext(LogicalDirection.Forward);
+
+            if (context == TextPointerContext.None)
+            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "PacketDetailWindow.AdvanceOverText: document ended with " + remaining
+                    + " character(s) still to move over", LogLevel.Warn);
+                return null;
+            }
+
+            if (context == TextPointerContext.Text)
+            {
+                int runLength = current.GetTextRunLength(LogicalDirection.Forward);
+
+                if (runLength >= remaining)
+                {
+                    return current.GetPositionAtOffset(remaining, LogicalDirection.Forward);
+                }
+
+                current = current.GetPositionAtOffset(runLength, LogicalDirection.Forward);
+                remaining = remaining - runLength;
+                continue;
+            }
+
+            current = current.GetNextContextPosition(LogicalDirection.Forward);
+        }
+
+        if (current == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.AdvanceOverText: walk ran off the end of the document",
+                LogLevel.Warn);
+        }
+
+        return current;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // RemoveManualSpanRange
+    //
+    // Subtracts a character range from the manual span list.  A span entirely inside the range
+    // is removed; a span overlapping one end is trimmed to the part outside the range; a span
+    // the range splits down the middle is replaced by its two remaining pieces.  Spans that do
+    // not touch the range are left alone.  The document is not repainted here; only the record
+    // of what is hand-painted changes.  The generation stamped on a replacement piece is zero
+    // and is not read; it is present only because the span type carries the field.
+    //
+    // start:   Zero-based character offset of the first character of the removed range.
+    // length:  Number of characters in the removed range.  A non-positive length removes
+    //          nothing.
+    //
+    // Returns the number of spans removed, trimmed, or split.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private int RemoveManualSpanRange(int start, int length)
+    {
+        if (length <= 0)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.RemoveManualSpanRange: non-positive length " + length
+                + ", nothing removed", LogLevel.Warn);
+            return 0;
+        }
+        int end = start + length;
+        List<HighlightSpan> kept = new List<HighlightSpan>();
+        int touched = 0;
+        for (int i = 0; i < _manualSpans.Count; i++)
+        {
+            HighlightSpan span = _manualSpans[i];
+            int spanEnd = span.Start + span.Length;
+            if (spanEnd <= start || span.Start >= end)
+            {
+                kept.Add(span);
+                continue;
+            }
+            touched++;
+            if (span.Start < start)
+            {
+                kept.Add(new HighlightSpan(span.Start, start - span.Start,
+                    span.OverrideColor, 0u));
+                DebugLog.Write(LogChannel.Opcodes,
+                    "PacketDetailWindow.RemoveManualSpanRange: span start=" + span.Start
+                    + " length=" + span.Length + " kept left piece of "
+                    + (start - span.Start) + " character(s)", LogLevel.Trace);
+            }
+            if (spanEnd > end)
+            {
+                kept.Add(new HighlightSpan(end, spanEnd - end, span.OverrideColor, 0u));
+                DebugLog.Write(LogChannel.Opcodes,
+                    "PacketDetailWindow.RemoveManualSpanRange: span start=" + span.Start
+                    + " length=" + span.Length + " kept right piece of "
+                    + (spanEnd - end) + " character(s)", LogLevel.Trace);
+            }
+        }
+        _manualSpans = kept;
+        DebugLog.Write(LogChannel.Opcodes,
+            "PacketDetailWindow.RemoveManualSpanRange: range start=" + start + " length="
+            + length + " touched " + touched + " span(s), " + _manualSpans.Count
+            + " remain", LogLevel.Trace);
+        return touched;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Toggle_HexUncolorSelected_Click
+    //
+    // Momentary apply-then-reset toggle that removes hand coloring from the hex pane's current
+    // text selection.  The toggle is returned to its unchecked state on every path so it behaves
+    // as a button rather than a mode.  An empty selection is not an error; there is simply
+    // nothing to uncolor.
+    //
+    // The selected range's background is removed in place and the range is subtracted from the
+    // manual span list, so a manual span partly covered by the selection keeps its uncovered
+    // pieces both on screen and in the record.
+    //
+    // Offsets are taken against the dump text by normalizing the flow document's line breaks:
+    // TextRange.Text reports a LineBreak as a carriage return and line feed pair, while the
+    // stored dump text holds a single line feed, so each pair is collapsed before measuring.
+    //
+    // sender:  The ToggleButton that raised the event.
+    // e:       Standard routed event args; not inspected.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void Toggle_HexUncolorSelected_Click(object sender, RoutedEventArgs e)
+    {
+        ToggleButton? toggle = sender as ToggleButton;
+        if (toggle == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.Toggle_HexUncolorSelected_Click: sender was not a "
+                + "ToggleButton, ignoring", LogLevel.Error);
+            return;
+        }
+        toggle.IsChecked = false;
+        TextSelection selection = HexDumpBox.Selection;
+        if (selection.IsEmpty)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.Toggle_HexUncolorSelected_Click: selection is empty, "
+                + "nothing to uncolor", LogLevel.Warn);
+            return;
+        }
+        Paragraph? paragraph = HexDumpBox.Document.Blocks.FirstBlock as Paragraph;
+        if (paragraph == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.Toggle_HexUncolorSelected_Click: hex document has no "
+                + "paragraph, ignoring", LogLevel.Error);
+            return;
+        }
+        TextRange prefix = new TextRange(paragraph.ContentStart, selection.Start);
+        int start = prefix.Text.Replace("\r\n", "\n").Length;
+        int length = selection.Text.Replace("\r\n", "\n").Length;
+        if (length <= 0)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.Toggle_HexUncolorSelected_Click: selection measured zero "
+                + "length, ignoring", LogLevel.Warn);
+            return;
+        }
+        if (!PaintHexRange(start, length, null))
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PacketDetailWindow.Toggle_HexUncolorSelected_Click: could not clear range "
+                + "start=" + start + " length=" + length + ", spans unchanged", LogLevel.Warn);
+            return;
+        }
+        int touched = RemoveManualSpanRange(start, length);
+        DebugLog.Write(LogChannel.Opcodes,
+            "PacketDetailWindow.Toggle_HexUncolorSelected_Click: uncolored selection start="
+            + start + " length=" + length + ", " + touched + " manual span(s) touched, "
+            + _manualSpans.Count + " remain", LogLevel.Trace);
     }
 }

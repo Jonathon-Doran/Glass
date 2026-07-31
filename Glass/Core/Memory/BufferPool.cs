@@ -221,7 +221,7 @@ public sealed class BufferPool
             DebugLog.Write(LogChannel.Memory,
                 $"BufferPool stats: class={i} size={_sizes[i]} "
                 + $"inUse={_inUse[i]} highWater={_highWater[i]} "
-                + $"totalRents={_totalRents[i]} waits={_waitCount[i]}.");
+                + $"totalRents={_totalRents[i]} waits={_waitCount[i]}.", LogLevel.Info);
         }
     }
 

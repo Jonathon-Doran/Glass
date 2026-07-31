@@ -193,76 +193,82 @@
                         <Border x:Name="HexPatchYellow" Background="#FFFFE066" Width="24" Height="24"
                                 Margin="2,0" BorderBrush="Gray" BorderThickness="1"
                                 MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
-                                Tag="0xFFFFE066" ToolTip="Yellow"/>
+                                Tag="0xFFFFE066" ToolTip="Yellow — click to arm, right-click to erase all yellow highlights"/>
                         <Border x:Name="HexPatchGreen" Background="#FF6BCB77" Width="24" Height="24"
                                 Margin="2,0" BorderBrush="Gray" BorderThickness="1"
                                 MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
-                                Tag="0xFF6BCB77" ToolTip="Green"/>
+                                Tag="0xFF6BCB77" ToolTip="Green — click to arm, right-click to erase all green highlights"/>
                         <Border x:Name="HexPatchCyan" Background="#FF4DD0E1" Width="24" Height="24"
                                 Margin="2,0" BorderBrush="Gray" BorderThickness="1"
                                 MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
-                                Tag="0xFF4DD0E1" ToolTip="Cyan"/>
+                                Tag="0xFF4DD0E1" ToolTip="Cyan — click to arm, right-click to erase all cyan highlights"/>
                         <Border x:Name="HexPatchMagenta" Background="#FFE066C7" Width="24" Height="24"
                                 Margin="2,0" BorderBrush="Gray" BorderThickness="1"
                                 MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
-                                Tag="0xFFE066C7" ToolTip="Magenta"/>
+                                Tag="0xFFE066C7" ToolTip="Magenta — click to arm, right-click to erase all magenta highlights"/>
                         <Border x:Name="HexPatchSalmon" Background="#FFFF9999" Width="24" Height="24"
                                 Margin="2,0" BorderBrush="Gray" BorderThickness="1"
                                 MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
-                                Tag="0xFFFF9999" ToolTip="Salmon"/>
+                                Tag="0xFFFF9999" ToolTip="Salmon — click to arm, right-click to erase all salmon highlights"/>
                         <Border x:Name="HexPatchOrange" Background="#FFFFB347" Width="24" Height="24"
                                 Margin="2,0" BorderBrush="Gray" BorderThickness="1"
                                 MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
-                                Tag="0xFFFFB347" ToolTip="Orange"/>
+                                Tag="0xFFFFB347" ToolTip="Orange — click to arm, right-click to erase all orange highlights"/>
                         <Border x:Name="HexPatchLime" Background="#FFC5E063" Width="24" Height="24"
                                 Margin="2,0" BorderBrush="Gray" BorderThickness="1"
                                 MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
-                                Tag="0xFFC5E063" ToolTip="Lime"/>
+                                Tag="0xFFC5E063" ToolTip="Lime — click to arm, right-click to erase all lime highlights"/>
                         <Border x:Name="HexPatchLavender" Background="#FFC9A0DC" Width="24" Height="24"
                                 Margin="2,0" BorderBrush="Gray" BorderThickness="1"
                                 MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
-                                Tag="0xFFC9A0DC" ToolTip="Lavender"/>
+                                Tag="0xFFC9A0DC" ToolTip="Lavender — click to arm, right-click to erase all lavender highlights"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal">
                         <Border x:Name="HexPatchNavy" Background="#FF1F4E9C" Width="24" Height="24"
                                 Margin="2,0" BorderBrush="Gray" BorderThickness="1"
                                 MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
-                                Tag="0xFF1F4E9C" ToolTip="Navy"/>
+                                Tag="0xFF1F4E9C" ToolTip="Navy — click to arm, right-click to erase all navy highlights"/>
                         <Border x:Name="HexPatchForest" Background="#FF2E7D32" Width="24" Height="24"
                                 Margin="2,0" BorderBrush="Gray" BorderThickness="1"
                                 MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
-                                Tag="0xFF2E7D32" ToolTip="Forest"/>
+                                Tag="0xFF2E7D32" ToolTip="Forest Green — click to arm, right-click to erase all forest green highlights"/>
                         <Border x:Name="HexPatchTeal" Background="#FF00695C" Width="24" Height="24"
                                 Margin="2,0" BorderBrush="Gray" BorderThickness="1"
                                 MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
-                                Tag="0xFF00695C" ToolTip="Teal"/>
+                                Tag="0xFF00695C" ToolTip="Teal — click to arm, right-click to erase all teal highlights"/>
                         <Border x:Name="HexPatchMaroon" Background="#FF8E1F2F" Width="24" Height="24"
                                 Margin="2,0" BorderBrush="Gray" BorderThickness="1"
                                 MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
-                                Tag="0xFF8E1F2F" ToolTip="Maroon"/>
+                                Tag="0xFF8E1F2F" ToolTip="Maroon — click to arm, right-click to erase all maroon highlights"/>
                         <Border x:Name="HexPatchPurple" Background="#FF5E35B1" Width="24" Height="24"
                                 Margin="2,0" BorderBrush="Gray" BorderThickness="1"
                                 MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
-                                Tag="0xFF5E35B1" ToolTip="Purple"/>
+                                Tag="0xFF5E35B1" ToolTip="Purple — click to arm, right-click to erase all purple highlights"/>
                         <Border x:Name="HexPatchBrown" Background="#FF6D4C41" Width="24" Height="24"
                                 Margin="2,0" BorderBrush="Gray" BorderThickness="1"
                                 MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
-                                Tag="0xFF6D4C41" ToolTip="Brown"/>
+                                Tag="0xFF6D4C41" ToolTip="Brown — click to arm, right-click to erase all brown highlights"/>
                         <Border x:Name="HexPatchSlate" Background="#FF455A64" Width="24" Height="24"
                                 Margin="2,0" BorderBrush="Gray" BorderThickness="1"
                                 MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
-                                Tag="0xFF455A64" ToolTip="Slate"/>
+                                Tag="0xFF455A64" ToolTip="Slate — click to arm, right-click to erase all slate highlights"/>
                         <Border x:Name="HexPatchOlive" Background="#FF7A6A21" Width="24" Height="24"
                                 Margin="2,0" BorderBrush="Gray" BorderThickness="1"
                                 MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
-                                Tag="0xFF7A6A21" ToolTip="Olive"/>
+                                Tag="0xFF7A6A21" ToolTip="Olive — click to arm, right-click to erase all olive highlights"/>
                     </StackPanel>
-                    <ToggleButton x:Name="ToggleHexColorSelected"
-                                  Content="Color selected"
-                                  Click="Toggle_HexColorSelected_Click"
-                                  HorizontalAlignment="Left"
-                                  Padding="8,4" Margin="2,4,0,0"
-                                  ToolTip="Color the selected hex text in the armed color"/>
+                    <StackPanel Orientation="Horizontal" Margin="2,4,0,0">
+                        <ToggleButton x:Name="ToggleHexColorSelected"
+                                      Content="Color selected"
+                                      Click="Toggle_HexColorSelected_Click"
+                                      Padding="8,4"
+                                      ToolTip="Color the selected hex text in the armed color"/>
+                        <ToggleButton x:Name="ToggleHexUncolorSelected"
+                                      Content="Uncolor selected"
+                                      Click="Toggle_HexUncolorSelected_Click"
+                                      Padding="8,4" Margin="8,0,0,0"
+                                      ToolTip="Remove hand coloring from the selected hex text"/>
+                    </StackPanel>
                 </StackPanel>
                 <Grid x:Name="HexFindBar" DockPanel.Dock="Top"
                       Margin="8,0,8,4" Visibility="Collapsed">

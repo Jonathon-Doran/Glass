@@ -125,8 +125,8 @@ public partial class MainWindow : Window
         ArmColorPatch(ColorPatchYellow);
 
         GlassContext.BufferPool = new BufferPool(
-            new uint[] { 16, 64, 256, 512, 1024, 2048, 16384, 65536, 262144, 524288 },
-            new uint[] { 1000, 10000, 5000, 2000, 4000, 1000, 1000, 20, 20, 20 });
+            new uint[] { 16,   64,    256,   512,  640,  768,  1024, 2048, 16384, 65536, 262144, 524288 },
+            new uint[] { 1000, 10000, 10000, 2000, 8000, 8000, 1000, 1000, 1000, 20, 20, 20 });
         GcMonitor.Start(5);
     }
     private void InitializeLogging()
