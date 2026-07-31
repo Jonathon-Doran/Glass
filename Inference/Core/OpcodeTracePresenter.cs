@@ -52,7 +52,8 @@ public partial class OpcodeTracePresenter
     private readonly Action<SignalSessionAdded> _sessionAddedHandler;
     private uint _maxHexBytes;
     private string _searchQuery;
-    private byte[]? _searchQueryBytes;
+    private byte[]? _searchQueryHexBytes;
+    private byte[]? _searchQueryAsciiBytes;
     private int _matchCount;
     private uint _matchGeneration = 0u;
     private SearchCursor _searchCursor;
@@ -82,7 +83,8 @@ public partial class OpcodeTracePresenter
         _characterNameCacheLock = new object();
         _maxHexBytes = 64;
         _searchQuery = string.Empty;
-        _searchQueryBytes = null;
+        _searchQueryHexBytes = null;
+        _searchQueryAsciiBytes = null;
         _matchCount = 0;
         _searchQueryType = SearchQueryType.Empty;
         _searchCursor = new SearchCursor(this);
@@ -956,17 +958,20 @@ public partial class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     // LocateHexDumpHighlights
     //
-    // Scans the row's payload for the active query bytes and, for each payload match, stamps
-    // HighlightSpans on the row's hex-dump element and appends one multi-span SearchMatch to the
-    // row's Matches list.  A single payload match emits two spans per dump line it covers — one
-    // over the hex column, one over the ASCII gutter — all collected into that match's span list.
-    // The match's anchor is the hex-column span on its first line, so the cursor scrolls to the
-    // start of the hex bytes.  ASCII queries fold 'A'-'Z' to 'a'-'z' on both sides during
-    // comparison.  In Fast mode collapsed rows are skipped.  A row with no hex-dump element is
-    // skipped.
+    // Scans the row's payload for the active query's byte forms and, for each match, stamps the
+    // covering highlight spans on the row's hex-dump element and appends one multi-span
+    // SearchMatch to the row's Matches list.  Scanning and dump geometry come from HexDumpSearch,
+    // so the spans land identically here and in any other consumer painting over the same dump
+    // format.  The match's anchor is the first span it produced, which is the hex-column span on
+    // its first line, so the cursor scrolls to the start of the hex bytes.
     //
-    // row:   The row whose payload is scanned.
-    // mode:  Search mode gating body scans for collapsed rows.
+    // In Fast mode collapsed rows are skipped.  A row with no hex-dump element is skipped.  The
+    // scan is limited to the bytes the dump actually renders, so a match cannot be reported in
+    // text the user cannot see.
+    //
+    // row:            The row whose payload is scanned.
+    // mode:           Search mode gating body scans for collapsed rows.
+    // rowTextOffset:  Running character offset of this row's text; advanced past the dump.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void LocateHexDumpHighlights(OpcodeTraceRow row, SearchMode mode, ref uint rowTextOffset)
     {
@@ -979,16 +984,12 @@ public partial class OpcodeTracePresenter
         if (hexElement == null)
         {
             DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.LocateHexDumpHighlights: no hex-dump element, skipped", LogLevel.Trace);
+                "OpcodeTracePresenter.LocateHexDumpHighlights: no hex-dump element, skipped",
+                LogLevel.Trace);
             return;
         }
 
         hexElement.RowTextOffset = rowTextOffset;
-        byte[] queryBytes = _searchQueryBytes!;
-        if (queryBytes.Length == 0)
-        {
-            return;
-        }
 
         ReadOnlySpan<byte> payload = row.Payload.AsReadOnlySpan();
         uint payloadLength = (uint)payload.Length;
@@ -1003,111 +1004,38 @@ public partial class OpcodeTracePresenter
             displayLength = _maxHexBytes;
         }
 
-        int scanLength = (int)displayLength;
+        List<ByteRange> matches = HexDumpSearch.FindMatches(
+            payload, (int)displayLength, _searchQueryHexBytes, _searchQueryAsciiBytes);
 
-        if (queryBytes.Length > scanLength)
+        for (int i = 0; i < matches.Count; i++)
         {
-            DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.LocateHexDumpHighlights: query longer than displayed "
-                + scanLength + " byte(s), nothing to scan", LogLevel.Trace);
-            return;
-        }
+            uint generation = _highlightGenerationMap.CurrentGeneration(_activeHighlightColor);
 
-        bool caseInsensitive = _searchQueryType == SearchQueryType.Ascii;
+            List<HighlightSpan> matchSpans =
+                HexDumpSearch.BuildSpans(matches[i], _activeHighlightColor, generation);
 
-        int lineWidth = 8 + 2 + (16 * 3) + 1 + 1 + 16 + 1 + 1;
-        int hexColumnOffset = 8 + 2;
-        int asciiColumnOffset = 8 + 2 + (16 * 3) + 1 + 1;
-
-        int searchEnd = scanLength - queryBytes.Length + 1;
-        for (int scanPos = 0; scanPos < searchEnd; scanPos++)
-        {
-            bool matched = true;
-            for (int q = 0; q < queryBytes.Length; q++)
+            if (matchSpans.Count == 0)
             {
-                byte payloadByte = payload[scanPos + q];
-                byte queryByte = queryBytes[q];
-                if (caseInsensitive)
-                {
-                    if (payloadByte >= (byte)'A' && payloadByte <= (byte)'Z')
-                    {
-                        payloadByte = (byte)(payloadByte + 32);
-                    }
-                    if (queryByte >= (byte)'A' && queryByte <= (byte)'Z')
-                    {
-                        queryByte = (byte)(queryByte + 32);
-                    }
-                }
-                if (payloadByte != queryByte)
-                {
-                    matched = false;
-                    break;
-                }
-            }
-
-            if (!matched)
-            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "OpcodeTracePresenter.LocateHexDumpHighlights: match at byte "
+                    + matches[i].Start + " produced no spans, skipped", LogLevel.Warn);
                 continue;
             }
 
-            int matchStart = scanPos;
-            int matchEnd = scanPos + queryBytes.Length;
-
-            int firstLine = matchStart / 16;
-            int lastLine = (matchEnd - 1) / 16;
-
-            List<HighlightSpan> matchSpans = new List<HighlightSpan>();
-
-            for (int lineIndex = firstLine; lineIndex <= lastLine; lineIndex++)
+            for (int s = 0; s < matchSpans.Count; s++)
             {
-                int lineByteStart = lineIndex * 16;
-                int lineByteEnd = lineByteStart + 16;
-
-                int sliceStart = Math.Max(matchStart, lineByteStart);
-                int sliceEnd = Math.Min(matchEnd, lineByteEnd);
-                int sliceLength = sliceEnd - sliceStart;
-
-                int withinLineByteIndex = sliceStart - lineByteStart;
-
-                int hexStartInLine = hexColumnOffset + (withinLineByteIndex * 3);
-                if (withinLineByteIndex >= 8)
-                {
-                    hexStartInLine += 1;
-                }
-
-                int hexLength = (sliceLength * 3) - 1;
-
-                int sliceLastByteIndex = withinLineByteIndex + sliceLength - 1;
-                if (withinLineByteIndex < 8 && sliceLastByteIndex >= 8)
-                {
-                    hexLength += 1;
-                }
-
-                int lineStartInString = lineIndex * lineWidth;
-
-                uint generation = _highlightGenerationMap.CurrentGeneration(_activeHighlightColor);
-
-                HighlightSpan hexSpan = new HighlightSpan(
-                    lineStartInString + hexStartInLine, hexLength, _activeHighlightColor, generation);
-                hexElement.AddSpan(hexSpan, _highlightGenerationMap.CurrentGeneration);
-                matchSpans.Add(hexSpan);
-
-                int asciiStartInLine = asciiColumnOffset + withinLineByteIndex;
-                HighlightSpan asciiSpan = new HighlightSpan(
-                    lineStartInString + asciiStartInLine, sliceLength, _activeHighlightColor, generation);
-                hexElement.AddSpan(asciiSpan, _highlightGenerationMap.CurrentGeneration);
-                matchSpans.Add(asciiSpan);
+                hexElement.AddSpan(matchSpans[s], _highlightGenerationMap.CurrentGeneration);
             }
 
-            SearchMatch match = new SearchMatch(row.PacketIndex, hexElement, matchSpans, _matchGeneration);
+            SearchMatch match =
+                new SearchMatch(row.PacketIndex, hexElement, matchSpans, _matchGeneration);
             row.Matches.Add(match);
             _matches.Add(match);
-
-            DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.LocateHexDumpHighlights: match at byte " + matchStart
-                + ", " + matchSpans.Count + " span(s) across lines " + firstLine + "-" + lastLine,
-                LogLevel.Trace);
         }
+
+        DebugLog.Write(LogChannel.Opcodes,
+            "OpcodeTracePresenter.LocateHexDumpHighlights: " + matches.Count
+            + " match(es) over " + displayLength + " rendered byte(s)", LogLevel.Trace);
 
         rowTextOffset += (uint)hexElement.Text.Length;
     }
@@ -1279,69 +1207,6 @@ public partial class OpcodeTracePresenter
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // TryParseHexQuery
-    //
-    // Determines whether the user's query string should be interpreted as a hex byte sequence.
-    // The rule is strict: the query must contain at least two whitespace-separated tokens,
-    // and every token must be exactly two hexadecimal digits.  Single-token inputs like "BEEF"
-    // are not hex — they fall through to the caller's ASCII interpretation.  This avoids the
-    // ambiguity where a four-letter word could be a hex value or could be a real word in a
-    // packet payload.
-    //
-    // The query is normalized by splitting on whitespace and ignoring empty tokens, so
-    // multiple spaces between bytes are tolerated.
-    //
-    // query:  The raw user input from the find bar.
-    //
-    // Returns:  A byte array containing the parsed hex bytes, or null if the query is not
-    //           a valid hex sequence.  An empty or whitespace-only query returns null.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private static byte[]? TryParseHexQuery(string query)
-    {
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            DebugLog.Write(LogChannel.Opcodes, "TryParseHexQuery: empty query", LogLevel.Error);
-            return null;
-        }
-
-        string[] tokens = query.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-
-        if (tokens.Length < 2)
-        {
-            DebugLog.Write(LogChannel.Opcodes,
-                "TryParseHexQuery: single-token query '" + query + "' treated as ASCII", LogLevel.Warn);
-            return null;
-        }
-
-        byte[] result = new byte[tokens.Length];
-
-        for (int tokenIndex = 0; tokenIndex < tokens.Length; tokenIndex++)
-        {
-            string token = tokens[tokenIndex];
-
-            if (token.Length != 2)
-            {
-                DebugLog.Write(LogChannel.Opcodes,
-                    "TryParseHexQuery: token '" + token + "' is not 2 chars, query treated as ASCII", LogLevel.Warn);
-                return null;
-            }
-
-            if (!byte.TryParse(token, System.Globalization.NumberStyles.HexNumber, null, out byte parsed))
-            {
-                DebugLog.Write(LogChannel.Opcodes,
-                    "TryParseHexQuery: token '" + token + "' is not hex, query treated as ASCII", LogLevel.Warn);
-                return null;
-            }
-
-            result[tokenIndex] = parsed;
-        }
-
-        DebugLog.Write(LogChannel.Opcodes,
-            "TryParseHexQuery: parsed " + tokens.Length + " hex bytes", LogLevel.Trace);
-        return result;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
     // RebuildIfChanged
     //
     // Rebuilds the match list when the supplied query differs from the cached query.  Every row
@@ -1455,11 +1320,14 @@ public partial class OpcodeTracePresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     // SetSearchQuery
     //
-    // Assigns the active search query and its derived byte form.  An empty or whitespace-only
-    // query resets the query state to Empty and discards the byte form.  A non-empty query is
-    // classified as Hex or Ascii, the byte form is set accordingly, and the active highlight
-    // color's generation is bumped so the prior search's spans go stale.  Does not touch the
-    // cursor; cursor parking is the caller's responsibility.
+    // Assigns the active search query and its derived byte forms.  An empty or whitespace-only
+    // query resets the query state to Empty and discards both byte forms.  A non-empty query
+    // always yields an ASCII byte form, and additionally yields a hex byte form when the text
+    // parses as a hex byte sequence, so a hex-parsable query is scanned for both its byte value
+    // and its literal characters.  The query is classified Hex when both forms are present and
+    // Ascii when only the ASCII form is.  The active highlight color's generation is bumped so
+    // the prior search's spans go stale.  Does not touch the cursor; cursor parking is the
+    // caller's responsibility.
     //
     // query:  The new search query, or null/whitespace to clear.
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1473,31 +1341,39 @@ public partial class OpcodeTracePresenter
         {
             _searchQuery = string.Empty;
             _searchQueryType = SearchQueryType.Empty;
-            _searchQueryBytes = null;
+            _searchQueryHexBytes = null;
+            _searchQueryAsciiBytes = null;
+
             DebugLog.Write(LogChannel.Opcodes,
                 "OpcodeTracePresenter.SetSearchQuery: cleared", LogLevel.Info);
             return;
         }
 
         _searchQuery = query;
-        byte[]? hexBytes = TryParseHexQuery(query);
-        if (hexBytes != null)
+        _searchQueryAsciiBytes = Encoding.ASCII.GetBytes(query);
+        _searchQueryHexBytes = HexDumpSearch.TryParseHexQuery(query);
+
+        if (_searchQueryHexBytes != null)
         {
             _searchQueryType = SearchQueryType.Hex;
-            _searchQueryBytes = hexBytes;
+
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTracePresenter.SetSearchQuery: query='" + query
+                + "' parsed as hex, scanning " + _searchQueryHexBytes.Length
+                + " hex byte(s) and " + _searchQueryAsciiBytes.Length + " ascii byte(s)",
+                LogLevel.Info);
         }
         else
         {
             _searchQueryType = SearchQueryType.Ascii;
-            _searchQueryBytes = Encoding.ASCII.GetBytes(query);
+
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTracePresenter.SetSearchQuery: query='" + query
+                + "' not hex, scanning " + _searchQueryAsciiBytes.Length + " ascii byte(s)",
+                LogLevel.Info);
         }
 
-        // invalidate the current color's highlights.
         _highlightGenerationMap.Bump(_activeHighlightColor);
-
-        DebugLog.Write(LogChannel.Opcodes,
-            "OpcodeTracePresenter.SetSearchQuery: query='" + query + "' type=" + _searchQueryType
-            + " bytes=" + _searchQueryBytes.Length, LogLevel.Info);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -2009,7 +1885,8 @@ public partial class OpcodeTracePresenter
         }
 
         _searchQuery = string.Empty;
-        _searchQueryBytes = null;
+        _searchQueryHexBytes = null;
+        _searchQueryAsciiBytes = null;
         _matchCount = 0;
         _matchGeneration++;
         _matches.Clear();

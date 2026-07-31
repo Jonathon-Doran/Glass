@@ -322,7 +322,7 @@ public static class FieldHighlightBehavior
     // a:  First optional color.
     // b:  Second optional color.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private static bool NullableColorEquals(ArgbColor? a, ArgbColor? b)
+    internal static bool NullableColorEquals(ArgbColor? a, ArgbColor? b)
     {
         if (a.HasValue != b.HasValue)
         {
@@ -350,7 +350,7 @@ public static class FieldHighlightBehavior
     //
     // Returns a frozen black or white brush.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private static Brush ContrastForeground(ArgbColor color)
+    internal static Brush ContrastForeground(ArgbColor color)
     {
         uint argb = color.Value;
         uint red = (argb >> 16) & 0xFF;

@@ -5,6 +5,7 @@
         ui:WindowHelper.UseModernWindowStyle="True"
         Title="Packet Detail"
         Height="600" Width="1000"
+        PreviewKeyDown="Window_PreviewKeyDown"
         ShowInTaskbar="False">
     <Window.Resources>
         <Style x:Key="ExpandCollapseToggleStyle" TargetType="{x:Type ToggleButton}">
@@ -139,7 +140,15 @@
                 <TextBlock Grid.Row="1" Grid.Column="5" x:Name="HeaderCharacter" Margin="0,0,16,0"/>
             </Grid>
         </Border>
-
+        <StatusBar DockPanel.Dock="Bottom">
+            <StatusBarItem HorizontalAlignment="Right">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock x:Name="StatusHexCursor" Text="No cursor" Margin="0,0,16,0"/>
+                    <Separator/>
+                    <TextBlock x:Name="StatusHexMatches" Text="No matches" Margin="16,0,0,0"/>
+                </StackPanel>
+            </StatusBarItem>
+        </StatusBar>
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
@@ -177,17 +186,152 @@
 
             <DockPanel Grid.Column="2">
                 <TextBlock DockPanel.Dock="Top" Text="Hex" FontWeight="SemiBold" Margin="8,4,8,2"/>
-                <ScrollViewer VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Auto"
-                              Margin="4,0,8,8">
-                    <TextBox x:Name="HexDumpTextBox"
+
+                <StackPanel DockPanel.Dock="Top" x:Name="HexPalettePanel"
+                            Orientation="Vertical" Margin="8,0,8,4">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                        <Border x:Name="HexPatchYellow" Background="#FFFFE066" Width="24" Height="24"
+                                Margin="2,0" BorderBrush="Gray" BorderThickness="1"
+                                MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
+                                Tag="0xFFFFE066" ToolTip="Yellow"/>
+                        <Border x:Name="HexPatchGreen" Background="#FF6BCB77" Width="24" Height="24"
+                                Margin="2,0" BorderBrush="Gray" BorderThickness="1"
+                                MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
+                                Tag="0xFF6BCB77" ToolTip="Green"/>
+                        <Border x:Name="HexPatchCyan" Background="#FF4DD0E1" Width="24" Height="24"
+                                Margin="2,0" BorderBrush="Gray" BorderThickness="1"
+                                MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
+                                Tag="0xFF4DD0E1" ToolTip="Cyan"/>
+                        <Border x:Name="HexPatchMagenta" Background="#FFE066C7" Width="24" Height="24"
+                                Margin="2,0" BorderBrush="Gray" BorderThickness="1"
+                                MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
+                                Tag="0xFFE066C7" ToolTip="Magenta"/>
+                        <Border x:Name="HexPatchSalmon" Background="#FFFF9999" Width="24" Height="24"
+                                Margin="2,0" BorderBrush="Gray" BorderThickness="1"
+                                MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
+                                Tag="0xFFFF9999" ToolTip="Salmon"/>
+                        <Border x:Name="HexPatchOrange" Background="#FFFFB347" Width="24" Height="24"
+                                Margin="2,0" BorderBrush="Gray" BorderThickness="1"
+                                MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
+                                Tag="0xFFFFB347" ToolTip="Orange"/>
+                        <Border x:Name="HexPatchLime" Background="#FFC5E063" Width="24" Height="24"
+                                Margin="2,0" BorderBrush="Gray" BorderThickness="1"
+                                MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
+                                Tag="0xFFC5E063" ToolTip="Lime"/>
+                        <Border x:Name="HexPatchLavender" Background="#FFC9A0DC" Width="24" Height="24"
+                                Margin="2,0" BorderBrush="Gray" BorderThickness="1"
+                                MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
+                                Tag="0xFFC9A0DC" ToolTip="Lavender"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <Border x:Name="HexPatchNavy" Background="#FF1F4E9C" Width="24" Height="24"
+                                Margin="2,0" BorderBrush="Gray" BorderThickness="1"
+                                MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
+                                Tag="0xFF1F4E9C" ToolTip="Navy"/>
+                        <Border x:Name="HexPatchForest" Background="#FF2E7D32" Width="24" Height="24"
+                                Margin="2,0" BorderBrush="Gray" BorderThickness="1"
+                                MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
+                                Tag="0xFF2E7D32" ToolTip="Forest"/>
+                        <Border x:Name="HexPatchTeal" Background="#FF00695C" Width="24" Height="24"
+                                Margin="2,0" BorderBrush="Gray" BorderThickness="1"
+                                MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
+                                Tag="0xFF00695C" ToolTip="Teal"/>
+                        <Border x:Name="HexPatchMaroon" Background="#FF8E1F2F" Width="24" Height="24"
+                                Margin="2,0" BorderBrush="Gray" BorderThickness="1"
+                                MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
+                                Tag="0xFF8E1F2F" ToolTip="Maroon"/>
+                        <Border x:Name="HexPatchPurple" Background="#FF5E35B1" Width="24" Height="24"
+                                Margin="2,0" BorderBrush="Gray" BorderThickness="1"
+                                MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
+                                Tag="0xFF5E35B1" ToolTip="Purple"/>
+                        <Border x:Name="HexPatchBrown" Background="#FF6D4C41" Width="24" Height="24"
+                                Margin="2,0" BorderBrush="Gray" BorderThickness="1"
+                                MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
+                                Tag="0xFF6D4C41" ToolTip="Brown"/>
+                        <Border x:Name="HexPatchSlate" Background="#FF455A64" Width="24" Height="24"
+                                Margin="2,0" BorderBrush="Gray" BorderThickness="1"
+                                MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
+                                Tag="0xFF455A64" ToolTip="Slate"/>
+                        <Border x:Name="HexPatchOlive" Background="#FF7A6A21" Width="24" Height="24"
+                                Margin="2,0" BorderBrush="Gray" BorderThickness="1"
+                                MouseLeftButtonUp="HexColorPatch_MouseLeftButtonUp"
+                                Tag="0xFF7A6A21" ToolTip="Olive"/>
+                    </StackPanel>
+                    <ToggleButton x:Name="ToggleHexColorSelected"
+                                  Content="Color selected"
+                                  Click="Toggle_HexColorSelected_Click"
+                                  HorizontalAlignment="Left"
+                                  Padding="8,4" Margin="2,4,0,0"
+                                  ToolTip="Color the selected hex text in the armed color"/>
+                </StackPanel>
+                <Grid x:Name="HexFindBar" DockPanel.Dock="Top"
+                      Margin="8,0,8,4" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="1"
+                             x:Name="TextBoxHexFind"
+                             Width="240"
+                             HorizontalAlignment="Right"
+                             VerticalAlignment="Center"
+                             KeyDown="TextBoxHexFind_KeyDown"/>
+                    <Button Grid.Column="2"
+                            x:Name="ButtonHexFindClear"
+                            Content="✕"
+                            Click="Button_HexFindClear_Click"
+                            Padding="4,2" Margin="2,0,0,0"
+                            ToolTip="Clear search text"/>
+                    <Button Grid.Column="3"
+                            x:Name="ButtonHexFindPrevious"
+                            Content="▲"
+                            Click="Button_HexFindPrevious_Click"
+                            Padding="6,2" Margin="8,0,0,0"
+                            ToolTip="Find previous (Shift+Enter)"/>
+                    <Button Grid.Column="4"
+                            x:Name="ButtonHexFindNext"
+                            Content="▼"
+                            Click="Button_HexFindNext_Click"
+                            Padding="6,2" Margin="2,0,0,0"
+                            ToolTip="Find next (Enter)"/>
+                    <Button Grid.Column="5"
+                            x:Name="ButtonHexFindAll"
+                            Content="Find"
+                            Click="Button_HexFindAll_Click"
+                            Padding="8,2" Margin="4,0,0,0"
+                            ToolTip="Highlight all matches"/>
+                    <CheckBox Grid.Column="6"
+                              x:Name="CheckBoxHexFindWrap"
+                              Content="Wrap"
+                              Width="70"
+                              MinWidth="0"
+                              VerticalAlignment="Center"
+                              HorizontalAlignment="Right"
+                              Margin="8,0,0,0"
+                              ToolTip="Wrap around at end of dump"/>
+                    <Button Grid.Column="7"
+                            x:Name="ButtonHexFindClose"
+                            Content="✕"
+                            Click="Button_HexFindClose_Click"
+                            Padding="6,2" Margin="12,0,0,0"
+                            ToolTip="Close find bar (Esc)"/>
+                </Grid>
+                <RichTextBox x:Name="HexDumpBox"
                              IsReadOnly="True"
+                             IsReadOnlyCaretVisible="False"
                              FontFamily="Consolas"
                              FontSize="13"
-                             TextWrapping="NoWrap"
                              BorderThickness="0"
-                             Background="Transparent"/>
-                </ScrollViewer>
+                             Background="Transparent"
+                             Margin="4,0,8,8"
+                             VerticalScrollBarVisibility="Auto"
+                             HorizontalScrollBarVisibility="Auto"/>
             </DockPanel>
         </Grid>
     </DockPanel>

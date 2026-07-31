@@ -983,8 +983,6 @@ public class HandleInventory : OpcodeHandler
         }
 
         uint bagCount = _extractor.BagCount(augmentFieldsGate);
-        DebugLog.Write(LogChannel.Opcodes, "AddAugmentFields: AugmentFields gate has " + bagCount + " bag(s)", LogLevel.Info);
-
         FieldDisplayNode augmentFieldsNode = new FieldDisplayNode("Augment Fields");
         parent.AddChild(augmentFieldsNode);
 
