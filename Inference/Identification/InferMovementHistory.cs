@@ -254,7 +254,7 @@ public class InferMovementHistory : IInferOpcodes
     // Computes the byte size of one record of the named collection from the field
     // definitions stored in the given patch level.  The size is the largest field extent
     // (BitOffset plus the field's bit length, where a blob field's length is its
-    // BlobByteCount) rounded up to whole bytes.
+    // ByteCount) rounded up to whole bytes.
     //
     // The computation is only valid for a fixed-size record, so any field that makes the
     // record variable — a string encoding, a presence predicate, a nested gate, or an
@@ -327,7 +327,7 @@ public class InferMovementHistory : IInferOpcodes
                 return false;
             }
 
-            uint extentBits = field.BitOffset + field.BitLength + (field.BlobByteCount * 8);
+            uint extentBits = field.BitOffset + field.BitLength + (field.ByteCount * 8);
             if (extentBits > maxExtentBits)
             {
                 maxExtentBits = extentBits;

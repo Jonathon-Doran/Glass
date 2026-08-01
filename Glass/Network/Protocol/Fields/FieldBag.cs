@@ -520,6 +520,56 @@ public sealed class FieldBag
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetUIntSpanAt
+    //
+    // Reads the slot at the given index as a read-only span of 32-bit unsigned integers,
+    // resolved from this bag's arena with no copying.  An out-of-range index or a slot of
+    // the wrong type is a schema or extraction integrity violation and halts the process
+    // via FailFast with the failure details preserved in the Fields log channel.  A slot
+    // holding a zero-length array returns an empty span — that is a decoded state, not a
+    // failure.
+    //
+    // The returned span is valid only until this bag is cleared or released; after that
+    // the arena bytes may belong to a new tenant.
+    //
+    // slot:     The slot identifier; slot.Index is typically resolved via
+    //           FieldDefinitionExtensions.IndexOfField at handler construction.
+    //
+    // Returns:  The span over the slot's uint elements; empty for a zero-length array.
+    //           Does not return on any other failure.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public ReadOnlySpan<uint> GetUIntSpanAt(SlotId slot)
+    {
+        if (slot.Index >= _slotsInUse)
+        {
+            string rangeFailure = CollectionName + " FieldBag.GetUIntSpanAt: slot.Index "
+                + slot.Index + " out of range [0, " + _slotsInUse + ")";
+            DebugLog.Write(LogChannel.Fields, rangeFailure, LogLevel.Error);
+            Environment.FailFast(rangeFailure);
+        }
+
+        ref FieldSlot fieldSlot = ref SlotAt(slot.Index);
+        ReadOnlySpan<uint> value;
+        SlotReadResult result = fieldSlot.TryGetUIntSpan(this, out value);
+        if (result == SlotReadResult.EmptyPayload)
+        {
+            DebugLog.Write(LogChannel.Fields, CollectionName + " FieldBag.GetUIntSpanAt: slot '"
+                + fieldSlot.GetName(this) + "' holds a zero-length array, returning empty span",
+                LogLevel.Trace);
+            return value;
+        }
+        if (result != SlotReadResult.Success)
+        {
+            string readFailure = CollectionName + " FieldBag.GetUIntSpanAt: required slot '"
+                + fieldSlot.GetName(this) + "' at index " + slot.Index
+                + " failed with " + result + ", slot type is " + fieldSlot.Type;
+            DebugLog.Write(LogChannel.Fields, readFailure, LogLevel.Error);
+            Environment.FailFast(readFailure);
+        }
+        return value;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetGateAt
     //
     // Reads the slot at the given index as a GateHandle.  The slot is required: an

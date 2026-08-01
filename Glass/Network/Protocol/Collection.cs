@@ -80,7 +80,7 @@ public struct Collection
                     stringFieldCount++;
                 }
 
-                blobByteTotal += value[fieldIndex].BlobByteCount;
+                blobByteTotal += value[fieldIndex].ByteCount;
             }
 
             _slotCount = (ushort)value.Length;

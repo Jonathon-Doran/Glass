@@ -21,5 +21,6 @@ public enum FieldEncoding
     StringNullTerminated,
     StringLengthPrefixed,
     Gate,
-    Blob
+    Blob,
+    UIntArray
 }

@@ -274,6 +274,7 @@ public class PatchData
         _encodingsByString.Add("string_null_terminated", FieldEncoding.StringNullTerminated);
         _encodingsByString.Add("string_length_prefixed", FieldEncoding.StringLengthPrefixed);
         _encodingsByString.Add("blob", FieldEncoding.Blob);
+        _encodingsByString.Add("array_uint", FieldEncoding.UIntArray);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -779,7 +780,7 @@ public class PatchData
                 definition.Gate = gate;
                 definition.Predicate = default;
                 definition.Sequence = sequence;
-                definition.BlobByteCount = (encoding == FieldEncoding.Blob) ? bitLength / 8u : 0u;
+                definition.ByteCount = bitLength / 8u;
                 fields.Add(definition);
                 _pendingRelativeNames!.Add(relativeToName);
 

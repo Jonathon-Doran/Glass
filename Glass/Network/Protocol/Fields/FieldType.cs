@@ -15,5 +15,6 @@ public enum FieldType : byte
     Float = 3,
     AsciiString = 4,
     Gate = 5,
-    Blob = 6
+    Blob = 6,
+    UIntArray = 7
 }

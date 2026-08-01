@@ -4,11 +4,6 @@ using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
-using SQLitePCL;
-using System;
-using System.Buffers.Binary;
-using System.Runtime.CompilerServices;
-using System.Text;
 
 namespace Glass.Network.Handlers;
 
@@ -40,6 +35,14 @@ public class HandlePlayerProfile : OpcodeHandler
     private readonly SlotId _goldCarriedSlot;
     private readonly SlotId _silverCarriedSlot;
     private readonly SlotId _copperCarriedSlot;
+
+    // spell info
+    private const uint SpellNone = 0xFFFFFFFFu;
+    private readonly SlotId _spellbookCountSlot;
+    private readonly SlotId _spellbookSlot;
+    private readonly SlotId _spellgemCountSlot;
+    private readonly SlotId _spellgemSlot;
+
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandlePlayerProfile (constructor)
@@ -73,6 +76,12 @@ public class HandlePlayerProfile : OpcodeHandler
         _goldCarriedSlot = _registry.IndexOfField(_collectionHandle, "gold_carried");
         _silverCarriedSlot = _registry.IndexOfField(_collectionHandle, "silver_carried");
         _copperCarriedSlot = _registry.IndexOfField(_collectionHandle, "copper_carried");
+
+        // spell info
+        _spellbookCountSlot = _registry.IndexOfField(_collectionHandle, "spellbook_count");
+        _spellbookSlot = _registry.IndexOfField(_collectionHandle, "spellbook");
+        _spellgemCountSlot = _registry.IndexOfField(_collectionHandle, "spellgem_count");
+        _spellgemSlot = _registry.IndexOfField(_collectionHandle, "mem_spells");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -176,52 +185,108 @@ public class HandlePlayerProfile : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
         string name;
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            name = extractor.GetStringAt(_nameSlot);
-            uint playerClass = extractor.GetUIntAt(_playerClassSlot);
-            uint zoneId = extractor.GetUIntAt(_zoneIdSlot);
+            name = _extractor.GetStringAt(_nameSlot);
+            uint playerClass = _extractor.GetUIntAt(_playerClassSlot);
+            uint zoneId = _extractor.GetUIntAt(_zoneIdSlot);
 
-            FieldNodes.AddStringNode(extractor, _nameSlot, "Name", root);
-            FieldNodes.AddUIntNode(extractor, _levelSlot, "Level", root, "D");
-            FieldNodes.AddLabeledNode(extractor, _playerClassSlot, "Class: " + GetClassName(playerClass), root);
-            FieldNodes.AddLabeledNode(extractor, _zoneIdSlot, "Zone: " + GetZoneName(zoneId) + 
+            FieldNodes.AddStringNode(_extractor, _nameSlot, "Name", root);
+            FieldNodes.AddUIntNode(_extractor, _levelSlot, "Level", root, "D");
+            FieldNodes.AddLabeledNode(_extractor, _playerClassSlot, "Class: " + GetClassName(playerClass), root);
+            FieldNodes.AddLabeledNode(_extractor, _zoneIdSlot, "Zone: " + GetZoneName(zoneId) + 
                     " (" + zoneId + ")", root);
 
-            FieldNodes.AddUIntNode(extractor, _practicePointsSlot, "Practice Points", root, "D");
-            FieldNodes.AddUIntNode(extractor, _manaSlot, "Mana", root, "D");
-            FieldNodes.AddUIntNode(extractor, _hitpointsSlot, "HP", root, "D");
+            FieldNodes.AddUIntNode(_extractor, _practicePointsSlot, "Practice Points", root, "D");
+            FieldNodes.AddUIntNode(_extractor, _manaSlot, "Mana", root, "D");
+            FieldNodes.AddUIntNode(_extractor, _hitpointsSlot, "HP", root, "D");
 
             FieldDisplayNode statsSubtree = new FieldDisplayNode("Stats");
             root.AddChild(statsSubtree);
-            FieldNodes.AddUIntNode(extractor, _strengthSlot, "Strength", statsSubtree, "D");
-            FieldNodes.AddUIntNode(extractor, _staminaSlot, "Stamina", statsSubtree, "D");
-            FieldNodes.AddUIntNode(extractor, _charismaSlot, "Charisma", statsSubtree, "D");
-            FieldNodes.AddUIntNode(extractor, _dexteritySlot, "Dexterity", statsSubtree, "D");
-            FieldNodes.AddUIntNode(extractor, _intelligenceSlot, "Intelligence", statsSubtree, "D");
-            FieldNodes.AddUIntNode(extractor, _agilitySlot, "Agility", statsSubtree, "D");
-            FieldNodes.AddUIntNode(extractor, _wisdomSlot, "Wisdom", statsSubtree, "D");
+            FieldNodes.AddUIntNode(_extractor, _strengthSlot, "Strength", statsSubtree, "D");
+            FieldNodes.AddUIntNode(_extractor, _staminaSlot, "Stamina", statsSubtree, "D");
+            FieldNodes.AddUIntNode(_extractor, _charismaSlot, "Charisma", statsSubtree, "D");
+            FieldNodes.AddUIntNode(_extractor, _dexteritySlot, "Dexterity", statsSubtree, "D");
+            FieldNodes.AddUIntNode(_extractor, _intelligenceSlot, "Intelligence", statsSubtree, "D");
+            FieldNodes.AddUIntNode(_extractor, _agilitySlot, "Agility", statsSubtree, "D");
+            FieldNodes.AddUIntNode(_extractor, _wisdomSlot, "Wisdom", statsSubtree, "D");
 
             FieldDisplayNode moneySubtree = new FieldDisplayNode("Money");
             root.AddChild(moneySubtree);
-            FieldNodes.AddUIntNode(extractor, _platinumCarriedSlot, "Platinum", moneySubtree, "D");
-            FieldNodes.AddUIntNode(extractor, _goldCarriedSlot, "Gold", moneySubtree, "D");
-            FieldNodes.AddUIntNode(extractor, _silverCarriedSlot, "Silver", moneySubtree, "D");
-            FieldNodes.AddUIntNode(extractor, _copperCarriedSlot, "Copper", moneySubtree, "D");
+            FieldNodes.AddUIntNode(_extractor, _platinumCarriedSlot, "Platinum", moneySubtree, "D");
+            FieldNodes.AddUIntNode(_extractor, _goldCarriedSlot, "Gold", moneySubtree, "D");
+            FieldNodes.AddUIntNode(_extractor, _silverCarriedSlot, "Silver", moneySubtree, "D");
+            FieldNodes.AddUIntNode(_extractor, _copperCarriedSlot, "Copper", moneySubtree, "D");
+
+            AddSpellNode(root);
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
 
         root.Text = "Player Profile (" + name + ")";
         return root;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // AddSpellNode
+    //
+    // Builds the spellbook display subtree under the given root: a "Spells" node containing a
+    // "SpellBook" node with one leaf child per known spell.  The spellbook array is read from
+    // the active bag; entries holding the empty sentinel (0xFFFFFFFF) are skipped.  Each leaf
+    // is labeled with a running count and the raw spell ID.  The SpellBook node's text carries
+    // the total number of known spells.  A stored spellbook size that disagrees with the
+    // array's element count is logged at Warn.
+    //
+    // root:  The display node that receives the "Spells" subtree.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void AddSpellNode (FieldDisplayNode root)
+    {
+        uint spellBookSize = _extractor.GetUIntAt(_spellbookCountSlot);
+        uint spellGemCount = _extractor.GetUIntAt(_spellgemCountSlot);
+        uint knownSpellCount = 0;
+
+        ReadOnlySpan<uint> spellbook = _extractor.GetUIntSpanAt(_spellbookSlot);
+        ReadOnlySpan<uint> spellgems = _extractor.GetUIntSpanAt(_spellgemSlot);
+
+        FieldDisplayNode spellSubtree = new FieldDisplayNode("Spells");
+        root.AddChild(spellSubtree);
+
+        FieldDisplayNode spellBookTree = new FieldDisplayNode();
+        spellSubtree.AddChild(spellBookTree);
+
+        for (int index = 0; index < spellbook.Length; index++)
+        {
+            if (spellbook[index] != SpellNone)
+            {
+                knownSpellCount++;
+                string spellEntry = knownSpellCount.ToString() + ":  unknown (" + spellbook[index].ToString() + ")";
+                FieldNodes.AddLabeledNode(_extractor, _spellbookSlot, spellEntry, spellBookTree);
+            }
+        }
+        spellBookTree.Text = "SpellBook (" + knownSpellCount + " entries)";
+
+        FieldDisplayNode spellGemTree = new FieldDisplayNode();
+        spellSubtree.AddChild(spellGemTree);
+
+        knownSpellCount = 0;
+
+        for (int index = 0; index < spellgems.Length; index++)
+        {
+            if (spellgems[index] != SpellNone)
+            {
+                knownSpellCount++;
+                string spellEntry = knownSpellCount.ToString() + ":  unknown (" + spellgems[index].ToString() + ")";
+                FieldNodes.AddLabeledNode(_extractor, _spellgemSlot, spellEntry, spellGemTree);
+            }
+        }
+        spellGemTree.Text = "Memorized Spells (" + knownSpellCount + " entries)";
     }
 
     private static readonly Dictionary<uint, string> ClassNames = new Dictionary<uint, string>()

@@ -527,7 +527,14 @@ public class FieldExtractor
                 case FieldEncoding.Blob:
                     {
                         uint bytesConsumed = ExtractBlob(payload, effectiveBitOffset,
-                            definition.BlobByteCount, bag, ref slot);
+                            definition.ByteCount, bag, ref slot);
+                        slot.WireBitLength = (bytesConsumed * 8u);
+                        break;
+                    }
+                case FieldEncoding.UIntArray:
+                    {
+                        uint bytesConsumed = ExtractUIntArray(payload, effectiveBitOffset,
+                            definition.ByteCount, bag, ref slot);
                         slot.WireBitLength = (bytesConsumed * 8u);
                         break;
                     }
@@ -1509,6 +1516,50 @@ public class FieldExtractor
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ExtractUIntArray
+    //
+    // Reads byteCount raw bytes from the payload at the given bit offset, which must be
+    // byte-aligned, and stores them in the slot via SetUIntArray as a run of 32-bit
+    // unsigned integers in wire order.  The byte count must be a multiple of four.  On any
+    // failure the slot is left in its default Empty state.
+    //
+    // payload:     The packet payload being decoded.
+    // bitOffset:   Bit offset into the payload where the array begins.  Must be byte-aligned.
+    // byteCount:   Number of bytes to read; must be a multiple of four.
+    // bag:         The bag that owns the slot; receives the array bytes into its arena.
+    // slot:        The slot to fill.
+    //
+    // Returns:     The number of bytes consumed, or 0 on failure.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private uint ExtractUIntArray(ReadOnlySpan<byte> payload, uint bitOffset, uint byteCount,
+        FieldBag bag, ref FieldSlot slot)
+    {
+        uint byteOffset = bitOffset / 8u;
+        DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExtractUIntArray: byteOffset=" + byteOffset
+            + " byteCount=" + byteCount, LogLevel.Trace);
+
+        if ((byteCount % 4u) != 0u)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExtractUIntArray: byteCount="
+                + byteCount + " is not a multiple of 4, slot left empty", LogLevel.Error);
+            return 0u;
+        }
+
+        if (byteOffset + byteCount > (uint)payload.Length)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExtractUIntArray: ran off payload at byteOffset="
+                + byteOffset + " byteCount=" + byteCount + " payloadLength=" + payload.Length,
+                LogLevel.Warn);
+            return 0u;
+        }
+
+        slot.SetUIntArray(bag, payload.Slice((int)byteOffset, (int)byteCount));
+        DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExtractUIntArray: stored "
+            + (byteCount / 4u) + " elements", LogLevel.Trace);
+        return byteCount;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // EvaluatePredicate
     //
     // Evaluates the predicate against its source slot in the given bag.  The source slot
@@ -1764,6 +1815,21 @@ public class FieldExtractor
     public ReadOnlySpan<byte> GetBytesAt(SlotId slot)
     {
         return _bags[(int)(uint)_activeBag].GetBytesAt(slot);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetUIntSpanAt
+    //
+    // Reads the slot at the given index in the active bag as a read-only span of 32-bit
+    // unsigned integers, resolved from that bag's arena with no copying.
+    //
+    // slot:     The slot identifier to read.
+    //
+    // Returns:  The span over the slot's uint elements; empty for a zero-length array.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public ReadOnlySpan<uint> GetUIntSpanAt(SlotId slot)
+    {
+        return _bags[(int)(uint)_activeBag].GetUIntSpanAt(slot);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

@@ -342,6 +342,86 @@ public struct FieldSlot
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // SetUIntArray
+    //
+    // Stores the raw bytes of a run of 32-bit unsigned integers in the owning bag's arena
+    // and records the arena offset in the slot.  The bytes are stored exactly as given, in
+    // wire order; interpretation as uint elements happens at read time.  The byte count is
+    // stored in the value field.  A byte count that is not a multiple of four is logged and
+    // rejected, storing nothing.  An empty input stores nothing and records the NoArenaData
+    // sentinel.
+    //
+    // bag:    The bag that owns this slot; receives the array bytes into its arena.
+    // bytes:  The raw bytes of the uint elements, in wire order.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public void SetUIntArray(FieldBag bag, ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length == 0)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.SetUIntArray: zero-length array, storing NoArenaData", LogLevel.Trace);
+            _arenaOffset = NoArenaData;
+            _value = 0u;
+            _type = FieldType.UIntArray;
+            return;
+        }
+
+        if ((bytes.Length % 4) != 0)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.SetUIntArray: byte count " + bytes.Length
+                + " is not a multiple of 4, storing NoArenaData", LogLevel.Error);
+            _arenaOffset = NoArenaData;
+            _value = 0u;
+            _type = FieldType.UIntArray;
+            return;
+        }
+
+        _arenaOffset = bag.InsertIntoArena(bytes);
+        _value = (uint)bytes.Length;
+        _type = FieldType.UIntArray;
+
+        DebugLog.Write(LogChannel.Fields, "FieldSlot.SetUIntArray: stored " + (bytes.Length / 4)
+            + " elements (" + bytes.Length + " bytes) at arena offset " + _arenaOffset, LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // TryGetUIntSpan
+    //
+    // Returns a read-only span of 32-bit unsigned integers over the slot's stored array,
+    // resolved from the owning bag's arena and reinterpreted in place — no copying.  The
+    // byte count is carried in the value field; the element count is that divided by four.
+    //
+    // The returned span is valid only until the bag is cleared or released; after that the
+    // arena bytes may belong to a new tenant.
+    //
+    // bag:      The bag that owns this slot; supplies the arena bytes.
+    // value:    Receives the span on success, an empty span otherwise.
+    //
+    // Returns:  SlotReadResult.Success on success, SlotReadResult.TypeMismatch if the
+    //           slot's type is not UIntArray, SlotReadResult.EmptyPayload if no bytes
+    //           were stored.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public SlotReadResult TryGetUIntSpan(FieldBag bag, out ReadOnlySpan<uint> value)
+    {
+        if (_type != FieldType.UIntArray)
+        {
+            value = ReadOnlySpan<uint>.Empty;
+            return SlotReadResult.TypeMismatch;
+        }
+
+        if (_arenaOffset == NoArenaData)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.TryGetUIntSpan: " + GetName(bag)
+                + " has no stored bytes, returning empty span", LogLevel.Warn);
+            value = ReadOnlySpan<uint>.Empty;
+            return SlotReadResult.EmptyPayload;
+        }
+
+        ReadOnlySpan<byte> rawBytes = bag.SliceArenaBytes(_arenaOffset, _value);
+        value = MemoryMarshal.Cast<byte, uint>(rawBytes);
+        return SlotReadResult.Success;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // SetGate
     //
     // Stores a GateHandle in the slot's value field as its raw uint.  The arena offset is
@@ -490,6 +570,8 @@ public struct FieldSlot
 
                     return (uint)bag.SliceArenaString(_arenaOffset).Length + 1u;
                 }
+            case FieldType.UIntArray:
+                return _value;
 
             default:
                 return 0;
@@ -624,6 +706,10 @@ public struct FieldSlot
                     DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName(bag)
                         + " Blob read failed: " + result, LogLevel.Warn);
                     return string.Empty;
+                }
+            case FieldType.UIntArray:
+                {
+                    return "array of " + (_value / 4u) + " integers";
                 }
             default:
                 {
