@@ -4,9 +4,6 @@ using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
-using System;
-using System.Buffers.Binary;
-using System.Security.Policy;
 
 namespace Glass.Network.Handlers;
 
@@ -15,7 +12,7 @@ namespace Glass.Network.Handlers;
 //
 // Handles OP_StartCast packets.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleStartCast: OpcodeHandler
+public class HandleCastRequest: OpcodeHandler
 {
     private readonly CollectionHandle _collectionHandle;
     private readonly GateDefinitionHandle _top_level_gate;
@@ -25,17 +22,17 @@ public class HandleStartCast: OpcodeHandler
     private readonly SlotId _targetIdSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleStartCast  (constructor)
+    // HandleCastRequest  (constructor)
     //
     // Resolves the opcode and caches the field slots this handler reads.
     //
     // patchLevel:  The patch level this handler decodes against.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleStartCast(PatchLevel patchLevel)
-        : base(patchLevel, "OP_StartCast")
+    public HandleCastRequest(PatchLevel patchLevel)
+        : base(patchLevel, "OP_CastRequest")
     {
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "Start Cast");
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "Cast Request");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         _gemSlot = _registry.IndexOfField(_collectionHandle, "Gem");
@@ -75,7 +72,7 @@ public class HandleStartCast: OpcodeHandler
 
         if (character == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "StartCast: metadata cannot be "
+            DebugLog.Write(LogChannel.Opcodes, "CastRequest: metadata cannot be "
                 + "mapped to a character.  Dropping mob data.", LogLevel.Warn);
             return;
         }
@@ -98,7 +95,7 @@ public class HandleStartCast: OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Describe
     //
-    // Extracts OP_StartCast against the active patch and builds a display tree: a root node for
+    // Extracts OP_CastRequest against the active patch and builds a display tree: a root node for
     // the collection with one leaf child per field each carrying its payload byte range.
     //
     // data:      The application payload
@@ -116,14 +113,14 @@ public class HandleStartCast: OpcodeHandler
 
         if (character == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "StartCast: metadata cannot be "
+            DebugLog.Write(LogChannel.Opcodes, "CastRequest: metadata cannot be "
                 + "mapped to a character.", LogLevel.Warn);
             root.Text = "Target <Unknown>";
             return root;
         }
         if (character.CurrentZone == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "StartCast: no current zone "
+            DebugLog.Write(LogChannel.Opcodes, "CastRequest: no current zone "
                 + "for caster.", LogLevel.Warn);
             root.Text = "Target <Unknown>";
             return root;
@@ -140,7 +137,7 @@ public class HandleStartCast: OpcodeHandler
            
             if (!MobRepository.Instance.TryGetBySpawnId(zoneId, targetID, out Spawn? spawn))
             {
-                DebugLog.Write(LogChannel.Opcodes, "StartCast: targetId=" + targetID
+                DebugLog.Write(LogChannel.Opcodes, "CastRequest: targetId=" + targetID
                     + " unknown.", LogLevel.Trace);
                 targetName = "<unknown>";
             }
