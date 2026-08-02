@@ -31,6 +31,7 @@ public enum LogChannel
     Fields,
     Memory,
     SignalBus,
+    Reference,
     Count
 }
 

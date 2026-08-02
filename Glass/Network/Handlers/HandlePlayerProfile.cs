@@ -4,6 +4,8 @@ using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
+using Glass.World;
+using System;
 
 namespace Glass.Network.Handlers;
 
@@ -266,7 +268,10 @@ public class HandlePlayerProfile : OpcodeHandler
             if (spellbook[index] != SpellNone)
             {
                 knownSpellCount++;
-                string spellEntry = knownSpellCount.ToString() + ":  unknown (" + spellbook[index].ToString() + ")";
+                string spellName = LookupSpell(spellbook[index]);
+
+                string spellEntry = knownSpellCount.ToString() + ":  " + spellName + " (" + spellbook[index].ToString() + ")";
+
                 FieldNodes.AddLabeledNode(_extractor, _spellbookSlot, spellEntry, spellBookTree);
             }
         }
@@ -282,11 +287,40 @@ public class HandlePlayerProfile : OpcodeHandler
             if (spellgems[index] != SpellNone)
             {
                 knownSpellCount++;
-                string spellEntry = knownSpellCount.ToString() + ":  unknown (" + spellgems[index].ToString() + ")";
-                FieldNodes.AddLabeledNode(_extractor, _spellgemSlot, spellEntry, spellGemTree);
+                string spellName = LookupSpell(spellgems[index]);
+
+                string spellEntry = knownSpellCount.ToString() + ":  " + spellName + " (" + spellgems[index].ToString() + ")";
+
+               FieldNodes.AddLabeledNode(_extractor, _spellgemSlot, spellEntry, spellGemTree);
             }
         }
         spellGemTree.Text = "Memorized Spells (" + knownSpellCount + " entries)";
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // LookupSpell
+    //
+    // A helper to lookup the spell name from ID
+    //
+    // spellId:  The ID to query
+    //
+    // Returns:   The name of the spell, or "unknown"
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+
+    private string LookupSpell(uint spellId)
+    {
+        string spellName;
+        SpellRecord? record;
+        if (SpellCatalog.Instance.TryGet(spellId, out record) == true)
+        {
+            spellName = record.Name;
+        }
+        else
+        {
+            spellName = "unknown";
+        }
+
+        return spellName;
     }
 
     private static readonly Dictionary<uint, string> ClassNames = new Dictionary<uint, string>()
