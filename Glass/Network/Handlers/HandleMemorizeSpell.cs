@@ -4,40 +4,41 @@ using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
+using Glass.World;
 
 namespace Glass.Network.Handlers;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// HandleCastRequest
+// HandleMemorizeSpell
 //
-// Handles OP_CastRequest packets.  
+// Handles OP_MemorizeSpell packets.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleCastRequest: OpcodeHandler
+public class HandleMemorizeSpell : OpcodeHandler
 {
     private readonly CollectionHandle _collectionHandle;
     private readonly GateDefinitionHandle _top_level_gate;
 
-    private readonly SlotId _gemSlot;
-    private readonly SlotId _spellIdSlot;
-    private readonly SlotId _targetIdSlot;
+    private readonly SlotId _spellGemSlot;
+    private readonly SlotId _spellIDSlot;
+    private readonly SlotId _actionSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleCastRequest  (constructor)
+    // HandleMemorizeSpell (constructor)
     //
     // Resolves the opcode and caches the field slots this handler reads.
     //
     // patchLevel:  The patch level this handler decodes against.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleCastRequest(PatchLevel patchLevel)
-        : base(patchLevel, "OP_CastRequest")
+    public HandleMemorizeSpell(PatchLevel patchLevel)
+        : base(patchLevel, "OP_MemorizeSpell")
     {
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "Cast Request");
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_MemorizeSpell");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
-        _gemSlot = _registry.IndexOfField(_collectionHandle, "Gem");
-        _spellIdSlot = _registry.IndexOfField(_collectionHandle, "Spell_ID");
-        _targetIdSlot = _registry.IndexOfField(_collectionHandle, "Target_ID");
+        _spellGemSlot = _registry.IndexOfField(_collectionHandle, "Slot");
+        _spellIDSlot = _registry.IndexOfField(_collectionHandle, "SpellID");
+        _actionSlot = _registry.IndexOfField(_collectionHandle, "Action");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -52,6 +53,9 @@ public class HandleCastRequest: OpcodeHandler
     {
         switch (metadata.Channel)
         {
+            case SoeConstants.StreamId.StreamZoneToClient:
+                HandleZoneToClient(data, metadata);
+                break;
             case SoeConstants.StreamId.StreamClientToZone:
                 HandleClientToZone(data, metadata);
                 break;
@@ -72,19 +76,51 @@ public class HandleCastRequest: OpcodeHandler
 
         if (character == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "CastRequest: metadata cannot be "
+            DebugLog.Write(LogChannel.Opcodes, "MemorizeSpell: metadata cannot be "
                 + "mapped to a character.  Dropping mob data.", LogLevel.Warn);
             return;
         }
 
-        uint gem, spellId, targetId;
+        try
+        {
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+
+            uint spellGem = _extractor.GetUIntAt(_spellGemSlot);
+            uint spellID = _extractor.GetUIntAt(_spellGemSlot);
+            uint action = _extractor.GetUIntAt(_actionSlot);
+        }
+        finally
+        {
+            _extractor.Release();
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // HandleZoneToClient
+    //
+    // Processes zone-to-client traffic
+    //
+    // data:      The application payload
+    // metadata:  Packet metadata (timestamp, source/dest)
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    {
+        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+
+        if (character == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "MemorizeSpell: metadata cannot be "
+                + "mapped to a character.  Dropping mob data.", LogLevel.Warn);
+            return;
+        }
 
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
-            gem = _extractor.GetUIntAt(_gemSlot);
-            spellId = _extractor.GetUIntAt(_spellIdSlot);
-            targetId = _extractor.GetUIntAt(_targetIdSlot);
+
+            uint spellGem = _extractor.GetUIntAt(_spellGemSlot);
+            uint spellID = _extractor.GetUIntAt(_spellGemSlot);
+            uint action = _extractor.GetUIntAt(_actionSlot);
         }
         finally
         {
@@ -95,7 +131,7 @@ public class HandleCastRequest: OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Describe
     //
-    // Extracts OP_CastRequest against the active patch and builds a display tree: a root node for
+    // Extracts OP_MemorizeSpell against the active patch and builds a display tree: a root node for
     // the collection with one leaf child per field each carrying its payload byte range.
     //
     // data:      The application payload
@@ -109,18 +145,18 @@ public class HandleCastRequest: OpcodeHandler
 
         FieldDisplayNode root = new FieldDisplayNode();
         uint? zoneId;
-        string targetName;
+        string spellName;
 
         if (character == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "CastRequest: metadata cannot be "
+            DebugLog.Write(LogChannel.Opcodes, "MemorizeSpell: metadata cannot be "
                 + "mapped to a character.", LogLevel.Warn);
             root.Text = "Target <Unknown>";
             return root;
         }
         if (character.CurrentZone == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "CastRequest: no current zone "
+            DebugLog.Write(LogChannel.Opcodes, "MemorizeSpell: no current zone "
                 + "for caster.", LogLevel.Warn);
             root.Text = "Target <Unknown>";
             return root;
@@ -131,30 +167,23 @@ public class HandleCastRequest: OpcodeHandler
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            FieldNodes.AddUIntNode(_extractor, _gemSlot, "Spell Gem", root, "D");
-            FieldNodes.AddUIntNode(_extractor, _spellIdSlot, "Spell ID", root, "X8");
-            uint targetID = FieldNodes.AddUIntNode(_extractor, _targetIdSlot, "Target ID", root, "X4");
-           
-            if (!MobRepository.Instance.TryGetBySpawnId(zoneId, targetID, out Spawn? spawn))
-            {
-                DebugLog.Write(LogChannel.Opcodes, "CastRequest: targetId=" + targetID
-                    + " unknown.", LogLevel.Trace);
-                targetName = "<unknown>";
-            }
-            else
-            {
-                targetName = spawn.Name!;
-            }
-            FieldNodes.AddLabeledNode(_extractor, _targetIdSlot, "Target: " + targetName, root);
+            uint spellID = _extractor.GetUIntAt(_spellIDSlot);
+            spellName = SpellCatalog.Instance.LookupSpell(spellID);
 
+            FieldNodes.AddLabeledNode(_extractor, _spellIDSlot, "Spell: " + spellName + " (" +
+                spellID + ", 0x" + spellID.ToString("X4") + ")", root);
+            FieldNodes.AddUIntNode(_extractor, _spellGemSlot, "Spell Gem", root, "D");
+            FieldNodes.AddUIntNode(_extractor, _actionSlot, "Action", root, "D");
         }
         finally
         {
             _extractor.Release();
         }
 
-        root.Text = "Target (" + targetName + ")";
+        root.Text = "SpellGem Action (" + spellName + ")";
         return root;
     }
 }
+
+
 

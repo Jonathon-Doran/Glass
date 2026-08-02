@@ -320,4 +320,30 @@ public class SpellCatalog
 
         return effects.ToArray();
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // LookupSpell
+    //
+    // A helper to lookup the spell name from ID
+    //
+    // spellId:  The ID to query
+    //
+    // Returns:   The name of the spell, or "unknown"
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+
+    public string LookupSpell(uint spellId)
+    {
+        string spellName;
+        SpellRecord? record;
+        if (TryGet(spellId, out record) == true)
+        {
+            spellName = record.Name;
+        }
+        else
+        {
+            spellName = "unknown";
+        }
+
+        return spellName;
+    }
 }

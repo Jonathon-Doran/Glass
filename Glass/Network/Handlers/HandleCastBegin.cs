@@ -4,40 +4,41 @@ using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
+using Glass.World;
 
 namespace Glass.Network.Handlers;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// HandleCastRequest
+// HandleCastBegin
 //
 // Handles OP_CastRequest packets.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleCastRequest: OpcodeHandler
+public class HandleCastBegin : OpcodeHandler
 {
     private readonly CollectionHandle _collectionHandle;
     private readonly GateDefinitionHandle _top_level_gate;
 
-    private readonly SlotId _gemSlot;
     private readonly SlotId _spellIdSlot;
-    private readonly SlotId _targetIdSlot;
+    private readonly SlotId _casterIdSlot;
+    private readonly SlotId _castTimeSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleCastRequest  (constructor)
+    // HandleCastBegin  (constructor)
     //
     // Resolves the opcode and caches the field slots this handler reads.
     //
     // patchLevel:  The patch level this handler decodes against.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleCastRequest(PatchLevel patchLevel)
-        : base(patchLevel, "OP_CastRequest")
+    public HandleCastBegin(PatchLevel patchLevel)
+        : base(patchLevel, "OP_CastBegin")
     {
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "Cast Request");
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "Cast Begin");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
-        _gemSlot = _registry.IndexOfField(_collectionHandle, "Gem");
         _spellIdSlot = _registry.IndexOfField(_collectionHandle, "Spell_ID");
-        _targetIdSlot = _registry.IndexOfField(_collectionHandle, "Target_ID");
+        _casterIdSlot = _registry.IndexOfField(_collectionHandle, "Caster_ID");
+        _castTimeSlot = _registry.IndexOfField(_collectionHandle, "Cast_Time_ms");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -52,21 +53,21 @@ public class HandleCastRequest: OpcodeHandler
     {
         switch (metadata.Channel)
         {
-            case SoeConstants.StreamId.StreamClientToZone:
-                HandleClientToZone(data, metadata);
+            case SoeConstants.StreamId.StreamZoneToClient:
+                HandleZoneToClient(data, metadata);
                 break;
         }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleClientToZone
+    // HandleZoneToClient
     //
     // Processes client-to-zone traffic
     //
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
 
@@ -77,14 +78,13 @@ public class HandleCastRequest: OpcodeHandler
             return;
         }
 
-        uint gem, spellId, targetId;
-
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
-            gem = _extractor.GetUIntAt(_gemSlot);
-            spellId = _extractor.GetUIntAt(_spellIdSlot);
-            targetId = _extractor.GetUIntAt(_targetIdSlot);
+
+            uint targetID = _extractor.GetUIntAt(_spellIdSlot);
+            uint casterID = _extractor.GetUIntAt(_casterIdSlot);
+            uint castTime = _extractor.GetUIntAt(_castTimeSlot);
         }
         finally
         {
@@ -95,7 +95,7 @@ public class HandleCastRequest: OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Describe
     //
-    // Extracts OP_CastRequest against the active patch and builds a display tree: a root node for
+    // Extracts OP_CastBegin against the active patch and builds a display tree: a root node for
     // the collection with one leaf child per field each carrying its payload byte range.
     //
     // data:      The application payload
@@ -109,18 +109,19 @@ public class HandleCastRequest: OpcodeHandler
 
         FieldDisplayNode root = new FieldDisplayNode();
         uint? zoneId;
-        string targetName;
+        string casterName;
+        string spellName;
 
         if (character == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "CastRequest: metadata cannot be "
+            DebugLog.Write(LogChannel.Opcodes, "CastBegin: metadata cannot be "
                 + "mapped to a character.", LogLevel.Warn);
             root.Text = "Target <Unknown>";
             return root;
         }
         if (character.CurrentZone == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "CastRequest: no current zone "
+            DebugLog.Write(LogChannel.Opcodes, "CastBegin: no current zone "
                 + "for caster.", LogLevel.Warn);
             root.Text = "Target <Unknown>";
             return root;
@@ -131,21 +132,25 @@ public class HandleCastRequest: OpcodeHandler
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            FieldNodes.AddUIntNode(_extractor, _gemSlot, "Spell Gem", root, "D");
-            FieldNodes.AddUIntNode(_extractor, _spellIdSlot, "Spell ID", root, "X8");
-            uint targetID = FieldNodes.AddUIntNode(_extractor, _targetIdSlot, "Target ID", root, "X4");
-           
-            if (!MobRepository.Instance.TryGetBySpawnId(zoneId, targetID, out Spawn? spawn))
+            uint spellID = _extractor.GetUIntAt(_spellIdSlot);
+            uint casterID = _extractor.GetUIntAt(_casterIdSlot);
+            spellName = SpellCatalog.Instance.LookupSpell(spellID);
+
+            FieldNodes.AddLabeledNode(_extractor, _spellIdSlot, "Spell: " + spellName + " (" +
+                spellID + ", 0x" + spellID.ToString("X4") + ")", root);
+
+            if (!MobRepository.Instance.TryGetBySpawnId(zoneId, casterID, out Spawn? caster))
             {
-                DebugLog.Write(LogChannel.Opcodes, "CastRequest: targetId=" + targetID
+                DebugLog.Write(LogChannel.Opcodes, "CastBegin: caster=" + casterID
                     + " unknown.", LogLevel.Trace);
-                targetName = "<unknown>";
+                casterName = "<unknown>";
             }
             else
             {
-                targetName = spawn.Name!;
+               casterName = caster.Name!;
             }
-            FieldNodes.AddLabeledNode(_extractor, _targetIdSlot, "Target: " + targetName, root);
+            FieldNodes.AddLabeledNode(_extractor, _casterIdSlot, "Caster: " + casterName, root);
+            FieldNodes.AddUIntNode(_extractor, _castTimeSlot, "Cast Time (ms)", root, "D");
 
         }
         finally
@@ -153,8 +158,9 @@ public class HandleCastRequest: OpcodeHandler
             _extractor.Release();
         }
 
-        root.Text = "Target (" + targetName + ")";
+        root.Text = "Cast Begin (" + spellName + ")";
         return root;
     }
 }
+
 
