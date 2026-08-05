@@ -4,6 +4,7 @@ using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
+using Glass.World;
 using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
@@ -76,7 +77,6 @@ public class HandleCastResolution: OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
 
         if (character == null)
@@ -91,16 +91,16 @@ public class HandleCastResolution: OpcodeHandler
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-            mana = extractor.GetUIntAt(_manaSlot);
-            spell_id = extractor.GetUIntAt(_spellIdSlot);
-            unknown_2 = extractor.GetUIntAt(_unknown2Slot);
-            unknown_4 = extractor.GetUIntAt(_unknown4Slot);
-            resolution = extractor.GetIntAt(_resolutionSlot);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            mana = _extractor.GetUIntAt(_manaSlot);
+            spell_id = _extractor.GetUIntAt(_spellIdSlot);
+            unknown_2 = _extractor.GetUIntAt(_unknown2Slot);
+            unknown_4 = _extractor.GetUIntAt(_unknown4Slot);
+            resolution = _extractor.GetIntAt(_resolutionSlot);
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
     }
 
@@ -119,24 +119,30 @@ public class HandleCastResolution: OpcodeHandler
     {
         Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
 
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
-     
+        string spellName;
+
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-            FieldNodes.AddUIntNode(extractor, _manaSlot, "New Mana", root, "D");
-            FieldNodes.AddUIntNode(extractor, _spellIdSlot, "Spell ID", root);
-            FieldNodes.AddUIntNode(extractor, _unknown2Slot, "Unknown 2", root);
-            FieldNodes.AddUIntNode(extractor, _unknown4Slot, "Unknown 4", root);
-            FieldNodes.AddIntNode(extractor, _resolutionSlot, "Resolution", root);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+
+            uint spellID = _extractor.GetUIntAt(_spellIdSlot);
+            spellName = SpellCatalog.Instance.LookupSpell(spellID);
+
+            FieldNodes.AddLabeledNode(_extractor, _spellIdSlot, "Spell: " + spellName + " (" +
+    spellID + ", 0x" + spellID.ToString("X8") + ")", root);
+
+            FieldNodes.AddUIntNode(_extractor, _manaSlot, "New Mana", root, "D");
+            FieldNodes.AddUIntNode(_extractor, _unknown2Slot, "Unknown 2", root);
+            FieldNodes.AddUIntNode(_extractor, _unknown4Slot, "Unknown 4", root);
+            FieldNodes.AddIntNode(_extractor, _resolutionSlot, "Resolution", root);
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
 
-        root.Text = "Cast Resolution";
+        root.Text = "Cast Resolution (" + spellName + ")";
         return root;
     }
 }

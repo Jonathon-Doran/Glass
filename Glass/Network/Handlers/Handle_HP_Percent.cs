@@ -9,36 +9,34 @@ using Glass.World;
 namespace Glass.Network.Handlers;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// HandleCastBegin
+// HandleHP_Percent
 //
-// Handles OP_CastRequest packets.  
+// Handles OP_HP_Percent  packets.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleCastBegin : OpcodeHandler
+public class HandleHP_Percent: OpcodeHandler
 {
     private readonly CollectionHandle _collectionHandle;
     private readonly GateDefinitionHandle _top_level_gate;
 
-    private readonly SlotId _spellIdSlot;
-    private readonly SlotId _casterIdSlot;
-    private readonly SlotId _castTimeSlot;
+    private readonly SlotId _spawnIDSlot;
+    private readonly SlotId _percentSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleCastBegin  (constructor)
+    // HandleSpellAction  (constructor)
     //
     // Resolves the opcode and caches the field slots this handler reads.
     //
     // patchLevel:  The patch level this handler decodes against.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleCastBegin(PatchLevel patchLevel)
-        : base(patchLevel, "OP_CastBegin")
+    public HandleHP_Percent(PatchLevel patchLevel)
+        : base(patchLevel, "OP_HP_Percent")
     {
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "Cast Begin");
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "HP_Percent");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
-        _spellIdSlot = _registry.IndexOfField(_collectionHandle, "Spell_ID");
-        _casterIdSlot = _registry.IndexOfField(_collectionHandle, "Caster_ID");
-        _castTimeSlot = _registry.IndexOfField(_collectionHandle, "Cast_Time_ms");
+        _spawnIDSlot = _registry.IndexOfField(_collectionHandle, "Spawn-ID");
+        _percentSlot = _registry.IndexOfField(_collectionHandle, "Percent");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -62,7 +60,7 @@ public class HandleCastBegin : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleZoneToClient
     //
-    // Processes client-to-zone traffic
+    // Processes zone-to-client traffic
     //
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
@@ -73,8 +71,8 @@ public class HandleCastBegin : OpcodeHandler
 
         if (character == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "CastRequest: metadata cannot be "
-                + "mapped to a character.  Dropping mob data.", LogLevel.Warn);
+            DebugLog.Write(LogChannel.Opcodes, "HP_Percent: metadata cannot be "
+                + "mapped to a character.", LogLevel.Warn);
             return;
         }
 
@@ -82,9 +80,8 @@ public class HandleCastBegin : OpcodeHandler
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            uint targetID = _extractor.GetUIntAt(_spellIdSlot);
-            uint casterID = _extractor.GetUIntAt(_casterIdSlot);
-            uint castTime = _extractor.GetUIntAt(_castTimeSlot);
+            uint spawnID = _extractor.GetUIntAt(_spawnIDSlot);
+            uint percent = _extractor.GetUIntAt(_percentSlot);
         }
         finally
         {
@@ -95,7 +92,7 @@ public class HandleCastBegin : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Describe
     //
-    // Extracts OP_CastBegin against the active patch and builds a display tree: a root node for
+    // Extracts OP_HP_Percent  against the active patch and builds a display tree: a root node for
     // the collection with one leaf child per field each carrying its payload byte range.
     //
     // data:      The application payload
@@ -104,63 +101,41 @@ public class HandleCastBegin : OpcodeHandler
     // Returns:   The root FieldDisplayNode.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
-    {
-        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
-
+    { 
         FieldDisplayNode root = new FieldDisplayNode();
-        uint? zoneId;
-        string casterName;
-        string spellName;
-
-        if (character == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "CastBegin: metadata cannot be "
-                + "mapped to a character.", LogLevel.Warn);
-            root.Text = "Target <Unknown>";
-            return root;
-        }
-        if (character.CurrentZone == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "CastBegin: no current zone "
-                + "for caster.", LogLevel.Warn);
-            root.Text = "Target <Unknown>";
-            return root;
-        }
-        zoneId = character.CurrentZone.Value;
+        uint? zoneId = GlassContext.SessionRegistry.ZoneFromMetadata(metadata);
+        string spawnName;
 
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            uint spellID = _extractor.GetUIntAt(_spellIdSlot);
-            uint casterID = _extractor.GetUIntAt(_casterIdSlot);
-            spellName = SpellCatalog.Instance.LookupSpell(spellID);
+            uint spawnID = _extractor.GetUIntAt(_spawnIDSlot);
 
-            FieldNodes.AddLabeledNode(_extractor, _spellIdSlot, "Spell: " + spellName + " (" +
-                spellID + ", 0x" + spellID.ToString("X8") + ")", root);
-
-            if (!MobRepository.Instance.TryGetBySpawnId(zoneId, casterID, out Spawn? caster))
+            if (!MobRepository.Instance.TryGetBySpawnId(zoneId, spawnID, out Spawn? spawn))
             {
-                DebugLog.Write(LogChannel.Opcodes, "CastBegin: caster=" + casterID
+                DebugLog.Write(LogChannel.Opcodes, "HP_Percent: spawnID=" + spawnID
                     + " unknown.", LogLevel.Trace);
-                casterName = "<unknown>";
+                spawnName = "<unknown>";
             }
             else
             {
-               casterName = caster.Name!;
+                spawnName = spawn.Name!;
             }
-            FieldNodes.AddLabeledNode(_extractor, _casterIdSlot, "Caster: " + casterName, root);
-            FieldNodes.AddUIntNode(_extractor, _castTimeSlot, "Cast Time (ms)", root, "D");
+            FieldNodes.AddLabeledNode(_extractor, _spawnIDSlot, "Spawn: " + spawnName + " (" +
+                spawnID + ", " + spawnID.ToString("X4") + ")", root);
 
+            FieldNodes.AddUIntNode(_extractor, _percentSlot, "Percent", root, "D");
         }
         finally
         {
             _extractor.Release();
         }
 
-        root.Text = "Cast Begin (" + spellName + ")";
+        root.Text = "HP Percent (" + spawnName + ")";
         return root;
     }
 }
+
 
 

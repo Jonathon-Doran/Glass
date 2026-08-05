@@ -383,6 +383,25 @@ public class SessionRegistry
         return ("unknown");
     }
 
+    public uint? ZoneFromMetadata(PacketMetadata metadata)
+    {
+        Character? character = GetConnection(metadata).Character;
+
+        if (character == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "ZoneFromMetadata: metadata cannot be "
+                + "mapped to a character.", LogLevel.Warn);
+            return null;
+        }
+        if (character.CurrentZone == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "ZoneFromMetadata: no current zone "
+                + "for character.", LogLevel.Warn);
+            return null;
+        }
+        return character.CurrentZone.Value;
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // FindSessionByCharacter
     //

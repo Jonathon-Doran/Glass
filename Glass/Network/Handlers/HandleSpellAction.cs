@@ -9,11 +9,11 @@ using Glass.World;
 namespace Glass.Network.Handlers;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// HandleMemorizeSpell
+// HandleSpellAction 
 //
-// Handles OP_MemorizeSpell packets.  
+// Handles OP_SpellAction  packets.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleMemorizeSpell : OpcodeHandler
+public class HandleSpellAction : OpcodeHandler
 {
     private readonly CollectionHandle _collectionHandle;
     private readonly GateDefinitionHandle _top_level_gate;
@@ -23,17 +23,17 @@ public class HandleMemorizeSpell : OpcodeHandler
     private readonly SlotId _actionSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleMemorizeSpell (constructor)
+    // HandleSpellAction  (constructor)
     //
     // Resolves the opcode and caches the field slots this handler reads.
     //
     // patchLevel:  The patch level this handler decodes against.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleMemorizeSpell(PatchLevel patchLevel)
-        : base(patchLevel, "OP_MemorizeSpell")
+    public HandleSpellAction(PatchLevel patchLevel)
+        : base(patchLevel, "OP_SpellAction")
     {
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_MemorizeSpell");
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_SpellAction");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         _spellGemSlot = _registry.IndexOfField(_collectionHandle, "Slot");
@@ -76,8 +76,8 @@ public class HandleMemorizeSpell : OpcodeHandler
 
         if (character == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "MemorizeSpell: metadata cannot be "
-                + "mapped to a character.  Dropping mob data.", LogLevel.Warn);
+            DebugLog.Write(LogChannel.Opcodes, "SpellAction: metadata cannot be "
+                + "mapped to a character.", LogLevel.Warn);
             return;
         }
 
@@ -109,8 +109,8 @@ public class HandleMemorizeSpell : OpcodeHandler
 
         if (character == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "MemorizeSpell: metadata cannot be "
-                + "mapped to a character.  Dropping mob data.", LogLevel.Warn);
+            DebugLog.Write(LogChannel.Opcodes, "SpellAction: metadata cannot be "
+                + "mapped to a character.", LogLevel.Warn);
             return;
         }
 
@@ -131,7 +131,7 @@ public class HandleMemorizeSpell : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Describe
     //
-    // Extracts OP_MemorizeSpell against the active patch and builds a display tree: a root node for
+    // Extracts OP_SpellAction  against the active patch and builds a display tree: a root node for
     // the collection with one leaf child per field each carrying its payload byte range.
     //
     // data:      The application payload
@@ -149,14 +149,14 @@ public class HandleMemorizeSpell : OpcodeHandler
 
         if (character == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "MemorizeSpell: metadata cannot be "
+            DebugLog.Write(LogChannel.Opcodes, "SpellAction: metadata cannot be "
                 + "mapped to a character.", LogLevel.Warn);
             root.Text = "Target <Unknown>";
             return root;
         }
         if (character.CurrentZone == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "MemorizeSpell: no current zone "
+            DebugLog.Write(LogChannel.Opcodes, "SpellAction: no current zone "
                 + "for caster.", LogLevel.Warn);
             root.Text = "Target <Unknown>";
             return root;

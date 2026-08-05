@@ -4,6 +4,7 @@ using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
+using Glass.World;
 
 namespace Glass.Network.Handlers;
 
@@ -110,6 +111,7 @@ public class HandleCastRequest: OpcodeHandler
         FieldDisplayNode root = new FieldDisplayNode();
         uint? zoneId;
         string targetName;
+        string spellName;
 
         if (character == null)
         {
@@ -131,8 +133,13 @@ public class HandleCastRequest: OpcodeHandler
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
+            uint spellID = _extractor.GetUIntAt(_spellIdSlot);
+            spellName = SpellCatalog.Instance.LookupSpell(spellID);
+
             FieldNodes.AddUIntNode(_extractor, _gemSlot, "Spell Gem", root, "D");
-            FieldNodes.AddUIntNode(_extractor, _spellIdSlot, "Spell ID", root, "X8");
+            FieldNodes.AddLabeledNode(_extractor, _spellIdSlot, "Spell: " + spellName + " (" +
+                spellID + ", 0x" + spellID.ToString("X8") + ")", root);
+
             uint targetID = FieldNodes.AddUIntNode(_extractor, _targetIdSlot, "Target ID", root, "X4");
            
             if (!MobRepository.Instance.TryGetBySpawnId(zoneId, targetID, out Spawn? spawn))
@@ -145,7 +152,7 @@ public class HandleCastRequest: OpcodeHandler
             {
                 targetName = spawn.Name!;
             }
-            FieldNodes.AddLabeledNode(_extractor, _targetIdSlot, "Target: " + targetName, root);
+            FieldNodes.AddLabeledNode(_extractor, _targetIdSlot, "Cast Target: " + targetName, root);
 
         }
         finally
@@ -153,7 +160,7 @@ public class HandleCastRequest: OpcodeHandler
             _extractor.Release();
         }
 
-        root.Text = "Target (" + targetName + ")";
+        root.Text = "Cast Request (" + targetName + ")";
         return root;
     }
 }
