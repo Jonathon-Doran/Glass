@@ -11,32 +11,34 @@ using System.Security.Policy;
 namespace Glass.Network.Handlers;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// HandleTarget
+// HandleTargetResponse
 //
-// Handles OP_TargetMouse packets.  
+// Handles OP_TargetResponse packets.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleTarget : OpcodeHandler
+public class HandleTargetResponse : OpcodeHandler
 {
     private readonly CollectionHandle _collectionHandle;
     private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _spawnIdSlot;
+    private readonly SlotId _hpPercentSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleTarget  (constructor)
+    // HandleTargetResponse  (constructor)
     //
     // Resolves the opcode and caches the field slots this handler reads.
     //
     // patchLevel:  The patch level this handler decodes against.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleTarget(PatchLevel patchLevel)
-        : base(patchLevel, "OP_TargetMouse")
+    public HandleTargetResponse(PatchLevel patchLevel)
+        : base(patchLevel, "OP_TargetResponse")
     {
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_TargetMouse");
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "Target_Response");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
-        _spawnIdSlot = _registry.IndexOfField(_collectionHandle, "spawn_id");
+        _spawnIdSlot = _registry.IndexOfField(_collectionHandle, "Spawn-id");
+        _hpPercentSlot = _registry.IndexOfField(_collectionHandle, "HP-Percent");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -71,7 +73,7 @@ public class HandleTarget : OpcodeHandler
 
         if (character == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "Target: metadata cannot be "
+            DebugLog.Write(LogChannel.Opcodes, "TargetResponse: metadata cannot be "
                 + "mapped to a character.  Dropping mob data.", LogLevel.Warn);
             return;
         }
@@ -82,6 +84,7 @@ public class HandleTarget : OpcodeHandler
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
             spawnId = _extractor.GetUIntAt(_spawnIdSlot);
+            uint hpPercent = _extractor.GetUIntAt(_hpPercentSlot);
         }
         finally
         {
@@ -92,7 +95,7 @@ public class HandleTarget : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Describe
     //
-    // Extracts OP_Target against the active patch and builds a display tree: a root node for
+    // Extracts OP_TargetResponse against the active patch and builds a display tree: a root node for
     // the collection with one leaf child per field each carrying its payload byte range.
     //
     // data:      The application payload
@@ -111,14 +114,14 @@ public class HandleTarget : OpcodeHandler
 
         if (character == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "Target: metadata cannot be "
+            DebugLog.Write(LogChannel.Opcodes, "TargetResponse: metadata cannot be "
                 + "mapped to a character.  Dropping mob data.", LogLevel.Warn);
             root.Text = "Target <Unknown>";
             return root;
         }
         if (character.CurrentZone == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "Target: no current zone "
+            DebugLog.Write(LogChannel.Opcodes, "TargetResponse: no current zone "
                 + "for character.", LogLevel.Warn);
             root.Text = "Target <Unknown>";
             return root;
@@ -133,7 +136,7 @@ public class HandleTarget : OpcodeHandler
 
             if (!MobRepository.Instance.TryGetBySpawnId(zoneId, spawnId, out Spawn? spawn))
             {
-                DebugLog.Write(LogChannel.Opcodes, "TargetResolver: spawnId=" + spawnId
+                DebugLog.Write(LogChannel.Opcodes, "TargetResponse: spawnId=" + spawnId
                     + " unknown.", LogLevel.Trace);
                 targetName = "<unknown>";
             }
@@ -147,6 +150,8 @@ public class HandleTarget : OpcodeHandler
             FieldDisplayNode nameNode = new FieldDisplayNode("Target: " + targetName);
             nameNode.AddByteRange(_extractor.GetByteRangeFor(_spawnIdSlot));
             root.AddChild(nameNode);
+
+            FieldNodes.AddUIntNode(_extractor, _hpPercentSlot, "HP Percent", root, "D");
         }
         finally
         {

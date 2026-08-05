@@ -17,6 +17,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Glass\World\GlobalUsings.cs" Link="Core\GlobalUsings.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="ModernWpfUI" Version="0.9.6" />
   </ItemGroup>
 

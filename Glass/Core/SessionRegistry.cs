@@ -365,9 +365,10 @@ public class SessionRegistry
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // FindSessionByCharacter
+    // CharacterNameFromMetadata
     //
-    // Finds the connection associated with metadata, then extracts the name from session associated with the connection.
+    // Finds the connection associated with metadata, then extracts the name from session
+    // associated with the connection.
     //
     // metadata:  Packet metadata from a received packet
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -383,8 +384,17 @@ public class SessionRegistry
         return ("unknown");
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ZoneFromMetadata
+    //
+    // Finds the connection associated with metadata, then extracts the zone from the character
+    // associated with the connection.
+    //
+    // metadata:  Packet metadata from a received packet
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     public uint? ZoneFromMetadata(PacketMetadata metadata)
     {
+        // Note:  If the connection does not exist it will be created.  There is no possibility of null.
         Character? character = GetConnection(metadata).Character;
 
         if (character == null)

@@ -12,9 +12,13 @@
 
   <ItemGroup>
     <Compile Remove="Logs\**" />
+    <Compile Remove="UI Files\**" />
     <EmbeddedResource Remove="Logs\**" />
+    <EmbeddedResource Remove="UI Files\**" />
     <None Remove="Logs\**" />
+    <None Remove="UI Files\**" />
     <Page Remove="Logs\**" />
+    <Page Remove="UI Files\**" />
   </ItemGroup>
 
   <ItemGroup>
