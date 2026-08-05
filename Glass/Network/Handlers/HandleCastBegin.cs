@@ -139,7 +139,7 @@ public class HandleCastBegin : OpcodeHandler
             FieldNodes.AddLabeledNode(_extractor, _spellIdSlot, "Spell: " + spellName + " (" +
                 spellID + ", 0x" + spellID.ToString("X8") + ")", root);
 
-            if (!MobRepository.Instance.TryGetBySpawnId(zoneId, casterID, out Spawn? caster))
+            if (!MobRepository.Instance.TryGetBySpawnId((ZoneId) zoneId, (SpawnId) casterID, out Spawn? caster))
             {
                 DebugLog.Write(LogChannel.Opcodes, "CastBegin: caster=" + casterID
                     + " unknown.", LogLevel.Trace);

@@ -204,7 +204,7 @@ public class HandleNpcMoveUpdate : OpcodeHandler
 
             spawnId = extractor.GetUIntAt(_spawnIdSlot);
 
-            if (!MobRepository.Instance.TryGetBySpawnId(zoneId, spawnId, out Spawn? spawn))
+            if (!MobRepository.Instance.TryGetBySpawnId((ZoneId) zoneId, (SpawnId)spawnId, out Spawn? spawn))
             {
                 DebugLog.Write(LogChannel.Opcodes, "TargetResolver: spawnId=" + spawnId
                     + " unknown.", LogLevel.Trace);

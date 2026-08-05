@@ -14,8 +14,8 @@ public class MobRepository
 {
     private static MobRepository? _instance = null;
 
-    private readonly Dictionary<uint, Spawn> _mobsById;
-    private readonly Dictionary<uint, Dictionary<uint, uint>> _spawnIndex;
+    private readonly Dictionary<MobId, Spawn> _mobsById;
+    private readonly Dictionary<ZoneId, Dictionary<SpawnId, MobId>> _spawnIndex;
     private uint _nextMobId;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -44,8 +44,8 @@ public class MobRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private MobRepository()
     {
-        _mobsById = new Dictionary<uint, Spawn>();
-        _spawnIndex = new Dictionary<uint, Dictionary<uint, uint>>();
+        _mobsById = new Dictionary<MobId, Spawn>();
+        _spawnIndex = new Dictionary<ZoneId, Dictionary<SpawnId, MobId>>();
         _nextMobId = 1;
         DebugLog.Write(LogChannel.Database, "MobRepository: singleton instance created with empty caches.", LogLevel.Trace);
     }
@@ -62,23 +62,23 @@ public class MobRepository
     //
     // Returns the identifier assigned to the record, or the identifier of the existing record on a duplicate.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public uint Add(Spawn spawn)
+    public MobId Add(Spawn spawn)
     {
-        if (!_spawnIndex.TryGetValue(spawn.ZoneId, out Dictionary<uint, uint>? zoneIndex))
+        if (!_spawnIndex.TryGetValue(spawn.ZoneId, out Dictionary<SpawnId, MobId>? zoneIndex))
         {
-            zoneIndex = new Dictionary<uint, uint>();
+            zoneIndex = new Dictionary<SpawnId, MobId>();
             _spawnIndex[spawn.ZoneId] = zoneIndex;
             DebugLog.Write(LogChannel.Database, "MobRepository.Add: created index for zoneId=" + spawn.ZoneId + ".", LogLevel.Trace);
         }
 
-        if (zoneIndex.TryGetValue(spawn.SpawnId, out uint existingId))
+        if (zoneIndex.TryGetValue(spawn.SpawnId, out MobId existingId))
         {
             DebugLog.Write(LogChannel.Database, "MobRepository.Add: duplicate for zoneId=" + spawn.ZoneId
                 + " spawnId=" + spawn.SpawnId + ", existing id=" + existingId + " retained.", LogLevel.Error);
             return existingId;
         }
 
-        spawn.MobId = _nextMobId;
+        spawn.MobId = new MobId(_nextMobId);
         _nextMobId++;
 
         _mobsById[spawn.MobId] = spawn;
@@ -101,7 +101,7 @@ public class MobRepository
     //
     // Returns true if the record was found, false otherwise.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public bool TryGetByMobId(uint mobId, out Spawn? spawn)
+    public bool TryGetByMobId(MobId mobId, [NotNullWhen(true)] out Spawn? spawn)
     {
         if (_mobsById.TryGetValue(mobId, out spawn))
         {
@@ -116,32 +116,33 @@ public class MobRepository
     // TryGetBySpawnId
     //
     // Looks up the Spawn record indexed under the given zone id and spawn id. The zone id selects an inner
-    // index dictionary, and the spawn id selects a record identifier within it.
+    // index dictionary, and the spawn id selects a mob identifier within it. A zone id that does not exist
+    // is rejected before any index access.
     //
-    // zoneId:   Zone in which the spawn id is valid.
+    // zoneId:   Zone in which the spawn id is valid. ZoneId.None means the zone is not known.
     // spawnId:  Server-assigned spawn id.
     // spawn:    Receives the record if found, null otherwise.
     //
     // Returns true if the record was found, false otherwise.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public bool TryGetBySpawnId(uint? zoneId, uint spawnId, [NotNullWhen(true)] out Spawn? spawn)
+    public bool TryGetBySpawnId(ZoneId zoneId, SpawnId spawnId, [NotNullWhen(true)] out Spawn? spawn)
     {
         spawn = null;
 
-        if (zoneId == null)
+        if (!zoneId.Exists)
         {
-            DebugLog.Write(LogChannel.Database, "MobRepository.TryGetBySpawnId: zoneId is null.", LogLevel.Trace);
+            DebugLog.Write(LogChannel.Database, "MobRepository.TryGetBySpawnId: zoneId is None.", LogLevel.Trace);
             return false;
         }
 
-        if (!_spawnIndex.TryGetValue(zoneId.Value, out Dictionary<uint, uint>? zoneIndex))
+        if (!_spawnIndex.TryGetValue(zoneId, out Dictionary<SpawnId, MobId>? zoneIndex))
         {
             DebugLog.Write(LogChannel.Database, "MobRepository.TryGetBySpawnId: zoneId=" + zoneId
                 + " has no index.", LogLevel.Trace);
             return false;
         }
 
-        if (!zoneIndex.TryGetValue(spawnId, out uint mobId))
+        if (!zoneIndex.TryGetValue(spawnId, out MobId mobId))
         {
             DebugLog.Write(LogChannel.Database, "MobRepository.TryGetBySpawnId: zoneId=" + zoneId
                 + " spawnId=" + spawnId + " not in index.", LogLevel.Trace);

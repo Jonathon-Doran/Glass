@@ -106,13 +106,18 @@ public class HandleHP_Percent: OpcodeHandler
         uint? zoneId = GlassContext.SessionRegistry.ZoneFromMetadata(metadata);
         string spawnName;
 
+        if (! zoneId.HasValue)
+        {
+            return root;
+        }
+
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
             uint spawnID = _extractor.GetUIntAt(_spawnIDSlot);
 
-            if (!MobRepository.Instance.TryGetBySpawnId(zoneId, spawnID, out Spawn? spawn))
+            if (!MobRepository.Instance.TryGetBySpawnId((ZoneId) zoneId, (SpawnId) spawnID, out Spawn? spawn))
             {
                 DebugLog.Write(LogChannel.Opcodes, "HP_Percent: spawnID=" + spawnID
                     + " unknown.", LogLevel.Trace);

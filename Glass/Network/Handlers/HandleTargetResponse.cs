@@ -134,7 +134,7 @@ public class HandleTargetResponse : OpcodeHandler
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
             spawnId = _extractor.GetUIntAt(_spawnIdSlot);
 
-            if (!MobRepository.Instance.TryGetBySpawnId(zoneId, spawnId, out Spawn? spawn))
+            if (!MobRepository.Instance.TryGetBySpawnId((ZoneId) zoneId, (SpawnId)spawnId, out Spawn? spawn))
             {
                 DebugLog.Write(LogChannel.Opcodes, "TargetResponse: spawnId=" + spawnId
                     + " unknown.", LogLevel.Trace);

@@ -90,12 +90,12 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             _extractor.Release();
         }
 
-        if (!MobRepository.Instance.TryGetBySpawnId(zoneId.Value, spawnId, out Spawn? spawn))
+        if (!MobRepository.Instance.TryGetBySpawnId((ZoneId)zoneId.Value, (SpawnId) spawnId, out Spawn? spawn))
         {
             spawn = new Spawn();
             spawn.Name = name;
-            spawn.ZoneId = zoneId.Value;
-            spawn.SpawnId = spawnId;
+            spawn.ZoneId = (ZoneId)zoneId.Value;
+            spawn.SpawnId = (SpawnId)spawnId;
             MobRepository.Instance.Add(spawn);
             DebugLog.Write(LogChannel.Opcodes, "SpawnHandler: created new record for " + name + ", zoneId=" + zoneId
                 + " spawnId=" + spawnId.ToString("X4") + ".", LogLevel.Info);

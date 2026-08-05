@@ -8,9 +8,9 @@
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 public class Spawn
 {
-    public uint MobId;
-    public uint ZoneId;
-    public uint SpawnId;
+    public MobId MobId;
+    public ZoneId ZoneId;
+    public SpawnId SpawnId;
     public string? Name;
     public float X;
     public float Y;

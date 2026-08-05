@@ -138,7 +138,7 @@ public class HandleDeath : OpcodeHandler
             uint killerId = extractor.GetUIntAt(_killerIdSlot);
 
 
-            if (!MobRepository.Instance.TryGetBySpawnId(zoneId, spawnId, out Spawn? spawn))
+            if (!MobRepository.Instance.TryGetBySpawnId((ZoneId) zoneId, (SpawnId)spawnId, out Spawn? spawn))
             {
                 DebugLog.Write(LogChannel.Opcodes, "Death: spawnId=" + spawnId
                     + " unknown.", LogLevel.Trace);
@@ -149,7 +149,7 @@ public class HandleDeath : OpcodeHandler
                 targetName = spawn.Name!;
             }
 
-            if (!MobRepository.Instance.TryGetBySpawnId(zoneId, killerId, out Spawn? spawn2))
+            if (!MobRepository.Instance.TryGetBySpawnId((ZoneId)zoneId, (SpawnId)killerId, out Spawn? spawn2))
             {
                 DebugLog.Write(LogChannel.Opcodes, "Death: spawnId=" + killerId
                     + " unknown.", LogLevel.Trace);

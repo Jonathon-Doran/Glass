@@ -141,7 +141,7 @@ public class HandleAggro: OpcodeHandler
             uint playerId = _extractor.GetUIntAt(_playerIdSlot);
 
 
-            if (!MobRepository.Instance.TryGetBySpawnId(zoneId, playerId, out Spawn? player))
+            if (!MobRepository.Instance.TryGetBySpawnId((ZoneId) zoneId, (SpawnId) playerId, out Spawn? player))
             {
                 DebugLog.Write(LogChannel.Opcodes, "Aggro: player=" + playerId
                     + " unknown.", LogLevel.Trace);

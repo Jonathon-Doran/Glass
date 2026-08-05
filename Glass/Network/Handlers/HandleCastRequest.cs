@@ -142,7 +142,7 @@ public class HandleCastRequest: OpcodeHandler
 
             uint targetID = FieldNodes.AddUIntNode(_extractor, _targetIdSlot, "Target ID", root, "X4");
            
-            if (!MobRepository.Instance.TryGetBySpawnId(zoneId, targetID, out Spawn? spawn))
+            if (!MobRepository.Instance.TryGetBySpawnId((ZoneId) zoneId, (SpawnId) targetID, out Spawn? spawn))
             {
                 DebugLog.Write(LogChannel.Opcodes, "CastRequest: targetId=" + targetID
                     + " unknown.", LogLevel.Trace);
