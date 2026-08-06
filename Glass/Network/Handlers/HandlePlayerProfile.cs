@@ -118,16 +118,14 @@ public class HandlePlayerProfile : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
-
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-            uint bagCount = extractor.BagCount(rootGate);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            uint bagCount = _extractor.BagCount(rootGate);
 
             for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
             {
-                string name = extractor.GetStringAt(_nameSlot);
+                string name = _extractor.GetStringAt(_nameSlot);
 
                 Character? character = CharacterRepository.Instance.GetByName(name);
                 if (character == null)
@@ -135,25 +133,26 @@ public class HandlePlayerProfile : OpcodeHandler
                     DebugLog.Write(LogChannel.Opcodes, _opcodeName + ": no Character named '" + name + "' in repository; fields not stored.");
                     return;
                 }
-                character.Level = extractor.GetUIntAt(_levelSlot);
-                character.PracticePoints = extractor.GetUIntAt(_practicePointsSlot);
-                character.MaxHP = extractor.GetUIntAt(_hitpointsSlot);
-                character.MaxMana = extractor.GetUIntAt(_manaSlot);
+                character.Level = _extractor.GetUIntAt(_levelSlot);
+                character.PracticePoints = _extractor.GetUIntAt(_practicePointsSlot);
+                character.MaxHP = _extractor.GetUIntAt(_hitpointsSlot);
+                character.MaxMana = _extractor.GetUIntAt(_manaSlot);
 
-                character.Strength = extractor.GetUIntAt(_strengthSlot);
-                character.Stamina = extractor.GetUIntAt(_staminaSlot);
-                character.Charisma = extractor.GetUIntAt(_charismaSlot);
-                character.Dexterity = extractor.GetUIntAt(_dexteritySlot);
-                character.Intelligence = extractor.GetUIntAt(_intelligenceSlot);
-                character.Agility = extractor.GetUIntAt(_agilitySlot);
-                character.Wisdom = extractor.GetUIntAt(_wisdomSlot);
+                character.Strength = _extractor.GetUIntAt(_strengthSlot);
+                character.Stamina = _extractor.GetUIntAt(_staminaSlot);
+                character.Charisma = _extractor.GetUIntAt(_charismaSlot);
+                character.Dexterity = _extractor.GetUIntAt(_dexteritySlot);
+                character.Intelligence = _extractor.GetUIntAt(_intelligenceSlot);
+                character.Agility = _extractor.GetUIntAt(_agilitySlot);
+                character.Wisdom = _extractor.GetUIntAt(_wisdomSlot);
 
-                character.Platinum = extractor.GetUIntAt(_platinumCarriedSlot);
-                character.Gold = extractor.GetUIntAt(_goldCarriedSlot);
-                character.Silver = extractor.GetUIntAt(_silverCarriedSlot);
-                character.Copper = extractor.GetUIntAt(_copperCarriedSlot);
+                character.Platinum = _extractor.GetUIntAt(_platinumCarriedSlot);
+                character.Gold = _extractor.GetUIntAt(_goldCarriedSlot);
+                character.Silver = _extractor.GetUIntAt(_silverCarriedSlot);
+                character.Copper = _extractor.GetUIntAt(_copperCarriedSlot);
 
-                character.CurrentZone = extractor.GetUIntAt(_zoneIdSlot);
+                character.CurrentZone = _extractor.GetUIntAt(_zoneIdSlot);
+
                 // PlayerProfile is the first time we see the character name on the network.
                 if (metadata.SessionId == -1)
                 {
@@ -161,16 +160,11 @@ public class HandlePlayerProfile : OpcodeHandler
                     DebugLog.Write(LogChannel.Inference, "identifying port " + metadata.DestPort + " as " + name);
                     GlassContext.SessionRegistry.FindConnectionByCharacter(name);
                 }
-
-                DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-                    + _opcodeName + " length=" + data.Length
-                    + " name=" + name + " characterId=" + character.CharacterId
-                    + " level=" + character.Level + " hp=" + character.MaxHP + " mana=" + character.MaxMana);
             }
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
     }
 
@@ -193,15 +187,21 @@ public class HandlePlayerProfile : OpcodeHandler
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            if (!rootGate.Exists)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandlePlayerProfile:  No RootGate", LogLevel.Error);
+                return root;
+            }
 
             name = _extractor.GetStringAt(_nameSlot);
             uint playerClass = _extractor.GetUIntAt(_playerClassSlot);
-            uint zoneId = _extractor.GetUIntAt(_zoneIdSlot);
+            ZoneId zoneId = (ZoneId) _extractor.GetUIntAt(_zoneIdSlot);
+            String zoneName = ZoneRepository.Instance.GetZoneName(zoneId);
 
             FieldNodes.AddStringNode(_extractor, _nameSlot, "Name", root);
             FieldNodes.AddUIntNode(_extractor, _levelSlot, "Level", root, "D");
             FieldNodes.AddLabeledNode(_extractor, _playerClassSlot, "Class: " + GetClassName(playerClass), root);
-            FieldNodes.AddLabeledNode(_extractor, _zoneIdSlot, "Zone: " + GetZoneName(zoneId) + 
+            FieldNodes.AddLabeledNode(_extractor, _zoneIdSlot, "Zone: " + zoneName + 
                     " (" + zoneId + ")", root);
 
             FieldNodes.AddUIntNode(_extractor, _practicePointsSlot, "Practice Points", root, "D");
@@ -268,7 +268,7 @@ public class HandlePlayerProfile : OpcodeHandler
             if (spellbook[index] != SpellNone)
             {
                 knownSpellCount++;
-                string spellName = LookupSpell(spellbook[index]);
+                String spellName = SpellCatalog.Instance.LookupSpell(spellbook[index]);
 
                 string spellEntry = knownSpellCount.ToString() + ":  " + spellName + " (" + spellbook[index].ToString() + ")";
 
@@ -287,7 +287,7 @@ public class HandlePlayerProfile : OpcodeHandler
             if (spellgems[index] != SpellNone)
             {
                 knownSpellCount++;
-                string spellName = LookupSpell(spellgems[index]);
+                String spellName = SpellCatalog.Instance.LookupSpell(spellgems[index]);
 
                 string spellEntry = knownSpellCount.ToString() + ":  " + spellName + " (" + spellgems[index].ToString() + ")";
 
@@ -295,32 +295,6 @@ public class HandlePlayerProfile : OpcodeHandler
             }
         }
         spellGemTree.Text = "Memorized Spells (" + knownSpellCount + " entries)";
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // LookupSpell
-    //
-    // A helper to lookup the spell name from ID
-    //
-    // spellId:  The ID to query
-    //
-    // Returns:   The name of the spell, or "unknown"
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    private string LookupSpell(uint spellId)
-    {
-        string spellName;
-        SpellRecord? record;
-        if (SpellCatalog.Instance.TryGet(spellId, out record) == true)
-        {
-            spellName = record.Name;
-        }
-        else
-        {
-            spellName = "unknown";
-        }
-
-        return spellName;
     }
 
     private static readonly Dictionary<uint, string> ClassNames = new Dictionary<uint, string>()
@@ -361,35 +335,6 @@ public class HandlePlayerProfile : OpcodeHandler
 
         DebugLog.Write(LogChannel.Opcodes, $"[GetClassName] classId=0x{classId:X2} not in map, returning 'Unknown'");
         return $"Unknown(0x{classId:X2})";
-    }
-
-    private static readonly Dictionary<uint, string> ZoneNames = new Dictionary<uint, string>()
-    {
-        { 13, "North Karana" },
-        { 14, "South Karana" },
-        { 29, "Halas" },
-        {118, "Great Divide" },
-        {202, "Plane of Knowledge" },
-        {394, "Crescent Reach" }
-    };
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GetZoneName
-    //
-    // Looks up a zone name by its byte value. Returns a descriptive string for unknown values
-    // rather than throwing.
-    //
-    // zoneId:    The zoneId to query
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public static string GetZoneName(uint zoneId)
-    {
-        if (ZoneNames.TryGetValue(zoneId, out string? name))
-        {
-            return name;
-        }
-
-        DebugLog.Write(LogChannel.Opcodes, $"[GetZoneName] zoneId=0x{zoneId:X2} not in map, returning 'Unknown'", LogLevel.Warn);
-        return $"Unknown(0x{zoneId:X2})";
     }
 }
 

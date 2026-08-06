@@ -158,4 +158,39 @@ public class MobRepository
 
         return true;
     }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // LookupSpawnName
+    //
+    // Looks up the Spawn record indexed under the given zone id and spawn id and return the name.
+    //
+    // zoneId:   Zone in which the spawn id is valid. ZoneId.None means the zone is not known.
+    // spawnId:  Server-assigned spawn id.
+    //
+    // Returns the spawn name, or "<unknown>" if the spawn cannot be found.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    public string LookupSpawnName(ZoneId zoneId, SpawnId spawnId)
+    {
+        string spawnName;
+
+        if (! zoneId.Exists)
+        {
+            return "<unknown";
+        }
+
+        if (!MobRepository.Instance.TryGetBySpawnId((ZoneId)zoneId, (SpawnId)spawnId, out Spawn? spawn))
+        {
+            DebugLog.Write(LogChannel.Opcodes, "LookupSpawnName: spawnId=" + spawnId
+                + " unknown.", LogLevel.Trace);
+            spawnName = "<unknown>";
+        }
+        else
+        {
+            spawnName = spawn.Name!;
+        }
+
+        return spawnName;
+    }
+
 }

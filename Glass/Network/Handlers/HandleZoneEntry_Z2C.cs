@@ -119,50 +119,35 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
     public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         FieldDisplayNode root = new FieldDisplayNode();
-        string Label;
-        uint zoneId = 0;
 
         // I would think that zone-id would be in the data...
-
-        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
-
-        if (character == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "ZoneEntry: metadata cannot be "
-                + "mapped to a character.  Zone name unavailable.", LogLevel.Warn);
-            root.Text = "ZoneEntry to Unknown Zone";
-            return root;
-        }
-        if (character.CurrentZone == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "ZoneEntry: no current zone "
-                + "for character.", LogLevel.Warn);
-            root.Text = "ZoneEntry to Unknown Zone";
-            return root;
-        }
-
-        zoneId = character.CurrentZone.Value;
+        ZoneId zoneId = GlassContext.SessionRegistry.ZoneFromMetadata(metadata);
         string zoneName = ZoneRepository.Instance.GetZoneName(zoneId);
-        Label = "ZoneEntry to " + zoneName;
 
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            if (!rootGate.Exists)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry:  No RootGate", LogLevel.Error);
+                return root;
+            }
 
-            uint spawnId = _extractor.GetUIntAt(_spawnIdSlot);
+            SpawnId spawnId = (SpawnId) _extractor.GetUIntAt(_spawnIdSlot);
+            String spawnName = MobRepository.Instance.LookupSpawnName(zoneId, spawnId);
 
-            FieldNodes.AddLabeledNode(_extractor, _spawnIdSlot, "spawnId = 0x" +
-                spawnId.ToString("X4"), root);
+            FieldNodes.AddLabeledNode(_extractor, _spawnIdSlot, "Spawn: " + spawnName + " (" +
+                    spawnId + ", 0x" + spawnId.Value.ToString("X4") + ")", root);
+
             string name = FieldNodes.AddStringNode(_extractor, _nameSlot, "Name", root);
             FieldNodes.AddUIntNode(_extractor, _levelSlot, "Level", root, "D");
-            Label += " (" + name + ")";
         }
         finally
         {
             _extractor.Release();
         }
 
-        root.Text = Label;
+        root.Text = "ZoneEntry to " + zoneName;
         return root;
     }
 

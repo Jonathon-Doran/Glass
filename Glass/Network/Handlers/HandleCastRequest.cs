@@ -106,62 +106,41 @@ public class HandleCastRequest: OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+        ZoneId zoneId = GlassContext.SessionRegistry.ZoneFromMetadata(metadata);
 
         FieldDisplayNode root = new FieldDisplayNode();
-        uint? zoneId;
         string targetName;
         string spellName;
-
-        if (character == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "CastRequest: metadata cannot be "
-                + "mapped to a character.", LogLevel.Warn);
-            root.Text = "Target <Unknown>";
-            return root;
-        }
-        if (character.CurrentZone == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "CastRequest: no current zone "
-                + "for caster.", LogLevel.Warn);
-            root.Text = "Target <Unknown>";
-            return root;
-        }
-        zoneId = character.CurrentZone.Value;
 
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            if (!rootGate.Exists)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleCastRequest:  No RootGate", LogLevel.Error);
+                return root;
+            }
 
             uint spellID = _extractor.GetUIntAt(_spellIdSlot);
             spellName = SpellCatalog.Instance.LookupSpell(spellID);
 
-            FieldNodes.AddUIntNode(_extractor, _gemSlot, "Spell Gem", root, "D");
             FieldNodes.AddLabeledNode(_extractor, _spellIdSlot, "Spell: " + spellName + " (" +
                 spellID + ", 0x" + spellID.ToString("X8") + ")", root);
 
-            uint targetID = FieldNodes.AddUIntNode(_extractor, _targetIdSlot, "Target ID", root, "X4");
-           
-            if (!MobRepository.Instance.TryGetBySpawnId((ZoneId) zoneId, (SpawnId) targetID, out Spawn? spawn))
-            {
-                DebugLog.Write(LogChannel.Opcodes, "CastRequest: targetId=" + targetID
-                    + " unknown.", LogLevel.Trace);
-                targetName = "<unknown>";
-            }
-            else
-            {
-                targetName = spawn.Name!;
-            }
-            FieldNodes.AddLabeledNode(_extractor, _targetIdSlot, "Cast Target: " + targetName, root);
+            SpawnId targetID = (SpawnId) FieldNodes.AddUIntNode(_extractor, _targetIdSlot, "Target ID", root, "X4");
 
+            FieldNodes.AddUIntNode(_extractor, _gemSlot, "Spell Gem", root, "D");
+            targetName = MobRepository.Instance.LookupSpawnName(zoneId, targetID);
+
+            FieldNodes.AddLabeledNode(_extractor, _targetIdSlot, "Target: " + targetName + " (" +
+                    targetID + ", 0x" + targetID.Value.ToString("X4") + ")", root);
         }
         finally
         {
             _extractor.Release();
         }
 
-        root.Text = "Cast Request (" + targetName + ")";
+        root.Text = "Cast Request (" + spellName + ")";
         return root;
     }
 }
-

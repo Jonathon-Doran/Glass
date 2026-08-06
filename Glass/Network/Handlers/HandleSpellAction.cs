@@ -141,27 +141,8 @@ public class HandleSpellAction : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
-
         FieldDisplayNode root = new FieldDisplayNode();
-        uint? zoneId;
         string spellName;
-
-        if (character == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "SpellAction: metadata cannot be "
-                + "mapped to a character.", LogLevel.Warn);
-            root.Text = "Target <Unknown>";
-            return root;
-        }
-        if (character.CurrentZone == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "SpellAction: no current zone "
-                + "for caster.", LogLevel.Warn);
-            root.Text = "Target <Unknown>";
-            return root;
-        }
-        zoneId = character.CurrentZone.Value;
 
         try
         {

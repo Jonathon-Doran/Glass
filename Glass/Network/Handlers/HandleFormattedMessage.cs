@@ -69,18 +69,22 @@ public class HandleFormattedMessage : OpcodeHandler
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
-    {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
-
+    { 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-            string message = extractor.GetStringAt(_messageIdSlot);
-            uint code = extractor.GetUIntAt(_messageCodeSlot);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            if (!rootGate.Exists)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleFormatteedMessage:  No RootGate", LogLevel.Error);
+                return;
+            }
+
+            string message = _extractor.GetStringAt(_messageIdSlot);
+            uint code = _extractor.GetUIntAt(_messageCodeSlot);
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
     }
 
@@ -97,33 +101,30 @@ public class HandleFormattedMessage : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
         string characterName = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            if (!rootGate.Exists)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleFormattedMessage:  No RootGate", LogLevel.Error);
+                return root;
+            }
 
-            string message = extractor.GetStringAt(_messageIdSlot);
-            uint code = extractor.GetUIntAt(_messageCodeSlot);
+            string message = _extractor.GetStringAt(_messageIdSlot);
+            uint code = _extractor.GetUIntAt(_messageCodeSlot);
 
-            FieldDisplayNode messageNode = new FieldDisplayNode("message = " + message);
-            messageNode.AddByteRange(extractor.GetByteRangeFor(_messageIdSlot));
-            root.AddChild(messageNode);
-
-            FieldDisplayNode codeNode = new FieldDisplayNode("code = " + code);
-            codeNode.AddByteRange(extractor.GetByteRangeFor(_messageCodeSlot));
-            root.AddChild(codeNode);
-
+            FieldNodes.AddLabeledNode(_extractor, _messageIdSlot, "message = " + message, root);
+            FieldNodes.AddLabeledNode(_extractor, _messageIdSlot, "code = " + code, root);
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
 
         root.Text = "Formatted Message (to " + characterName + ")";
         return root;
     }
 }
-

@@ -102,58 +102,31 @@ public class HandleTargetRequest : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+        ZoneId zoneId = GlassContext.SessionRegistry.ZoneFromMetadata(metadata);
 
         FieldDisplayNode root = new FieldDisplayNode();
-        uint spawnId;
-        uint? zoneId;
         string targetName;
-
-        if (character == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "TargetRequest: metadata cannot be "
-                + "mapped to a character.  Dropping mob data.", LogLevel.Warn);
-            root.Text = "Target <Unknown>";
-            return root;
-        }
-        if (character.CurrentZone == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "TargetRequest: no current zone "
-                + "for character.", LogLevel.Warn);
-            root.Text = "Target <Unknown>";
-            return root;
-        }
-
-        zoneId = character.CurrentZone.Value;
 
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
-            spawnId = _extractor.GetUIntAt(_spawnIdSlot);
-
-            if (!MobRepository.Instance.TryGetBySpawnId((ZoneId)(ZoneId)zoneId, (SpawnId) spawnId, out Spawn? spawn))
+            if (! rootGate.Exists)
             {
-                DebugLog.Write(LogChannel.Opcodes, "TargetRequest: spawnId=" + spawnId
-                    + " unknown.", LogLevel.Trace);
-                targetName = "<unknown>";
-            }
-            else
-            {
-                targetName = spawn.Name!;
+                DebugLog.Write(LogChannel.Opcodes, "HandleTargetRequest:  No RootGate", LogLevel.Error);
+                return root;
             }
 
-            FieldNodes.AddUIntNode(_extractor, _spawnIdSlot, "Spawn ID", root, "X4");
+            SpawnId spawnId = (SpawnId) _extractor.GetUIntAt(_spawnIdSlot);
 
-            FieldDisplayNode nameNode = new FieldDisplayNode("Target: " + targetName);
-            nameNode.AddByteRange(_extractor.GetByteRangeFor(_spawnIdSlot));
-            root.AddChild(nameNode);
+            targetName = MobRepository.Instance.LookupSpawnName(zoneId, spawnId);
+
+            FieldNodes.AddLabeledNode(_extractor, _spawnIdSlot, "Spawn: " + targetName + " (" +
+                    spawnId + ", 0x" + spawnId.Value.ToString("X4") + ")", root);
         }
         finally
         {
             _extractor.Release();
         }
-
-
 
         root.Text = "Target (" + targetName + ")";
         return root;

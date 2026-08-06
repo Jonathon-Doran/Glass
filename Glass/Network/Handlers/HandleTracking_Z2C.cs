@@ -5,6 +5,7 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////
 using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Data.Repositories;
 using Glass.Network.Handlers;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
@@ -90,6 +91,11 @@ public class HandleTracking_Z2C : OpcodeHandler
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            if (!rootGate.Exists)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleTracking:  No RootGate", LogLevel.Error);
+                return;
+            }
 
             if (_extractor.IsPresent(_trackingEntriesSlot) == false)
             {
@@ -137,10 +143,17 @@ public class HandleTracking_Z2C : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
+        ZoneId zoneId = GlassContext.SessionRegistry.ZoneFromMetadata(metadata);
         FieldDisplayNode root = new FieldDisplayNode();
+
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            if (!rootGate.Exists)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleTracking:  No RootGate", LogLevel.Error);
+                return root;
+            }
 
             if (_extractor.IsPresent(_trackingEntriesSlot) == false)
             {
@@ -160,16 +173,23 @@ public class HandleTracking_Z2C : OpcodeHandler
             }
 
             uint bagCount = _extractor.BagCount(entriesGate);
-            DebugLog.Write(LogChannel.Opcodes,
-                "HandleTracking_Z2C.Describe: walking " + bagCount + " tracking entries", LogLevel.Trace);
 
             for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
             {
                 _extractor.EnterGate(entriesGate, bagIndex);
+
                 FieldDisplayNode entryNode = new FieldDisplayNode("Entry " + (bagIndex + 1));
                 root.AddChild(entryNode);
+
+                SpawnId spawnId = (SpawnId)_extractor.GetUIntAt(_spawnIdSlot);
+
+                String spawnName = MobRepository.Instance.LookupSpawnName(zoneId, spawnId);
+
                 FieldNodes.AddStringNode(_extractor, _nameSlot, "Name", entryNode);
-                FieldNodes.AddUIntNode(_extractor, _spawnIdSlot, "Spawn ID", entryNode);
+
+                FieldNodes.AddLabeledNode(_extractor, _spawnIdSlot, "Spawn: " + spawnName + " (" +
+                     spawnId + ", 0x" + spawnId.Value.ToString("X4") + ")", root);
+
                 FieldNodes.AddUIntNode(_extractor, _levelSlot, "Level", entryNode, "D");
             }
         }
@@ -181,4 +201,3 @@ public class HandleTracking_Z2C : OpcodeHandler
         return root;
     }
 }
-

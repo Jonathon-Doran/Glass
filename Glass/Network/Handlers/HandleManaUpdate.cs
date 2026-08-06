@@ -70,15 +70,14 @@ public class HandleManaUpdate : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         Character? character = null;
         uint playerId;
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            playerId = extractor.GetUIntAt(_playerIdSlot);
+            playerId = _extractor.GetUIntAt(_playerIdSlot);
             character = CharacterRepository.Instance.GetById((int)playerId);
 
             if (character == null)
@@ -87,18 +86,14 @@ public class HandleManaUpdate : OpcodeHandler
                 return;
             }
 
-            character.MaxMana = extractor.GetUIntAt(_maxManaSlot);
-            character.CurrentMana = extractor.GetUIntAt(_currentManaSlot);
+            character.MaxMana = _extractor.GetUIntAt(_maxManaSlot);
+            character.CurrentMana = _extractor.GetUIntAt(_currentManaSlot);
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
-
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-            + _opcodeName + " length=" + data.Length);
-        DebugLog.Write(LogChannel.Opcodes, "Mana at " + character.CurrentMana + " / " + character.MaxMana);
-    }
+   }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Describe
@@ -113,33 +108,29 @@ public class HandleManaUpdate : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
-        string characterName = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
+        ZoneId zoneId = GlassContext.SessionRegistry.ZoneFromMetadata(metadata);
+        String characterName;
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            uint playerId = extractor.GetUIntAt(_playerIdSlot);
-            uint currentMana = extractor.GetUIntAt(_currentManaSlot);
-            uint maxMana = extractor.GetUIntAt(_maxManaSlot);
+            SpawnId playerId = (SpawnId) _extractor.GetUIntAt(_playerIdSlot);
+            characterName = MobRepository.Instance.LookupSpawnName(zoneId, playerId);
 
-            FieldDisplayNode playerIdNode = new FieldDisplayNode("playerId = 0x" + playerId.ToString("X4"));
-            playerIdNode.AddByteRange(extractor.GetByteRangeFor(_playerIdSlot));
-            root.AddChild(playerIdNode);
+            uint currentMana = _extractor.GetUIntAt(_currentManaSlot);
+            uint maxMana = _extractor.GetUIntAt(_maxManaSlot);
 
-            FieldDisplayNode currentManaNode = new FieldDisplayNode("Current Mana = " + currentMana);
-            currentManaNode.AddByteRange(extractor.GetByteRangeFor(_currentManaSlot));
-            root.AddChild(currentManaNode);
+            FieldNodes.AddLabeledNode(_extractor, _playerIdSlot, "Spawn: " + characterName + " (" +
+                    playerId + ", 0x" + playerId.Value.ToString("X4") + ")", root);
 
-            FieldDisplayNode maxManaNode = new FieldDisplayNode("Maximum Mana = " + maxMana);
-            maxManaNode.AddByteRange(extractor.GetByteRangeFor(_maxManaSlot));
-            root.AddChild(maxManaNode);
+            FieldNodes.AddUIntNode(_extractor, _currentManaSlot, "Current Mana", root, "D");
+            FieldNodes.AddUIntNode(_extractor, _maxManaSlot, "Max Mana", root, "D");
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
 
         root.Text = "Mana Update (" + characterName + ")";

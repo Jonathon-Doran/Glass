@@ -75,30 +75,29 @@ public class HandleCommonMessage : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
-
         string sender;
         uint channel;
         string message;
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            if (!rootGate.Exists)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleCommonMessage:  No RootGate", LogLevel.Error);
+                return;
+            }
 
-            sender = extractor.GetStringAt(_senderIdSlot);
-            channel = extractor.GetUIntAt(_channelIdSlot);
-            message = extractor.GetStringAt(_messageIdSlot);
+            sender = _extractor.GetStringAt(_senderIdSlot);
+            channel = _extractor.GetUIntAt(_channelIdSlot);
+            message = _extractor.GetStringAt(_messageIdSlot);
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
 
         string channelName = GetChannelName(channel);
-
-        DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] "
-            + _opcodeName + " sender = " + sender + ", channel = " +
-            channel + "(" + channelName + "), message = '" + message + "'");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -114,33 +113,32 @@ public class HandleCommonMessage : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
         string characterName = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            string sender = extractor.GetStringAt(_senderIdSlot);
-            uint channel = extractor.GetUIntAt(_channelIdSlot);
-            string message = extractor.GetStringAt(_messageIdSlot);
+            string sender = _extractor.GetStringAt(_senderIdSlot);
+            uint channel = _extractor.GetUIntAt(_channelIdSlot);
+            string message = _extractor.GetStringAt(_messageIdSlot);
 
             FieldDisplayNode senderNode = new FieldDisplayNode("sender = " + sender);
-            senderNode.AddByteRange(extractor.GetByteRangeFor(_senderIdSlot));
+            senderNode.AddByteRange(_extractor.GetByteRangeFor(_senderIdSlot));
             root.AddChild(senderNode);
 
             FieldDisplayNode channelNode = new FieldDisplayNode("channel = " + channel);
-            channelNode.AddByteRange(extractor.GetByteRangeFor(_channelIdSlot));
+            channelNode.AddByteRange(_extractor.GetByteRangeFor(_channelIdSlot));
             root.AddChild(channelNode);
 
             FieldDisplayNode messageNode = new FieldDisplayNode("message = " + message);
-            messageNode.AddByteRange(extractor.GetByteRangeFor(_messageIdSlot));
+            messageNode.AddByteRange(_extractor.GetByteRangeFor(_messageIdSlot));
             root.AddChild(messageNode);
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
 
         root.Text = "CommonMessage (to " + characterName + ")";

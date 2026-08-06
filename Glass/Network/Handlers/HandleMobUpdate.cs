@@ -80,7 +80,6 @@ public class HandleMobUpdate : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         uint spawnId;
         float xPos;
         float yPos;
@@ -88,23 +87,23 @@ public class HandleMobUpdate : OpcodeHandler
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            spawnId = extractor.GetUIntAt(_spawnIdSlot);
-            xPos = extractor.GetFloatAt(_xPosSlot);
-            yPos = extractor.GetFloatAt(_yPosSlot);
-            zPos = extractor.GetFloatAt(_zPosSlot);
+            spawnId = _extractor.GetUIntAt(_spawnIdSlot);
+            xPos = _extractor.GetFloatAt(_xPosSlot);
+            yPos = _extractor.GetFloatAt(_yPosSlot);
+            zPos = _extractor.GetFloatAt(_zPosSlot);
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
-    } 
-    
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Describe
     //
-    // Extracts OP_Death against the active patch and builds a display tree: a root node for
+    // Extracts OP_MobUpdate against the active patch and builds a display tree: a root node for
     // the collection with one leaf child per field each carrying its payload byte range.
     //
     // data:      The application payload
@@ -114,70 +113,46 @@ public class HandleMobUpdate : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
-        uint spawnId;
-        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
-        uint? zoneId;
+        ZoneId zoneId = GlassContext.SessionRegistry.ZoneFromMetadata(metadata);
         string mobName;
-
-        if (character == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "MobUpdate: metadata cannot be "
-                + "mapped to a character.", LogLevel.Warn);
-            root.Text = "Mob <Unknown>";
-            return root;
-        }
-        if (character.CurrentZone == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "MobUpdate: no current zone "
-                + "for character.", LogLevel.Warn);
-            root.Text = "Mob <Unknown>";
-            return root;
-        }
-
-        zoneId = character.CurrentZone.Value;
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            spawnId = extractor.GetUIntAt(_spawnIdSlot);
-            float xPos = extractor.GetFloatAt(_xPosSlot);
-            float yPos = extractor.GetFloatAt(_yPosSlot);
-            float zPos = extractor.GetFloatAt(_zPosSlot);
-            uint headingRaw = extractor.GetUIntAt(_headingSlot);
-
-            if (!MobRepository.Instance.TryGetBySpawnId((ZoneId) zoneId, (SpawnId)spawnId, out Spawn? spawn))
+            if (!rootGate.Exists)
             {
-                DebugLog.Write(LogChannel.Opcodes, "TargetResolver: spawnId=" + spawnId
-                    + " unknown.", LogLevel.Trace);
-                mobName = "<unknown>";
-            }
-            else
-            {
-                mobName = spawn.Name!;
+                DebugLog.Write(LogChannel.Opcodes, "HandleMobUpdate:  No RootGate", LogLevel.Error);
+                return root;
             }
 
-            FieldNodes.AddLabeledNode(extractor, _spawnIdSlot, "NPC: " + mobName +
-                " (0x" + spawnId.ToString("X4") + ")", root);
+            SpawnId spawnId = (SpawnId) _extractor.GetUIntAt(_spawnIdSlot);
+            float xPos = _extractor.GetFloatAt(_xPosSlot);
+            float yPos = _extractor.GetFloatAt(_yPosSlot);
+            float zPos = _extractor.GetFloatAt(_zPosSlot);
+            uint headingRaw = _extractor.GetUIntAt(_headingSlot);
+
+            mobName = MobRepository.Instance.LookupSpawnName(zoneId, spawnId);
+
+            FieldNodes.AddLabeledNode(_extractor, _spawnIdSlot, "Spawn: " + mobName + " (" +
+                 spawnId + ", 0x" + spawnId.Value.ToString("X4") + ")", root);
 
             FieldDisplayNode positionNode = new FieldDisplayNode("Position = (" + 
                 xPos.ToString("F2") + "," + yPos.ToString("F2") + "," + zPos.ToString("F2") + ")");
 
-            positionNode.AddByteRange(extractor.GetByteRangeFor(_xPosSlot));
-            positionNode.AddByteRange(extractor.GetByteRangeFor(_yPosSlot));
-            positionNode.AddByteRange(extractor.GetByteRangeFor(_zPosSlot));
+            positionNode.AddByteRange(_extractor.GetByteRangeFor(_xPosSlot));
+            positionNode.AddByteRange(_extractor.GetByteRangeFor(_yPosSlot));
+            positionNode.AddByteRange(_extractor.GetByteRangeFor(_zPosSlot));
 
             root.AddChild(positionNode);
 
-            FieldDisplayNode headingNode = new FieldDisplayNode("raw heading = 0x" + headingRaw.ToString("X4"));
-            headingNode.AddByteRange(extractor.GetByteRangeFor(_headingSlot));
-            root.AddChild(headingNode);
+            FieldNodes.AddLabeledNode(_extractor, _headingSlot, "raw heading: " + headingRaw + " (0x" +
+                headingRaw.ToString("X4") + ")", root);
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
 
         root.Text = "Mob Update (" + mobName + ")";

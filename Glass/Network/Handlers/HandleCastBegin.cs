@@ -105,53 +105,33 @@ public class HandleCastBegin : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+        ZoneId zoneId = GlassContext.SessionRegistry.ZoneFromMetadata(metadata);
 
         FieldDisplayNode root = new FieldDisplayNode();
-        uint? zoneId;
         string casterName;
         string spellName;
-
-        if (character == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "CastBegin: metadata cannot be "
-                + "mapped to a character.", LogLevel.Warn);
-            root.Text = "Target <Unknown>";
-            return root;
-        }
-        if (character.CurrentZone == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "CastBegin: no current zone "
-                + "for caster.", LogLevel.Warn);
-            root.Text = "Target <Unknown>";
-            return root;
-        }
-        zoneId = character.CurrentZone.Value;
 
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            if (!rootGate.Exists)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandlCastBegin:  No RootGate", LogLevel.Error);
+                return root;
+            }
 
             uint spellID = _extractor.GetUIntAt(_spellIdSlot);
-            uint casterID = _extractor.GetUIntAt(_casterIdSlot);
+            SpawnId casterID = (SpawnId) _extractor.GetUIntAt(_casterIdSlot);
             spellName = SpellCatalog.Instance.LookupSpell(spellID);
+            casterName = MobRepository.Instance.LookupSpawnName(zoneId, casterID);
 
             FieldNodes.AddLabeledNode(_extractor, _spellIdSlot, "Spell: " + spellName + " (" +
                 spellID + ", 0x" + spellID.ToString("X8") + ")", root);
 
-            if (!MobRepository.Instance.TryGetBySpawnId((ZoneId) zoneId, (SpawnId) casterID, out Spawn? caster))
-            {
-                DebugLog.Write(LogChannel.Opcodes, "CastBegin: caster=" + casterID
-                    + " unknown.", LogLevel.Trace);
-                casterName = "<unknown>";
-            }
-            else
-            {
-               casterName = caster.Name!;
-            }
-            FieldNodes.AddLabeledNode(_extractor, _casterIdSlot, "Caster: " + casterName, root);
-            FieldNodes.AddUIntNode(_extractor, _castTimeSlot, "Cast Time (ms)", root, "D");
+            FieldNodes.AddLabeledNode(_extractor, _casterIdSlot, "Caster: " + casterName + " (" +
+                 casterID + ", 0x" + casterID.Value.ToString("X4") + ")", root);
 
+            FieldNodes.AddUIntNode(_extractor, _castTimeSlot, "Cast Time (ms)", root, "D");
         }
         finally
         {

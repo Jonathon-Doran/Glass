@@ -15,6 +15,8 @@ namespace Glass.Network.Handlers;
 // HandleHpUpdate
 //
 // Handles OP_HpUpdate messages.  
+//
+// These come in for players with HP values that change, and are not sent unless needed.
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class HandleHpUpdate : OpcodeHandler
 {
@@ -72,14 +74,13 @@ public class HandleHpUpdate : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         Character? character = null;
         uint playerId;
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-            playerId = extractor.GetUIntAt(_playerIdSlot);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            playerId = _extractor.GetUIntAt(_playerIdSlot);
             character = CharacterRepository.Instance.GetById((int)playerId);
 
             if (character == null)
@@ -88,12 +89,12 @@ public class HandleHpUpdate : OpcodeHandler
                 return;
             }
 
-            character.MaxHP = extractor.GetUIntAt(_maxHPSlot);
-            character.CurrentHP = extractor.GetUIntAt(_currentHPSlot);
+            character.MaxHP = _extractor.GetUIntAt(_maxHPSlot);
+            character.CurrentHP = _extractor.GetUIntAt(_currentHPSlot);
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
     }
 
@@ -110,34 +111,28 @@ public class HandleHpUpdate : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
-        string characterName = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
+        ZoneId zoneId = GlassContext.SessionRegistry.ZoneFromMetadata(metadata);
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            uint playerId = extractor.GetUIntAt(_playerIdSlot);
-            uint currentHP = extractor.GetUIntAt(_currentHPSlot);
-            uint maxHP = extractor.GetUIntAt(_maxHPSlot);
+            SpawnId playerId = (SpawnId) _extractor.GetUIntAt(_playerIdSlot);
+            String characterName = MobRepository.Instance.LookupSpawnName(zoneId, playerId);
 
-            FieldDisplayNode playerNode = new FieldDisplayNode("player = " + characterName + " ("
-                + playerId.ToString("X4") + ")");
-            playerNode.AddByteRange(extractor.GetByteRangeFor(_playerIdSlot));
-            root.AddChild(playerNode);
+            uint currentHP = _extractor.GetUIntAt(_currentHPSlot);
+            uint maxHP = _extractor.GetUIntAt(_maxHPSlot);
 
-            FieldDisplayNode hpNode = new FieldDisplayNode("current HP = " + currentHP);
-            hpNode.AddByteRange(extractor.GetByteRangeFor(_currentHPSlot));
-            root.AddChild(hpNode);
+            FieldNodes.AddLabeledNode(_extractor, _playerIdSlot, "Spawn: " + characterName + " (" +
+                    playerId + ", 0x" + playerId.Value.ToString("X4") + ")", root);
 
-            FieldDisplayNode maxHPNode = new FieldDisplayNode("max HP = " + maxHP);
-            maxHPNode.AddByteRange(extractor.GetByteRangeFor(_maxHPSlot));
-            root.AddChild(maxHPNode);
+            FieldNodes.AddUIntNode(_extractor, _currentHPSlot, "Current HP", root, "D");
+            FieldNodes.AddUIntNode(_extractor, _maxHPSlot, "Max HP", root, "D");
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
 
         root.Text = "HP Update";

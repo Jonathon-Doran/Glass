@@ -24,7 +24,6 @@ public class HandleMovementHistory : OpcodeHandler
     private readonly SlotId _timestampSlot;
     private readonly SlotId _movestateSlot;
 
-
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleMovementHistory (constructor)
     //
@@ -76,7 +75,6 @@ public class HandleMovementHistory : OpcodeHandler
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
 
         float xPos;
@@ -93,18 +91,18 @@ public class HandleMovementHistory : OpcodeHandler
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-            uint bagCount = extractor.BagCount(rootGate);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            uint bagCount = _extractor.BagCount(rootGate);
 
             for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
             {
-                extractor.EnterGate(rootGate, bagIndex);
+                _extractor.EnterGate(rootGate, bagIndex);
 
-                xPos = extractor.GetFloatAt(_xPosSlot);
-                yPos = extractor.GetFloatAt(_yPosSlot);
-                zPos = extractor.GetFloatAt(_zPosSlot);
-                moveState = extractor.GetUIntAt(_movestateSlot);
-                timestamp = extractor.GetUIntAt(_timestampSlot);
+                xPos = _extractor.GetFloatAt(_xPosSlot);
+                yPos = _extractor.GetFloatAt(_yPosSlot);
+                zPos = _extractor.GetFloatAt(_zPosSlot);
+                moveState = _extractor.GetUIntAt(_movestateSlot);
+                timestamp = _extractor.GetUIntAt(_timestampSlot);
                 // movementState seems 2 when standing still, 1 when moving.   And 2 appears mid-movement during duplicate position
 
                 // timestamp is a 16-bit unsigned timer that wraps under normal use
@@ -113,7 +111,7 @@ public class HandleMovementHistory : OpcodeHandler
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
     }
 
@@ -130,30 +128,29 @@ public class HandleMovementHistory : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-            uint bagCount = extractor.BagCount(rootGate);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            uint bagCount = _extractor.BagCount(rootGate);
 
             for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
             {
-                extractor.EnterGate(rootGate, bagIndex);
+                _extractor.EnterGate(rootGate, bagIndex);
 
-                float xPos = extractor.GetFloatAt(_xPosSlot);
-                float yPos = extractor.GetFloatAt(_yPosSlot);
-                float zPos = extractor.GetFloatAt(_zPosSlot);
-                uint timestamp = extractor.GetUIntAt(_timestampSlot);
-                uint movestate = extractor.GetUIntAt(_movestateSlot);
+                float xPos = _extractor.GetFloatAt(_xPosSlot);
+                float yPos = _extractor.GetFloatAt(_yPosSlot);
+                float zPos = _extractor.GetFloatAt(_zPosSlot);
+                uint timestamp = _extractor.GetUIntAt(_timestampSlot);
+                uint movestate = _extractor.GetUIntAt(_movestateSlot);
 
                 FieldDisplayNode positionNode = new FieldDisplayNode("Position: (" +
                     xPos.ToString("F2") + "," + yPos.ToString("F2") + "," + zPos.ToString("F2") + ")");
 
-                positionNode.AddByteRange(extractor.GetByteRangeFor(_xPosSlot));
-                positionNode.AddByteRange(extractor.GetByteRangeFor(_yPosSlot));
-                positionNode.AddByteRange(extractor.GetByteRangeFor(_zPosSlot));
+                positionNode.AddByteRange(_extractor.GetByteRangeFor(_xPosSlot));
+                positionNode.AddByteRange(_extractor.GetByteRangeFor(_yPosSlot));
+                positionNode.AddByteRange(_extractor.GetByteRangeFor(_zPosSlot));
                 root.AddChild(positionNode);
 
                 FieldNodes.AddUIntNode(_extractor, _timestampSlot, "Timestamp", root);
@@ -162,13 +159,10 @@ public class HandleMovementHistory : OpcodeHandler
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
 
         root.Text = "Movement History";
         return root;
     }
 }
-
-
-

@@ -133,60 +133,67 @@ public class HandleClientUpdate : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
+        ZoneId zoneId = GlassContext.SessionRegistry.ZoneFromMetadata(metadata);
         FieldDisplayNode root = new FieldDisplayNode();
-        string characterName = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
+        string characterName;
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            if (!rootGate.Exists)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleClientUpdate:  No RootGate", LogLevel.Error);
+                return root;
+            }
+
+
+
+            float XPos = _extractor.GetFloatAt(_xPosSlot);
+            float YPos = _extractor.GetFloatAt(_yPosSlot);
+            float ZPos = _extractor.GetFloatAt(_zPosSlot);
+            uint sequence = _extractor.GetUIntAt(_sequenceSlot);
+            SpawnId playerId = (SpawnId) _extractor.GetUIntAt(_playerIdSlot);
+            // Note on heading:  measured as 160-degrees per second to within 0.2%.  One degree is 6.25ms of keypress.  
+            float Heading = _extractor.GetUIntAt(_headingSlot) / 8192.0f * 360.0f;
+            characterName = MobRepository.Instance.LookupSpawnName(zoneId, playerId);
+
+            FieldNodes.AddLabeledNode(_extractor, _playerIdSlot, "Character: " + characterName + " (" +
+                 playerId + ", 0x" + playerId.Value.ToString("X4") + ")", root);
 
             FieldDisplayNode positionNode = new FieldDisplayNode();
             root.AddChild(positionNode);
-
-            float XPos = extractor.GetFloatAt(_xPosSlot);
-            float YPos = extractor.GetFloatAt(_yPosSlot);
-            float ZPos = extractor.GetFloatAt(_zPosSlot);
-            uint sequence = extractor.GetUIntAt(_sequenceSlot);
-            uint playerId = extractor.GetUIntAt(_playerIdSlot);
-            // Note on heading:  measured as 160-degrees per second to within 0.2%.  One degree is 6.25ms of keypress.  
-            float Heading = extractor.GetUIntAt(_headingSlot) / 8192.0f * 360.0f;
 
             positionNode.Text = "position = (" + XPos.ToString("F2") + "," +
                 YPos.ToString("F2") + "," + ZPos.ToString("F2") + ")";
 
             FieldDisplayNode xNode = new FieldDisplayNode("x = " + XPos);
-            xNode.AddByteRange(extractor.GetByteRangeFor(_xPosSlot));
+            xNode.AddByteRange(_extractor.GetByteRangeFor(_xPosSlot));
             positionNode.AddChild(xNode);
 
             FieldDisplayNode yNode = new FieldDisplayNode("y = " + YPos);
-            yNode.AddByteRange(extractor.GetByteRangeFor(_yPosSlot));
+            yNode.AddByteRange(_extractor.GetByteRangeFor(_yPosSlot));
             positionNode.AddChild(yNode);
 
             FieldDisplayNode zNode = new FieldDisplayNode("z = " + ZPos);
-            zNode.AddByteRange(extractor.GetByteRangeFor(_zPosSlot));
+            zNode.AddByteRange(_extractor.GetByteRangeFor(_zPosSlot));
             positionNode.AddChild(zNode);
 
-            positionNode.AddByteRange(extractor.GetByteRangeFor(_xPosSlot));
-            positionNode.AddByteRange(extractor.GetByteRangeFor(_yPosSlot));
-            positionNode.AddByteRange(extractor.GetByteRangeFor(_zPosSlot));
+            positionNode.AddByteRange(_extractor.GetByteRangeFor(_xPosSlot));
+            positionNode.AddByteRange(_extractor.GetByteRangeFor(_yPosSlot));
+            positionNode.AddByteRange(_extractor.GetByteRangeFor(_zPosSlot));
+
+
+            FieldDisplayNode headingNode = new FieldDisplayNode("heading (degrees) = " + Heading);
+            headingNode.AddByteRange(_extractor.GetByteRangeFor(_headingSlot));
+            root.AddChild(headingNode);
 
             FieldDisplayNode sequenceNode = new FieldDisplayNode("sequence = " + sequence);
-            sequenceNode.AddByteRange(extractor.GetByteRangeFor(_sequenceSlot));
+            sequenceNode.AddByteRange(_extractor.GetByteRangeFor(_sequenceSlot));
             root.AddChild(sequenceNode);
-
-            FieldDisplayNode playerIdNode = new FieldDisplayNode("playerId = 0x" + 
-                playerId.ToString("X4") + " (" + characterName + ")");
-            playerIdNode.AddByteRange(extractor.GetByteRangeFor(_playerIdSlot));
-            root.AddChild(playerIdNode);
-
-            FieldDisplayNode headingNode = new FieldDisplayNode("heading = " + Heading);
-            headingNode.AddByteRange(extractor.GetByteRangeFor(_headingSlot));
-            root.AddChild(headingNode);
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
 
         root.Text = "ClientUpdate (" + characterName + ")";

@@ -392,7 +392,7 @@ public class SessionRegistry
     //
     // metadata:  Packet metadata from a received packet
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public uint? ZoneFromMetadata(PacketMetadata metadata)
+    public ZoneId ZoneFromMetadata(PacketMetadata metadata)
     {
         // Note:  If the connection does not exist it will be created.  There is no possibility of null.
         Character? character = GetConnection(metadata).Character;
@@ -401,15 +401,15 @@ public class SessionRegistry
         {
             DebugLog.Write(LogChannel.Opcodes, "ZoneFromMetadata: metadata cannot be "
                 + "mapped to a character.", LogLevel.Warn);
-            return null;
+            return ZoneId.None;
         }
         if (character.CurrentZone == null)
         {
             DebugLog.Write(LogChannel.Opcodes, "ZoneFromMetadata: no current zone "
                 + "for character.", LogLevel.Warn);
-            return null;
+            return ZoneId.None;
         }
-        return character.CurrentZone.Value;
+        return (ZoneId) character.CurrentZone.Value;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

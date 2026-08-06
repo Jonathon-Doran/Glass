@@ -117,8 +117,6 @@ public class HandleCastResolution: OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
-
         FieldDisplayNode root = new FieldDisplayNode();
         string spellName;
 
@@ -130,7 +128,7 @@ public class HandleCastResolution: OpcodeHandler
             spellName = SpellCatalog.Instance.LookupSpell(spellID);
 
             FieldNodes.AddLabeledNode(_extractor, _spellIdSlot, "Spell: " + spellName + " (" +
-    spellID + ", 0x" + spellID.ToString("X8") + ")", root);
+                spellID + ", 0x" + spellID.ToString("X8") + ")", root);
 
             FieldNodes.AddUIntNode(_extractor, _manaSlot, "New Mana", root, "D");
             FieldNodes.AddUIntNode(_extractor, _unknown2Slot, "Unknown 2", root);
@@ -146,4 +144,3 @@ public class HandleCastResolution: OpcodeHandler
         return root;
     }
 }
-

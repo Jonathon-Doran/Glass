@@ -39,7 +39,7 @@ public class HandleDeath : OpcodeHandler
     public HandleDeath(PatchLevel patchLevel)
         : base(patchLevel, "OP_Death")
     {
-        _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
+        _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_Death");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
@@ -75,20 +75,25 @@ public class HandleDeath : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         uint spawnId;
         uint killerId;
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-            spawnId = extractor.GetUIntAt(_spawnIdSlot);
-            killerId = extractor.GetUIntAt(_killerIdSlot);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            if (!rootGate.Exists)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleDeath:  No RootGate", LogLevel.Error);
+                return;
+            }
+
+            spawnId = _extractor.GetUIntAt(_spawnIdSlot);
+            killerId = _extractor.GetUIntAt(_killerIdSlot);
 
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
     }
 
@@ -105,69 +110,36 @@ public class HandleDeath : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
+        ZoneId zoneId = GlassContext.SessionRegistry.ZoneFromMetadata(metadata);
         FieldDisplayNode root = new FieldDisplayNode();
-        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
 
-        uint zoneId;
         string targetName;
         string killerName;
 
-        if (character == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "Target: metadata cannot be "
-                + "mapped to a character.  Dropping mob data.", LogLevel.Warn);
-            root.Text = "Target <Unknown>";
-            return root;
-        }
-        if (character.CurrentZone == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "Target: no current zone "
-                + "for character.", LogLevel.Warn);
-            root.Text = "Target <Unknown>";
-            return root;
-        }
-
-        zoneId = character.CurrentZone.Value;
-
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-
-            uint spawnId = extractor.GetUIntAt(_spawnIdSlot);
-            uint killerId = extractor.GetUIntAt(_killerIdSlot);
-
-
-            if (!MobRepository.Instance.TryGetBySpawnId((ZoneId) zoneId, (SpawnId)spawnId, out Spawn? spawn))
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            if (!rootGate.Exists)
             {
-                DebugLog.Write(LogChannel.Opcodes, "Death: spawnId=" + spawnId
-                    + " unknown.", LogLevel.Trace);
-                targetName = "<unknown>";
-            }
-            else
-            {
-                targetName = spawn.Name!;
+                DebugLog.Write(LogChannel.Opcodes, "HandleDeath:  No RootGate", LogLevel.Error);
+                return root;
             }
 
-            if (!MobRepository.Instance.TryGetBySpawnId((ZoneId)zoneId, (SpawnId)killerId, out Spawn? spawn2))
-            {
-                DebugLog.Write(LogChannel.Opcodes, "Death: spawnId=" + killerId
-                    + " unknown.", LogLevel.Trace);
-                killerName = "<unknown>";
-            }
-            else
-            {
-                killerName = spawn2.Name!;
-            }
+            SpawnId spawnId = (SpawnId)_extractor.GetUIntAt(_spawnIdSlot);
+            SpawnId killerId = (SpawnId)_extractor.GetUIntAt(_killerIdSlot);
 
-            FieldNodes.AddLabeledNode(extractor, _spawnIdSlot, "Target: " + targetName
-                + " (" + spawnId.ToString("X4") + ")", root);
-            FieldNodes.AddLabeledNode(extractor, _killerIdSlot, "Killer: " + killerName
-                + " (" + killerId.ToString("X4") + ")", root);
+            targetName = MobRepository.Instance.LookupSpawnName(zoneId, spawnId);
+            killerName = MobRepository.Instance.LookupSpawnName(zoneId, killerId);
+
+            FieldNodes.AddLabeledNode(_extractor, _spawnIdSlot, "Target: " + targetName + " (" +
+                    spawnId + ", 0x" + spawnId.Value.ToString("X4") + ")", root);
+
+            FieldNodes.AddLabeledNode(_extractor, _spawnIdSlot, "Killer: " + killerName + " (" +
+                    killerId + ", 0x" + killerId.Value.ToString("X4") + ")", root);
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
 
         root.Text = "Death (" + targetName + ")";

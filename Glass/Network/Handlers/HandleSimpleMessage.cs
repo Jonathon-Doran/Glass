@@ -106,7 +106,6 @@ public class HandleSimpleMessage : OpcodeHandler
         Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
         FieldDisplayNode root = new FieldDisplayNode();
 
-
         if (character == null)
         {
             DebugLog.Write(LogChannel.Opcodes, "SimpleMessage: metadata cannot be "
@@ -115,7 +114,6 @@ public class HandleSimpleMessage : OpcodeHandler
             return root;
         }
   
-
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
@@ -128,10 +126,7 @@ public class HandleSimpleMessage : OpcodeHandler
             _extractor.Release();
         }
 
-
-
         root.Text = "Simple Message to " + character.Name;
         return root;
     }
 }
-

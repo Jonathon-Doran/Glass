@@ -71,21 +71,20 @@ public class HandleNewZone :OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         string shortName;
         string longName;
         uint zoneId;
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-            shortName = extractor.GetStringAt(_shortNameSlot);
-            longName = extractor.GetStringAt(_longNameSlot);
-            zoneId = extractor.GetUIntAt(_zoneIdSlot);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            shortName = _extractor.GetStringAt(_shortNameSlot);
+            longName = _extractor.GetStringAt(_longNameSlot);
+            zoneId = _extractor.GetUIntAt(_zoneIdSlot);
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
     }
 
@@ -103,35 +102,30 @@ public class HandleNewZone :OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         FieldDisplayNode root = new FieldDisplayNode();
 
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
-            uint bagCount = extractor.BagCount(rootGate);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            DebugLog.Write(LogChannel.Fields,
-                "HandleNewZone.Describe: bagCount=" + bagCount, LogLevel.Trace);
-
-            if (bagCount == 0)
+            if (!rootGate.Exists)
             {
-                DebugLog.Write(LogChannel.Fields,
-                    "HandleNewZone.Describe: no bags extracted", LogLevel.Warn);
+                DebugLog.Write(LogChannel.Opcodes, "HandleNewZone:  No RootGate", LogLevel.Error);
                 return root;
             }
 
-            string shortName = extractor.GetStringAt(_shortNameSlot);
+            uint bagCount = _extractor.BagCount(rootGate);
+            string shortName = _extractor.GetStringAt(_shortNameSlot);
 
-            FieldNodes.AddStringNode(extractor, _shortNameSlot, "Short Name", root);
-            FieldNodes.AddStringNode(extractor, _longNameSlot, "Long Name", root);
-            FieldNodes.AddUIntNode(extractor, _zoneIdSlot, "Zone ID", root);
+            FieldNodes.AddStringNode(_extractor, _shortNameSlot, "Short Name", root);
+            FieldNodes.AddStringNode(_extractor, _longNameSlot, "Long Name", root);
+            FieldNodes.AddUIntNode(_extractor, _zoneIdSlot, "Zone ID", root);
 
             root.Text = OpcodeName + " (" + shortName + ")";
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
 
         return root;

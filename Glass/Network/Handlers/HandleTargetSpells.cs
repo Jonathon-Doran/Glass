@@ -9,11 +9,11 @@ using Glass.World;
 namespace Glass.Network.Handlers;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// HandleBuffTimers
+// HandleTargetSpells
 //
-// Handles OP_BuffTimers messages.  
+// Handles OP_TargetSpells messages.  Identical structure to BuffTimers, but for the target window.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleBuffTimers : OpcodeHandler
+public class HandleTargetSpells: OpcodeHandler
 {
     private readonly CollectionHandle _collectionHandle;
     private readonly GateDefinitionHandle _top_level_gate;
@@ -35,8 +35,8 @@ public class HandleBuffTimers : OpcodeHandler
     //
     // patchLevel:  The patch level this handler decodes against.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleBuffTimers(PatchLevel patchLevel)
-        : base(patchLevel, "OP_Buff_Timers")
+    public HandleTargetSpells(PatchLevel patchLevel)
+        : base(patchLevel, "OP_TargetSpells")
     {
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "Buff Timers Header");
@@ -49,7 +49,7 @@ public class HandleBuffTimers : OpcodeHandler
         _buffsGateSlot = _registry.IndexOfField(_collectionHandle, "Buffs");
 
         CollectionHandle buffEntryCollection = _registry.GetCollectionHandle(_patchLevel, "Buff Timer Entry");
-        
+
         // Per-entry slots
         _buffPosSlot = _registry.IndexOfField(buffEntryCollection, "Buff_Slot");
         _spellIdSlot = _registry.IndexOfField(buffEntryCollection, "Spell_ID");
@@ -85,40 +85,39 @@ public class HandleBuffTimers : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        FieldExtractor extractor = GlassContext.FieldExtractor;
         try
         {
-            GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            if (extractor.IsPresent(_buffsGateSlot) == false)
+            if (_extractor.IsPresent(_buffsGateSlot) == false)
             {
                 DebugLog.Write(LogChannel.Opcodes,
-                    "HandleBuffTimers: no Buffs gate present", LogLevel.Warn);
+                    "HandleTargetSpells: no Buffs gate present", LogLevel.Warn);
                 return;
             }
 
-            GateHandle entriesGate = extractor.GetGateAt(_buffsGateSlot);
+            GateHandle entriesGate = _extractor.GetGateAt(_buffsGateSlot);
             if (entriesGate.Exists == false)
             {
                 DebugLog.Write(LogChannel.Opcodes,
-                    "HandleBuffTimers: Buffs present but no gate", LogLevel.Warn);
+                    "HandleTargetSpells: Buffs present but no gate", LogLevel.Warn);
                 return;
             }
 
-            uint bagCount = extractor.BagCount(entriesGate);
+            uint bagCount = _extractor.BagCount(entriesGate);
 
             for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
             {
-                extractor.EnterGate(entriesGate, bagIndex);
+                _extractor.EnterGate(entriesGate, bagIndex);
 
-                uint playerID = extractor.GetUIntAt(_playerIdSlot);
-                uint interTickGap = extractor.GetUIntAt(_interTickGapSlot);
-                uint kind = extractor.GetUIntAt(_kindSlot);
+                uint playerID = _extractor.GetUIntAt(_playerIdSlot);
+                uint interTickGap = _extractor.GetUIntAt(_interTickGapSlot);
+                uint kind = _extractor.GetUIntAt(_kindSlot);
             }
         }
         finally
         {
-            extractor.Release();
+            _extractor.Release();
         }
     }
 
@@ -143,14 +142,14 @@ public class HandleBuffTimers : OpcodeHandler
 
             if (!rootGate.Exists)
             {
-                DebugLog.Write(LogChannel.Opcodes, "HandleBuffTimers:  No RootGate", LogLevel.Error);
+                DebugLog.Write(LogChannel.Opcodes, "HandleTargetSpells:  No RootGate", LogLevel.Error);
                 return root;
             }
 
             if (_extractor.IsPresent(_buffsGateSlot) == false)
             {
                 DebugLog.Write(LogChannel.Opcodes,
-                    "HandleBuffTimers.Describe: no Buffs gate present", LogLevel.Warn);
+                    "HandleTargetSpells.Describe: no Buffs gate present", LogLevel.Warn);
                 root.Text = "Buff Timers";
                 return root;
             }
@@ -159,7 +158,7 @@ public class HandleBuffTimers : OpcodeHandler
             if (entriesGate.Exists == false)
             {
                 DebugLog.Write(LogChannel.Opcodes,
-                    "HandleBuffTimers.Describe: Buffs present but no gate", LogLevel.Warn);
+                    "HandleTargetSpells.Describe: Buffs present but no gate", LogLevel.Warn);
                 root.Text = "Buff Timers";
                 return root;
             }
@@ -188,7 +187,7 @@ public class HandleBuffTimers : OpcodeHandler
 
                 FieldNodes.AddLabeledNode(_extractor, _spellIdSlot, "Spell: " + spellName + " (" +
                     spellID + ", 0x" + spellID.ToString("X8") + ")", entryNode);
-  
+
                 FieldNodes.AddUIntNode(_extractor, _ticksRemainingSlot, "Ticks Remaining", entryNode, "D");
                 FieldNodes.AddStringNode(_extractor, _casterNameSlot, "Caster", entryNode);
             }
@@ -197,7 +196,7 @@ public class HandleBuffTimers : OpcodeHandler
         {
             _extractor.Release();
         }
-        root.Text = "Buff Timers";
+        root.Text = "Target Buff Timers";
         return root;
     }
 }

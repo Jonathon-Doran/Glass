@@ -32,9 +32,9 @@ public readonly record struct Id<TTag>(uint Value)
     {
         if (!Exists)
         {
-            return typeof(TTag).Name + ":None";
+            return "None";
         }
-        return typeof(TTag).Name + ":" + Value;
+        return Value.ToString();
     }
 }
 

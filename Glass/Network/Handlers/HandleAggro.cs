@@ -120,46 +120,30 @@ public class HandleAggro: OpcodeHandler
     public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         FieldDisplayNode root = new FieldDisplayNode();
-        uint? zoneId = GlassContext.SessionRegistry.ZoneFromMetadata(metadata);
-        string playerName;
-
-        if (! zoneId.HasValue)
-        {
-            return root;
-        }
+        ZoneId zoneId = GlassContext.SessionRegistry.ZoneFromMetadata(metadata);
 
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
-            if (rootGate == GateHandle.None)
+            if (!rootGate.Exists)
             {
-                DebugLog.Write(LogChannel.Fields,
-                    "Aggro.Describe: extraction aborted, nothing to describe", LogLevel.Warn);
+                DebugLog.Write(LogChannel.Opcodes, "Aggro:  No RootGate", LogLevel.Error);
                 return root;
             }
-
-            uint playerId = _extractor.GetUIntAt(_playerIdSlot);
-
-
-            if (!MobRepository.Instance.TryGetBySpawnId((ZoneId) zoneId, (SpawnId) playerId, out Spawn? player))
-            {
-                DebugLog.Write(LogChannel.Opcodes, "Aggro: player=" + playerId
-                    + " unknown.", LogLevel.Trace);
-                playerName = "<unknown>";
-            }
-            else
-            {
-                playerName = player.Name!;
-            }
-
-            FieldNodes.AddLabeledNode(_extractor, _playerIdSlot, "Character: " + playerName + " (" + 
-                playerId + ", " + playerId.ToString("X4") + ")", root);
 
             GateHandle entryGate = _extractor.GetGateAt(_entryGateSlot);
             if (entryGate.Exists == false)
             {
+                DebugLog.Write(LogChannel.Opcodes, "Aggro:  No EntryGate", LogLevel.Error);
                 return root;
             }
+
+            SpawnId playerId = (SpawnId) _extractor.GetUIntAt(_playerIdSlot);
+
+            string playerName = MobRepository.Instance.LookupSpawnName(zoneId, playerId); ;
+
+            FieldNodes.AddLabeledNode(_extractor, _playerIdSlot, "Character: " + playerName + " (" + 
+                playerId + ", 0x" + playerId.Value.ToString("X4") + ")", root);
 
             uint entryCount = _extractor.BagCount(entryGate);
             for (uint i = 0; i < entryCount; i++)

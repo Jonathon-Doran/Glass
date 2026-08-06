@@ -3,11 +3,9 @@
 //
 // Handles OP_Tracking_C2Z packets. (Client-to-Zone)
 ///////////////////////////////////////////////////////////////////////////////////////////////
-using Glass.Core;
 using Glass.Core.Logging;
 using Glass.Network.Handlers;
 using Glass.Network.Protocol;
-using Glass.Network.Protocol.Fields;
 
 
 public class HandleTracking_C2Z : OpcodeHandler
@@ -81,9 +79,13 @@ public class HandleTracking_C2Z : OpcodeHandler
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
+            if (!rootGate.Exists)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleTracking:  No RootGate", LogLevel.Error);
+                return;
+            }
 
             uint bagCount = _extractor.BagCount(rootGate);
-            DebugLog.Write(LogChannel.Opcodes, bagCount.ToString() + " bags seen in tracking packet", LogLevel.Info);
 
             for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
             {
