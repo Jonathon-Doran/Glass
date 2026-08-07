@@ -138,12 +138,15 @@ public class HandleAggro: OpcodeHandler
                 return root;
             }
 
-            SpawnId playerId = (SpawnId) _extractor.GetUIntAt(_playerIdSlot);
+            if (_extractor.IsPresent(_playerIdSlot))
+            {
+                SpawnId playerId = (SpawnId)_extractor.GetUIntAt(_playerIdSlot);
+                string playerName = MobRepository.Instance.LookupSpawnName(zoneId, playerId); ;
 
-            string playerName = MobRepository.Instance.LookupSpawnName(zoneId, playerId); ;
 
-            FieldNodes.AddLabeledNode(_extractor, _playerIdSlot, "Character: " + playerName + " (" + 
-                playerId + ", 0x" + playerId.Value.ToString("X4") + ")", root);
+                FieldNodes.AddLabeledNode(_extractor, _playerIdSlot, "Secondary: " + playerName + " (" +
+                    playerId + ", 0x" + playerId.Value.ToString("X4") + ")", root);
+            }
 
             uint entryCount = _extractor.BagCount(entryGate);
             for (uint i = 0; i < entryCount; i++)
