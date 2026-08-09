@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Glass"
         xmlns:ui="http://schemas.modernwpf.com/2019"
+        xmlns:models="clr-namespace:Glass.Data.Models"
         ui:WindowHelper.UseModernWindowStyle="True"
         mc:Ignorable="d"
         Title="Glass" Height="450" Width="800"
@@ -40,8 +41,18 @@
                 <MenuItem Header="Manage Machines..." Click="ManageMachines_Click"/>
                 <MenuItem x:Name="ManageVideoSourcesMenuItem" Header="Manage VideoSources..." Click="ManageVideoSources_Click"/>
                 <MenuItem x:Name="ManageVideoDestinationsMenuItem" Header="Manage VideoDestinations..." Click="ManageVideoDestinations_Click"/>
-                <MenuItem Header="Toggle G15 OSD" Click="ToggleG15Osd_Click"/>
-                <MenuItem Header="Key Test..." Click="KeyTest_Click"/>
+
+                <MenuItem x:Name="MenuToggleOsd" Header="Toggle OSD" SubmenuOpened="MenuToggleOsd_SubmenuOpened">
+                    <MenuItem Header="G15" Tag="{x:Static models:KeyboardType.G15}" Click="ToggleOsd_Click"/>
+                    <MenuItem Header="G13" Tag="{x:Static models:KeyboardType.G13}" Click="ToggleOsd_Click"/>
+                    <MenuItem Header="Dominator X36" Tag="{x:Static models:KeyboardType.DominatorX36}" Click="ToggleOsd_Click"/>
+                </MenuItem>
+                
+                <MenuItem x:Name="MenuKeyTest" Header="Key Test" SubmenuOpened="MenuKeyTest_SubmenuOpened">
+                    <MenuItem Header="G15..." Tag="{x:Static models:KeyboardType.G15}" Click="KeyTest_Click"/>
+                    <MenuItem Header="G13..." Tag="{x:Static models:KeyboardType.G13}" Click="KeyTest_Click"/>
+                    <MenuItem Header="Dominator X36..." Tag="{x:Static models:KeyboardType.DominatorX36}" Click="KeyTest_Click"/>
+                </MenuItem>
                 <MenuItem Header="Pcap Test..." Click="Pcap_Click"/>
                 <Separator/>
                 <MenuItem Header="_Generate EQ UI Files" Click="MenuItem_GenerateEQUI_Click"/>

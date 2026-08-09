@@ -267,14 +267,73 @@ public partial class MainWindow : Window
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // ToggleG15Osd_Click
+    // ToggleOsd_Click
     //
-    // Temporarily toggles the G15 OSD for testing.
+    // Toggles the OSD for the device type on the clicked menu item's Tag.
+    //
+    // sender:  The clicked MenuItem
+    // e:       Unused
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void ToggleG15Osd_Click(object sender, RoutedEventArgs e)
+    private void ToggleOsd_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.Input, "MainWindow.ToggleG15Osd_Click: toggling G15 OSD.", LogLevel.Trace);
-        GlassContext.KeyboardManager.ToggleOsd(new HidDeviceInstance(KeyboardType.G15, 1, string.Empty));
+        if ((sender is not MenuItem menuItem) || (menuItem.Tag is not KeyboardType deviceType))
+        {
+            DebugLog.Write(LogChannel.Input, "MainWindow.ToggleOsd_Click: sender has no KeyboardType tag, ignoring.", LogLevel.Warn);
+            return;
+        }
+
+        DebugLog.Write(LogChannel.Input, $"MainWindow.ToggleOsd_Click: toggling OSD for device={deviceType}.", LogLevel.Trace);
+        GlassContext.KeyboardManager.ToggleOsd(new HidDeviceInstance(deviceType, 1, string.Empty));
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // RefreshDeviceMenuItems
+    //
+    // Enables or disables each device-type item in a menu based on whether
+    // a reader is currently running for that device type.
+    //
+    // items:  The MenuItem.Items collection to refresh
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void RefreshDeviceMenuItems(ItemCollection items)
+    {
+        foreach (object item in items)
+        {
+            if (item is not MenuItem menuItem || menuItem.Tag is not KeyboardType deviceType)
+            {
+                continue;
+            }
+
+            bool connected = GlassContext.KeyboardManager.IsDeviceConnected(deviceType);
+            menuItem.IsEnabled = connected;
+
+            DebugLog.Write(LogChannel.Input, $"MainWindow.RefreshDeviceMenuItems: device={deviceType} connected={connected}.", LogLevel.Trace);
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // MenuKeyTest_SubmenuOpened
+    //
+    // Refreshes IsEnabled on each device-type item under the Key Test submenu.
+    //
+    // sender:  The Key Test MenuItem raising the event
+    // e:       Unused
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void MenuKeyTest_SubmenuOpened(object sender, RoutedEventArgs e)
+    {
+        RefreshDeviceMenuItems(MenuKeyTest.Items);
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // MenuToggleOsd_SubmenuOpened
+    //
+    // Refreshes IsEnabled on each device-type item under the Toggle OSD submenu.
+    //
+    // sender:  The Toggle OSD MenuItem raising the event
+    // e:       Unused
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void MenuToggleOsd_SubmenuOpened(object sender, RoutedEventArgs e)
+    {
+        RefreshDeviceMenuItems(MenuToggleOsd.Items);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -282,6 +341,9 @@ public partial class MainWindow : Window
     //
     // Sends console input to ISXGlass when Enter is pressed.
     // Lines prefixed with '/' are handled locally by Glass.
+    //
+    // sender:  The clicked MenuItem
+    // e:       Unused
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private void ConsoleInput_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -406,6 +468,8 @@ public partial class MainWindow : Window
     // HandleLocalCommand
     //
     // Local command handler.  These are the "/" commands entered on the Glass console.
+    //
+    // cmd:  A command entered on the console
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleLocalCommand(string cmd)
     {
@@ -594,6 +658,9 @@ public partial class MainWindow : Window
     // MenuItem_NewDatabase_Click
     //
     // Prompts the user to create a new database file.
+    //
+    // sender:  The menu item that raised the event.
+    // e:       Standard event args; not inspected.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void MenuItem_NewDatabase_Click(object sender, RoutedEventArgs e)
     {
@@ -623,6 +690,9 @@ public partial class MainWindow : Window
     // MenuItem_OpenDatabase_Click
     //
     // Prompts the user to open an existing database file.
+    //
+    // sender:  The menu item that raised the event.
+    // e:       Standard event args; not inspected.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void MenuItem_OpenDatabase_Click(object sender, RoutedEventArgs e)
     {
@@ -648,6 +718,9 @@ public partial class MainWindow : Window
     // MenuItem_Exit_Click
     //
     // Shuts down the application.
+    //
+    // sender:  The menu item that raised the event.
+    // e:       Standard event args; not inspected.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void MenuItem_Exit_Click(object sender, RoutedEventArgs e) => Application.Current.Shutdown();
 
@@ -656,6 +729,9 @@ public partial class MainWindow : Window
     // MenuItem_EditProfile_Click
     //
     // Opens the select profile dialog and launches the chosen profile for editing.
+    //
+    // sender:  The menu item that raised the event.
+    // e:       Standard event args; not inspected.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void MenuItem_EditProfile_Click(object sender, RoutedEventArgs e)
     {
@@ -670,7 +746,15 @@ public partial class MainWindow : Window
         }
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // MenuItem_Launch_Click
+    //
     // Placeholder for settings dialog.
+    //
+    // sender:  The menu item that raised the event.
+    // e:       Standard event args; not inspected.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
     private void MenuItem_Settings_Click(object sender, RoutedEventArgs e) 
     { 
     }
@@ -681,6 +765,9 @@ public partial class MainWindow : Window
     // Opens the select profile dialog and launches the chosen profile.
     // Sets the current patch level from the profile's server type before
     // launching.
+    //
+    // sender:  The menu item that raised the event.
+    // e:       Standard event args; not inspected.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private async void MenuItem_Launch_Click(object sender, RoutedEventArgs e)
     {
@@ -701,7 +788,15 @@ public partial class MainWindow : Window
         await GlassContext.ProfileManager.LaunchProfile(select.SelectedProfileName);
     }
 
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // MenuItem_NewProfile_Click
+    //
     // Opens the new profile dialog and rebuilds the recent profiles menu on save.
+    //
+    // sender:  The menu item that raised the event.
+    // e:       Standard event args; not inspected.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     private void MenuItem_NewProfile_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new ProfileDialog { Owner = this };
@@ -711,7 +806,15 @@ public partial class MainWindow : Window
         }
     }
 
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // MenuItem_Status_Click
+    //
     // Sends a status request to ISXGlass.
+    //
+    // sender:  The menu item that raised the event.
+    // e:       Standard event args; not inspected.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     private void MenuItem_Status_Click(object sender, RoutedEventArgs e)
     {
         GlassContext.ISXGlassPipe.Send("status");
@@ -722,6 +825,9 @@ public partial class MainWindow : Window
     // MenuItem_ManageCommands_Click
     //
     // Opens the Manage Commands dialog.
+    //
+    // sender:  The menu item that raised the event.
+    // e:       Standard event args; not inspected.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void MenuItem_ManageCommands_Click(object sender, RoutedEventArgs e)
     {
@@ -733,6 +839,9 @@ public partial class MainWindow : Window
     // MenuItem_ManageKeyAliases_Click
     //
     // Opens the Manage Key Aliases dialog.
+    //
+    // sender:  The menu item that raised the event.
+    // e:       Standard event args; not inspected.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void MenuItem_ManageKeyAliases_Click(object sender, RoutedEventArgs e)
     {
@@ -744,6 +853,9 @@ public partial class MainWindow : Window
     // ManageMachines_Click
     //
     // Opens the Manage Machines dialog.
+    //
+    // sender:  The menu item that raised the event.
+    // e:       Standard event args; not inspected.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void ManageMachines_Click(object sender, RoutedEventArgs e)
     {
@@ -756,6 +868,9 @@ public partial class MainWindow : Window
     //
     // Opens the Manage Video Sources dialog.
     // Passes a scaling factor if an active profile is loaded, enabling the position overlay feature.
+    //
+    // sender:  The menu item that raised the event.
+    // e:       Standard event args; not inspected.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void ManageVideoSources_Click(object sender, RoutedEventArgs e)
     {
@@ -770,6 +885,9 @@ public partial class MainWindow : Window
     //
     // Opens the Manage Video Destinations dialog.
     // Passes the active layout ID so the dialog can convert overlay coordinates to slot-relative.
+    //
+    // sender:  The menu item that raised the event.
+    // e:       Standard event args; not inspected.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void ManageVideoDestinations_Click(object sender, RoutedEventArgs e)
     {
@@ -786,11 +904,22 @@ public partial class MainWindow : Window
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // KeyTest_Click
     //
-    // Opens the Key Test dialog for verifying KeyDisplayControl rendering.
+    // Opens the Key Test dialog for the device type on the clicked menu item's Tag.
+    //
+    // sender:  The menu item that raised the event.
+    // e:       Standard event args; not inspected.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void KeyTest_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new KeyTestDialog { Owner = this };
+        if ((sender is not MenuItem menuItem) || (menuItem.Tag is not KeyboardType deviceType))
+        {
+            DebugLog.Write(LogChannel.Input, "MainWindow.KeyTest_Click: sender has no KeyboardType tag, ignoring.", LogLevel.Warn);
+            return;
+        }
+
+        DebugLog.Write(LogChannel.Input, $"MainWindow.KeyTest_Click: opening Key Test dialog for device={deviceType}.", LogLevel.Info);
+
+        KeyTestDialog dialog = new KeyTestDialog(deviceType) { Owner = this };
         dialog.Show();
     }
 

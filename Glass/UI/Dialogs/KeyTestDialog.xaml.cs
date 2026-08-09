@@ -1,6 +1,7 @@
 ﻿using Glass.Controls;
 using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Data.Models;
 using Glass.Input;
 using System.Windows;
 
@@ -13,12 +14,23 @@ namespace Glass;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 public partial class KeyTestDialog : Window
 {
+    private readonly KeyboardType _deviceType;
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // KeyTestDialog
+    //
+    // deviceType:  The keyboard type to display and monitor in this dialog
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public KeyTestDialog()
+    public KeyTestDialog(KeyboardType deviceType)
     {
+        _deviceType = deviceType;
+
         InitializeComponent();
+
+        TestControl.Device = _deviceType;
+        TestControl.Keys = new Dictionary<string, KeyDisplay>();
+
+        DebugLog.Write(LogChannel.Input, $"KeyTestDialog: constructed for device={_deviceType}.", LogLevel.Info);
 
         KeyDown += (s, e) =>
         {
@@ -29,31 +41,11 @@ public partial class KeyTestDialog : Window
             }
         };
 
-        Loaded += KeyTestDialog_Loaded;
         GlassContext.KeyboardManager.KeyEvent += OnHidKeyEvent;
         Closed += (s, e) =>
         {
             GlassContext.KeyboardManager.KeyEvent -= OnHidKeyEvent;
             DebugLog.Write(LogChannel.Input, "KeyTestDialog: unsubscribed from KeyEvent.", LogLevel.Trace);
-        };
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // KeyTestDialog_Loaded
-    //
-    // Pushes test data to the control after the window is fully loaded.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void KeyTestDialog_Loaded(object sender, RoutedEventArgs e)
-    {
-        DebugLog.Write(LogChannel.Input, "KeyTestDialog_Loaded: pushing test data.");
-
-        TestControl.ShowLabel = true;
-        TestControl.Keys = new Dictionary<string, KeyDisplay>
-        {
-            { "G1", new KeyDisplay { KeyName = "G1", Label = "Nuke" } },
-            { "G2", new KeyDisplay { KeyName = "G2", Label = "DoT", IsSelected = true } },
-            { "G3", new KeyDisplay { KeyName = "G3", Label = "Slow", KeyType = KeyType.Toggle, IsPressed = true } },
-            { "G4", new KeyDisplay { KeyName = "G4", Label = "Assist" } },
         };
     }
 

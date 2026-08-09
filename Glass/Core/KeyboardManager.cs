@@ -504,4 +504,22 @@ public class KeyboardManager
 
         DebugLog.Write(LogChannel.Input, "KeyboardManager.Stop: stopped.", LogLevel.Trace);
     }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // IsDeviceConnected
+    //
+    // Returns true if a reader is currently running for the given device type.
+    //
+    // type:  The keyboard type to check
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public bool IsDeviceConnected(KeyboardType type)
+    {
+        if (_hidKeyInput == null)
+        {
+            DebugLog.Write(LogChannel.Input, $"KeyboardManager.IsDeviceConnected: type={type} HidKeyInput not started.", LogLevel.Trace);
+            return false;
+        }
+
+        return _hidKeyInput.IsDeviceConnected(type);
+    }
 }
