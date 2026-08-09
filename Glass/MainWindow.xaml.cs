@@ -105,7 +105,7 @@ public partial class MainWindow : Window
         DebugLog.Write(LogChannel.General, "MainWindow.Window_Closing: shutting down.", LogLevel.Trace);
         DebugLog.Shutdown();
         GlassContext.KeyboardManager.UnloadProfile();
-        GlassContext.KeyboardManager.Stop();
+        GlassContext.KeyboardManager.Shutdown();
         await GlassContext.ISXGlassPipe.StopAsync();
         GlassContext.ISXGlassPipe.Dispose();
         await GlassContext.GlassVideoPipe.StopAsync();

@@ -283,6 +283,47 @@ public class KeyboardLayoutControl : Control
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // SetKeyDown
+    //
+    // Sets or clears the momentary pressed visual on a single key cell.
+    // Toggle cells are left alone — their pressed visual carries toggle state
+    // and is driven by the binding path.
+    //
+    // keyName:  The physical key name e.g. "G1", "X-14"
+    // isDown:   True while the physical key is held
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void SetKeyDown(string keyName, bool isDown)
+    {
+        Grid? activeGrid = GetActiveGrid();
+
+        if (activeGrid == null)
+        {
+            DebugLog.Write(LogChannel.Input, "KeyboardLayoutControl.SetKeyDown: no active grid, ignoring.", LogLevel.Trace);
+            return;
+        }
+
+        KeyDisplayControl? cell = activeGrid.Children
+            .OfType<KeyDisplayControl>()
+            .FirstOrDefault(c => c.KeyName == keyName);
+
+        if (cell == null)
+        {
+            DebugLog.Write(LogChannel.Input, $"KeyboardLayoutControl.SetKeyDown: key='{keyName}' has no cell in the active grid.", LogLevel.Warn);
+            return;
+        }
+
+        if (cell.KeyType == KeyType.Toggle)
+        {
+            DebugLog.Write(LogChannel.Input, $"KeyboardLayoutControl.SetKeyDown: key='{keyName}' is a toggle, leaving its visual alone.", LogLevel.Trace);
+            return;
+        }
+
+        cell.IsPressed = isDown;
+
+        DebugLog.Write(LogChannel.Input, $"KeyboardLayoutControl.SetKeyDown: key='{keyName}' isDown={isDown}.", LogLevel.Trace);
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // ClearKey
     //
     // Clears the display state of a single key, removing it from the Keys dictionary

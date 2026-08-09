@@ -81,4 +81,47 @@ public partial class KeyboardOsdWindow : Window
     {
         DragMove();
     }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // SetKeyDown
+    //
+    // Sets or clears the momentary pressed visual for a single key.  Safe to
+    // call from any thread — the update is queued onto the window's
+    // dispatcher without blocking the caller.
+    //
+    // keyName:  The physical key name e.g. "G1", "X-14"
+    // isDown:   True while the physical key is held
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void SetKeyDown(string keyName, bool isDown)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            KeyLayoutControl.SetKeyDown(keyName, isDown);
+        });
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // ToggleVisibility
+    //
+    // Shows the window if hidden, hides it if visible.  Safe to call from any
+    // thread — the work is marshaled onto the window's dispatcher.
+    //
+    // Returns:  True if the window is visible after the toggle.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public bool ToggleVisibility()
+    {
+        return Dispatcher.Invoke(() =>
+        {
+            if (IsVisible)
+            {
+                Hide();
+                DebugLog.Write(LogChannel.Input, "KeyboardOsdWindow.ToggleVisibility: hidden.", LogLevel.Trace);
+                return false;
+            }
+
+            Show();
+            DebugLog.Write(LogChannel.Input, "KeyboardOsdWindow.ToggleVisibility: shown.", LogLevel.Trace);
+            return true;
+        });
+    }
 }

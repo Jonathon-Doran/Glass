@@ -23,6 +23,8 @@ internal class HidDeviceReader
     private volatile bool _running;
     private Thread? _thread;
 
+    private readonly SemaphoreSlim _deliverySignal;
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // HidDeviceReader
     //
@@ -37,14 +39,23 @@ internal class HidDeviceReader
         HidDeviceInstance instance,
         IParseHidReport parser,
         ConcurrentQueue<HidKeyEventArgs> keyQueue,
-        ConcurrentQueue<HidAxisEventArgs> axisQueue)
+        ConcurrentQueue<HidAxisEventArgs> axisQueue,
+        SemaphoreSlim deliverySignal)
     {
         _devicePath = devicePath;
         _instance = instance;
         _parser = parser;
         _keyQueue = keyQueue;
         _axisQueue = axisQueue;
+        _deliverySignal = deliverySignal;
     }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Instance
+    //
+    // The device instance this reader is bound to.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public HidDeviceInstance Instance => _instance;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // DeviceType
@@ -95,7 +106,7 @@ internal class HidDeviceReader
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void ReaderThread()
     {
-        DebugLog.Write(LogChannel.Input, $"HidDeviceReader.ReaderThread: {_instance} opening device.");
+        DebugLog.Write(LogChannel.Input, $"HidDeviceReader.ReaderThread: {_instance} opening device.", LogLevel.Trace);
 
         IntPtr fileHandle = HidNativeMethods.CreateFile(
             _devicePath,
@@ -109,17 +120,17 @@ internal class HidDeviceReader
         if (fileHandle == HidNativeMethods.InvalidHandleValue)
         {
             int error = Marshal.GetLastWin32Error();
-            DebugLog.Write(LogChannel.Input, $"HidDeviceReader.ReaderThread: {_instance} CreateFile failed error={error}.");
+            DebugLog.Write(LogChannel.Input, $"HidDeviceReader.ReaderThread: {_instance} CreateFile failed error={error}.", LogLevel.Error);
             return;
         }
 
-        DebugLog.Write(LogChannel.Input, $"HidDeviceReader.ReaderThread: {_instance} device opened successfully.");
+        DebugLog.Write(LogChannel.Input, $"HidDeviceReader.ReaderThread: {_instance} device opened successfully.", LogLevel.Trace);
 
         IntPtr eventHandle = HidNativeMethods.CreateEvent(IntPtr.Zero, true, false, null);
 
         if (eventHandle == IntPtr.Zero)
         {
-            DebugLog.Write(LogChannel.Input, $"HidDeviceReader.ReaderThread: {_instance} CreateEvent failed.");
+            DebugLog.Write(LogChannel.Input, $"HidDeviceReader.ReaderThread: {_instance} CreateEvent failed.", LogLevel.Error);
             HidNativeMethods.CloseHandle(fileHandle);
             return;
         }
@@ -152,7 +163,7 @@ internal class HidDeviceReader
 
                     if (error != HidNativeMethods.ErrorIoPending)
                     {
-                        DebugLog.Write(LogChannel.Input, $"HidDeviceReader.ReaderThread: {_instance} ReadFile failed error={error}.");
+                        DebugLog.Write(LogChannel.Input, $"HidDeviceReader.ReaderThread: {_instance} ReadFile failed error={error}.", LogLevel.Error);
                         break;
                     }
 
@@ -162,7 +173,7 @@ internal class HidDeviceReader
                     {
                         if (!HidNativeMethods.GetOverlappedResult(fileHandle, ref overlapped, out bytesRead, false))
                         {
-                            DebugLog.Write(LogChannel.Input, $"HidDeviceReader.ReaderThread: {_instance} GetOverlappedResult failed error={Marshal.GetLastWin32Error()}.");
+                            DebugLog.Write(LogChannel.Input, $"HidDeviceReader.ReaderThread: {_instance} GetOverlappedResult failed error={Marshal.GetLastWin32Error()}.", LogLevel.Error);
                             break;
                         }
                     }
@@ -172,7 +183,7 @@ internal class HidDeviceReader
                     }
                     else
                     {
-                        DebugLog.Write(LogChannel.Input, $"HidDeviceReader.ReaderThread:{_instance} WaitForSingleObject returned {waitResult}.");
+                        DebugLog.Write(LogChannel.Input, $"HidDeviceReader.ReaderThread:{_instance} WaitForSingleObject returned {waitResult}.", LogLevel.Trace);
                         break;
                     }
                 }
@@ -182,27 +193,36 @@ internal class HidDeviceReader
                     byte[] report = new byte[bytesRead];
                     Array.Copy(buffer, report, (int)bytesRead);
 
-                    var keyEvents = _parser.Parse(report);
+                    IReadOnlyList<HidKeyEventArgs> keyEvents = _parser.Parse(report);
 
-                    foreach (var evt in keyEvents)
+                    foreach (HidKeyEventArgs evt in keyEvents)
                     {
                         evt.Device = _instance;
-                        DebugLog.Write(LogChannel.Input, $"HidDeviceReader.ReaderThread: {_instance} key='{evt.KeyName}' isPressed={evt.IsPressed}.");
+                        DebugLog.Write(LogChannel.Input, $"HidDeviceReader.ReaderThread: {_instance} key='{evt.KeyName}' isPressed={evt.IsPressed}.", LogLevel.Trace);
                         _keyQueue.Enqueue(evt);
                     }
 
+                    bool enqueuedAny = keyEvents.Count > 0;
+
                     if (_parser is IParseHidAxes axisParser)
                     {
-                        var axisEvents = axisParser.ParseAxes(report);
+                        IReadOnlyList<HidAxisEventArgs> axisEvents = axisParser.ParseAxes(report);
 
-                        foreach (var evt in axisEvents)
+                        foreach (HidAxisEventArgs evt in axisEvents)
                         {
                             evt.Device = _instance;
                             _axisQueue.Enqueue(evt);
                         }
+
+                        enqueuedAny = enqueuedAny || (axisEvents.Count > 0);
                     }
 
                     _parser.UpdateState(report);
+
+                    if (enqueuedAny)
+                    {
+                        _deliverySignal.Release();
+                    }
                 }
             }
         }
@@ -212,7 +232,7 @@ internal class HidDeviceReader
             HidNativeMethods.CancelIo(fileHandle);
             HidNativeMethods.CloseHandle(eventHandle);
             HidNativeMethods.CloseHandle(fileHandle);
-            DebugLog.Write(LogChannel.Input, $"HidDeviceReader.ReaderThread: {_instance} thread exiting.");
+            DebugLog.Write(LogChannel.Input, $"HidDeviceReader.ReaderThread: {_instance} thread exiting.", LogLevel.Trace);
         }
     }
 }

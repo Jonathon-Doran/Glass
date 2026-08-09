@@ -3,6 +3,7 @@ using Glass.Core.Logging;
 using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Input;
+using System.Windows.Threading;
 
 namespace Glass.Core;
 
@@ -12,11 +13,10 @@ namespace Glass.Core;
 // Owns all keyboard activity for the active profile.
 // Creates and manages HidKeyInput, routes key events to commands based on
 // the active page per device instance, and manages OSD windows.
-// HidKeyInput is started on LoadProfile and stopped on UnloadProfile.
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 public class KeyboardManager
 {
-    private HidManager? _hidManager;
+    private readonly HidManager _hidManager = new HidManager();
 
     // Active page per device instance
     private readonly Dictionary<HidDeviceInstance, KeyPage> _activePages = new();
@@ -30,20 +30,60 @@ public class KeyboardManager
     // Commands keyed by command ID
     private readonly Dictionary<int, Command> _commandCache = new();
 
-    // OSD windows keyed by device instance — created on LoadProfile, shown on trigger
+    // OSD windows keyed by device instance
     private readonly Dictionary<HidDeviceInstance, KeyboardOsdWindow> _osdWindows = new();
 
     // Raised for every key state change from any device, regardless of profile state.
     // Allows test/diagnostic UI to observe raw key activity.
     public event EventHandler<HidKeyEventArgs>? KeyEvent;
 
+    // Chord detectors keyed by device instance — created lazily on first key event
+    private readonly Dictionary<HidDeviceInstance, ChordDetector> _chordDetectors = new();
+
+    // Deferral window for chord detection
+    private const int ChordWindowMs = 75;
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // KeyboardManager
     //
+    // Creates the HidManager, which discovers connected devices, subscribes
+    // to its key events, and creates a hidden OSD window for every
+    // discovered device instance.  Nothing is started here — Start handles
+    // lifecycle.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public KeyboardManager()
     {
-        DebugLog.Write(LogChannel.Input, "KeyboardManager: initialized.", LogLevel.Trace);
+        _hidManager.KeyStateChanged += OnKeyStateChanged;
+
+        // Note that HidManager performed the initial enuemration of devices.
+        foreach (HidDeviceInstance instance in _hidManager.GetConnectedInstances())
+        {
+            CreateOsdWindow(instance);
+        }
+
+        DebugLog.Write(LogChannel.Input, $"KeyboardManager: initialized, {_osdWindows.Count} OSD window(s).", LogLevel.Trace);
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Shutdown
+    //
+    // Closes and releases all OSD windows.  This is the end of device
+    // lifetime — the windows cannot be shown again after this.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void Shutdown()
+    {
+        DebugLog.Write(LogChannel.Input, $"KeyboardManager.Shutdown: closing {_osdWindows.Count} OSD window(s).", LogLevel.Trace);
+
+        Stop();
+
+        foreach (KeyboardOsdWindow osd in _osdWindows.Values)
+        {
+            osd.Close();
+        }
+
+        _osdWindows.Clear();
+
+        DebugLog.Write(LogChannel.Input, "KeyboardManager.Shutdown: complete.", LogLevel.Trace);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -90,26 +130,32 @@ public class KeyboardManager
 
         foreach (var profilePage in profilePages)
         {
-            var page = pageRepo.GetPage(profilePage.KeyPageId);
+            KeyPage? page = pageRepo.GetPage(profilePage.KeyPageId);
             if (page == null)
             {
                 DebugLog.Write(LogChannel.Profiles, $"KeyboardManager.LoadProfile: page id={profilePage.KeyPageId} not found, skipping.", LogLevel.Warn);
                 continue;
             }
 
-            var bindings = bindingRepo.GetBindingsForPage(page.Id);
+            List<KeyBinding> bindings = bindingRepo.GetBindingsForPage(page.Id);
             _bindingCache[page.Id] = bindings;
 
-            // For now use instance 1 for all device types
-            var instance = new HidDeviceInstance(page.Device, 1, string.Empty);
-            _pageCache[(instance, page.Name)] = page;
-
-            if (profilePage.IsStartPage)
+            foreach (HidDeviceInstance instance in _hidManager.GetConnectedInstances())
             {
-                _activePages[instance] = page;
-                DebugLog.Write(LogChannel.Profiles, $"KeyboardManager.LoadProfile: start page for {instance} is '{page.Name}'.", LogLevel.Trace);
+                if (instance.Type != page.Device)
+                {
+                    continue;
+                }
 
-                CreateOsdWindow(instance, page);
+                _pageCache[(instance, page.Name)] = page;
+
+                if (profilePage.IsStartPage)
+                {
+                    _activePages[instance] = page;
+                    DebugLog.Write(LogChannel.Profiles, $"KeyboardManager.LoadProfile: start page for {instance} is '{page.Name}'.", LogLevel.Trace);
+
+                    PushOsdData(instance, page);
+                }
             }
         }
 
@@ -119,17 +165,18 @@ public class KeyboardManager
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // UnloadProfile
     //
-    // Stops HidKeyInput, closes OSD windows, and clears all cached data.
+    // Clears all cached profile data and empties and hides the OSD windows.
+    // The windows survive — they belong to the devices, not the profile.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void UnloadProfile()
     {
         DebugLog.Write(LogChannel.Profiles, "KeyboardManager.UnloadProfile: unloading.", LogLevel.Trace);
 
-        foreach (var osd in _osdWindows.Values)
+        foreach (KeyboardOsdWindow osd in _osdWindows.Values)
         {
-            osd.Close();
+            osd.SetPage(string.Empty, new Dictionary<string, KeyDisplay>());
+            osd.Hide();
         }
-        _osdWindows.Clear();
 
         _activePages.Clear();
         _pageCache.Clear();
@@ -142,7 +189,8 @@ public class KeyboardManager
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // ToggleOsd
     //
-    // Shows or hides the OSD window for the given device instance.
+    // Shows or hides the OSD window for the given device instance.  On show,
+    // pushes the instance's active page data if a profile is loaded.
     //
     // instance:  The device instance whose OSD to toggle
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -150,46 +198,38 @@ public class KeyboardManager
     {
         DebugLog.Write(LogChannel.Input, $"KeyboardManager.ToggleOsd: {instance}.", LogLevel.Trace);
 
-        if (!_osdWindows.TryGetValue(instance, out var osd))
+        if (!_osdWindows.TryGetValue(instance, out KeyboardOsdWindow? osd))
         {
-            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ToggleOsd: no OSD for {instance}.", LogLevel.Trace);
+            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ToggleOsd: no OSD for {instance}.", LogLevel.Warn);
             return;
         }
 
-        if (osd.IsVisible)
-        {
-            osd.Hide();
-            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ToggleOsd: hidden.", LogLevel.Trace);
-        }
-        else
-        {
-            osd.Show();
+        bool visible = osd.ToggleVisibility();
 
-            if (_activePages.TryGetValue(instance, out var page))
-            {
-                PushOsdData(instance, page);
-            }
-            DebugLog.Write(LogChannel.Input, $"KeyboardManager.ToggleOsd: shown.", LogLevel.Trace);
+        if (visible && _activePages.TryGetValue(instance, out KeyPage? page))
+        {
+            PushOsdData(instance, page);
         }
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // CreateOsdWindow
     //
-    // Creates an OSD window for the given device instance and page.
-    // The window is created hidden — shown only when triggered.
+    // Creates a hidden, empty OSD window for the given device instance.
+    // Content arrives later via PushOsdData when a profile is loaded.
     //
-    // instance:  The device instance
-    // page:      The start page for this instance
+    // instance:  The device instance the window belongs to
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void CreateOsdWindow(HidDeviceInstance instance, KeyPage page)
+    private void CreateOsdWindow(HidDeviceInstance instance)
     {
-        DebugLog.Write(LogChannel.Input, $"KeyboardManager.CreateOsdWindow: {instance} page='{page.Name}'.", LogLevel.Trace);
+        if (_osdWindows.ContainsKey(instance))
+        {
+            DebugLog.Write(LogChannel.Input, $"KeyboardManager.CreateOsdWindow: window already exists for {instance}, ignoring.", LogLevel.Warn);
+            return;
+        }
 
-        var osd = new KeyboardOsdWindow(page.Device);
+        KeyboardOsdWindow osd = new KeyboardOsdWindow(instance.Type);
         _osdWindows[instance] = osd;
-
-        PushOsdData(instance, page);
 
         DebugLog.Write(LogChannel.Input, $"KeyboardManager.CreateOsdWindow: created for {instance}.", LogLevel.Trace);
     }
@@ -243,8 +283,14 @@ public class KeyboardManager
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // OnKeyStateChanged
     //
-    // Fires when a key is pressed or released.
-    // Routes press events to command execution based on the active page.
+    // Fires for every key state change from any device.  Raises the raw
+    // KeyEvent for diagnostic observers, forwards the raw press state to the
+    // instance's OSD window for the key-down visual, then routes the event
+    // through the instance's chord detector, which either fires a chord or
+    // passes the event on to DispatchKey for normal bind execution.
+    //
+    // sender:  The HidManager that raised the event
+    // e:       The key event, carrying key name, press state, and device instance
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void OnKeyStateChanged(object? sender, HidKeyEventArgs e)
     {
@@ -252,6 +298,89 @@ public class KeyboardManager
 
         if (!e.Device.HasValue)
         {
+            DebugLog.Write(LogChannel.Input, $"KeyboardManager.OnKeyStateChanged: key='{e.KeyName}' has no device instance, ignoring.", LogLevel.Warn);
+            return;
+        }
+
+        HidDeviceInstance instance = e.Device.Value;
+
+        if (_osdWindows.TryGetValue(instance, out KeyboardOsdWindow? osd))
+        {
+            osd.SetKeyDown(e.KeyName, e.IsPressed);
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.Input, $"KeyboardManager.OnKeyStateChanged: no OSD window for {instance}, skipping key visual.", LogLevel.Trace);
+        }
+
+        ChordDetector detector = GetOrCreateChordDetector(instance);
+        detector.HandleKey(e);
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // GetOrCreateChordDetector
+    //
+    // Returns the chord detector for the given device instance, creating and
+    // registering it on first use.  Chord registration is per device type:
+    // the Dominator gets the OSD chord and a swallow-only entry for the
+    // firmware test-mode chord, the Logitech boards get an OSD chord on
+    // their outer G-keys.  Device types with no chords still get a detector,
+    // which passes all traffic through.
+    //
+    // instance:  The device instance whose detector to fetch
+    // Returns:   The detector bound to that instance
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private ChordDetector GetOrCreateChordDetector(HidDeviceInstance instance)
+    {
+        if (_chordDetectors.TryGetValue(instance, out ChordDetector? existing))
+        {
+            return existing;
+        }
+
+        DebugLog.Write(LogChannel.Input, $"KeyboardManager.GetOrCreateChordDetector: creating detector for {instance}.", LogLevel.Trace);
+
+        ChordDetector detector = new ChordDetector(ChordWindowMs, DispatchKey);
+
+        switch (instance.Type)
+        {
+            case KeyboardType.DominatorX36:
+                detector.AddChord("X-1", "X-2", () => ToggleOsd(instance), "OSD");
+                detector.AddChord("X-1", "X-6", null, "FirmwareTestMode");
+                break;
+
+            case KeyboardType.G15:
+                detector.AddChord("G1", "G3", () => ToggleOsd(instance), "OSD");
+                break;
+
+            case KeyboardType.G13:
+                detector.AddChord("G1", "G2", () => ToggleOsd(instance), "OSD");
+                break;
+
+            default:
+                DebugLog.Write(LogChannel.Input, $"KeyboardManager.GetOrCreateChordDetector: no chords defined for {instance.Type}.", LogLevel.Trace);
+                break;
+        }
+
+        _chordDetectors[instance] = detector;
+        return detector;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // DispatchKey
+    //
+    // Executes normal bind dispatch for one key event that has passed through
+    // chord detection.  Looks up the active page for the event's device
+    // instance, finds a binding matching the key and trigger condition, and
+    // executes its command.  Events with no device instance, no active page,
+    // or no matching binding are logged and dropped.
+    //
+    // e:  The key event to dispatch, carrying key name, press state, and device instance
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void DispatchKey(HidKeyEventArgs e)
+    {
+        if (!e.Device.HasValue)
+        {
+            DebugLog.Write(LogChannel.Input, $"DispatchKey: key='{e.KeyName}' has no device instance, ignoring.", LogLevel.Warn);
             return;
         }
 
@@ -259,13 +388,13 @@ public class KeyboardManager
 
         if (!_activePages.TryGetValue(instance, out KeyPage? activePage))
         {
-            DebugLog.Write(LogChannel.Input, $"KeyboardManager.OnKeyStateChanged: no active page for {instance}.", LogLevel.Warn);
+            DebugLog.Write(LogChannel.Input, $"KeyboardManager.DispatchKey: no active page for {instance}.", LogLevel.Warn);
             return;
         }
 
         if (!_bindingCache.TryGetValue(activePage.Id, out List<KeyBinding>? bindings))
         {
-            DebugLog.Write(LogChannel.Input, $"KeyboardManager.OnKeyStateChanged: no bindings for page='{activePage.Name}'.", LogLevel.Trace);
+            DebugLog.Write(LogChannel.Input, $"KeyboardManager.DispatchKey: no bindings for page='{activePage.Name}'.", LogLevel.Trace);
             return;
         }
 
@@ -275,9 +404,7 @@ public class KeyboardManager
             (e.IsPressed && b.TriggerOn == TriggerOn.Press) ||
             (!e.IsPressed && b.TriggerOn == TriggerOn.Release)));
 
-
-
-        DebugLog.Write(LogChannel.Input, $"KeyboardManager.OnKeyStateChanged: key='{e.KeyName}'.", LogLevel.Trace);
+        DebugLog.Write(LogChannel.Input, $"KeyboardManager.DispatchKey: key='{e.KeyName}' isPressed={e.IsPressed}.", LogLevel.Trace);
 
         ExecuteCommand(binding, instance);
     }
@@ -445,49 +572,26 @@ public class KeyboardManager
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Start
     //
-    // Creates HidKeyInput, subscribes to key state events, and starts the
-    // device readers.  Called once at application startup so that keyboard
-    // hardware is active independent of profile state.  If already started,
-    // logs and returns without creating a second HidKeyInput.
+    // Starts the HidManager's device lifecycle.  Note that the manager may be started/stopped without shutting down Glass.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Start()
     {
-        if (_hidManager != null)
-        {
-            DebugLog.Write(LogChannel.Input, "KeyboardManager.Start: already started, ignoring.", LogLevel.Warn);
-            return;
-        }
+        DebugLog.Write(LogChannel.Input, "KeyboardManager.Start: starting HidManager.", LogLevel.Trace);
 
-        DebugLog.Write(LogChannel.Input, "KeyboardManager.Start: creating HidKeyInput.", LogLevel.Trace);
-
-        _hidManager = new HidManager();
-        _hidManager.KeyStateChanged += OnKeyStateChanged;
         _hidManager.Start();
-
-        DebugLog.Write(LogChannel.Input, "KeyboardManager.Start: HidKeyInput started.", LogLevel.Trace);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Stop
     //
-    // Unsubscribes from key state events, stops HidKeyInput, and releases it.
-    // Called once at application shutdown.  If not started, logs and returns.
+    // Stops the HidManager's device lifecycle.  The manager, its event
+    // subscription, and the OSD windows all survive so Start can run again.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Stop()
     {
-        if (_hidManager == null)
-        {
-            DebugLog.Write(LogChannel.Input, "KeyboardManager.Stop: not started, ignoring.", LogLevel.Warn);
-            return;
-        }
+        DebugLog.Write(LogChannel.Input, "KeyboardManager.Stop: stopping HidManager.", LogLevel.Trace);
 
-        DebugLog.Write(LogChannel.Input, "KeyboardManager.Stop: stopping HidKeyInput.", LogLevel.Trace);
-
-        _hidManager.KeyStateChanged -= OnKeyStateChanged;
         _hidManager.Stop();
-        _hidManager = null;
-
-        DebugLog.Write(LogChannel.Input, "KeyboardManager.Stop: stopped.", LogLevel.Trace);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -499,12 +603,6 @@ public class KeyboardManager
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public bool IsDeviceConnected(KeyboardType type)
     {
-        if (_hidManager == null)
-        {
-            DebugLog.Write(LogChannel.Input, $"KeyboardManager.IsDeviceConnected: type={type} HidKeyInput not started.", LogLevel.Trace);
-            return false;
-        }
-
         return _hidManager.IsDeviceConnected(type);
     }
 }

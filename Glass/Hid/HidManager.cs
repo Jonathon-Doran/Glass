@@ -26,16 +26,27 @@ public class HidManager
     private readonly Dictionary<HidDeviceInstance, HidDeviceWriter> _ledWriters = new();
     private readonly Dictionary<HidDeviceInstance, IBuildLedReport> _ledBuilders = new();
 
-    private Thread? _dispatcherThread;
+    // Signaled by readers each time an event is enqueued — wakes the delivery thread
+    private readonly SemaphoreSlim _deliverySignal = new SemaphoreSlim(0);
+
+    // Per-type instance number assignment.  Counts up only — instance numbers are never reused,
+    // so hotplug arrivals later get fresh numbers.
+    private readonly Dictionary<KeyboardType, int> _instanceCounts = new();
+
+    private Thread? _deliveryThread;
     private volatile bool _running;
 
     public event EventHandler<HidKeyEventArgs>? KeyStateChanged;
     public event EventHandler<HidAxisEventArgs>? AxisChanged;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // HidKeyInput
+    // HidManager
     //
-    // Registers all known device parsers.
+    // Registers all known device parsers and LED builder factories, then
+    // discovers connected devices.  Discovery enumerates supported HID
+    // devices and constructs a reader, and where supported an LED writer and
+    // builder, for each device instance.  Nothing is started or opened here —
+    // Start handles lifecycle.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public HidManager()
     {
@@ -45,6 +56,49 @@ public class HidManager
         RegisterParser(new DominatorReportParser(), "0483-5750");
 
         RegisterLedBuilder(() => new DominatorLedReportBuilder(), "0483-5750");
+
+        List<(HidDeviceInstance Instance, string DevicePath)> devices = EnumerateDevices();
+
+        foreach ((HidDeviceInstance instance, string devicePath) in devices)
+        {
+            IParseHidReport parser = _parsers[instance.Pid];
+            HidDeviceReader reader = new HidDeviceReader(devicePath, instance, parser, _keyQueue, _axisQueue, _deliverySignal);
+            _readers.Add(reader);
+
+            DebugLog.Write(LogChannel.Input, $"HidManager: discovered {instance}, reader constructed.", LogLevel.Trace);
+
+            if (_ledBuilderFactories.TryGetValue(instance.Pid, out Func<IBuildLedReport>? factory))
+            {
+                _ledWriters[instance] = new HidDeviceWriter(devicePath, instance);
+                _ledBuilders[instance] = factory();
+
+                DebugLog.Write(LogChannel.Input, $"HidManager: {instance} supports LED output, writer constructed.", LogLevel.Trace);
+            }
+        }
+
+        DebugLog.Write(LogChannel.Input, $"HidManager: discovery complete, {_readers.Count} device(s), {_ledWriters.Count} LED-capable.", LogLevel.Trace);
+    }
+
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // GetConnectedInstances
+    //
+    // Returns the device instances that currently have a running reader,
+    // in enumeration order.
+    //
+    // Returns:  A snapshot list of connected device instances
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public IReadOnlyList<HidDeviceInstance> GetConnectedInstances()
+    {
+        List<HidDeviceInstance> instances = new List<HidDeviceInstance>();
+
+        foreach (HidDeviceReader reader in _readers)
+        {
+            instances.Add(reader.Instance);
+        }
+
+        DebugLog.Write(LogChannel.Input, $"HidManager.GetConnectedInstances: {instances.Count} instance(s).", LogLevel.Trace);
+        return instances;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -89,101 +143,102 @@ public class HidManager
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Start
     //
-    // Enumerates HID devices, creates readers for known input devices, opens LED
-    // writers for devices that support LED output, and starts the dispatcher
-    // thread.
+    // Starts lifecycle for all discovered devices: starts each reader, opens
+    // each LED writer, and starts the delivery thread.  Safe to call again
+    // after Stop.  If already running, logs and returns.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Start()
     {
-        DebugLog.Write(LogChannel.Input, "HidManager.Start: enumerating devices.", LogLevel.Trace);
-
-        List<(HidDeviceInstance Instance, string DevicePath)> devices = EnumerateDevices();
-
-        foreach ((HidDeviceInstance instance, string devicePath) in devices)
+        if (_running)
         {
-            DebugLog.Write(LogChannel.Input, $"HidManager.Start: creating reader for {instance}.", LogLevel.Trace);
+            DebugLog.Write(LogChannel.Input, "HidManager.Start: already running, ignoring.", LogLevel.Warn);
+            return;
+        }
 
-            IParseHidReport parser = _parsers[instance.Pid];
-            HidDeviceReader reader = new HidDeviceReader(devicePath, instance, parser, _keyQueue, _axisQueue);
-            _readers.Add(reader);
+        DebugLog.Write(LogChannel.Input, $"HidManager.Start: starting {_readers.Count} reader(s), {_ledWriters.Count} LED writer(s).", LogLevel.Trace);
+
+        foreach (HidDeviceReader reader in _readers)
+        {
             reader.Start();
+        }
 
-            if (_ledBuilderFactories.TryGetValue(instance.Pid, out Func<IBuildLedReport>? factory))
+        foreach (KeyValuePair<HidDeviceInstance, HidDeviceWriter> entry in _ledWriters)
+        {
+            if (!entry.Value.Open())
             {
-                HidDeviceWriter writer = new HidDeviceWriter(devicePath, instance);
+                DebugLog.Write(LogChannel.Input, $"HidManager.Start: LED writer open failed for {entry.Key}, removing from LED output.", LogLevel.Warn);
 
-                if (writer.Open())
-                {
-                    _ledWriters[instance] = writer;
-                    _ledBuilders[instance] = factory();
-
-                    DebugLog.Write(LogChannel.Input, $"HidManager.Start: opened LED writer for {instance}.", LogLevel.Trace);
-                }
-                else
-                {
-                    DebugLog.Write(LogChannel.Input, $"HidManager.Start: failed to open LED writer for {instance}.", LogLevel.Warn);
-                }
+                _ledWriters.Remove(entry.Key);
+                _ledBuilders.Remove(entry.Key);
             }
         }
 
         _running = true;
-        _dispatcherThread = new Thread(DispatcherThread)
+        _deliveryThread = new Thread(DeliveryThread)
         {
-            Name = "HidManager_Dispatcher",
+            Name = "HidManager_Delivery",
             IsBackground = true
         };
-        _dispatcherThread.Start();
+        _deliveryThread.Start();
 
-        DebugLog.Write(LogChannel.Input, $"HidManager.Start: started {_readers.Count} readers, {_ledWriters.Count} LED writers.", LogLevel.Trace);
+        DebugLog.Write(LogChannel.Input, "HidManager.Start: running.", LogLevel.Trace);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Stop
     //
-    // Stops all readers and the dispatcher thread, and closes all LED writers.
+    // Stops lifecycle for all discovered devices: stops each reader, closes
+    // each LED writer, and stops the delivery thread.  The discovered device
+    // collections are left intact so Start can run again without
+    // rediscovery.  If not running, logs and returns.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Stop()
     {
+        if (!_running)
+        {
+            DebugLog.Write(LogChannel.Input, "HidManager.Stop: not running, ignoring.", LogLevel.Warn);
+            return;
+        }
+
         DebugLog.Write(LogChannel.Input, "HidManager.Stop: stopping.", LogLevel.Trace);
 
         _running = false;
+        _deliverySignal.Release();
 
         foreach (HidDeviceReader reader in _readers)
         {
             reader.Stop();
         }
 
-        _readers.Clear();
-
         foreach (HidDeviceWriter writer in _ledWriters.Values)
         {
             writer.Close();
         }
 
-        _ledWriters.Clear();
-        _ledBuilders.Clear();
-
-        _dispatcherThread?.Join(TimeSpan.FromSeconds(3));
-        _dispatcherThread = null;
+        _deliveryThread?.Join(TimeSpan.FromSeconds(3));
+        _deliveryThread = null;
 
         DebugLog.Write(LogChannel.Input, "HidManager.Stop: stopped.", LogLevel.Trace);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // DispatcherThread
+    // DeliveryThread
     //
-    // Drains the event queue and fires KeyStateChanged for each event.
-    // Runs until stopped.
+    // Drains the key and axis queues and delivers each event to subscribers
+    // via KeyStateChanged and AxisChanged.  Runs until stopped.  Delivery here
+    // is transport only — bind dispatch happens downstream in KeyboardManager.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void DispatcherThread()
+    private void DeliveryThread()
     {
-        DebugLog.Write(LogChannel.Input, "HidKeyInput.DispatcherThread: starting.", LogLevel.Trace);
+        DebugLog.Write(LogChannel.Input, "HidManager.DeliveryThread: starting.", LogLevel.Trace);
 
         while (_running)
         {
+            _deliverySignal.Wait();
+
             while (_keyQueue.TryDequeue(out var keyArgs))
             {
-                DebugLog.Write(LogChannel.Input, $"HidKeyInput.DispatcherThread: dispatching key='{keyArgs.KeyName}' {keyArgs.Device} isPressed={keyArgs.IsPressed}.", LogLevel.Trace);
+                DebugLog.Write(LogChannel.Input, $"HidManager.DeliveryThread: delivering raw key='{keyArgs.KeyName}' {keyArgs.Device} isPressed={keyArgs.IsPressed}.", LogLevel.Trace);
 
                 try
                 {
@@ -191,7 +246,7 @@ public class HidManager
                 }
                 catch (Exception ex)
                 {
-                    DebugLog.Write(LogChannel.Input, $"HidKeyInput.DispatcherThread: exception in KeyStateChanged handler: {ex.Message}.", LogLevel.Error);
+                    DebugLog.Write(LogChannel.Input, $"HidManager.DeliveryThread: exception in KeyStateChanged handler: {ex.Message}.", LogLevel.Error);
                 }
             }
 
@@ -216,14 +271,14 @@ public class HidManager
                 }
                 catch (Exception ex)
                 {
-                    DebugLog.Write(LogChannel.Input, $"HidKeyInput.DispatcherThread: exception in AxisChanged handler: {ex.Message}.", LogLevel.Error);
+                    DebugLog.Write(LogChannel.Input, $"HidManager.DeliveryThread: exception in AxisChanged handler: {ex.Message}.", LogLevel.Error);
                 }
             }
 
             Thread.Sleep(10);
         }
 
-        DebugLog.Write(LogChannel.Input, "HidKeyInput.DispatcherThread: exiting.", LogLevel.Trace);
+        DebugLog.Write(LogChannel.Input, "HidManager.DeliveryThread: exiting.", LogLevel.Trace);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -238,7 +293,6 @@ public class HidManager
     private List<(HidDeviceInstance Instance, string DevicePath)> EnumerateDevices()
     {
         var results = new List<(HidDeviceInstance, string)>();
-        var instanceCounts = new Dictionary<KeyboardType, int>();
 
         uint deviceCount = 0;
         uint structSize = (uint)Marshal.SizeOf<HidNativeMethods.RawInputDeviceList>();
@@ -287,12 +341,12 @@ public class HidManager
                 continue;
             }
 
-            if (!instanceCounts.TryGetValue(parser.Device, out int count))
+            if (!_instanceCounts.TryGetValue(parser.Device, out int count))
             {
                 count = 0;
             }
             count++;
-            instanceCounts[parser.Device] = count;
+            _instanceCounts[parser.Device] = count;
 
             var instance = new HidDeviceInstance(parser.Device, count, deviceId);
 
