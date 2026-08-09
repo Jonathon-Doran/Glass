@@ -1,8 +1,8 @@
 ﻿using Glass.Controls;
+using Glass.Core.Logging;
 using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Input;
-using Glass.Core.Logging;
 
 namespace Glass.Core;
 
@@ -16,7 +16,7 @@ namespace Glass.Core;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 public class KeyboardManager
 {
-    private HidKeyInput? _hidKeyInput;
+    private HidManager? _hidManager;
 
     // Active page per device instance
     private readonly Dictionary<HidDeviceInstance, KeyPage> _activePages = new();
@@ -40,7 +40,6 @@ public class KeyboardManager
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // KeyboardManager
     //
-    // pipeSend:  Delegate used to send messages to ISXGlass over the pipe
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public KeyboardManager()
     {
@@ -115,12 +114,6 @@ public class KeyboardManager
         }
 
         DebugLog.Write(LogChannel.Profiles, $"KeyboardManager.LoadProfile: loaded {profilePages.Count} pages {_commandCache.Count} commands.", LogLevel.Trace);
-
-        _hidKeyInput = new HidKeyInput();
-        _hidKeyInput.KeyStateChanged += OnKeyStateChanged;
-        _hidKeyInput.Start();
-
-        DebugLog.Write(LogChannel.Profiles, "KeyboardManager.LoadProfile: HidKeyInput started.", LogLevel.Info);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -131,14 +124,6 @@ public class KeyboardManager
     public void UnloadProfile()
     {
         DebugLog.Write(LogChannel.Profiles, "KeyboardManager.UnloadProfile: unloading.", LogLevel.Trace);
-
-        if (_hidKeyInput != null)
-        {
-            _hidKeyInput.KeyStateChanged -= OnKeyStateChanged;
-            _hidKeyInput.Stop();
-            _hidKeyInput = null;
-            DebugLog.Write(LogChannel.Profiles, "KeyboardManager.UnloadProfile: HidKeyInput stopped.", LogLevel.Trace);
-        }
 
         foreach (var osd in _osdWindows.Values)
         {
@@ -467,7 +452,7 @@ public class KeyboardManager
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Start()
     {
-        if (_hidKeyInput != null)
+        if (_hidManager != null)
         {
             DebugLog.Write(LogChannel.Input, "KeyboardManager.Start: already started, ignoring.", LogLevel.Warn);
             return;
@@ -475,9 +460,9 @@ public class KeyboardManager
 
         DebugLog.Write(LogChannel.Input, "KeyboardManager.Start: creating HidKeyInput.", LogLevel.Trace);
 
-        _hidKeyInput = new HidKeyInput();
-        _hidKeyInput.KeyStateChanged += OnKeyStateChanged;
-        _hidKeyInput.Start();
+        _hidManager = new HidManager();
+        _hidManager.KeyStateChanged += OnKeyStateChanged;
+        _hidManager.Start();
 
         DebugLog.Write(LogChannel.Input, "KeyboardManager.Start: HidKeyInput started.", LogLevel.Trace);
     }
@@ -490,7 +475,7 @@ public class KeyboardManager
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Stop()
     {
-        if (_hidKeyInput == null)
+        if (_hidManager == null)
         {
             DebugLog.Write(LogChannel.Input, "KeyboardManager.Stop: not started, ignoring.", LogLevel.Warn);
             return;
@@ -498,9 +483,9 @@ public class KeyboardManager
 
         DebugLog.Write(LogChannel.Input, "KeyboardManager.Stop: stopping HidKeyInput.", LogLevel.Trace);
 
-        _hidKeyInput.KeyStateChanged -= OnKeyStateChanged;
-        _hidKeyInput.Stop();
-        _hidKeyInput = null;
+        _hidManager.KeyStateChanged -= OnKeyStateChanged;
+        _hidManager.Stop();
+        _hidManager = null;
 
         DebugLog.Write(LogChannel.Input, "KeyboardManager.Stop: stopped.", LogLevel.Trace);
     }
@@ -514,12 +499,12 @@ public class KeyboardManager
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public bool IsDeviceConnected(KeyboardType type)
     {
-        if (_hidKeyInput == null)
+        if (_hidManager == null)
         {
             DebugLog.Write(LogChannel.Input, $"KeyboardManager.IsDeviceConnected: type={type} HidKeyInput not started.", LogLevel.Trace);
             return false;
         }
 
-        return _hidKeyInput.IsDeviceConnected(type);
+        return _hidManager.IsDeviceConnected(type);
     }
 }

@@ -19,6 +19,7 @@ internal static class HidNativeMethods
     internal const uint RimTypeHid = 2;
 
     internal const uint GenericRead = 0x80000000;
+    internal const uint GenericWrite = 0x40000000;
     internal const uint FileShareRead = 0x00000001;
     internal const uint FileShareWrite = 0x00000002;
     internal const uint OpenExisting = 3;
@@ -112,6 +113,14 @@ internal static class HidNativeMethods
         uint nNumberOfBytesToRead,
         out uint lpNumberOfBytesRead,
         ref Overlapped lpOverlapped);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern bool WriteFile(
+        IntPtr hFile,
+        byte[] lpBuffer,
+        uint nNumberOfBytesToWrite,
+        out uint lpNumberOfBytesWritten,
+        IntPtr lpOverlapped);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     internal static extern bool GetOverlappedResult(

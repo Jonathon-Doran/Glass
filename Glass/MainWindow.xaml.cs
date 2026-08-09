@@ -1013,8 +1013,6 @@ public partial class MainWindow : Window
                         PatchOpcode patchOpcode = new PatchOpcode(patchLevel, op.Key);
                         string name = GlassContext.PatchRegistry.GetOpcodeName(patchOpcode);
 
- //                       string handled = OpcodeDispatch.Instance.IsOpcodeHandled(op.Key)
- //                           ? "+" : " ";
                         DebugLog.Write(LogChannel.Network, "  " + " 0x" + op.Key + " (" + name + ")"
                             + ": " + op.Value + " times", LogLevel.Info);
                     }
