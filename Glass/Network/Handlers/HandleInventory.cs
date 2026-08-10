@@ -19,10 +19,10 @@ public class HandleInventory : OpcodeHandler
 
     private readonly SlotId _Item_String_Slot;
     private readonly SlotId _Current_Stack_Size_Slot;
-    private readonly SlotId _Field_3_Slot;
+    private readonly SlotId _ContainerType_Slot;
     private readonly SlotId _Current_Location_Slot;
-    private readonly SlotId _Field_5_Slot;
-    private readonly SlotId _Field_6_Slot;
+    private readonly SlotId _SubPosition_Slot;
+    private readonly SlotId _AugPosition_Slot;
     private readonly SlotId _Field_7_Slot;
     private readonly SlotId _Field_8_Slot;
     private readonly SlotId _Field_9_Slot;
@@ -263,11 +263,11 @@ public class HandleInventory : OpcodeHandler
 
         _Item_String_Slot = _registry.IndexOfField(itemCollection, "ItemString");
 
-        _Current_Stack_Size_Slot = _registry.IndexOfField(itemCollection, "Field2");
-        _Field_3_Slot = _registry.IndexOfField(itemCollection, "Field3");
-        _Current_Location_Slot = _registry.IndexOfField(itemCollection, "Field4");
-        _Field_5_Slot = _registry.IndexOfField(itemCollection, "Field5");
-        _Field_6_Slot = _registry.IndexOfField(itemCollection, "Field6");
+        _Current_Stack_Size_Slot = _registry.IndexOfField(itemCollection, "StackSize");
+        _ContainerType_Slot = _registry.IndexOfField(itemCollection, "ContainerType");
+        _Current_Location_Slot = _registry.IndexOfField(itemCollection, "Location");
+        _SubPosition_Slot = _registry.IndexOfField(itemCollection, "SubPosition");
+        _AugPosition_Slot = _registry.IndexOfField(itemCollection, "AugPosition");
         _Field_7_Slot = _registry.IndexOfField(itemCollection, "Field7");
         _Field_8_Slot = _registry.IndexOfField(itemCollection, "Field8");
         _Field_9_Slot = _registry.IndexOfField(itemCollection, "Field9");
@@ -761,9 +761,9 @@ public class HandleInventory : OpcodeHandler
         FieldNodes.AddUIntNode(_extractor, _Skill_Percent_Change, "Skill Percent Change", itemNode, "D");
         FieldNodes.AddUIntNode(_extractor, _Skill_Max_Change, "Skill Max Change", itemNode, "D");
 
-        FieldNodes.AddUIntNode(_extractor, _Field_3_Slot, "Field 3", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_5_Slot, "Field 5", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_6_Slot, "Field 6", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _ContainerType_Slot, "Field 3", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _SubPosition_Slot, "Field 5", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _AugPosition_Slot, "Field 6", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_7_Slot, "Field 7", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_8_Slot, "Field 8", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_9_Slot, "Field 9", itemNode, "?");
