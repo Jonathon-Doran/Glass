@@ -148,8 +148,6 @@ public partial class MainWindow : Window
         DebugLog.AddHandler(LogSink.GlassConsole, glassConsoleLogHandler);
         DebugLog.Route(LogChannel.General, LogSink.GlassConsole);
 
-
-
         DebugLog.Write(LogChannel.General, "MainWindow: logging initialized", LogLevel.Trace);
     }
 

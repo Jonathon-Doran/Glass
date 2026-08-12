@@ -111,7 +111,7 @@ public partial class MainWindow : Window
         GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
 
         UpdateControlStates();
-
+        GlassContext.KeyboardManager.Shutdown();
 
         _retainedBufferPool = new RetainedBufferPool();
         _packetCatalog = new PacketCatalog(_retainedBufferPool);
@@ -147,6 +147,7 @@ public partial class MainWindow : Window
         DebugLog.Route(LogChannel.LowNetwork, LogSink.GlassDebugLogfile);
         DebugLog.Route(LogChannel.Network, LogSink.GlassDebugLogfile);
         DebugLog.Route(LogChannel.Memory, LogSink.GlassDebugLogfile);
+        DebugLog.Route(LogChannel.Reference, LogSink.GlassDebugLogfile);
 
         // The inference debug log.  Debug messages for the inference app
         GlassDebugLogHandler debugLogHandler = new GlassDebugLogHandler("debug.log");
