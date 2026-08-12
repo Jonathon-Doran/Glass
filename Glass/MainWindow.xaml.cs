@@ -124,7 +124,7 @@ public partial class MainWindow : Window
         DebugLog.Route(LogChannel.Video, LogSink.GlassDebugLogfile);
         DebugLog.Route(LogChannel.Sessions, LogSink.GlassDebugLogfile);
         DebugLog.Route(LogChannel.Profiles, LogSink.GlassDebugLogfile);
-        DebugLog.Route(LogChannel.Input, LogSink.GlassDebugLogfile);
+        // DebugLog.Route(LogChannel.Input, LogSink.GlassDebugLogfile);
         DebugLog.Route(LogChannel.Database, LogSink.GlassDebugLogfile);
         DebugLog.Route(LogChannel.LowNetwork, LogSink.GlassDebugLogfile);
         DebugLog.Route(LogChannel.Network, LogSink.GlassDebugLogfile);

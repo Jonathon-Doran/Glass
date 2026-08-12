@@ -651,7 +651,7 @@ public class HandleInventory : OpcodeHandler
             GateHandle singleItemGate = _extractor.GetGateAt(childItemSlot);
             if (singleItemGate.Exists == true)
             {
-                FieldDisplayNode childNode = DescribeItem(singleItemGate, 0u, "Slot " + (childIndex + 1) + ": ");
+                FieldDisplayNode childNode = DescribeItem(singleItemGate, 0u, "Slot " + childIndex + ": ");
                 itemNode.AddChild(childNode);
             }
         }
@@ -685,7 +685,38 @@ public class HandleInventory : OpcodeHandler
         FieldNodes.AddUIntNode(_extractor, _Item_ID_Slot, "ID", itemNode, "D");
         FieldNodes.AddUIntNode(_extractor, _Item_Type_Slot2, "Item Type2", itemNode);
         FieldNodes.AddUIntNode(_extractor, _Item_Type_Slot, "Item_Type", itemNode, "D");
-        AddWornSlotNode(_Usable_Slot_Mask, "Slots", itemNode);
+
+        FieldDisplayNode locationSubtree = new FieldDisplayNode("Item Location");
+        itemNode.AddChild(locationSubtree);
+
+        AddWornSlotNode(_Usable_Slot_Mask, "Usable Slots", locationSubtree);
+
+        uint mainPosition = _extractor.GetUIntAt(_Current_Location_Slot);
+        uint containerType = _extractor.GetUIntAt(_ContainerType_Slot);
+        uint subPosition = _extractor.GetUIntAt(_SubPosition_Slot);
+        uint augPosition = _extractor.GetUIntAt(_AugPosition_Slot);
+        string storageText = Character.DescribeStorageLocation(containerType);
+        string subPosText = Character.DescribePosition(subPosition);
+        string augPosText = Character.DescribePosition(augPosition);
+
+        String location = Character.DescribeLocation(containerType, mainPosition, subPosition, augPosition);
+
+        FieldDisplayNode locationNode = new FieldDisplayNode("Item Location: " + location);
+        locationNode.AddByteRange(_extractor.GetByteRangeFor(_Current_Location_Slot));
+        locationNode.AddByteRange(_extractor.GetByteRangeFor(_ContainerType_Slot));
+        locationNode.AddByteRange(_extractor.GetByteRangeFor(_SubPosition_Slot));
+        locationNode.AddByteRange(_extractor.GetByteRangeFor(_AugPosition_Slot));
+        locationSubtree.AddChild(locationNode);
+
+
+        FieldNodes.AddLabeledNode(_extractor, _ContainerType_Slot, "Storage: " + storageText +
+            " (" + containerType + ")", locationSubtree);
+        FieldNodes.AddUIntNode(_extractor, _Current_Location_Slot, "Storage Slot", locationSubtree, "D");
+        FieldNodes.AddLabeledNode(_extractor, _SubPosition_Slot, "SubPosition: " + subPosText +
+            " (" + subPosition + ")", locationSubtree);
+        FieldNodes.AddLabeledNode(_extractor, _AugPosition_Slot, "AugPosition: " + augPosText +
+            " (" + augPosition + ")", locationSubtree);
+
         FieldNodes.AddUIntNode(_extractor, _Current_Stack_Size_Slot, "Current Stack Size", itemNode, "D");
         FieldNodes.AddUIntNode(_extractor, _Max_Stack_Size_Slot, "Max Stack Size", itemNode, "D");
         FieldNodes.AddUIntNode(_extractor, _ITFile_Slot, "IT File#", itemNode, "D");
@@ -751,7 +782,7 @@ public class HandleInventory : OpcodeHandler
         FieldNodes.AddUIntNode(_extractor, _Bard_Value_Slot, "Bard Value", itemNode, "D");
         FieldNodes.AddUIntNode(_extractor, _Material_Slot, "Material", itemNode, "D");
         FieldNodes.AddUIntNode(_extractor, _Tradeskill_Slot, "Used in Tradeskills", itemNode, "D");
-        FieldNodes.AddUIntNode(_extractor, _Current_Location_Slot, "Inventory Slot", itemNode, "D");
+
         FieldNodes.AddUIntNode(_extractor, _Lore_Group_Slot, "Lore Group", itemNode, "X");
 
 
@@ -761,9 +792,7 @@ public class HandleInventory : OpcodeHandler
         FieldNodes.AddUIntNode(_extractor, _Skill_Percent_Change, "Skill Percent Change", itemNode, "D");
         FieldNodes.AddUIntNode(_extractor, _Skill_Max_Change, "Skill Max Change", itemNode, "D");
 
-        FieldNodes.AddUIntNode(_extractor, _ContainerType_Slot, "Field 3", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _SubPosition_Slot, "Field 5", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _AugPosition_Slot, "Field 6", itemNode, "?");
+
         FieldNodes.AddUIntNode(_extractor, _Field_7_Slot, "Field 7", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_8_Slot, "Field 8", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_9_Slot, "Field 9", itemNode, "?");

@@ -148,11 +148,12 @@ public static class FieldNodes
     // label:      The complete display text for the new node.
     // parent:     The display node's parent.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public static void AddLabeledNode(FieldExtractor extractor, SlotId slotId, string label,
+    public static FieldDisplayNode AddLabeledNode(FieldExtractor extractor, SlotId slotId, string label,
         FieldDisplayNode parent)
     {
         FieldDisplayNode newNode = new FieldDisplayNode(label);
         newNode.AddByteRange(extractor.GetByteRangeFor(slotId));
         parent.AddChild(newNode);
+        return newNode;
     }
 }

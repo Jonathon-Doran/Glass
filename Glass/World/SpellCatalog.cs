@@ -159,9 +159,34 @@ public class SpellCatalog
 
         DebugLog.Write(LogChannel.Reference, "SpellCatalog.Load: loaded " + _spellsById.Count
             + " spells from " + lineNumber + " lines, skipped " + skipped
-            + ", from " + filePath, LogLevel.Trace);
+            + ", from " + filePath, LogLevel.Info);
+
 
         return _spellsById.Count;
+    }
+
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // LogParseSpotCheck
+    //
+    // Logs the parsed target type and cast restriction for every spell whose name contains
+    // the given substring.  Temporary verification aid; logs at Warn so the output is
+    // visible under the normal log level.
+    //
+    // nameFragment:  Substring to match against spell names, case-insensitive.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void LogParseSpotCheck(string nameFragment)
+    {
+        foreach (SpellRecord record in _spellsById.Values)
+        {
+            if (record.Name.Contains(nameFragment, StringComparison.OrdinalIgnoreCase) == true)
+            {
+                DebugLog.Write(LogChannel.Reference, "SpellCatalog.LogParseSpotCheck: '"
+                    + record.Name + "' id " + record.Id
+                    + " targetType " + record.TargetType
+                    + " castRestriction " + record.CastRestriction, LogLevel.Warn);
+            }
+        }
     }
 
     // Zero-based caret-delimited column positions in the spell data file.
@@ -173,10 +198,12 @@ public class SpellCatalog
     private const int ColumnDurationFormula = 11;
     private const int ColumnDuration = 12;
     private const int ColumnMana = 14;
+    private const int ColumnTargetType = 30;
+    private const int ColumnCastRestriction = 136;
 
     // A line must have at least this many columns for the scalar reads above, plus the
     // packed effects in the final column.
-    private const int MinimumColumns = 16;
+    private const int MinimumColumns = 137;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // ParseLine
@@ -211,6 +238,8 @@ public class SpellCatalog
         uint durationFormula = 0;
         uint duration = 0;
         uint mana = 0;
+        uint targetType = 0;
+        uint castRestriction = 0;
 
         bool parsed = uint.TryParse(columns[ColumnId], out id)
             && uint.TryParse(columns[ColumnRange], out range)
@@ -218,7 +247,9 @@ public class SpellCatalog
             && uint.TryParse(columns[ColumnRecastTime], out recastTime)
             && uint.TryParse(columns[ColumnDurationFormula], out durationFormula)
             && uint.TryParse(columns[ColumnDuration], out duration)
-            && uint.TryParse(columns[ColumnMana], out mana);
+            && uint.TryParse(columns[ColumnMana], out mana)
+            && uint.TryParse(columns[ColumnTargetType], out targetType)
+            && uint.TryParse(columns[ColumnCastRestriction], out castRestriction);
 
         if (parsed == false)
         {
@@ -236,6 +267,8 @@ public class SpellCatalog
         record.DurationFormula = durationFormula;
         record.DurationTicks = duration;
         record.Mana = mana;
+        record.TargetType = (SpellTargetType)targetType;
+        record.CastRestriction = (SpellCastRestriction)castRestriction;
         record.Effects = ParseEffects(columns[columns.Length - 1], id, lineNumber);
 
         return record;

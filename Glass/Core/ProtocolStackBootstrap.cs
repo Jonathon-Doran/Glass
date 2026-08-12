@@ -34,25 +34,25 @@ public static class ProtocolStackBootstrap
 
         CharacterRepository.Instance.Load();
         DebugLog.Write(LogChannel.General,
-            "ProtocolStackBootstrap.Initialize: CharacterRepository loaded");
+            "ProtocolStackBootstrap.Initialize: CharacterRepository loaded", LogLevel.Trace);
 
         GlassContext.FieldExtractor = new FieldExtractor();
         DebugLog.Write(LogChannel.General,
-            "ProtocolStackBootstrap.Initialize: FieldExtractor constructed");
+            "ProtocolStackBootstrap.Initialize: FieldExtractor constructed", LogLevel.Trace);
 
         GlassContext.PatchRegistry = new PatchRegistry();
         DebugLog.Write(LogChannel.General,
-            "ProtocolStackBootstrap.Initialize: PatchRegistry constructed");
+            "ProtocolStackBootstrap.Initialize: PatchRegistry constructed", LogLevel.Trace);
 
         GlassContext.FocusTracker = new FocusTracker();
         DebugLog.Write(LogChannel.General,
-            "ProtocolStackBootstrap.Initialize: FocusTracker constructed");
+            "ProtocolStackBootstrap.Initialize: FocusTracker constructed", LogLevel.Trace);
 
         GlassContext.SessionRegistry = new SessionRegistry();
         DebugLog.Write(LogChannel.General,
-            "ProtocolStackBootstrap.Initialize: SessionRegistry constructed");
+            "ProtocolStackBootstrap.Initialize: SessionRegistry constructed", LogLevel.Trace);
 
-        DebugLog.Write(LogChannel.General, "ProtocolStackBootstrap.Initialize: complete");
+        DebugLog.Write(LogChannel.General, "ProtocolStackBootstrap.Initialize: complete", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -67,26 +67,47 @@ public static class ProtocolStackBootstrap
     public static void Teardown()
     {
         DebugLog.Write(LogChannel.Sessions,
-            "ProtocolStackBootstrap.Teardown: starting");
+            "ProtocolStackBootstrap.Teardown: starting", LogLevel.Trace);
+
+        if (GlassContext.PacketCapture == null)
+        {
+            DebugLog.Write(LogChannel.Sessions,
+                "ProtocolStackBootstrap.Teardown: no live capture active", LogLevel.Trace);
+        }
+        else if (!GlassContext.PacketCapture.IsCapturing)
+        {
+            GlassContext.PacketCapture = null;
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.Sessions,
+                "ProtocolStackBootstrap.Teardown: stopping packet capture", LogLevel.Trace);
+
+            GlassContext.PacketCapture.Stop();
+            GlassContext.PacketCapture = null;
+
+            DebugLog.Write(LogChannel.Sessions,
+                "ProtocolStackBootstrap.Teardown: packet capture stopped", LogLevel.Trace);
+        }
 
         GlassContext.ProfileManager.ClearActiveProfile();
         DebugLog.Write(LogChannel.Sessions,
-            "ProtocolStackBootstrap.Teardown: active profile cleared");
+            "ProtocolStackBootstrap.Teardown: active profile cleared", LogLevel.Trace);
 
         GlassContext.FocusTracker.Stop();
         GlassContext.FocusTracker.ClearActiveSession();
         DebugLog.Write(LogChannel.Sessions,
-            "ProtocolStackBootstrap.Teardown: focus tracker stopped");
+            "ProtocolStackBootstrap.Teardown: focus tracker stopped", LogLevel.Trace);
 
         GlassContext.GlassVideoPipe.Send("clear_all");
         DebugLog.Write(LogChannel.Sessions,
-            "ProtocolStackBootstrap.Teardown: GlassVideo clear_all sent");
+            "ProtocolStackBootstrap.Teardown: GlassVideo clear_all sent", LogLevel.Trace);
 
         GlassContext.PatchRegistry.LogPoolStatistics();
 
         OpcodeDispatch.DisposeInstance();
         DebugLog.Write(LogChannel.Sessions,
-            "ProtocolStackBootstrap.Teardown: OpcodeDispatch disposed");
+            "ProtocolStackBootstrap.Teardown: OpcodeDispatch disposed", LogLevel.Trace);
 
         DebugLog.Write(LogChannel.Sessions,
             "ProtocolStackBootstrap.Teardown: complete");

@@ -2,6 +2,7 @@
 using Glass.Core.Memory;
 using Glass.Core.Signals;
 using Glass.Data.Models;
+using Glass.Network.Capture;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 
@@ -35,6 +36,7 @@ public static class GlassContext
     public static ProfileManager ProfileManager { get; set; } = null!;
     public static FieldExtractor FieldExtractor { get; set; } = null!;
     public static Machine? CurrentMachine { get; set; }
+    public static PacketCapture? PacketCapture { get; set; } = null;
     public static PatchLevel CurrentPatchLevel { get; set; }
     public static PatchRegistry PatchRegistry { get; set; } = null!;
     public static PacketBus PacketBus { get; set; } = null!;      // remove soon

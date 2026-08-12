@@ -62,7 +62,6 @@ public partial class MainWindow : Window
     private bool _hasUnsavedChanges = false;
     private readonly Stack<object> _undoStack = new Stack<object>();
     private SessionDemux? _sessionDemux;
-    private PacketCapture? _packetCapture;
 
     private readonly RetainedBufferPool _retainedBufferPool;
     private readonly PacketCatalog _packetCatalog;
@@ -782,14 +781,14 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void StatusCapture_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        if (_packetCapture == null || !_packetCapture.IsCapturing)
+        if (GlassContext.PacketCapture == null || !GlassContext.PacketCapture.IsCapturing)
         {
             DebugLog.Write(LogChannel.InferenceDebug, "StatusCapture_MouseLeftButtonUp: not capturing", LogLevel.Trace);
             return;
         }
 
         DebugLog.Write(LogChannel.InferenceDebug, "StatusCapture_MouseLeftButtonUp: stopping capture", LogLevel.Trace);
-        _packetCapture.Stop();
+        GlassContext.PacketCapture.Stop();
         UpdateCaptureStatus();
         UpdateControlStates();
     }
@@ -802,12 +801,12 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void UpdateCaptureStatus()
     {
-        if (_packetCapture != null && _packetCapture.IsCapturing)
+        if (GlassContext.PacketCapture != null && GlassContext.PacketCapture.IsCapturing)
         {
             StatusCapture.Text = "Capture: Active";
             StatusCapture.Foreground = new SolidColorBrush(Colors.LimeGreen);
         }
-        else if (_packetCapture != null)
+        else if (GlassContext.PacketCapture != null)
         {
             StatusCapture.Text = "Capture: Stopped";
             StatusCapture.Foreground = new SolidColorBrush(Colors.Red);
@@ -1084,10 +1083,10 @@ public partial class MainWindow : Window
         }
 
         _sessionDemux = new SessionDemux(localIp);
-        _packetCapture = new PacketCapture(_sessionDemux);
+        GlassContext.PacketCapture = new PacketCapture(_sessionDemux);
 
         string bpfFilter = "udp and (net 69.174.0.0/16 or net 64.37.0.0/16 or net 209.0.0.0/16)";
-        if (!_packetCapture.Start(bpfFilter))
+        if (!GlassContext.PacketCapture.Start(bpfFilter))
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "MenuItem_LaunchProfile_Click: capture failed to start", LogLevel.Error);
@@ -2819,7 +2818,7 @@ public partial class MainWindow : Window
             DebugLog.Write(LogChannel.InferenceDebug, "Button_RunIdentification_Click: no current patch level", LogLevel.Warn);
             return;
         }
-        if (_packetCapture != null && _packetCapture.IsCapturing)
+        if (GlassContext.PacketCapture != null && GlassContext.PacketCapture.IsCapturing)
         {
             MessageBoxResult answer = MessageBox.Show(
                 "Capture is still running.  Stop capture and run identification?",
@@ -2829,7 +2828,7 @@ public partial class MainWindow : Window
                 DebugLog.Write(LogChannel.InferenceDebug, "Button_RunIdentification_Click: aborted, capture still running", LogLevel.Trace);
                 return;
             }
-            _packetCapture.Stop();
+            GlassContext.PacketCapture.Stop();
             UpdateCaptureStatus();
         }
         IdentificationTargetLevel.Text = string.Empty;
