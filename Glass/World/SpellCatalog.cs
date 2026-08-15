@@ -20,34 +20,34 @@ public class SpellCatalog
 
     // The SPA numbers retained at parse time.  An effect slot whose SPA is not in this set
     // is dropped from the record.  Adjust membership here; nothing else changes.
-    private static readonly HashSet<uint> _spaWhitelist = new HashSet<uint>
+    private static readonly HashSet<SPAId> _spaWhitelist = new HashSet<SPAId>
     {
-        0,      // HP: damage, heals, DOT ticks
-        1,      // AC
-        2,      // ATK
-        3,      // movement rate (snare)
-        11,     // attack speed (slow / haste)
-        15,     // mana recovery / drain
-        21,     // stun
-        22,     // charm
-        23,     // fear
-        27,     // dispel
-        31,     // mez
-        35,     // disease counters
-        36,     // poison counters
-        46,     // fire resist
-        47,     // cold resist
-        48,     // poison resist
-        49,     // disease resist
-        50,     // magic resist
-        59,     // damage shield
-        69,     // max HP
-        81,     // resurrect
-        92,     // hate
-        96,     // silence
-        99,     // root
-        100,    // heal over time
-        101,    // complete heal
+        SPAId.Hitpoints,
+        SPAId.ArmorClass,
+        SPAId.AttackPower,
+        SPAId.MovementRate,
+        SPAId.MeleeSpeed,
+        SPAId.Mana,
+        SPAId.Stun,
+        SPAId.Charm,
+        SPAId.Fear,
+        SPAId.DispelMagic,
+        SPAId.Mesmerize,
+        SPAId.Disease,
+        SPAId.Poison,
+        SPAId.ResistFire,
+        SPAId.ResistCold,
+        SPAId.ResistPoison,
+        SPAId.ResistDisease,
+        SPAId.ResistMagic,
+        SPAId.DamageShield,
+        SPAId.MaxHitpoints,
+        SPAId.Resurrect,
+        SPAId.Hate,
+        SPAId.Silence,
+        SPAId.Root,
+        SPAId.HealOverTime,
+        SPAId.CompleteHeal
     };
 
     private static readonly SpellCatalog _instance = new SpellCatalog();
@@ -194,11 +194,12 @@ public class SpellCatalog
     private const int ColumnName = 1;
     private const int ColumnRange = 4;
     private const int ColumnCastTime = 8;
-    private const int ColumnRecastTime = 10;
+    private const int ColumnRecastTime = 9;
     private const int ColumnDurationFormula = 11;
-    private const int ColumnDuration = 12;
+    private const int ColumnDurationCap = 12;
     private const int ColumnMana = 14;
     private const int ColumnTargetType = 30;
+    private const int ClassLevelStart = 36;
     private const int ColumnCastRestriction = 136;
 
     // A line must have at least this many columns for the scalar reads above, plus the
@@ -236,7 +237,7 @@ public class SpellCatalog
         uint castTime = 0;
         uint recastTime = 0;
         uint durationFormula = 0;
-        uint duration = 0;
+        uint durationCap = 0;
         uint mana = 0;
         uint targetType = 0;
         uint castRestriction = 0;
@@ -246,7 +247,7 @@ public class SpellCatalog
             && uint.TryParse(columns[ColumnCastTime], out castTime)
             && uint.TryParse(columns[ColumnRecastTime], out recastTime)
             && uint.TryParse(columns[ColumnDurationFormula], out durationFormula)
-            && uint.TryParse(columns[ColumnDuration], out duration)
+            && uint.TryParse(columns[ColumnDurationCap], out durationCap)
             && uint.TryParse(columns[ColumnMana], out mana)
             && uint.TryParse(columns[ColumnTargetType], out targetType)
             && uint.TryParse(columns[ColumnCastRestriction], out castRestriction);
@@ -265,7 +266,7 @@ public class SpellCatalog
         record.CastTimeMs = castTime;
         record.RecastTimeMs = recastTime;
         record.DurationFormula = durationFormula;
-        record.DurationTicks = duration;
+        record.DurationCapTicks = durationCap;
         record.Mana = mana;
         record.TargetType = (SpellTargetType)targetType;
         record.CastRestriction = (SpellCastRestriction)castRestriction;
@@ -310,18 +311,20 @@ public class SpellCatalog
             }
 
             uint slot = 0;
-            uint spa = 0;
+            uint spaValue = 0;
             int base1 = 0;
             int base2 = 0;
             uint calc = 0;
             int max = 0;
 
             bool parsed = uint.TryParse(parts[0], out slot)
-                && uint.TryParse(parts[1], out spa)
+                && uint.TryParse(parts[1], out spaValue)
                 && int.TryParse(parts[2], out base1)
                 && int.TryParse(parts[3], out base2)
                 && uint.TryParse(parts[4], out calc)
                 && int.TryParse(parts[5], out max);
+
+            SPAId spa = (SPAId)spaValue;
 
             if (parsed == false)
             {

@@ -14,7 +14,7 @@ namespace Glass.Network.Handlers;
 //
 // Handles OP_SessionDisconnect packets.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class HandleSessionDisconnect : OpcodeHandler
+public class HandleSessionDisconnect_V2 : OpcodeHandler
 {
     private readonly CollectionHandle _collectionHandle;
     private readonly GateDefinitionHandle _top_level_gate;
@@ -34,11 +34,12 @@ public class HandleSessionDisconnect : OpcodeHandler
     // with a zero opcode, so this handler simply will not receive packets.  All field
     // index lookups resolve to -1 in that case but are never consulted.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public HandleSessionDisconnect(PatchLevel patchLevel)
-        : base(patchLevel, "OP_SessionDisconnect")
+    public HandleSessionDisconnect_V2(PatchLevel patchLevel)
+        : base(patchLevel, "OP_SessionDisconnect_V2")
     {
-        _opcodeHandled = _registry.GetBaseOpcode(_patchLevel,  _opcodeName);
-        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_SessionDisconnect");
+        PatchOpcode baseOpcode  = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
+        _opcodeHandled = baseOpcode with { Version = 2 };
+        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_SessionDisconnect_V2");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         _sessionIdSlot = _registry.IndexOfField(_collectionHandle, "session_id");
@@ -94,6 +95,33 @@ public class HandleSessionDisconnect : OpcodeHandler
 
         root.Text = "Session Disconnect";
         return root;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ResolveVersion
+    //
+    // Returns the opcode version for a packet.
+    //
+    // data:      The application payload.
+    // metadata:  Packet metadata
+    //
+    // Returns:   The resolved version number.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public override uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    {
+        // We have seen packets with a flags byte.  Since these are not application packets, the header info is not
+        // completely removed.
+
+        switch (data.Length)
+        {
+            case 8:
+                return 1;
+
+            case 9:
+                return 2;
+        }
+
+        return 0;
     }
 }
 
