@@ -1,4 +1,5 @@
 ﻿using Glass.Core.Logging;
+using Glass.Data.Models;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 
@@ -15,8 +16,15 @@ public class SpellCatalog
 {
     // Hard-coded spell data file location, pending a proper settings mechanism.
     private const string SpellFilePath = @"C:\Games\EverQuest\spells_us.txt";
+    // Hard-coded database string file location, pending a proper settings mechanism.
+    private const string DbStringFilePath = @"C:\Games\EverQuest\dbstr_us.txt";
 
-    private readonly Dictionary<uint, SpellRecord> _spellsById = new Dictionary<uint, SpellRecord>();
+    private readonly Dictionary<SpellId, SpellRecord> _spellsById = new Dictionary<SpellId, SpellRecord>();
+    // The database string type whose entries are spell category names.
+    private const uint DbStringTypeSpellCategory = 5;
+
+    private readonly Dictionary<SpellCategoryId, string> _categoryNames = new Dictionary<SpellCategoryId, string>();
+
 
     // The SPA numbers retained at parse time.  An effect slot whose SPA is not in this set
     // is dropped from the record.  Adjust membership here; nothing else changes.
@@ -61,6 +69,7 @@ public class SpellCatalog
     private SpellCatalog()
     {
         Load(SpellFilePath);
+        LoadCategoryNames(DbStringFilePath);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -85,6 +94,17 @@ public class SpellCatalog
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // CategoryNames
+    //
+    // The category names keyed by category ID, as loaded from the database string file.
+    // Empty when the file was missing or held no spell category entries.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public IReadOnlyDictionary<SpellCategoryId, string> CategoryNames
+    {
+        get { return _categoryNames; }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // TryGet
     //
     // Looks up the SpellRecord for the given spell ID.
@@ -94,7 +114,7 @@ public class SpellCatalog
     //
     // Returns:  True if the spell is in the catalog, false otherwise.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public bool TryGet(uint spellId, [NotNullWhen(true)] out SpellRecord? record)
+    public bool TryGet(SpellId spellId, [NotNullWhen(true)] out SpellRecord? record)
     {
         return _spellsById.TryGetValue(spellId, out record);
     }
@@ -198,8 +218,14 @@ public class SpellCatalog
     private const int ColumnDurationFormula = 11;
     private const int ColumnDurationCap = 12;
     private const int ColumnMana = 14;
+    private const int ColumnReagentStart = 15;
+    private const int ColumnReagentCountStart = 19;
+    private const int ColumnNoExpendReagentStart = 23;
     private const int ColumnTargetType = 30;
     private const int ClassLevelStart = 36;
+    private const int ColumnPrimaryCategory = 86;
+    private const int ColumnSecondaryCategory = 87;
+    private const int ColumnSecondaryCategory2 = 88;
     private const int ColumnCastRestriction = 136;
 
     // A line must have at least this many columns for the scalar reads above, plus the
@@ -210,10 +236,11 @@ public class SpellCatalog
     // ParseLine
     //
     // Parses one line of the spell data file into a SpellRecord.  The scalar fields are
-    // read from fixed caret-delimited column positions; the packed effect slots are read
-    // from the final column and filtered by the SPA whitelist.  Any structural failure —
-    // too few columns, or an unparseable numeric field — is logged at Warn and yields
-    // null so the caller can skip the line.
+    // read from fixed caret-delimited column positions; the class level, reagent, and
+    // reagent count runs are read from their starting columns; the packed effect slots
+    // are read from the final column and filtered by the SPA whitelist.  Any structural
+    // failure — too few columns, or an unparseable numeric field — is logged at Warn and
+    // yields null so the caller can skip the line.
     //
     // line:        One line of the file, without its line terminator.
     // lineNumber:  The line's position in the file, for log attribution.
@@ -239,6 +266,9 @@ public class SpellCatalog
         uint durationFormula = 0;
         uint durationCap = 0;
         uint mana = 0;
+        uint primaryCategory = 0;
+        uint secondaryCategory = 0;
+        uint secondaryCategory2 = 0;
         uint targetType = 0;
         uint castRestriction = 0;
 
@@ -249,6 +279,9 @@ public class SpellCatalog
             && uint.TryParse(columns[ColumnDurationFormula], out durationFormula)
             && uint.TryParse(columns[ColumnDurationCap], out durationCap)
             && uint.TryParse(columns[ColumnMana], out mana)
+            && uint.TryParse(columns[ColumnPrimaryCategory], out primaryCategory)
+            && uint.TryParse(columns[ColumnSecondaryCategory], out secondaryCategory)
+            && uint.TryParse(columns[ColumnSecondaryCategory2], out secondaryCategory2)
             && uint.TryParse(columns[ColumnTargetType], out targetType)
             && uint.TryParse(columns[ColumnCastRestriction], out castRestriction);
 
@@ -260,7 +293,7 @@ public class SpellCatalog
         }
 
         SpellRecord record = new SpellRecord();
-        record.Id = id;
+        record.Id = (SpellId) id;
         record.Name = columns[ColumnName];
         record.Range = range;
         record.CastTimeMs = castTime;
@@ -268,9 +301,50 @@ public class SpellCatalog
         record.DurationFormula = durationFormula;
         record.DurationCapTicks = durationCap;
         record.Mana = mana;
+        record.PrimaryCategory = (SpellCategoryId) primaryCategory;
+        record.SecondaryCategory = (SpellCategoryId) secondaryCategory;
+        record.SecondaryCategory2 = (SpellCategoryId) secondaryCategory2;
+
+        for (uint classIndex = 0; classIndex < SpellRecord.ClassCount; classIndex++)
+        {
+            byte classLevel = 0;
+            if (byte.TryParse(columns[ClassLevelStart + classIndex], out classLevel) == false)
+            {
+                DebugLog.Write(LogChannel.Reference, "SpellCatalog.ParseLine: line " + lineNumber
+                    + " has an unparseable class level at class index " + classIndex
+                    + ", skipping", LogLevel.Warn);
+                return null;
+            }
+
+            record.ClassLevels[classIndex] = classLevel;
+        }
+
+        for (uint reagentIndex = 0; reagentIndex < 4; reagentIndex++)
+        {
+            int reagentId = 0;
+            uint reagentCount = 0;
+            int noExpendReagentId = 0;
+
+            bool reagentParsed = int.TryParse(columns[ColumnReagentStart + reagentIndex], out reagentId)
+                && uint.TryParse(columns[ColumnReagentCountStart + reagentIndex], out reagentCount)
+                && int.TryParse(columns[ColumnNoExpendReagentStart + reagentIndex], out noExpendReagentId);
+
+            if (reagentParsed == false)
+            {
+                DebugLog.Write(LogChannel.Reference, "SpellCatalog.ParseLine: line " + lineNumber
+                    + " has an unparseable reagent column at reagent index " + reagentIndex
+                    + ", skipping", LogLevel.Warn);
+                return null;
+            }
+
+            record.ReagentIds[reagentIndex] = reagentId;
+            record.ReagentCounts[reagentIndex] = reagentCount;
+            record.NoExpendReagentIds[reagentIndex] = noExpendReagentId;
+        }
+
         record.TargetType = (SpellTargetType)targetType;
         record.CastRestriction = (SpellCastRestriction)castRestriction;
-        record.Effects = ParseEffects(columns[columns.Length - 1], id, lineNumber);
+        record.Effects = ParseEffects(columns[columns.Length - 1], (SpellId) id, lineNumber);
 
         return record;
     }
@@ -289,7 +363,7 @@ public class SpellCatalog
     //
     // Returns:     The whitelisted effects in file order; empty if none survive.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private SpellEffect[] ParseEffects(string packed, uint spellId, uint lineNumber)
+    private SpellEffect[] ParseEffects(string packed, SpellId spellId, uint lineNumber)
     {
         if (packed.Length == 0)
         {
@@ -367,7 +441,7 @@ public class SpellCatalog
     // Returns:   The name of the spell, or "unknown"
     ///////////////////////////////////////////////////////////////////////////////////////////////
 
-    public string LookupSpell(uint spellId)
+    public string LookupSpell(SpellId spellId)
     {
         string spellName;
         SpellRecord? record;
@@ -382,4 +456,194 @@ public class SpellCatalog
 
         return spellName;
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FindSpells
+    //
+    // Returns every spell matching the given filter.  A name constraint matches as a
+    // case-insensitive substring.  An SPA constraint matches if any retained effect slot
+    // carries that SPA.  A class constraint matches if the class can cast the spell at
+    // all, tightened by MaximumLevel when present.  A category constraint matches the
+    // primary or either secondary category.
+    //
+    // filter:   The criteria to apply.
+    //
+    // Returns:  The matching records in no guaranteed order; empty if nothing matches.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public List<SpellRecord> FindSpells(SpellFilter filter)
+    {
+        List<SpellRecord> matches = new List<SpellRecord>();
+
+        foreach (SpellRecord record in _spellsById.Values)
+        {
+            if (filter.NameContains != null
+                && record.Name.Contains(filter.NameContains, StringComparison.OrdinalIgnoreCase) == false)
+            {
+                continue;
+            }
+
+            if (filter.Spa != null)
+            {
+                bool spaFound = false;
+                foreach (SpellEffect effect in record.Effects)
+                {
+                    if (effect.Spa == filter.Spa.Value)
+                    {
+                        spaFound = true;
+                        break;
+                    }
+                }
+
+                if (spaFound == false)
+                {
+                    continue;
+                }
+            }
+
+            if (filter.TargetType != null && record.TargetType != filter.TargetType.Value)
+            {
+                continue;
+            }
+
+            if (filter.CastableClass != null)
+            {
+                uint classIndex = (uint)filter.CastableClass.Value - 1;
+                byte classLevel = record.ClassLevels[classIndex];
+
+                if (classLevel == SpellRecord.LevelUnusable)
+                {
+                    continue;
+                }
+
+                if (filter.MaximumLevel != null && classLevel > filter.MaximumLevel.Value)
+                {
+                    continue;
+                }
+            }
+
+            if (filter.Category.Exists && record.PrimaryCategory != filter.Category)
+            {
+                continue;
+            }
+            if (filter.Subcategory.Exists && record.SecondaryCategory != filter.Subcategory)
+            {
+                continue;
+            }
+
+            matches.Add(record);
+        }
+
+        DebugLog.Write(LogChannel.Reference, "SpellCatalog.FindSpells: " + matches.Count
+            + " of " + _spellsById.Count + " spells matched", LogLevel.Trace);
+
+        return matches;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // LoadCategoryNames
+    //
+    // Populates the category name lookup from the given database string file, retaining
+    // only the spell category entries.  Lines of other string types are ignored.  A
+    // malformed line within the wanted type is logged at Warn and skipped.  A missing
+    // file is logged at Warn and leaves the lookup empty — categories then display as
+    // raw numbers.
+    //
+    // filePath:  Full path to the database string file (dbstr_us.txt).
+    //
+    // Returns:   The number of category names loaded.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public int LoadCategoryNames(string filePath)
+    {
+        if (File.Exists(filePath) == false)
+        {
+            DebugLog.Write(LogChannel.Reference, "SpellCatalog.LoadCategoryNames: file not found: "
+                + filePath + ", category names unavailable", LogLevel.Warn);
+            return 0;
+        }
+
+        if (_categoryNames.Count > 0)
+        {
+            DebugLog.Write(LogChannel.Reference, "SpellCatalog.LoadCategoryNames: reloading, clearing "
+                + _categoryNames.Count + " existing entries", LogLevel.Trace);
+            _categoryNames.Clear();
+        }
+
+        uint lineNumber = 0;
+
+        foreach (string line in File.ReadLines(filePath))
+        {
+            lineNumber++;
+
+            string[] columns = line.Split('^');
+            if (columns.Length < 3)
+            {
+                continue;
+            }
+
+            uint stringType = 0;
+            if (uint.TryParse(columns[1], out stringType) == false)
+            {
+                continue;
+            }
+
+            if (stringType != DbStringTypeSpellCategory)
+            {
+                continue;
+            }
+
+            uint categoryId = 0;
+            if (uint.TryParse(columns[0], out categoryId) == false)
+            {
+                DebugLog.Write(LogChannel.Reference, "SpellCatalog.LoadCategoryNames: line "
+                    + lineNumber + " has an unparseable category id, skipping", LogLevel.Warn);
+                continue;
+            }
+
+            _categoryNames[(SpellCategoryId) categoryId] = columns[2];
+        }
+
+        DebugLog.Write(LogChannel.Reference, "SpellCatalog.LoadCategoryNames: loaded "
+            + _categoryNames.Count + " category names from " + filePath, LogLevel.Trace);
+
+        return _categoryNames.Count;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // DescribeCategory
+    //
+    // Formats a category for display as its name followed by the numeric value in
+    // parentheses.  A category with no loaded name yields the numeric value alone.
+    //
+    // category:  The category to format.
+    //
+    // Returns:   The formatted text.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public string DescribeCategory(SpellCategoryId category)
+    {
+        string? name;
+        if (_categoryNames.TryGetValue(category, out name) == true)
+        {
+            return name + " (" + category.Value + ")";
+        }
+        return category.Value.ToString();
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+// SpellFilter
+//
+// Criteria for a catalog query.  Every field is optional; a null field does not constrain
+// the result.  Populated fields combine conjunctively.  MaximumLevel is meaningful only
+// when CastableClass is set: it further requires the class to receive the spell at or
+// below that level.
+///////////////////////////////////////////////////////////////////////////////////////////////
+public class SpellFilter
+{
+    public string? NameContains;
+    public SPAId? Spa;
+    public SpellTargetType? TargetType;
+    public EQClass? CastableClass;
+    public byte? MaximumLevel;
+    public SpellCategoryId Category = SpellCategoryId.None;
+    public SpellCategoryId Subcategory = SpellCategoryId.None;
 }

@@ -1,0 +1,68 @@
+﻿<Window x:Class="Inference.Dialogs.SpellBrowser"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.modernwpf.com/2019"
+        ui:WindowHelper.UseModernWindowStyle="True"
+        Title="Spell Browser" Height="700" Width="1600">
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4">
+            <TextBlock Text="Name:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+            <TextBox x:Name="FilterName" Width="160" Margin="0,0,12,0"
+                     KeyDown="FilterName_KeyDown"/>
+            <TextBlock Text="SPA:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+            <ComboBox x:Name="FilterSpa" Width="180" Margin="0,0,12,0"/>
+            <TextBlock Text="Target:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+            <ComboBox x:Name="FilterTargetType" Width="160" Margin="0,0,12,0"/>
+            <TextBlock Text="Class:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+            <ComboBox x:Name="FilterClass" Width="120" Margin="0,0,4,0"/>
+            <TextBlock Text="Max level:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+            <TextBox x:Name="FilterMaxLevel" Width="50" Margin="0,0,12,0"/>
+            <TextBlock Text="Category:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+            <ComboBox x:Name="FilterCategory" Width="160" Margin="0,0,12,0"/>
+            <TextBlock Text="Subcategory:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+            <ComboBox x:Name="FilterSubcategory" Width="160" Margin="0,0,12,0"/>
+            <Button x:Name="ButtonSearch" Content="Search"
+                    Click="Button_Search_Click" Padding="8,4" Margin="0,0,4,0"/>
+            <Button x:Name="ButtonClear" Content="Clear"
+                    Click="Button_Clear_Click" Padding="8,4"/>
+        </StackPanel>
+        <TextBlock x:Name="ResultCount" DockPanel.Dock="Top" Margin="4,0,4,4"
+                   Text="No search yet"/>
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="220"/>
+            </Grid.RowDefinitions>
+            <DataGrid x:Name="ResultGrid" Grid.Row="0"
+                      AutoGenerateColumns="False"
+                      IsReadOnly="True"
+                      SelectionMode="Single"
+                      HeadersVisibility="Column"
+                      VirtualizingStackPanel.IsVirtualizing="True"
+                      SelectionChanged="ResultGrid_SelectionChanged">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Id" Width="70" Binding="{Binding Id}"/>
+                    <DataGridTextColumn Header="Name" Width="220" Binding="{Binding Name}"/>
+                    <DataGridTextColumn Header="Level" Width="100" Binding="{Binding Level}"/>
+                    <DataGridTextColumn Header="Mana" Width="60" Binding="{Binding Mana}"/>
+                    <DataGridTextColumn Header="Cast" Width="60" Binding="{Binding CastTimeMs}"/>
+                    <DataGridTextColumn Header="Recast" Width="60" Binding="{Binding RecastTimeMs}"/>
+                    <DataGridTextColumn Header="Categories" Width="100" Binding="{Binding Categories}"/>
+                    <DataGridTextColumn Header="Target" Width="130" Binding="{Binding TargetType}"/>
+                    <DataGridTextColumn Header="Restriction" Width="130" Binding="{Binding CastRestriction}"/>
+                    <DataGridTextColumn Header="Effects" Width="*" Binding="{Binding EffectSummary}"/>
+                </DataGrid.Columns>
+            </DataGrid>
+            <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch"/>
+            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                <TextBox x:Name="DetailText"
+                         IsReadOnly="True"
+                         TextWrapping="NoWrap"
+                         FontFamily="Consolas"
+                         FontSize="13"
+                         BorderThickness="0"/>
+            </ScrollViewer>
+        </Grid>
+    </DockPanel>
+</Window>

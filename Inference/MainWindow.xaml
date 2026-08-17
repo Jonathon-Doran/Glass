@@ -135,6 +135,8 @@
                 <MenuItem Header="O_pcode Editor" Click="MenuItem_OpcodeEditor_Click"/>
                 <MenuItem Header="_Collection Editor" Click="MenuItem_CollectionEditor_Click"/>
                 <MenuItem Header="_Gate Editor" Click="MenuItem_GateEditor_Click"/>
+                <Separator/>
+                <MenuItem Header="_Spell Browser" Click="MenuItem_SpellBrowser_Click"/>
             </MenuItem>
         </Menu>
         <StatusBar DockPanel.Dock="Bottom">

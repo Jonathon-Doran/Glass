@@ -121,11 +121,11 @@ public class HandleCastRequest: OpcodeHandler
                 return root;
             }
 
-            uint spellID = _extractor.GetUIntAt(_spellIdSlot);
+            SpellId spellID = (SpellId) _extractor.GetUIntAt(_spellIdSlot);
             spellName = SpellCatalog.Instance.LookupSpell(spellID);
 
             FieldNodes.AddLabeledNode(_extractor, _spellIdSlot, "Spell: " + spellName + " (" +
-                spellID + ", 0x" + spellID.ToString("X8") + ")", root);
+                spellID + ", 0x" + spellID.Value.ToString("X8") + ")", root);
 
             SpawnId targetID = (SpawnId) FieldNodes.AddUIntNode(_extractor, _targetIdSlot, "Target ID", root, "X4");
 

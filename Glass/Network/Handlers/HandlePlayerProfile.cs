@@ -39,7 +39,6 @@ public class HandlePlayerProfile : OpcodeHandler
     private readonly SlotId _copperCarriedSlot;
 
     // spell info
-    private const uint SpellNone = 0xFFFFFFFFu;
     private readonly SlotId _spellbookCountSlot;
     private readonly SlotId _spellbookSlot;
     private readonly SlotId _spellgemCountSlot;
@@ -265,10 +264,10 @@ public class HandlePlayerProfile : OpcodeHandler
 
         for (int index = 0; index < spellbook.Length; index++)
         {
-            if (spellbook[index] != SpellNone)
+            if (spellbook[index] != SpellId.None)
             {
                 knownSpellCount++;
-                String spellName = SpellCatalog.Instance.LookupSpell(spellbook[index]);
+                String spellName = SpellCatalog.Instance.LookupSpell((SpellId) spellbook[index]);
 
                 string spellEntry = knownSpellCount.ToString() + ":  " + spellName + " (" + spellbook[index].ToString() + ")";
 
@@ -284,10 +283,10 @@ public class HandlePlayerProfile : OpcodeHandler
 
         for (int index = 0; index < spellgems.Length; index++)
         {
-            if (spellgems[index] != SpellNone)
+            if (spellgems[index] != SpellId.None)
             {
                 knownSpellCount++;
-                String spellName = SpellCatalog.Instance.LookupSpell(spellgems[index]);
+                String spellName = SpellCatalog.Instance.LookupSpell((SpellId) spellgems[index]);
 
                 string spellEntry = knownSpellCount.ToString() + ":  " + spellName + " (" + spellgems[index].ToString() + ")";
 

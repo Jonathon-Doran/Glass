@@ -180,13 +180,13 @@ public class HandleTargetSpells: OpcodeHandler
                 FieldDisplayNode entryNode = new FieldDisplayNode("Entry " + (bagIndex + 1));
                 root.AddChild(entryNode);
 
-                uint spellID = _extractor.GetUIntAt(_spellIdSlot);
+                SpellId spellID = (SpellId) _extractor.GetUIntAt(_spellIdSlot);
                 string spellName = SpellCatalog.Instance.LookupSpell(spellID);
 
                 FieldNodes.AddUIntNode(_extractor, _buffPosSlot, "Buff Position", entryNode, "D");
 
                 FieldNodes.AddLabeledNode(_extractor, _spellIdSlot, "Spell: " + spellName + " (" +
-                    spellID + ", 0x" + spellID.ToString("X8") + ")", entryNode);
+                    spellID + ", 0x" + spellID.Value.ToString("X8") + ")", entryNode);
 
                 FieldNodes.AddUIntNode(_extractor, _ticksRemainingSlot, "Ticks Remaining", entryNode, "D");
                 FieldNodes.AddStringNode(_extractor, _casterNameSlot, "Caster", entryNode);

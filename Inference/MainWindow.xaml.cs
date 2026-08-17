@@ -7,6 +7,7 @@ using Glass.Network.Capture;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using Glass.UI;
+using Glass.World;
 using Inference.Core;
 using Inference.Dialogs;
 using Inference.Identification;
@@ -2798,6 +2799,27 @@ public partial class MainWindow : Window
         DebugLog.Write(LogChannel.InferenceDebug,
             "MenuItem_OpcodeTraceOpenDetail_Click: opened detail window for packetIndex="
             + row.PacketIndex, LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // MenuItem_SpellBrowser_Click
+    //
+    // Opens a modeless spell browser window over the loaded spell catalog.  Each
+    // invocation opens a new window; the browser is a read-only view and multiple
+    // instances are harmless.
+    //
+    // sender:  The menu item.
+    // e:       The routed event args.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void MenuItem_SpellBrowser_Click(object sender, RoutedEventArgs e)
+    {
+        SpellBrowser browser = new SpellBrowser();
+        browser.Owner = this;
+        browser.Show();
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "MainWindow.MenuItem_SpellBrowser_Click: spell browser opened, catalog count "
+            + SpellCatalog.Instance.Count, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

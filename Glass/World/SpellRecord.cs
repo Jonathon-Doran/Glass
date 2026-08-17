@@ -674,7 +674,7 @@ public class SpellRecord
     public const uint ClassCount = 16;
     public const byte LevelUnusable = 255;
 
-    public uint Id;
+    public SpellId Id;
     public string Name = string.Empty;
     public uint Range;
     public uint CastTimeMs;
@@ -682,9 +682,9 @@ public class SpellRecord
     public uint DurationFormula;
     public uint DurationCapTicks;
     public uint Mana;
-    public uint PrimaryCategory;
-    public uint SecondaryCategory;
-    public uint SecondaryCategory2;
+    public SpellCategoryId PrimaryCategory;
+    public SpellCategoryId SecondaryCategory;
+    public SpellCategoryId SecondaryCategory2;
     public byte[] ClassLevels = new byte[ClassCount];
     public int[] ReagentIds = new int[4];
     public uint[] ReagentCounts = new uint[4];

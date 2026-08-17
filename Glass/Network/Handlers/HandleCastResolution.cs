@@ -124,11 +124,11 @@ public class HandleCastResolution: OpcodeHandler
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            uint spellID = _extractor.GetUIntAt(_spellIdSlot);
+            SpellId spellID = (SpellId) _extractor.GetUIntAt(_spellIdSlot);
             spellName = SpellCatalog.Instance.LookupSpell(spellID);
 
             FieldNodes.AddLabeledNode(_extractor, _spellIdSlot, "Spell: " + spellName + " (" +
-                spellID + ", 0x" + spellID.ToString("X8") + ")", root);
+                spellID + ", 0x" + spellID.Value.ToString("X8") + ")", root);
 
             FieldNodes.AddUIntNode(_extractor, _manaSlot, "New Mana", root, "D");
             FieldNodes.AddUIntNode(_extractor, _unknown2Slot, "Unknown 2", root);

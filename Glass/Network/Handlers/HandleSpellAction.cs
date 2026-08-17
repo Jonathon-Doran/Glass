@@ -148,11 +148,11 @@ public class HandleSpellAction : OpcodeHandler
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            uint spellID = _extractor.GetUIntAt(_spellIDSlot);
+            SpellId spellID = (SpellId) _extractor.GetUIntAt(_spellIDSlot);
             spellName = SpellCatalog.Instance.LookupSpell(spellID);
 
             FieldNodes.AddLabeledNode(_extractor, _spellIDSlot, "Spell: " + spellName + " (" +
-                spellID + ", 0x" + spellID.ToString("X4") + ")", root);
+                spellID + ", 0x" + spellID.Value.ToString("X4") + ")", root);
             FieldNodes.AddUIntNode(_extractor, _spellGemSlot, "Spell Gem", root, "D");
             FieldNodes.AddUIntNode(_extractor, _actionSlot, "Action", root, "D");
         }
