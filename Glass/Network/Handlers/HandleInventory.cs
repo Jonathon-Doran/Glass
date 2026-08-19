@@ -154,17 +154,17 @@ public class HandleInventory : OpcodeHandler
     private readonly SlotId _Field_5A9_Slot;
     private readonly SlotId _Blob_4DC_Slot;
 
-    private readonly SlotId _Field_220_Slot;
-    private readonly SlotId _Field_224_Slot;
-    private readonly SlotId _Field_225_Slot;
-    private readonly SlotId _Field_228_Slot;
-    private readonly SlotId _Field_22C_Slot;
-    private readonly SlotId _Field_230_Slot;
-    private readonly SlotId _Field_234_Slot;
-    private readonly SlotId _Field_238_Slot;
-    private readonly SlotId _Field_23C_Slot;
-    private readonly SlotId _String_240_Slot;
-    private readonly SlotId _Field_280_Slot;
+    private readonly SlotId _Effect_SpellId_Slot;
+    private readonly SlotId _EffectLevel2_Slot;
+    private readonly SlotId _Effect_Type_Slot;
+    private readonly SlotId _Effect_Level_Slot;
+    private readonly SlotId _Effect_Max_Charges_Slot;
+    private readonly SlotId _Effect_Casttime_Slot;
+    private readonly SlotId _Effect_Recasttime_Slot;
+    private readonly SlotId _Effect_Recasttype_Slot;
+    private readonly SlotId _Effect_Recastdelay_Slot;
+    private readonly SlotId _Effect_Name_Slot;
+    private readonly SlotId _Effect_Unknown7_Slot;
 
     private readonly SlotId _Field_5A0_Slot;
     private readonly SlotId _Field_5A8_Slot;
@@ -375,17 +375,17 @@ public class HandleInventory : OpcodeHandler
         _Field_1F4_Slot = _registry.IndexOfField(itemCollection, "Field_1F4");
         _Field_1F8_Slot = _registry.IndexOfField(itemCollection, "Field_1F8");
 
-        _Field_220_Slot = _registry.IndexOfField(strideCollection, "Unknown_220");
-        _Field_224_Slot = _registry.IndexOfField(strideCollection, "Unknown_224");
-        _Field_225_Slot = _registry.IndexOfField(strideCollection, "Unknown_225");
-        _Field_228_Slot = _registry.IndexOfField(strideCollection, "Unknown_228");
-        _Field_22C_Slot = _registry.IndexOfField(strideCollection, "Unknown_22C");
-        _Field_230_Slot = _registry.IndexOfField(strideCollection, "Unknown_230");
-        _Field_234_Slot = _registry.IndexOfField(strideCollection, "Unknown_234");
-        _Field_238_Slot = _registry.IndexOfField(strideCollection, "Unknown_238");
-        _Field_23C_Slot = _registry.IndexOfField(strideCollection, "Unknown_23C");
-        _String_240_Slot = _registry.IndexOfField(strideCollection, "String_240");
-        _Field_280_Slot = _registry.IndexOfField(strideCollection, "Unknown_280");
+        _Effect_SpellId_Slot = _registry.IndexOfField(strideCollection, "Unknown_220");
+        _EffectLevel2_Slot = _registry.IndexOfField(strideCollection, "Unknown_224");
+        _Effect_Type_Slot = _registry.IndexOfField(strideCollection, "Unknown_225");
+        _Effect_Level_Slot = _registry.IndexOfField(strideCollection, "Unknown_228");
+        _Effect_Max_Charges_Slot = _registry.IndexOfField(strideCollection, "Unknown_22C");
+        _Effect_Casttime_Slot = _registry.IndexOfField(strideCollection, "Unknown_230");
+        _Effect_Recasttime_Slot = _registry.IndexOfField(strideCollection, "Unknown_234");
+        _Effect_Recasttype_Slot = _registry.IndexOfField(strideCollection, "Unknown_238");
+        _Effect_Recastdelay_Slot = _registry.IndexOfField(strideCollection, "Unknown_23C");
+        _Effect_Name_Slot = _registry.IndexOfField(strideCollection, "String_240");
+        _Effect_Unknown7_Slot = _registry.IndexOfField(strideCollection, "Unknown_280");
 
         _Field_53C_Slot = _registry.IndexOfField(itemCollection, "Field_53C");
         _Bag_Space_Slot = _registry.IndexOfField(itemCollection, "Field_53D");
@@ -1096,17 +1096,18 @@ public class HandleInventory : OpcodeHandler
             FieldDisplayNode bagNode = new FieldDisplayNode("Stride " + (bagIndex + 1));
             stridesNode.AddChild(bagNode);
 
-            FieldNodes.AddUIntNode(_extractor, _Field_220_Slot, "Spell-ID", bagNode, "?");
-            FieldNodes.AddUIntNode(_extractor, _Field_224_Slot, "Field 224", bagNode, "?");
-            FieldNodes.AddUIntNode(_extractor, _Field_225_Slot, "Field 225", bagNode, "?");
-            FieldNodes.AddUIntNode(_extractor, _Field_228_Slot, "Field 228", bagNode, "?");
-            FieldNodes.AddUIntNode(_extractor, _Field_22C_Slot, "Field 22C", bagNode, "?");
-            FieldNodes.AddUIntNode(_extractor, _Field_230_Slot, "Field 230", bagNode, "?");
-            FieldNodes.AddUIntNode(_extractor, _Field_234_Slot, "Field 234", bagNode, "?");
-            FieldNodes.AddUIntNode(_extractor, _Field_238_Slot, "Field 238", bagNode, "?");
-            FieldNodes.AddUIntNode(_extractor, _Field_23C_Slot, "Field 23C", bagNode, "?");
-            FieldNodes.AddStringNode(_extractor, _String_240_Slot, "String_240", bagNode);
-            FieldNodes.AddUIntNode(_extractor, _Field_280_Slot, "Field 280", bagNode, "?");
+            FieldNodes.AddUIntNode(_extractor, _Effect_SpellId_Slot, "Spell-ID", bagNode, "?");
+            FieldNodes.AddUIntNode(_extractor, _Effect_Level_Slot, "Level", bagNode, "?");
+            FieldNodes.AddUIntNode(_extractor, _EffectLevel2_Slot, "Cast as Level", bagNode, "D");
+            FieldNodes.AddUIntNode(_extractor, _Effect_Type_Slot, "Effect Type", bagNode, "D");
+
+            FieldNodes.AddUIntNode(_extractor, _Effect_Max_Charges_Slot, "Effect Max Charges", bagNode, "?");
+            FieldNodes.AddUIntNode(_extractor, _Effect_Casttime_Slot, "Cast time (ms)", bagNode, "D");
+            FieldNodes.AddUIntNode(_extractor, _Effect_Recasttime_Slot, "Recast time (s)", bagNode, "D");
+            FieldNodes.AddUIntNode(_extractor, _Effect_Recasttype_Slot, "Timer", bagNode, "D");
+            FieldNodes.AddUIntNode(_extractor, _Effect_Recastdelay_Slot, "Recast delay (s)", bagNode, "D");
+            FieldNodes.AddStringNode(_extractor, _Effect_Name_Slot, "Name", bagNode);
+            FieldNodes.AddUIntNode(_extractor, _Effect_Unknown7_Slot, "Unknown7", bagNode, "?");
         }
         _extractor.EnterGate(itemGate, itemIndex);
     }

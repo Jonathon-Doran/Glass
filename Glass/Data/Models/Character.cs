@@ -57,6 +57,8 @@ public class Character
     public float? Heading { get; set; }         // in degrees
 
     public uint? SpawnId { get; set; }
+    public SpellId[] SpellBook { get; set; } = Array.Empty<SpellId>();
+    public SpellId[] SpellGems { get; set; } = Array.Empty<SpellId>();
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // WornPositionNames

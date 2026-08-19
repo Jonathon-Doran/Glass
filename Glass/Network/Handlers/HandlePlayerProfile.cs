@@ -152,6 +152,21 @@ public class HandlePlayerProfile : OpcodeHandler
 
                 character.CurrentZone = _extractor.GetUIntAt(_zoneIdSlot);
 
+
+                ReadOnlySpan<uint> spellbook = _extractor.GetUIntSpanAt(_spellbookSlot);
+                ReadOnlySpan<uint> spellgems = _extractor.GetUIntSpanAt(_spellgemSlot);
+
+                character.SpellBook = new SpellId[spellbook.Length];
+                for (int index = 0; index < spellbook.Length; index++)
+                {
+                    character.SpellBook[index] = (SpellId)spellbook[index];
+                }
+                character.SpellGems = new SpellId[spellgems.Length];
+                for (int index = 0; index < spellgems.Length; index++)
+                {
+                    character.SpellGems[index] = (SpellId)spellgems[index];
+                }
+
                 // PlayerProfile is the first time we see the character name on the network.
                 if (metadata.SessionId == -1)
                 {
