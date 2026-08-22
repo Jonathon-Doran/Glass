@@ -2,25 +2,7 @@ using Glass.Core.Logging;
 
 namespace Glass.Data.Models;
 
-public enum EQClass
-{
-    Warrior = 1,
-    Cleric,
-    Paladin,
-    Ranger,
-    Shadowknight,
-    Druid,
-    Monk,
-    Bard,
-    Rogue,
-    Shaman,
-    Necromancer,
-    Wizard,
-    Magician,
-    Enchanter,
-    Beastlord,
-    Berserker
-}
+
 
 public class Character
 {
@@ -60,88 +42,104 @@ public class Character
     public SpellId[] SpellBook { get; set; } = Array.Empty<SpellId>();
     public SpellId[] SpellGems { get; set; } = Array.Empty<SpellId>();
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // WornPositionNames
-    //
-    // Names for main positions within the possessions container that correspond
-    // to worn equipment, keyed by the raw wire value.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private static readonly Dictionary<uint, string> WornPositionNames = new Dictionary<uint, string>()
-    {
-        { 0,  "Charm" },
-        { 1,  "Left Ear" },
-        { 2,  "Head" },
-        { 3,  "Face" },
-        { 4,  "Right Ear" },
-        { 5,  "Neck" },
-        { 6,  "Shoulders" },
-        { 7,  "Arms" },
-        { 8,  "Back" },
-        { 9,  "Left Wrist" },
-        { 10, "Right Wrist" },
-        { 11, "Range" },
-        { 12, "Hands" },
-        { 13, "Primary" },
-        { 14, "Secondary" },
-        { 15, "Left Ring" },
-        { 16, "Right Ring" },
-        { 17, "Chest" },
-        { 18, "Legs" },
-        { 19, "Feet" },
-        { 20, "Waist" },
-        { 21, "Power Source" },
-        { 22, "Ammo" }
-    };
+
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // ContainerTypeNames
+    // WornItems
     //
-    // Names for the container type field of the item serialization header,
-    // keyed by the raw wire value.
+    // Items currently worn by this character, keyed by worn position.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private static readonly Dictionary<uint, string> ContainerTypeNames = new Dictionary<uint, string>()
+    public Dictionary<WornPosition, WornItem> WornItems { get; set; } = new Dictionary<WornPosition, WornItem>();
+
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // TryGetWornPosition
+    //
+    // Tests whether an item location denotes worn equipment.  A location is worn
+    // when the storage system is Carried and the main position is one of the
+    // named worn positions.
+    //
+    // storageSystem:  Storage system holding the item
+    // mainPosition:   Index within the storage system
+    // wornPosition:   Receives the worn position when the location is worn,
+    //                 WornPosition.None otherwise
+    //
+    // Returns true when the location is a worn position, false otherwise.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public static bool TryGetWornPosition(StorageSystem storageSystem, uint mainPosition, out WornPosition wornPosition)
     {
-        { 0,  "Carried" },
-        { 1,  "Bank" },
-        { 2,  "Shared Bank" },
-        { 3,  "Trade" },
-        { 4,  "World Container" },
-        { 5,  "Limbo" },
-        { 6,  "Tribute" },
-        { 7,  "Trophy Tribute" },
-        { 8,  "Guild Tribute" },
-        { 9,  "Merchant" },
-        { 10, "Deleted" },
-        { 11, "Corpse" },
-        { 12, "Bazaar" },
-        { 13, "Inspect" },
-        { 14, "Real Estate" },
-        { 15, "ViewMod PC" },
-        { 16, "ViewMod Bank" },
-        { 17, "ViewMod Shared Bank" },
-        { 18, "ViewMod Limbo" },
-        { 19, "Alt Storage" },
-        { 20, "Archived" },
-        { 21, "Mail" },
-        { 22, "Guild Trophy Tribute" },
-        { 23, "Krono" },
-        { 24, "Other" },
-        { 25, "Mercenary Items" },
-        { 26, "ViewMod Mercenary Items" },
-        { 27, "Mount Key Ring" },
-        { 28, "ViewMod Mount Key Ring" },
-        { 29, "Illusion Key Ring" },
-        { 30, "ViewMod Illusion Key Ring" },
-        { 31, "Familiar Key Ring" },
-        { 32, "ViewMod Familiar Key Ring" },
-        { 33, "Hero's Forge Key Ring" },
-        { 34, "ViewMod Hero's Forge Key Ring" },
-        { 35, "Teleportation Key Ring" },
-        { 36, "ViewMod Teleportation Key Ring" },
-        { 37, "Overflow" },
-        { 38, "Dragon's Hoard" },
-        { 39, "Tradeskill Depot" },
-        { 40, "Guild Tradeskill Depot" }
+        wornPosition = WornPosition.None;
+
+        if (storageSystem != StorageSystem.Carried)
+        {
+            DebugLog.Write(LogChannel.Fields, "TryGetWornPosition: storage system " + (uint)storageSystem +
+                " is not Carried, not worn", LogLevel.Trace);
+            return false;
+        }
+
+        WornPosition candidate = (WornPosition)mainPosition;
+
+        if (candidate.IsWorn() == false)
+        {
+            DebugLog.Write(LogChannel.Fields, "TryGetWornPosition: carried position " + mainPosition +
+                " is not a worn position", LogLevel.Trace);
+            return false;
+        }
+
+        wornPosition = candidate;
+        DebugLog.Write(LogChannel.Fields, "TryGetWornPosition: worn position " + candidate.DisplayName(), LogLevel.Trace);
+        return true;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // StorageSystemNames
+    //
+    // Printable names for the storage systems of the item serialization header,
+    // keyed by storage system.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private static readonly Dictionary<StorageSystem, string> StorageSystemNames = new Dictionary<StorageSystem, string>()
+    {
+        { StorageSystem.Carried,                     "Carried" },
+        { StorageSystem.Bank,                        "Bank" },
+        { StorageSystem.SharedBank,                  "Shared Bank" },
+        { StorageSystem.Trade,                       "Trade" },
+        { StorageSystem.WorldContainer,              "World Container" },
+        { StorageSystem.Limbo,                       "Limbo" },
+        { StorageSystem.Tribute,                     "Tribute" },
+        { StorageSystem.TrophyTribute,               "Trophy Tribute" },
+        { StorageSystem.GuildTribute,                "Guild Tribute" },
+        { StorageSystem.Merchant,                    "Merchant" },
+        { StorageSystem.Deleted,                     "Deleted" },
+        { StorageSystem.Corpse,                      "Corpse" },
+        { StorageSystem.Bazaar,                      "Bazaar" },
+        { StorageSystem.Inspect,                     "Inspect" },
+        { StorageSystem.RealEstate,                  "Real Estate" },
+        { StorageSystem.ViewModPC,                   "ViewMod PC" },
+        { StorageSystem.ViewModBank,                 "ViewMod Bank" },
+        { StorageSystem.ViewModSharedBank,           "ViewMod Shared Bank" },
+        { StorageSystem.ViewModLimbo,                "ViewMod Limbo" },
+        { StorageSystem.AltStorage,                  "Alt Storage" },
+        { StorageSystem.Archived,                    "Archived" },
+        { StorageSystem.Mail,                        "Mail" },
+        { StorageSystem.GuildTrophyTribute,          "Guild Trophy Tribute" },
+        { StorageSystem.Krono,                       "Krono" },
+        { StorageSystem.Other,                       "Other" },
+        { StorageSystem.MercenaryItems,              "Mercenary Items" },
+        { StorageSystem.ViewModMercenaryItems,       "ViewMod Mercenary Items" },
+        { StorageSystem.MountKeyRing,                "Mount Key Ring" },
+        { StorageSystem.ViewModMountKeyRing,         "ViewMod Mount Key Ring" },
+        { StorageSystem.IllusionKeyRing,             "Illusion Key Ring" },
+        { StorageSystem.ViewModIllusionKeyRing,      "ViewMod Illusion Key Ring" },
+        { StorageSystem.FamiliarKeyRing,             "Familiar Key Ring" },
+        { StorageSystem.ViewModFamiliarKeyRing,      "ViewMod Familiar Key Ring" },
+        { StorageSystem.HerosForgeKeyRing,           "Hero's Forge Key Ring" },
+        { StorageSystem.ViewModHerosForgeKeyRing,    "ViewMod Hero's Forge Key Ring" },
+        { StorageSystem.TeleportationKeyRing,        "Teleportation Key Ring" },
+        { StorageSystem.ViewModTeleportationKeyRing, "ViewMod Teleportation Key Ring" },
+        { StorageSystem.Overflow,                    "Overflow" },
+        { StorageSystem.DragonsHoard,                "Dragon's Hoard" },
+        { StorageSystem.TradeskillDepot,             "Tradeskill Depot" },
+        { StorageSystem.GuildTradeskillDepot,        "Guild Tradeskill Depot" }
     };
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -149,25 +147,26 @@ public class Character
     //
     // Returns a printable string describing a storage system
     //
-    // storageSystem:  Storage system holding an item, per ContainerTypeNames
+    // storageSystem:  Storage system holding an item
     //
     // Returns the printable string.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public static string DescribeStorageLocation(uint storageSystem)
+    public static string DescribeStorageLocation(StorageSystem storageSystem)
     {
         string description;
 
-        if (ContainerTypeNames.TryGetValue(storageSystem, out string? containerName))
+        if (StorageSystemNames.TryGetValue(storageSystem, out string? storageName))
         {
-            description = containerName;
+            description = storageName;
         }
         else
         {
+            DebugLog.Write(LogChannel.Fields, "DescribeStorageLocation: unknown storage system " +
+                (uint)storageSystem, LogLevel.Warn);
             description = "<unknown>";
         }
 
         return description;
-
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -199,29 +198,31 @@ public class Character
     //
     // Builds a printable description of an item location from the four wire
     // fields of the item serialization header.  Positions are reported as raw
-    // 0-based wire values.  Worn positions within the possessions container are
+    // 0-based wire values.  Worn positions within the carried storage system are
     // reported by name.  Sub position and aug position are appended only when
     // present (not 0xFFFF).
     //
-    // storageSystem:  Storage system holding the item, per ContainerTypeNames
-    // mainPosition:   Index within the container
+    // storageSystem:  Storage system holding the item
+    // mainPosition:   Index within the storage system
     // subPosition:    Index within a bag at mainPosition, 0xFFFF if none
     // augPosition:    Augment socket index within the item at the location,
     //                 0xFFFF if none
     //
     // Returns the printable location string.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public static string DescribeLocation(uint containerType, uint mainPosition, uint subPosition, uint augPosition)
+    public static string DescribeLocation(StorageSystem storageSystem, uint mainPosition, uint subPosition, uint augPosition)
     {
         const uint NoPosition = 0xFFFF;
 
         string location;
 
-        if (containerType == 0)
+        if (storageSystem == StorageSystem.Carried)
         {
-            if (WornPositionNames.TryGetValue(mainPosition, out string? wornName))
+            WornPosition wornPosition = (WornPosition)mainPosition;
+
+            if (wornPosition.IsWorn())
             {
-                location = "Worn: " + wornName;
+                location = "Worn: " + wornPosition.DisplayName();
             }
             else if (mainPosition >= 23 && mainPosition <= 32)
             {
@@ -233,20 +234,20 @@ public class Character
             }
             else
             {
-                DebugLog.Write(LogChannel.Fields, "DescribeLocation: unknown possessions position " + mainPosition, LogLevel.Warn);
-                location = "Possessions " + mainPosition;
+                DebugLog.Write(LogChannel.Fields, "DescribeLocation: unknown carried position " + mainPosition, LogLevel.Warn);
+                location = "Carried " + mainPosition;
             }
         }
         else
         {
-            if (ContainerTypeNames.TryGetValue(containerType, out string? containerName))
+            if (StorageSystemNames.TryGetValue(storageSystem, out string? storageName))
             {
-                location = containerName + " " + mainPosition;
+                location = storageName + " " + mainPosition;
             }
             else
             {
-                DebugLog.Write(LogChannel.Fields, "DescribeLocation: unknown container type " + containerType, LogLevel.Warn);
-                location = "Container " + containerType + " " + mainPosition;
+                DebugLog.Write(LogChannel.Fields, "DescribeLocation: unknown storage system " + (uint)storageSystem, LogLevel.Warn);
+                location = "Storage system " + (uint)storageSystem + " " + mainPosition;
             }
         }
 
@@ -262,4 +263,23 @@ public class Character
 
         return location;
     }
+}
+public enum EQClass
+{
+    Warrior = 1,
+    Cleric,
+    Paladin,
+    Ranger,
+    Shadowknight,
+    Druid,
+    Monk,
+    Bard,
+    Rogue,
+    Shaman,
+    Necromancer,
+    Wizard,
+    Magician,
+    Enchanter,
+    Beastlord,
+    Berserker
 }

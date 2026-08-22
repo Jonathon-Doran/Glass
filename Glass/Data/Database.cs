@@ -453,6 +453,11 @@ public class Database
         {
             ApplyMigration(conn, 61, Migration_061);
         }
+
+        if (version < 62)
+        {
+            ApplyMigration(conn, 62, Migration_062);
+        }
     }
 
     private int GetSchemaVersion()
@@ -1448,6 +1453,93 @@ public class Database
         INSERT INTO PatchLevel (patch_date, server_type)
         SELECT DISTINCT patch_date, server_type FROM PatchOpcode;
     ";
+
+    private const string Migration_062 = @"
+        CREATE TABLE IF NOT EXISTS ItemRecords (
+            id                INTEGER PRIMARY KEY,  -- wire item id
+            name              TEXT NOT NULL,
+            lore              TEXT NOT NULL DEFAULT '',
+            lore_group        INTEGER NOT NULL DEFAULT 0,
+            item_type         INTEGER NOT NULL DEFAULT 0,
+            item_type2        INTEGER NOT NULL DEFAULT 0,
+            class_mask        INTEGER NOT NULL DEFAULT 0,
+            race_mask         INTEGER NOT NULL DEFAULT 0,
+            usable_slot_mask  INTEGER NOT NULL DEFAULT 0,
+            required_level    INTEGER NOT NULL DEFAULT 0,
+            recommended_level INTEGER NOT NULL DEFAULT 0,
+            tradeskill        INTEGER NOT NULL DEFAULT 0,
+            food_drink_value  INTEGER NOT NULL DEFAULT 0,
+            plus_strength     INTEGER NOT NULL DEFAULT 0,
+            plus_stamina      INTEGER NOT NULL DEFAULT 0,
+            plus_agility      INTEGER NOT NULL DEFAULT 0,
+            plus_dexterity    INTEGER NOT NULL DEFAULT 0,
+            plus_charisma     INTEGER NOT NULL DEFAULT 0,
+            plus_intelligence INTEGER NOT NULL DEFAULT 0,
+            plus_wisdom       INTEGER NOT NULL DEFAULT 0,
+            plus_hp           INTEGER NOT NULL DEFAULT 0,
+            plus_mana         INTEGER NOT NULL DEFAULT 0,
+            plus_endurance    INTEGER NOT NULL DEFAULT 0,
+            plus_ac           INTEGER NOT NULL DEFAULT 0,
+            plus_attack       INTEGER NOT NULL DEFAULT 0,
+            hp_regen          INTEGER NOT NULL DEFAULT 0,
+            mana_regen        INTEGER NOT NULL DEFAULT 0,
+            heroic_strength     INTEGER NOT NULL DEFAULT 0,
+            heroic_stamina      INTEGER NOT NULL DEFAULT 0,
+            heroic_agility      INTEGER NOT NULL DEFAULT 0,
+            heroic_dexterity    INTEGER NOT NULL DEFAULT 0,
+            heroic_charisma     INTEGER NOT NULL DEFAULT 0,
+            heroic_intelligence INTEGER NOT NULL DEFAULT 0,
+            heroic_wisdom       INTEGER NOT NULL DEFAULT 0,
+            save_cold         INTEGER NOT NULL DEFAULT 0,
+            save_disease      INTEGER NOT NULL DEFAULT 0,
+            save_poison       INTEGER NOT NULL DEFAULT 0,
+            save_magic        INTEGER NOT NULL DEFAULT 0,
+            save_fire         INTEGER NOT NULL DEFAULT 0,
+            skill_mod_skill   INTEGER NOT NULL DEFAULT 0,
+            skill_mod_percent INTEGER NOT NULL DEFAULT 0,
+            skill_mod_max     INTEGER NOT NULL DEFAULT 0,
+            weapon_delay      INTEGER NOT NULL DEFAULT 0,
+            base_damage       INTEGER NOT NULL DEFAULT 0,
+            backstab_damage   INTEGER NOT NULL DEFAULT 0,
+            weapon_range      INTEGER NOT NULL DEFAULT 0,
+            bag_slots         INTEGER NOT NULL DEFAULT 0,
+            bag_content_size  INTEGER NOT NULL DEFAULT 0,
+            bag_weight_reduction INTEGER NOT NULL DEFAULT 0,
+            weight            INTEGER NOT NULL DEFAULT 0,
+            size              INTEGER NOT NULL DEFAULT 0,
+            cost              INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS ItemEffects (
+            item_id          INTEGER NOT NULL REFERENCES ItemRecords(id),
+            spell_id         INTEGER NOT NULL,
+            name             TEXT NOT NULL DEFAULT '',
+            effect_type      INTEGER NOT NULL DEFAULT 0,
+            level            INTEGER NOT NULL DEFAULT 0,
+            cast_as_level    INTEGER NOT NULL DEFAULT 0,
+            max_charges      INTEGER NOT NULL DEFAULT 0,
+            cast_time_ms     INTEGER NOT NULL DEFAULT 0,
+            recast_time_s    INTEGER NOT NULL DEFAULT 0,
+            recast_type      INTEGER NOT NULL DEFAULT 0,
+            recast_delay_s   INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS ItemInstances (
+            id                INTEGER PRIMARY KEY,
+            character_id      INTEGER NOT NULL REFERENCES Characters(id),
+            item_id           INTEGER NOT NULL REFERENCES ItemRecords(id),
+            parent_id         INTEGER REFERENCES ItemInstances(id),  -- NULL for top level
+            storage           INTEGER NOT NULL,
+            main_position     INTEGER NOT NULL,
+            sub_position      INTEGER NOT NULL,
+            aug_position      INTEGER NOT NULL,
+            stack_size        INTEGER NOT NULL DEFAULT 0,
+            remaining_charges INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_iteminstances_character ON ItemInstances(character_id);
+    ";
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"

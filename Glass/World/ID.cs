@@ -55,3 +55,5 @@ public readonly struct SlotTag { }                 // Field bag slot identifier.
 public readonly struct SpellTag { }                // Spell identifier from the client's spell data file.
 public readonly struct SpellCategoryTag { }        // Spell category identifier from the database string file.
 public readonly struct MessageIndexTag { }         // Arrival position of a message within a capture.
+public readonly struct ItemTag { }                 // Item identifier from the item serialization.
+public readonly struct ItemInstanceTag { }         // Database-assigned item instance identifier.

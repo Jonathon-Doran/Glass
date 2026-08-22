@@ -1,6 +1,7 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
 using Glass.Data.Models;
+using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using System.Printing;
@@ -490,48 +491,105 @@ public class HandleInventory : OpcodeHandler
     {
         switch (metadata.Channel)
         {
-            case SoeConstants.StreamId.StreamClientToZone:
-                HandleClientToZone(data, metadata);
+            case SoeConstants.StreamId.StreamZoneToClient:
+                HandleZoneToClient(data, metadata);
                 break;
         }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleClientToZone
+    // HandleZoneToClient
     //
-    // Processes client-to-zone
+    // Extracts an inventory packet and stores the worn items it carries into
+    // the owning character.
     //
-    // data:    The application payload
+    // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
+    public void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        if (metadata.Channel != SoeConstants.StreamId.StreamZoneToClient)
-        {
-            return;
-        }
-
-        uint bagCount = 0;
-
-        DebugLog.Write(LogChannel.Opcodes, "Starting Inventory Extract", LogLevel.Info);
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
-            bagCount = _extractor.BagCount(rootGate);
-
-            DebugLog.Write(LogChannel.Opcodes, "Inventory top level sees " + bagCount + " bags", LogLevel.Info);
-
-            for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
+            if (rootGate.Exists == false)
             {
-                _extractor.EnterGate(rootGate, bagIndex);
+                DebugLog.Write(LogChannel.Opcodes, "Inventory: no root gate, nothing stored",
+                    LogLevel.Warn);
+                return;
             }
 
+            CaptureWornItems(metadata);
         }
         finally
         {
             _extractor.Release();
-            DebugLog.Write(LogChannel.Opcodes, "Finished with inventory packet", LogLevel.Info);
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // CaptureWornItems
+    //
+    // Stores the worn items from an extracted inventory packet into the owning
+    // character's WornItems dictionary.  Walks the top-level Item List gate,
+    // classifies each item's location, and records every item in a worn
+    // position.  The dictionary is cleared first because the packet is a
+    // complete snapshot.  Must be called with the extraction active and the
+    // root gate's bag current.
+    //
+    // metadata:  Packet metadata, used to resolve the owning character.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void CaptureWornItems(PacketMetadata metadata)
+    {
+        string characterName = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
+
+        Character? character = CharacterRepository.Instance.GetByName(characterName);
+        if (character == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "CaptureWornItems: no Character named '" + characterName +
+                "' in repository; worn items not stored", LogLevel.Warn);
+            return;
+        }
+
+        SlotId itemListSlot = _registry.IndexOfField(_extractor.CollectionOf(), "Item List");
+        GateHandle itemListGate = _extractor.GetGateAt(itemListSlot);
+        if (itemListGate.Exists == false)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "CaptureWornItems: no Item List gate; worn items not stored",
+                LogLevel.Warn);
+            return;
+        }
+
+        character.WornItems.Clear();
+        DebugLog.Write(LogChannel.Opcodes, "CaptureWornItems: cleared worn items for '" + characterName + "'",
+            LogLevel.Info);
+
+        uint itemCount = _extractor.BagCount(itemListGate);
+
+        for (uint itemIndex = 0; itemIndex < itemCount; itemIndex++)
+        {
+            _extractor.EnterGate(itemListGate, itemIndex);
+
+            StorageSystem storageType = (StorageSystem)_extractor.GetUIntAt(_ContainerType_Slot);
+            uint mainPosition = _extractor.GetUIntAt(_Current_Location_Slot);
+
+            if (Character.TryGetWornPosition(storageType, mainPosition, out WornPosition wornPosition) == false)
+            {
+                continue;
+            }
+
+            WornItem wornItem = new WornItem();
+            wornItem.ItemId = (ItemId)_extractor.GetUIntAt(_Item_ID_Slot);
+            wornItem.Name = _extractor.GetStringAt(_Item_Name_Slot);
+            wornItem.WornPosition = wornPosition;
+            wornItem.DeltaHP = _extractor.GetIntAt(_Plus_HP_Slot);
+
+            character.WornItems[wornPosition] = wornItem;
+            DebugLog.Write(LogChannel.Opcodes, "CaptureWornItems: " + wornPosition.DisplayName() + " = '" +
+                wornItem.Name + "' (" + wornItem.ItemId + "), deltaHP " + wornItem.DeltaHP, LogLevel.Info);
+        }
+
+        DebugLog.Write(LogChannel.Opcodes, "CaptureWornItems: stored " + character.WornItems.Count +
+            " worn items for '" + characterName + "'", LogLevel.Info);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -692,14 +750,14 @@ public class HandleInventory : OpcodeHandler
         AddWornSlotNode(_Usable_Slot_Mask, "Usable Slots", locationSubtree);
 
         uint mainPosition = _extractor.GetUIntAt(_Current_Location_Slot);
-        uint containerType = _extractor.GetUIntAt(_ContainerType_Slot);
+        StorageSystem storageType = (StorageSystem) _extractor.GetUIntAt(_ContainerType_Slot);
         uint subPosition = _extractor.GetUIntAt(_SubPosition_Slot);
         uint augPosition = _extractor.GetUIntAt(_AugPosition_Slot);
-        string storageText = Character.DescribeStorageLocation(containerType);
+        string storageText = Character.DescribeStorageLocation(storageType);
         string subPosText = Character.DescribePosition(subPosition);
         string augPosText = Character.DescribePosition(augPosition);
 
-        String location = Character.DescribeLocation(containerType, mainPosition, subPosition, augPosition);
+        String location = Character.DescribeLocation(storageType, mainPosition, subPosition, augPosition);
 
         FieldDisplayNode locationNode = new FieldDisplayNode("Item Location: " + location);
         locationNode.AddByteRange(_extractor.GetByteRangeFor(_Current_Location_Slot));
@@ -710,7 +768,7 @@ public class HandleInventory : OpcodeHandler
 
 
         FieldNodes.AddLabeledNode(_extractor, _ContainerType_Slot, "Storage: " + storageText +
-            " (" + containerType + ")", locationSubtree);
+            " (" + storageType + ")", locationSubtree);
         FieldNodes.AddUIntNode(_extractor, _Current_Location_Slot, "Storage Slot", locationSubtree, "D");
         FieldNodes.AddLabeledNode(_extractor, _SubPosition_Slot, "SubPosition: " + subPosText +
             " (" + subPosition + ")", locationSubtree);
@@ -770,7 +828,7 @@ public class HandleInventory : OpcodeHandler
         FieldNodes.AddUIntNode(_extractor, _Plus_Attack_Slot, "Plus Attack", statModSubtree, "D");
 
         AddAugmentFields(itemGate, itemIndex, itemNode);
-        AddStrides(itemGate, itemIndex, itemNode);
+        AddItemEffects(itemGate, itemIndex, itemNode);
         AddEvolvingItem(itemGate, itemIndex, itemNode);
 
         FieldNodes.AddIntNode(_extractor, _HP_Regen_Slot, "HP Regen", itemNode, "D");
@@ -1055,9 +1113,9 @@ public class HandleInventory : OpcodeHandler
     }
     
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // AddStrides
+    // AddItemEffects
     //
-    // Adds the Strides for the item in the extractor's active bag.  Resolves the Strides gate
+    // Adds the Effects for the item in the extractor's active bag.  Resolves the Effects gate
     // slot on the active collection, and if the field is present and the gate exists, iterates
     // every bag under the gate.  Each bag is entered in turn and its fields are added beneath a
     // per-bag node under the supplied parent.  Restores the item's bag before returning by
@@ -1066,34 +1124,34 @@ public class HandleInventory : OpcodeHandler
     //
     // itemGate:   The gate whose instance holds the current item.
     // itemIndex:  The instance index of the current item within itemGate.
-    // parent:     The display node the Stride nodes are added beneath.
+    // parent:     The display node the Effect nodes are added beneath.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private void AddStrides(GateHandle itemGate, uint itemIndex, FieldDisplayNode parent)
+    private void AddItemEffects(GateHandle itemGate, uint itemIndex, FieldDisplayNode parent)
     {
-        SlotId stridesSlot = GlassContext.PatchRegistry.IndexOfField(_extractor.CollectionOf(), "Strides");
-        if (_extractor.IsPresent(stridesSlot) == false)
+        SlotId effectsSlot = GlassContext.PatchRegistry.IndexOfField(_extractor.CollectionOf(), "Strides");
+        if (_extractor.IsPresent(effectsSlot) == false)
         {
-            DebugLog.Write(LogChannel.Opcodes, "AddStrides: no Strides present", LogLevel.Trace);
+            DebugLog.Write(LogChannel.Opcodes, "AddItemEffects: no Effects present", LogLevel.Trace);
             return;
         }
 
-        GateHandle stridesGate = _extractor.GetGateAt(stridesSlot);
-        if (stridesGate.Exists == false)
+        GateHandle effectsGate = _extractor.GetGateAt(effectsSlot);
+        if (effectsGate.Exists == false)
         {
-            DebugLog.Write(LogChannel.Opcodes, "AddStrides: Strides slot present but no gate", LogLevel.Warn);
+            DebugLog.Write(LogChannel.Opcodes, "AddItemEffects: Effects slot present but no gate", LogLevel.Warn);
             return;
         }
 
-        uint bagCount = _extractor.BagCount(stridesGate);
+        uint bagCount = _extractor.BagCount(effectsGate);
 
-        FieldDisplayNode stridesNode = new FieldDisplayNode("Strides");
+        FieldDisplayNode stridesNode = new FieldDisplayNode("Effects");
         parent.AddChild(stridesNode);
 
         for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
         {
-            _extractor.EnterGate(stridesGate, bagIndex);
+            _extractor.EnterGate(effectsGate, bagIndex);
 
-            FieldDisplayNode bagNode = new FieldDisplayNode("Stride " + (bagIndex + 1));
+            FieldDisplayNode bagNode = new FieldDisplayNode("Effect " + (bagIndex + 1));
             stridesNode.AddChild(bagNode);
 
             FieldNodes.AddUIntNode(_extractor, _Effect_SpellId_Slot, "Spell-ID", bagNode, "?");

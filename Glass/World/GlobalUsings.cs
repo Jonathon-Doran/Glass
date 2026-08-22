@@ -17,3 +17,5 @@ global using BagHandle = Glass.World.Id<Glass.World.BagTag>;
 global using MessageIndex = Glass.World.Id<Glass.World.MessageIndexTag>;
 global using SpellId = Glass.World.Id<Glass.World.SpellTag>;
 global using SpellCategoryId = Glass.World.Id<Glass.World.SpellCategoryTag>;
+global using ItemId = Glass.World.Id<Glass.World.ItemTag>;
+global using ItemInstanceId = Glass.World.Id<Glass.World.ItemInstanceTag>;
