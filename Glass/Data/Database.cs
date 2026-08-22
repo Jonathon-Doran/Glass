@@ -20,8 +20,6 @@ public class Database
     {
         _connectionString = $"Data Source={dbPath}";
     }
-
-
     public static string DefaultPath => System.IO.Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Glass", "glass.db");
@@ -457,6 +455,11 @@ public class Database
         if (version < 62)
         {
             ApplyMigration(conn, 62, Migration_062);
+        }
+
+        if (version < 63)
+        {
+            ApplyMigration(conn, 63, Migration_063);
         }
     }
 
@@ -1540,6 +1543,12 @@ public class Database
         CREATE INDEX IF NOT EXISTS idx_iteminstances_character ON ItemInstances(character_id);
     ";
 
+    private const string Migration_063 = @"
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_iteminstances_position
+            ON ItemInstances(character_id, storage, main_position, sub_position, aug_position);
+
+        CREATE INDEX IF NOT EXISTS idx_itemeffects_item ON ItemEffects(item_id);
+    ";
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"
