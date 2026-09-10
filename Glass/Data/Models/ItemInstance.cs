@@ -10,6 +10,8 @@ public class ItemInstance
 {
     public ItemInstanceId InstanceId { get; set; } = ItemInstanceId.None;
 
+    // Parent instance, set if this item is a child of another item
+    public ItemInstance? Parent { get; set; }
     public ItemId Id { get; set; } = ItemId.None;
 
     // Sub and aug positions are 0xFFFF when absent.

@@ -224,11 +224,11 @@ public class Character
             {
                 location = "Worn: " + wornPosition.DisplayName();
             }
-            else if (mainPosition >= 23 && mainPosition <= 32)
+            else if (mainPosition >= 23 && mainPosition <= 34)
             {
                 location = "Inventory " + (mainPosition - 23);
             }
-            else if (mainPosition == 33)
+            else if (mainPosition == 35)
             {
                 location = "Cursor";
             }

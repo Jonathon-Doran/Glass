@@ -336,7 +336,7 @@ public partial class OpcodeEditor : Window
 
         OpcodeNameTextBox.Text = reader.GetString(1);
         ushort opcodeValue = (ushort)reader.GetInt32(2);
-        OpcodeHexTextBox.Text = "0x" + opcodeValue.ToString("x4");
+        OpcodeHexTextBox.Text = "0x" + opcodeValue.ToString("X4");
 
         if (reader.IsDBNull(3) == true)
         {
