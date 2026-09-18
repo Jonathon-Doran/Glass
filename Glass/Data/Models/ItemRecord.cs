@@ -75,7 +75,7 @@ public class ItemRecord
     public uint BagWeightReduction { get; set; }
 
     // Physical
-    public uint Weight { get; set; }
+    public float Weight { get; set; }
     public uint Size { get; set; }
     public uint Cost { get; set; }
 

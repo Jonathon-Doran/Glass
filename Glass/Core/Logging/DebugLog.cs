@@ -32,6 +32,7 @@ public enum LogChannel
     Memory,
     SignalBus,
     Reference,
+    Inventory,
     Count
 }
 

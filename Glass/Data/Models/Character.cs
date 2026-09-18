@@ -42,15 +42,121 @@ public class Character
     public SpellId[] SpellBook { get; set; } = Array.Empty<SpellId>();
     public SpellId[] SpellGems { get; set; } = Array.Empty<SpellId>();
 
-
-
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // WornItems
+    // _items
     //
-    // Items currently worn by this character, keyed by worn position.
+    // Every item instance held by this character, keyed by position.  Contents of
+    // containers and augments are entries of their own, and are also reachable
+    // through their parent's Children.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public Dictionary<WornPosition, WornItem> WornItems { get; set; } = new Dictionary<WornPosition, WornItem>();
+    private readonly Dictionary<ItemPosition, ItemInstance> _items = new Dictionary<ItemPosition, ItemInstance>();
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ClearItems
+    //
+    // Removes every item instance held by this character.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public void ClearItems()
+    {
+        int removedCount = _items.Count;
+        _items.Clear();
+        DebugLog.Write(LogChannel.Fields, "Character.ClearItems: removed " + removedCount +
+            " items from '" + Name + "'", LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // AddItem
+    //
+    // Adds an item instance to this character at the instance's position.  When a
+    // parent is given, links the instance into the parent's Children and sets the
+    // instance's Parent.  The instance is rejected when its position is invalid,
+    // when another instance already occupies the position, when it already has a
+    // parent, or when the given parent is not held by this character.
+    //
+    // item:    The instance to add.  Its Position must be valid.
+    // parent:  The container or item holding this instance, or null for a
+    //          top-level instance.
+    //
+    // Returns true if the instance was added, false if it was rejected.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public bool AddItem(ItemInstance item, ItemInstance? parent)
+    {
+        if (item.Position.Exists == false)
+        {
+            DebugLog.Write(LogChannel.Fields, "Character.AddItem: item " + item.Id +
+                " has no position; not added to '" + Name + "'", LogLevel.Warn);
+            return false;
+        }
+
+        if (_items.TryGetValue(item.Position, out ItemInstance? occupant))
+        {
+            DebugLog.Write(LogChannel.Fields, "Character.AddItem: position " + item.Position +
+                " already holds item " + occupant.Id + "; item " + item.Id + " not added to '" +
+                Name + "'", LogLevel.Warn);
+            return false;
+        }
+
+        if (item.Parent != null)
+        {
+            DebugLog.Write(LogChannel.Fields, "Character.AddItem: item " + item.Id + " at " +
+                item.Position + " already has a parent; not added to '" + Name + "'", LogLevel.Warn);
+            return false;
+        }
+
+        if (parent != null)
+        {
+            if (_items.TryGetValue(parent.Position, out ItemInstance? heldParent) == false ||
+                ReferenceEquals(heldParent, parent) == false)
+            {
+                DebugLog.Write(LogChannel.Fields, "Character.AddItem: parent at " + parent.Position +
+                    " is not held by '" + Name + "'; item " + item.Id + " not added", LogLevel.Warn);
+                return false;
+            }
+
+            item.Parent = parent;
+            parent.Children.Add(item);
+            DebugLog.Write(LogChannel.Fields, "Character.AddItem: linked item " + item.Id + " at " +
+                item.Position + " under parent " + parent.Id + " at " + parent.Position, LogLevel.Trace);
+        }
+
+        _items[item.Position] = item;
+        DebugLog.Write(LogChannel.Fields, "Character.AddItem: added item " + item.Id + " at " +
+            item.Position + " to '" + Name + "'", LogLevel.Trace);
+        return true;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // TryGetItem
+    //
+    // Looks up the item instance held by this character at a position.
+    //
+    // position:  The position to look up.
+    // item:      Receives the instance at the position, or null when the position
+    //            is invalid or empty.
+    //
+    // Returns true if an instance is held at the position, false otherwise.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public bool TryGetItem(ItemPosition position, out ItemInstance? item)
+    {
+        if (position.Exists == false)
+        {
+            item = null;
+            DebugLog.Write(LogChannel.Fields, "Character.TryGetItem: invalid position on '" + Name +
+                "'", LogLevel.Warn);
+            return false;
+        }
+
+        if (_items.TryGetValue(position, out item) == false)
+        {
+            DebugLog.Write(LogChannel.Fields, "Character.TryGetItem: no item at " + position +
+                " on '" + Name + "'", LogLevel.Trace);
+            return false;
+        }
+
+        DebugLog.Write(LogChannel.Fields, "Character.TryGetItem: item " + item.Id + " at " +
+            position + " on '" + Name + "'", LogLevel.Trace);
+        return true;
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // TryGetWornPosition

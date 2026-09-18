@@ -174,9 +174,9 @@ public partial class MainWindow : Window
         DebugLog.AddHandler(LogSink.Aux2LogFile, memoryLogHandler);
         DebugLog.Route(LogChannel.Memory, LogSink.Aux2LogFile);
 
-        GlassDebugLogHandler fieldsLogHandler = new GlassDebugLogHandler("fields.log");
-        DebugLog.AddHandler(LogSink.Aux3LogFile, fieldsLogHandler);
-        DebugLog.Route(LogChannel.Fields, LogSink.Aux3LogFile);
+        GlassDebugLogHandler inventoryLogHandler = new GlassDebugLogHandler("inventory.log");
+        DebugLog.AddHandler(LogSink.Aux3LogFile, inventoryLogHandler);
+        DebugLog.Route(LogChannel.Inventory, LogSink.Aux3LogFile);
 
         // The inference tab, just inference messages
         GlassConsoleLogHandler inferenceTabHandler = new GlassConsoleLogHandler(InferenceLogOutput, InferenceLogScroller);

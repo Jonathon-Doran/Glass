@@ -293,7 +293,7 @@ public class HandleInventory : OpcodeHandler
         _Item_Type_Slot2 = _registry.IndexOfField(itemCollection, "Item_Type");
         _Item_Name_Slot = _registry.IndexOfField(itemCollection, "ItemName");
         _Item_Lore_Slot = _registry.IndexOfField(itemCollection, "ItemLore");
-        _ITFile_Slot = _registry.IndexOfField(itemCollection, "DF_3");
+        _ITFile_Slot = _registry.IndexOfField(itemCollection, "IT File");
         _DF_4_Slot = _registry.IndexOfField(itemCollection, "DF_4");
         _Weight_Slot = _registry.IndexOfField(itemCollection, "Weight");
         _Item_ID_Slot = _registry.IndexOfField(itemCollection, "Item_ID");
@@ -518,7 +518,7 @@ public class HandleInventory : OpcodeHandler
                 return;
             }
 
-            CaptureWornItems(metadata);
+            CaptureInventory(metadata);
         }
         finally
         {
@@ -527,26 +527,25 @@ public class HandleInventory : OpcodeHandler
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // CaptureWornItems
+    // CaptureInventory
     //
-    // Stores the worn items from an extracted inventory packet into the owning
-    // character's WornItems dictionary.  Walks the top-level Item List gate,
-    // classifies each item's location, and records every item in a worn
-    // position.  The dictionary is cleared first because the packet is a
-    // complete snapshot.  Must be called with the extraction active and the
-    // root gate's bag current.
+    // Stores every item from an extracted inventory packet into the owning
+    // character.  The character's items are cleared first because the packet is
+    // a complete snapshot.  Walks the top-level Item List gate and captures each
+    // item together with its contents and augments.  Must be called with the
+    // extraction active and the root gate's bag current.
     //
     // metadata:  Packet metadata, used to resolve the owning character.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void CaptureWornItems(PacketMetadata metadata)
+    private void CaptureInventory(PacketMetadata metadata)
     {
         string characterName = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
 
         Character? character = CharacterRepository.Instance.GetByName(characterName);
         if (character == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "CaptureWornItems: no Character named '" + characterName +
-                "' in repository; worn items not stored", LogLevel.Warn);
+            DebugLog.Write(LogChannel.Inventory, "CaptureInventory: no Character named '" + characterName +
+                "' in repository; items not stored", LogLevel.Warn);
             return;
         }
 
@@ -554,42 +553,119 @@ public class HandleInventory : OpcodeHandler
         GateHandle itemListGate = _extractor.GetGateAt(itemListSlot);
         if (itemListGate.Exists == false)
         {
-            DebugLog.Write(LogChannel.Opcodes, "CaptureWornItems: no Item List gate; worn items not stored",
-                LogLevel.Warn);
+            DebugLog.Write(LogChannel.Inventory, "CaptureInventory: no Item List gate; items not stored for '" +
+                characterName + "'", LogLevel.Warn);
             return;
         }
 
-        character.WornItems.Clear();
-        DebugLog.Write(LogChannel.Opcodes, "CaptureWornItems: cleared worn items for '" + characterName + "'",
-            LogLevel.Info);
+        character.ClearItems();
 
         uint itemCount = _extractor.BagCount(itemListGate);
+        uint storedCount = 0;
+
+        DebugLog.Write(LogChannel.Inventory, "CaptureInventory: " + itemCount + " top-level items for '" +
+            characterName + "'", LogLevel.Info);
 
         for (uint itemIndex = 0; itemIndex < itemCount; itemIndex++)
         {
-            _extractor.EnterGate(itemListGate, itemIndex);
+            storedCount += CaptureItem(itemListGate, itemIndex, character, null);
+        }
 
-            StorageSystem storageType = (StorageSystem)_extractor.GetUIntAt(_ContainerType_Slot);
-            uint mainPosition = _extractor.GetUIntAt(_Current_Location_Slot);
+        DebugLog.Write(LogChannel.Inventory, "CaptureInventory: stored " + storedCount + " items, including contents " +
+            "and augments, for '" + characterName + "'", LogLevel.Trace);
+    }
 
-            if (Character.TryGetWornPosition(storageType, mainPosition, out WornPosition wornPosition) == false)
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // CaptureItem
+    //
+    // Stores the item in the given gate's instance at itemIndex into the character,
+    // then descends into that item's ChildItems and stores each child the same way,
+    // with this item as its parent.  The item's position, id, stack size, and
+    // remaining charges are read from its own serialization header.  When the
+    // character rejects the item, its children are not stored.
+    //
+    // itemGate:   The gate whose instance holds this item.
+    // itemIndex:  The instance index of this item within itemGate.
+    // character:  The character receiving the item.
+    // parent:     The instance holding this item, or null for a top-level item.
+    //
+    // Returns:  The number of items stored: this item plus all stored descendants.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private uint CaptureItem(GateHandle itemGate, uint itemIndex, Character character, ItemInstance? parent)
+    {
+        _extractor.EnterGate(itemGate, itemIndex);
+
+        StorageSystem storage = (StorageSystem)_extractor.GetUIntAt(_ContainerType_Slot);
+        uint mainPosition = _extractor.GetUIntAt(_Current_Location_Slot);
+        uint subPosition = _extractor.GetUIntAt(_SubPosition_Slot);
+        uint augPosition = _extractor.GetUIntAt(_AugPosition_Slot);
+
+        ItemInstance instance = new ItemInstance();
+        instance.Position = new ItemPosition(storage, mainPosition, subPosition, augPosition);
+        instance.Id = (ItemId)_extractor.GetUIntAt(_Item_ID_Slot);
+        instance.StackSize = _extractor.GetUIntAt(_Current_Stack_Size_Slot);
+        instance.RemainingCharges = _extractor.GetUIntAt(_Remaining_Charges_Slot);
+
+        if (character.AddItem(instance, parent) == false)
+        {
+            DebugLog.Write(LogChannel.Inventory, "CaptureItem: item " + instance.Id + " at " + instance.Position +
+                " rejected for '" + character.Name + "'; its children are not stored", LogLevel.Warn);
+            return 0;
+        }
+        string itemName = _extractor.GetStringAt(_Item_Name_Slot);
+        DebugLog.Write(LogChannel.Inventory, "CaptureItem: stored item " + itemName + " (" + instance.Id + ")" + " at " + instance.Position +
+            " for '" + character.Name + "', stack " + instance.StackSize + ", charges " +
+            instance.RemainingCharges, LogLevel.Trace);
+
+        uint storedCount = 1;
+
+        SlotId childItemsSlot = _registry.IndexOfField(_extractor.CollectionOf(), "ChildItems");
+        if (_extractor.IsPresent(childItemsSlot) == false)
+        {
+            DebugLog.Write(LogChannel.Inventory, "CaptureItem: item " + instance.Id + " at " + instance.Position +
+                " has no ChildItems", LogLevel.Trace);
+            return storedCount;
+        }
+
+        GateHandle childItemsGate = _extractor.GetGateAt(childItemsSlot);
+        if (childItemsGate.Exists == false)
+        {
+            DebugLog.Write(LogChannel.Inventory, "CaptureItem: item " + instance.Id + " at " + instance.Position +
+                " ChildItems slot present but no gate", LogLevel.Warn);
+            return storedCount;
+        }
+
+        uint childCount = _extractor.BagCount(childItemsGate);
+        DebugLog.Write(LogChannel.Inventory, "CaptureItem: item " + itemName + " (" + instance.Id + ") at " + instance.Position +
+            " has " + childCount + " child entries", LogLevel.Trace);
+
+        for (uint childEntry = 0; childEntry < childCount; childEntry++)
+        {
+            _extractor.EnterGate(childItemsGate, childEntry);
+
+            SlotId childIndexSlot = _registry.IndexOfField(_extractor.CollectionOf(), "Child Index");
+            uint childIndex = _extractor.GetUIntAt(childIndexSlot);
+
+            SlotId childItemSlot = _registry.IndexOfField(_extractor.CollectionOf(), "Child Item");
+            if (_extractor.IsPresent(childItemSlot) == false)
             {
+                DebugLog.Write(LogChannel.Inventory, "CaptureItem: child slot " + childIndex + " of item " +
+                    instance.Id + " is empty", LogLevel.Trace);
                 continue;
             }
 
-            WornItem wornItem = new WornItem();
-            wornItem.ItemId = (ItemId)_extractor.GetUIntAt(_Item_ID_Slot);
-            wornItem.Name = _extractor.GetStringAt(_Item_Name_Slot);
-            wornItem.WornPosition = wornPosition;
-            wornItem.DeltaHP = _extractor.GetIntAt(_Plus_HP_Slot);
+            GateHandle singleItemGate = _extractor.GetGateAt(childItemSlot);
+            if (singleItemGate.Exists == false)
+            {
+                DebugLog.Write(LogChannel.Inventory, "CaptureItem: child slot " + childIndex + " of item " +
+                    instance.Id + " present but no gate", LogLevel.Warn);
+                continue;
+            }
 
-            character.WornItems[wornPosition] = wornItem;
-            DebugLog.Write(LogChannel.Opcodes, "CaptureWornItems: " + wornPosition.DisplayName() + " = '" +
-                wornItem.Name + "' (" + wornItem.ItemId + "), deltaHP " + wornItem.DeltaHP, LogLevel.Info);
+            storedCount += CaptureItem(singleItemGate, 0u, character, instance);
         }
 
-        DebugLog.Write(LogChannel.Opcodes, "CaptureWornItems: stored " + character.WornItems.Count +
-            " worn items for '" + characterName + "'", LogLevel.Info);
+        return storedCount;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

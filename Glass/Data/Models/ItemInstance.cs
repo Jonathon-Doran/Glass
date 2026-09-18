@@ -14,11 +14,8 @@ public class ItemInstance
     public ItemInstance? Parent { get; set; }
     public ItemId Id { get; set; } = ItemId.None;
 
-    // Sub and aug positions are 0xFFFF when absent.
-    public StorageSystem Storage { get; set; }
-    public uint MainPosition { get; set; }
-    public uint SubPosition { get; set; }
-    public uint AugPosition { get; set; }
+    // Location of this instance.  None until the instance has been placed.
+    public ItemPosition Position { get; set; } = ItemPosition.None;
 
     // Per-instance state
     public uint StackSize { get; set; }
