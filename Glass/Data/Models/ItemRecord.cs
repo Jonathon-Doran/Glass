@@ -1,4 +1,6 @@
-﻿namespace Glass.Data.Models;
+﻿using System;
+
+namespace Glass.Data.Models;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // ItemRecord
@@ -15,31 +17,33 @@ public class ItemRecord
     public uint LoreGroup { get; set; }
 
     // Classification
-    public uint ItemType { get; set; }
-    public uint ItemType2 { get; set; }
+    public byte ItemType1 { get; set; }
+    public byte ItemType2 { get; set; }
     public uint ClassMask { get; set; }
     public uint RaceMask { get; set; }
     public uint UsableSlotMask { get; set; }
     public uint RequiredLevel { get; set; }
     public uint RecommendedLevel { get; set; }
-    public uint Tradeskill { get; set; }
+
+    public Boolean IsAttuned { get; set; }          // 13
     public uint FoodDrinkValue { get; set; }
+    public Boolean IsTradeskill { get; set; }       // 45
 
     // Stat adjustments
-    public int PlusStrength { get; set; }
-    public int PlusStamina { get; set; }
-    public int PlusAgility { get; set; }
-    public int PlusDexterity { get; set; }
-    public int PlusCharisma { get; set; }
-    public int PlusIntelligence { get; set; }
-    public int PlusWisdom { get; set; }
-    public int PlusHP { get; set; }
-    public int PlusMana { get; set; }
-    public int PlusEndurance { get; set; }
-    public int PlusAC { get; set; }
-    public int PlusAttack { get; set; }
-    public int HpRegen { get; set; }
-    public int ManaRegen { get; set; }
+    public sbyte PlusStrength { get; set; }         // 52
+    public sbyte PlusStamina { get; set; }          // 53
+    public sbyte PlusAgility { get; set; }          // 54
+    public sbyte PlusDexterity { get; set; }        // 55
+    public sbyte PlusCharisma { get; set; }         // 56
+    public sbyte PlusIntelligence { get; set; }     // 57
+    public sbyte PlusWisdom { get; set; }           // 58
+    public int PlusHP { get; set; }                 // 59   (note:  no 60)
+    public int PlusMana { get; set; }               // 61
+    public int PlusEndurance { get; set; }          // 62
+    public int PlusAC { get; set; }                 // 63
+    public int PlusAttack { get; set; }             // 123
+    public int HpRegen { get; set; }                // 64
+    public int ManaRegen { get; set; }              // 65
 
     // Heroic stats.  Only strength and agility have identified wire fields;
     // the rest fill in as identification completes.
@@ -52,11 +56,15 @@ public class ItemRecord
     public uint HeroicWisdom { get; set; }
 
     // Saves
-    public int SaveCold { get; set; }
-    public int SaveDisease { get; set; }
-    public int SavePoison { get; set; }
-    public int SaveMagic { get; set; }
-    public int SaveFire { get; set; }
+    public byte SaveCold { get; set; }                   // 46
+    public byte SaveDisease { get; set; }                // 47
+    public byte SavePoison { get; set; }                 // 48
+    public byte SaveMagic { get; set; }                  // 49
+    public byte SaveFire { get; set; }                   // 50
+    public byte SaveCorruption { get; set; }             // 51
+
+
+    public uint AugDistillerNeeded { get; set; }         // 126
 
     // Skill modifier
     public uint SkillModSkill { get; set; }
@@ -70,14 +78,15 @@ public class ItemRecord
     public uint WeaponRange { get; set; }
 
     // Bag
-    public uint BagSlots { get; set; }
-    public uint BagContentSize { get; set; }
-    public uint BagWeightReduction { get; set; }
+    public byte BagSlots { get; set; }                   // 113
+    public byte BagContentSize { get; set; }             // 114
+    public byte BagWeightReduction { get; set; }         // 115
 
     // Physical
-    public float Weight { get; set; }
-    public uint Size { get; set; }
+    public float Weight { get; set; }                    // 35
+    public byte Size { get; set; }                       // 40
     public uint Cost { get; set; }
+
 
     // Effects granted by this item
     public List<ItemEffect> Effects { get; set; } = new List<ItemEffect>();

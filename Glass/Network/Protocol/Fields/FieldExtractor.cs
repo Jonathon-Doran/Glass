@@ -479,16 +479,96 @@ public class FieldExtractor
                         slot.WireBitLength = definition.BitLength;
                         break;
                     }
+                case FieldEncoding.Int64:
+                    {
+                        if (definition.BitLength != 64u)
+                        {
+                            DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExtractCollection: Int64 field '"
+                                + definition.Name + "' is defined with bit length " + definition.BitLength
+                                + ", expected 64, slot left empty", LogLevel.Error);
+                        }
+                        else
+                        {
+                            ulong raw;
+                            if (TryReadBitsLE(payload, effectiveBitOffset, definition.BitLength, out raw) == true)
+                            {
+                                slot.SetInt64(bag, (long)raw);
+                            }
+                            else
+                            {
+                                DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExtractCollection: Int64 field '"
+                                    + definition.Name + "' read of 64 bits at bit offset " + effectiveBitOffset
+                                    + " failed, slot left empty", LogLevel.Warn);
+                            }
+                        }
+                        slot.WireBitLength = definition.BitLength;
+                        break;
+                    }
+
+                case FieldEncoding.UInt64:
+                    {
+                        if (definition.BitLength != 64u)
+                        {
+                            DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExtractCollection: UInt64 field '"
+                                + definition.Name + "' is defined with bit length " + definition.BitLength
+                                + ", expected 64, slot left empty", LogLevel.Error);
+                        }
+                        else
+                        {
+                            ulong raw;
+                            if (TryReadBitsLE(payload, effectiveBitOffset, definition.BitLength, out raw) == true)
+                            {
+                                slot.SetUInt64(bag, raw);
+                            }
+                            else
+                            {
+                                DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExtractCollection: UInt64 field '"
+                                    + definition.Name + "' read of 64 bits at bit offset " + effectiveBitOffset
+                                    + " failed, slot left empty", LogLevel.Warn);
+                            }
+                        }
+                        slot.WireBitLength = definition.BitLength;
+                        break;
+                    }
 
                 case FieldEncoding.UIntMsb:
                     ExtractUIntMsb(payload, effectiveBitOffset, definition.BitLength, ref slot);
                     slot.WireBitLength = definition.BitLength;
                     break;
 
+
+
                 case FieldEncoding.Float:
                     ExtractFloatLE(payload, effectiveBitOffset, definition.BitLength, ref slot);
                     slot.WireBitLength = definition.BitLength;
                     break;
+
+                case FieldEncoding.Double:
+                    {
+                        if (definition.BitLength != 64u)
+                        {
+                            DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExtractCollection: Double field '"
+                                + definition.Name + "' is defined with bit length " + definition.BitLength
+                                + ", expected 64, slot left empty", LogLevel.Error);
+                        }
+                        else
+                        {
+                            ulong raw;
+                            if (TryReadBitsLE(payload, effectiveBitOffset, definition.BitLength, out raw) == true)
+                            {
+                                double value = BitConverter.UInt64BitsToDouble(raw);
+                                slot.SetDouble(bag, value);
+                            }
+                            else
+                            {
+                                DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExtractCollection: Double field '"
+                                    + definition.Name + "' read of 64 bits at bit offset " + effectiveBitOffset
+                                    + " failed, slot left empty", LogLevel.Warn);
+                            }
+                        }
+                        slot.WireBitLength = definition.BitLength;
+                        break;
+                    }
 
                 case FieldEncoding.UIntMasked:
                     {
@@ -1782,6 +1862,38 @@ public class FieldExtractor
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetInt64At
+    //
+    // Reads the slot as a 64-bit signed integer from the active bag.  Forwards to the bag's
+    // own accessor, which FailFasts on a read failure.  The active bag is the one selected by
+    // the most recently entered gate, or the root bag set when the extraction completed.
+    //
+    // slot:  The slot to read.
+    //
+    // Returns:  The slot's signed 64-bit integer value.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public long GetInt64At(SlotId slot)
+    {
+        return _bags[(int)(uint)_activeBag].GetInt64At(slot);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetUInt64At
+    //
+    // Reads the slot as a 64-bit unsigned integer from the active bag.  Forwards to the bag's
+    // own accessor, which FailFasts on a read failure.  The active bag is the one selected by
+    // the most recently entered gate, or the root bag set when the extraction completed.
+    //
+    // slot:  The slot to read.
+    //
+    // Returns:  The slot's unsigned 64-bit integer value.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public ulong GetUInt64At(SlotId slot)
+    {
+        return _bags[(int)(uint)_activeBag].GetUInt64At(slot);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // GetFloatAt
     //
     // Reads the slot as a 32-bit float from the active bag.  Forwards to the bag's own
@@ -1797,6 +1909,21 @@ public class FieldExtractor
         return _bags[(int)(uint)_activeBag].GetFloatAt(slot);
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetDoubleAt
+    //
+    // Reads the slot as a 64-bit IEEE double from the active bag.  Forwards to the bag's own
+    // accessor, which FailFasts on a read failure.  The active bag is the one selected by the
+    // most recently entered gate, or the root bag set when the extraction completed.
+    //
+    // slot:  The slot to read.
+    //
+    // Returns:  The slot's double value.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public double GetDoubleAt(SlotId slot)
+    {
+        return _bags[(int)(uint)_activeBag].GetDoubleAt(slot);
+    }
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetBytesAt
     //

@@ -264,13 +264,16 @@ public class PatchData
     {
         _encodingsByString.Add("uint", FieldEncoding.UInt);
         _encodingsByString.Add("int", FieldEncoding.Int);
-        _encodingsByString.Add("float", FieldEncoding.Float);
-        _encodingsByString.Add("csv_token", FieldEncoding.CsvToken);
+        _encodingsByString.Add("int64", FieldEncoding.Int64);
+        _encodingsByString.Add("uint64", FieldEncoding.UInt64);
         _encodingsByString.Add("uint_msb", FieldEncoding.UIntMsb);
         _encodingsByString.Add("uint_masked", FieldEncoding.UIntMasked);
+        _encodingsByString.Add("float", FieldEncoding.Float);
+        _encodingsByString.Add("double", FieldEncoding.Double);
         _encodingsByString.Add("signmag_msb", FieldEncoding.SignMagnitudeMsb);
         _encodingsByString.Add("signmag_lsb", FieldEncoding.SignMagnitudeLsb);
         _encodingsByString.Add("opt_signmag_msb", FieldEncoding.OptSignMagnitudeMsb);
+        _encodingsByString.Add("csv_token", FieldEncoding.CsvToken);
         _encodingsByString.Add("string_null_terminated", FieldEncoding.StringNullTerminated);
         _encodingsByString.Add("string_length_prefixed", FieldEncoding.StringLengthPrefixed);
         _encodingsByString.Add("blob", FieldEncoding.Blob);

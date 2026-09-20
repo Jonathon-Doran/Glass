@@ -484,6 +484,88 @@ public sealed class FieldBag
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetInt64At
+    //
+    // Reads the slot at the given index as a 64-bit signed integer, resolved from this bag's
+    // arena.  The slot is required: an out-of-range index or a failed slot-level read is a
+    // schema or extraction integrity violation and halts the process via FailFast with the
+    // failure details preserved in the Fields log channel.
+    //
+    // slot:     The slot identifier carrying the index of the slot to read.
+    //
+    // Returns:  The slot's value.  Does not return on failure.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public long GetInt64At(SlotId slot)
+    {
+        if (slot.Index >= _slotsInUse)
+        {
+            string rangeFailure = CollectionName + " FieldBag.GetInt64At: slot.Index "
+                + slot.Index + " out of range [0, " + _slotsInUse + ")";
+            DebugLog.Write(LogChannel.Fields, rangeFailure, LogLevel.Error);
+            Environment.FailFast(rangeFailure);
+        }
+
+        ref FieldSlot fieldSlot = ref SlotAt(slot.Index);
+
+        long value;
+        SlotReadResult result = fieldSlot.TryGetInt64(this, out value);
+        if (result != SlotReadResult.Success)
+        {
+            string readFailure = CollectionName + " FieldBag.GetInt64At: required slot '"
+                + fieldSlot.GetName(this) + "' at index " + slot.Index
+                + " failed with " + result + ", slot type is " + fieldSlot.Type;
+            DebugLog.Write(LogChannel.Fields, readFailure, LogLevel.Error);
+            Environment.FailFast(readFailure);
+        }
+
+        DebugLog.Write(LogChannel.Fields, CollectionName + " FieldBag.GetInt64At: slot '"
+            + fieldSlot.GetName(this) + "' at index " + slot.Index + " = " + value,
+            LogLevel.Trace);
+        return value;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetUInt64At
+    //
+    // Reads the slot at the given index as a 64-bit unsigned integer, resolved from this
+    // bag's arena.  The slot is required: an out-of-range index or a failed slot-level read
+    // is a schema or extraction integrity violation and halts the process via FailFast with
+    // the failure details preserved in the Fields log channel.
+    //
+    // slot:     The slot identifier carrying the index of the slot to read.
+    //
+    // Returns:  The slot's value.  Does not return on failure.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public ulong GetUInt64At(SlotId slot)
+    {
+        if (slot.Index >= _slotsInUse)
+        {
+            string rangeFailure = CollectionName + " FieldBag.GetUInt64At: slot.Index "
+                + slot.Index + " out of range [0, " + _slotsInUse + ")";
+            DebugLog.Write(LogChannel.Fields, rangeFailure, LogLevel.Error);
+            Environment.FailFast(rangeFailure);
+        }
+
+        ref FieldSlot fieldSlot = ref SlotAt(slot.Index);
+
+        ulong value;
+        SlotReadResult result = fieldSlot.TryGetUInt64(this, out value);
+        if (result != SlotReadResult.Success)
+        {
+            string readFailure = CollectionName + " FieldBag.GetUInt64At: required slot '"
+                + fieldSlot.GetName(this) + "' at index " + slot.Index
+                + " failed with " + result + ", slot type is " + fieldSlot.Type;
+            DebugLog.Write(LogChannel.Fields, readFailure, LogLevel.Error);
+            Environment.FailFast(readFailure);
+        }
+
+        DebugLog.Write(LogChannel.Fields, CollectionName + " FieldBag.GetUInt64At: slot '"
+            + fieldSlot.GetName(this) + "' at index " + slot.Index + " = 0x"
+            + value.ToString("X16"), LogLevel.Trace);
+        return value;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetFloatAt
     //
     // Reads the slot at the given index as a 32-bit float.  The slot is required: an
@@ -516,6 +598,47 @@ public sealed class FieldBag
             DebugLog.Write(LogChannel.Fields, readFailure);
           //  Environment.FailFast(readFailure);
         }
+        return value;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetDoubleAt
+    //
+    // Reads the slot at the given index as a 64-bit IEEE double, resolved from this bag's
+    // arena.  The slot is required: an out-of-range index or a failed slot-level read is a
+    // schema or extraction integrity violation and halts the process via FailFast with the
+    // failure details preserved in the Fields log channel.
+    //
+    // slot:     The slot identifier carrying the index of the slot to read.
+    //
+    // Returns:  The slot's value.  Does not return on failure.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public double GetDoubleAt(SlotId slot)
+    {
+        if (slot.Index >= _slotsInUse)
+        {
+            string rangeFailure = CollectionName + " FieldBag.GetDoubleAt: slot.Index "
+                + slot.Index + " out of range [0, " + _slotsInUse + ")";
+            DebugLog.Write(LogChannel.Fields, rangeFailure, LogLevel.Error);
+            Environment.FailFast(rangeFailure);
+        }
+
+        ref FieldSlot fieldSlot = ref SlotAt(slot.Index);
+
+        double value;
+        SlotReadResult result = fieldSlot.TryGetDouble(this, out value);
+        if (result != SlotReadResult.Success)
+        {
+            string readFailure = CollectionName + " FieldBag.GetDoubleAt: required slot '"
+                + fieldSlot.GetName(this) + "' at index " + slot.Index
+                + " failed with " + result + ", slot type is " + fieldSlot.Type;
+            DebugLog.Write(LogChannel.Fields, readFailure, LogLevel.Error);
+            Environment.FailFast(readFailure);
+        }
+
+        DebugLog.Write(LogChannel.Fields, CollectionName + " FieldBag.GetDoubleAt: slot '"
+            + fieldSlot.GetName(this) + "' at index " + slot.Index + " = " + value,
+            LogLevel.Trace);
         return value;
     }
 

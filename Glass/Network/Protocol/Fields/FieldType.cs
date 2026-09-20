@@ -12,9 +12,12 @@ public enum FieldType : byte
     Empty = 0,
     Int = 1,
     UInt = 2,
-    Float = 3,
-    AsciiString = 4,
-    Gate = 5,
-    Blob = 6,
-    UIntArray = 7
+    Int64 = 3,
+    UInt64 = 4,
+    Float = 5,
+    Double = 6,
+    AsciiString = 7,
+    Gate = 8,
+    Blob = 9,
+    UIntArray = 10
 }

@@ -26,6 +26,7 @@ public struct Collection
     private ushort _slotCount;
     private uint _arenaEstimate;
     private const uint NameArenaAllowance = 32;
+    private const uint Value64ArenaBytes = 8;
     private const uint StringArenaAllowance = 64;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -58,6 +59,18 @@ public struct Collection
     // Must be set through the collection array element directly
     // (_collections[handle].Fields = ...); set on a copy, the computed values are lost.
     ///////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Fields
+    //
+    // The collection's ordered field definitions.  Setting them computes the two
+    // bag-sizing quantities in a single walk: SlotCount becomes the field count;
+    // ArenaEstimate becomes the sum of a 32-byte name allowance per field, a 64-byte
+    // allowance per string-typed field, 8 bytes per 64-bit field (Int64, UInt64, Double),
+    // and the declared byte count of every field that carries one.
+    //
+    // Must be set through the collection array element directly
+    // (_collections[handle].Fields = ...); set on a copy, the computed values are lost.
+    ///////////////////////////////////////////////////////////////////////////////////////////
     public FieldDefinition[] Fields
     {
         get
@@ -70,8 +83,9 @@ public struct Collection
             _fields = value;
 
             uint stringFieldCount = 0;
+            uint value64FieldCount = 0;
             uint blobByteTotal = 0;
-            for (int fieldIndex = 0; fieldIndex < value.Length; fieldIndex++)
+            for (uint fieldIndex = 0; fieldIndex < (uint)value.Length; fieldIndex++)
             {
                 FieldEncoding encoding = value[fieldIndex].Encoding;
                 if ((encoding == FieldEncoding.StringNullTerminated)
@@ -80,13 +94,26 @@ public struct Collection
                     stringFieldCount++;
                 }
 
+                if ((encoding == FieldEncoding.Int64)
+                    || (encoding == FieldEncoding.UInt64)
+                    || (encoding == FieldEncoding.Double))
+                {
+                    value64FieldCount++;
+                }
+
                 blobByteTotal += value[fieldIndex].ByteCount;
             }
 
             _slotCount = (ushort)value.Length;
             _arenaEstimate = ((uint)value.Length * NameArenaAllowance)
                             + (stringFieldCount * StringArenaAllowance)
+                            + (value64FieldCount * Value64ArenaBytes)
                             + blobByteTotal;
+
+            DebugLog.Write(LogChannel.Fields, "Collection.Fields: '" + _name + "' slotCount "
+                + _slotCount + ", strings " + stringFieldCount + ", 64-bit fields "
+                + value64FieldCount + ", blob bytes " + blobByteTotal + ", arenaEstimate "
+                + _arenaEstimate, LogLevel.Trace);
         }
     }
 

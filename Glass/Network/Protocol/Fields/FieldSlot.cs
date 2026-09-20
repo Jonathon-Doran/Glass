@@ -11,12 +11,14 @@ namespace Glass.Network.Protocol.Fields;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // FieldSlot
 //
-// One named field value, stored as a 18-byte packed record.  A FieldBag holds an array of
-// these.  Numeric payloads live in the 64-bit value field.  Variable-length payloads
-// (strings, byte runs) live in the owning bag's arena; the slot holds a 16-bit arena
-// offset and carries the byte length in the value field.  The field name's bytes likewise
-// live in the arena, referenced by a separate 16-bit offset and an 8-bit length.  The
-// slot's Type tag determines how the value field is interpreted.
+// One named field value, stored as a 20-byte packed record.  A FieldBag holds an array of
+// these.  32-bit numeric payloads (Int, UInt, Float) and gate handles live in the 32-bit
+// value field.  64-bit numeric payloads (Int64, UInt64, Double), blobs, and uint arrays
+// live in the owning bag's arena; the slot holds a 16-bit arena offset and carries the
+// byte length in the value field.  ASCII strings live in the arena null-terminated,
+// referenced by the 16-bit arena offset alone.  The field name's bytes likewise live in
+// the arena null-terminated, referenced by a separate 16-bit offset.  The slot's Type tag
+// determines how the value field is interpreted.
 //
 // The slot holds no reference to the arena.  Setters and getters that touch arena-backed
 // data take the arena as a span parameter supplied by the owning bag.
@@ -35,7 +37,6 @@ public struct FieldSlot
     private ushort _sequence;
     private ushort _arenaOffset;
     private ushort _nameOffset;
-    private byte _nameLength;
     private FieldType _type;
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Type
@@ -103,7 +104,6 @@ public struct FieldSlot
         _sequence = 0;
         _arenaOffset = NoArenaData;
         _nameOffset = NoArenaData;
-        _nameLength = 0;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -241,6 +241,131 @@ public struct FieldSlot
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // SetInt64
+    //
+    // Stores a 64-bit signed integer as eight little-endian bytes in the owning bag's arena
+    // and records the arena offset in the slot.  The byte count (8) is stored in the value
+    // field.
+    //
+    // bag:    The bag that owns this slot; receives the eight bytes into its arena.
+    // value:  The integer to store.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public void SetInt64(FieldBag bag, long value)
+    {
+        Span<byte> encoded = stackalloc byte[8];
+        BinaryPrimitives.WriteInt64LittleEndian(encoded, value);
+
+        _arenaOffset = bag.InsertIntoArena(encoded);
+        _value = 8u;
+        _type = FieldType.Int64;
+
+        DebugLog.Write(LogChannel.Fields, "FieldSlot.SetInt64: stored " + value
+            + " at arena offset " + _arenaOffset, LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // TryGetInt64
+    //
+    // Reads the slot as a 64-bit signed integer, decoded from the eight little-endian bytes
+    // held in the owning bag's arena.  Accepts only slots of type Int64.
+    //
+    // bag:      The bag that owns this slot; supplies the arena bytes.
+    // value:    Receives the slot's value on success, zero otherwise.
+    //
+    // Returns:  SlotReadResult.Success on success, SlotReadResult.TypeMismatch if the
+    //           slot's type is not Int64, SlotReadResult.EmptyPayload if no bytes were
+    //           stored.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public SlotReadResult TryGetInt64(FieldBag bag, out long value)
+    {
+        if (_type != FieldType.Int64)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.TryGetInt64: " + GetName(bag)
+                + " is type " + _type + ", not Int64", LogLevel.Warn);
+            value = 0;
+            return SlotReadResult.TypeMismatch;
+        }
+
+        if (_arenaOffset == NoArenaData)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.TryGetInt64: " + GetName(bag)
+                + " has no stored bytes, returning 0", LogLevel.Warn);
+            value = 0;
+            return SlotReadResult.EmptyPayload;
+        }
+
+        ReadOnlySpan<byte> rawBytes = bag.SliceArenaBytes(_arenaOffset, _value);
+        value = BinaryPrimitives.ReadInt64LittleEndian(rawBytes);
+
+        DebugLog.Write(LogChannel.Fields, "FieldSlot.TryGetInt64: " + GetName(bag)
+            + " read " + value + " from arena offset " + _arenaOffset, LogLevel.Trace);
+        return SlotReadResult.Success;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // SetUInt64
+    //
+    // Stores a 64-bit unsigned integer as eight little-endian bytes in the owning bag's arena
+    // and records the arena offset in the slot.  The byte count (8) is stored in the value
+    // field.
+    //
+    // bag:    The bag that owns this slot; receives the eight bytes into its arena.
+    // value:  The unsigned integer to store.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public void SetUInt64(FieldBag bag, ulong value)
+    {
+        Span<byte> encoded = stackalloc byte[8];
+        BinaryPrimitives.WriteUInt64LittleEndian(encoded, value);
+
+        _arenaOffset = bag.InsertIntoArena(encoded);
+        _value = 8u;
+        _type = FieldType.UInt64;
+
+        DebugLog.Write(LogChannel.Fields, "FieldSlot.SetUInt64: stored 0x" + value.ToString("X16")
+            + " at arena offset " + _arenaOffset, LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // TryGetUInt64
+    //
+    // Reads the slot as a 64-bit unsigned integer, decoded from the eight little-endian bytes
+    // held in the owning bag's arena.  Accepts only slots of type UInt64.
+    //
+    // bag:      The bag that owns this slot; supplies the arena bytes.
+    // value:    Receives the slot's value on success, zero otherwise.
+    //
+    // Returns:  SlotReadResult.Success on success, SlotReadResult.TypeMismatch if the
+    //           slot's type is not UInt64, SlotReadResult.EmptyPayload if no bytes were
+    //           stored.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public SlotReadResult TryGetUInt64(FieldBag bag, out ulong value)
+    {
+        if (_type != FieldType.UInt64)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.TryGetUInt64: " + GetName(bag)
+                + " is type " + _type + ", not UInt64", LogLevel.Warn);
+            value = 0;
+            return SlotReadResult.TypeMismatch;
+        }
+
+        if (_arenaOffset == NoArenaData)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.TryGetUInt64: " + GetName(bag)
+                + " has no stored bytes, returning 0", LogLevel.Warn);
+            value = 0;
+            return SlotReadResult.EmptyPayload;
+        }
+
+        ReadOnlySpan<byte> rawBytes = bag.SliceArenaBytes(_arenaOffset, _value);
+        value = BinaryPrimitives.ReadUInt64LittleEndian(rawBytes);
+
+        DebugLog.Write(LogChannel.Fields, "FieldSlot.TryGetUInt64: " + GetName(bag)
+            + " read 0x" + value.ToString("X16") + " from arena offset " + _arenaOffset,
+            LogLevel.Trace);
+        return SlotReadResult.Success;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // SetFloat
     //
     // Stores a 32-bit IEEE float in the slot's value field as its raw bit pattern, widened
@@ -278,6 +403,67 @@ public struct FieldSlot
         }
 
         value = BitConverter.UInt32BitsToSingle(_value);
+        return SlotReadResult.Success;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // SetDouble
+    //
+    // Stores a 64-bit IEEE double as eight little-endian bytes in the owning bag's arena and
+    // records the arena offset in the slot.  The byte count (8) is stored in the value field.
+    //
+    // bag:    The bag that owns this slot; receives the eight bytes into its arena.
+    // value:  The double to store.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public void SetDouble(FieldBag bag, double value)
+    {
+        Span<byte> encoded = stackalloc byte[8];
+        BinaryPrimitives.WriteDoubleLittleEndian(encoded, value);
+
+        _arenaOffset = bag.InsertIntoArena(encoded);
+        _value = 8u;
+        _type = FieldType.Double;
+
+        DebugLog.Write(LogChannel.Fields, "FieldSlot.SetDouble: stored " + value
+            + " at arena offset " + _arenaOffset, LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // TryGetDouble
+    //
+    // Reads the slot as a 64-bit IEEE double, decoded from the eight little-endian bytes held
+    // in the owning bag's arena.  Accepts only slots of type Double.
+    //
+    // bag:      The bag that owns this slot; supplies the arena bytes.
+    // value:    Receives the slot's value on success, zero otherwise.
+    //
+    // Returns:  SlotReadResult.Success on success, SlotReadResult.TypeMismatch if the
+    //           slot's type is not Double, SlotReadResult.EmptyPayload if no bytes were
+    //           stored.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public SlotReadResult TryGetDouble(FieldBag bag, out double value)
+    {
+        if (_type != FieldType.Double)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.TryGetDouble: " + GetName(bag)
+                + " is type " + _type + ", not Double", LogLevel.Warn);
+            value = 0;
+            return SlotReadResult.TypeMismatch;
+        }
+
+        if (_arenaOffset == NoArenaData)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldSlot.TryGetDouble: " + GetName(bag)
+                + " has no stored bytes, returning 0", LogLevel.Warn);
+            value = 0;
+            return SlotReadResult.EmptyPayload;
+        }
+
+        ReadOnlySpan<byte> rawBytes = bag.SliceArenaBytes(_arenaOffset, _value);
+        value = BinaryPrimitives.ReadDoubleLittleEndian(rawBytes);
+
+        DebugLog.Write(LogChannel.Fields, "FieldSlot.TryGetDouble: " + GetName(bag)
+            + " read " + value + " from arena offset " + _arenaOffset, LogLevel.Trace);
         return SlotReadResult.Success;
     }
 
@@ -559,6 +745,11 @@ public struct FieldSlot
             case FieldType.Float:
                 return 4;
 
+            case FieldType.Int64:
+            case FieldType.UInt64:
+            case FieldType.Double:
+                return 8;
+
             case FieldType.AsciiString:
                 {
                     if (_arenaOffset == NoArenaData)
@@ -613,7 +804,7 @@ public struct FieldSlot
     {
         DebugLog.Write(LogChannel.Fields, "value = 0x" + _value.ToString("x8"));
         DebugLog.Write(LogChannel.Fields, "type = " + _type);
-        DebugLog.Write(LogChannel.Fields, "nameOffset = " + _nameOffset + ", length = " + _nameLength);
+        DebugLog.Write(LogChannel.Fields, "nameOffset = " + _nameOffset);
         DebugLog.Write(LogChannel.Fields, "arenaOffset = " + _arenaOffset);
         DebugLog.Write(LogChannel.Fields, "wireBitOffset = " + _wireBitOffset + ", length = " + _wireBitLength);
     }
@@ -622,8 +813,8 @@ public struct FieldSlot
     //
     // Returns the slot's value formatted as a string according to its current type.
     // Integer types render in hex with a "0x" prefix and eight-digit zero padding,
-    // followed by the decimal value in parentheses.  Float renders as decimal with three
-    // digits after the radix.  AsciiString renders as the stored characters, resolved
+    // followed by the decimal value in parentheses.  Float and Double render as decimal with
+    // three digits after the radix.  AsciiString renders as the stored characters, resolved
     // from the owning bag's arena; an empty stored string renders as an empty string.
     // Any read failure or unconvertible type is logged and renders as an empty string.
     //
@@ -661,6 +852,32 @@ public struct FieldSlot
                         + " UInt read failed: " + result);
                     return string.Empty;
                 }
+            case FieldType.Int64:
+                {
+                    long value;
+                    SlotReadResult result = TryGetInt64(bag, out value);
+                    if (result == SlotReadResult.Success)
+                    {
+                        return "0x" + value.ToString("X16") + " (" + value + ")";
+                    }
+                    DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName(bag)
+                        + " Int64 read failed: " + result, LogLevel.Warn);
+                    return string.Empty;
+                }
+
+            case FieldType.UInt64:
+                {
+                    ulong value;
+                    SlotReadResult result = TryGetUInt64(bag, out value);
+                    if (result == SlotReadResult.Success)
+                    {
+                        return "0x" + value.ToString("X16") + " (" + value + ")";
+                    }
+                    DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName(bag)
+                        + " UInt64 read failed: " + result, LogLevel.Warn);
+                    return string.Empty;
+                }
+
 
             case FieldType.Float:
                 {
@@ -672,6 +889,19 @@ public struct FieldSlot
                     }
                     DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName(bag)
                         + " Float read failed: " + result);
+                    return string.Empty;
+                }
+
+            case FieldType.Double:
+                {
+                    double value;
+                    SlotReadResult result = TryGetDouble(bag, out value);
+                    if (result == SlotReadResult.Success)
+                    {
+                        return value.ToString("F3");
+                    }
+                    DebugLog.Write(LogChannel.Fields, "FieldSlot.AsString: " + GetName(bag)
+                        + " Double read failed: " + result, LogLevel.Warn);
                     return string.Empty;
                 }
 

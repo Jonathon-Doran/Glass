@@ -12,7 +12,11 @@ public enum FieldEncoding
     UInt,
     Int,
     UIntMsb,
+    UIntArray,
+    Int64,
+    UInt64,
     Float,
+    Double,
     UIntMasked,
     CsvToken,
     SignMagnitudeLsb,
@@ -21,6 +25,5 @@ public enum FieldEncoding
     StringNullTerminated,
     StringLengthPrefixed,
     Gate,
-    Blob,
-    UIntArray
+    Blob
 }

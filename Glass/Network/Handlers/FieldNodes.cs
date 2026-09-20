@@ -92,6 +92,82 @@ public static class FieldNodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // AddInt64Node
+    //
+    // Builds a display node for a 64-bit int field and adds it beneath the supplied parent.
+    // The field's value is read from the extractor's active bag, formatted per the format
+    // string, and the slot's byte range is attached to the new node.
+    //
+    // extractor:  The extractor whose active bag holds the field.
+    // slotId:     The slot to extract.
+    // label:      The label to use in the new display node.
+    // parent:     The display node's parent.
+    // format:     Numeric format string.  "?" renders hex and decimal together; a format
+    //             beginning with 'X' renders hex with a 0x prefix; any other format is passed
+    //             to ToString directly.  Defaults to "X".
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public static long AddInt64Node(FieldExtractor extractor, SlotId slotId, string label,
+        FieldDisplayNode parent, string format = "X")
+    {
+        long value = extractor.GetInt64At(slotId);
+        string valueString;
+        if (format == "?")
+        {
+            valueString = "0x" + value.ToString("X") + " (" + value.ToString("D") + ")";
+        }
+        else if (format[0] == 'X')
+        {
+            valueString = "0x" + value.ToString(format);
+        }
+        else
+        {
+            valueString = value.ToString(format);
+        }
+        FieldDisplayNode newNode = new FieldDisplayNode(label + ": " + valueString);
+        newNode.AddByteRange(extractor.GetByteRangeFor(slotId));
+        parent.AddChild(newNode);
+        return value;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // AddUInt64Node
+    //
+    // Builds a display node for a 64-bit uint field and adds it beneath the supplied parent.
+    // The field's value is read from the extractor's active bag, formatted per the format
+    // string, and the slot's byte range is attached to the new node.
+    //
+    // extractor:  The extractor whose active bag holds the field.
+    // slotId:     The slot to extract.
+    // label:      The label to use in the new display node.
+    // parent:     The display node's parent.
+    // format:     Numeric format string.  "?" renders hex and decimal together; a format
+    //             beginning with 'X' renders hex with a 0x prefix; any other format is passed
+    //             to ToString directly.  Defaults to "X".
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public static ulong AddUInt64Node(FieldExtractor extractor, SlotId slotId, string label,
+        FieldDisplayNode parent, string format = "X")
+    {
+        ulong value = extractor.GetUInt64At(slotId);
+        string valueString;
+        if (format == "?")
+        {
+            valueString = "0x" + value.ToString("X") + " (" + value.ToString("D") + ")";
+        }
+        else if (format[0] == 'X')
+        {
+            valueString = "0x" + value.ToString(format);
+        }
+        else
+        {
+            valueString = value.ToString(format);
+        }
+        FieldDisplayNode newNode = new FieldDisplayNode(label + ": " + valueString);
+        newNode.AddByteRange(extractor.GetByteRangeFor(slotId));
+        parent.AddChild(newNode);
+        return value;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // AddFloatNode
     //
     // Builds a display node for a float field and adds it beneath the supplied parent.  The
@@ -108,6 +184,28 @@ public static class FieldNodes
         FieldDisplayNode parent, string format = "F")
     {
         float value = extractor.GetFloatAt(slotId);
+        FieldDisplayNode newNode = new FieldDisplayNode(label + ": " + value.ToString(format));
+        newNode.AddByteRange(extractor.GetByteRangeFor(slotId));
+        parent.AddChild(newNode);
+        return value;
+    }
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // AddDoubleNode
+    //
+    // Builds a display node for a double field and adds it beneath the supplied parent.  The
+    // field's value is read from the extractor's active bag, formatted per the format string,
+    // and the slot's byte range is attached to the new node.
+    //
+    // extractor:  The extractor whose active bag holds the field.
+    // slotId:     The slot to extract.
+    // label:      The label to use in the new display node.
+    // parent:     The display node's parent.
+    // format:     Numeric format string passed to ToString.  Defaults to "F".
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public static double AddDoubleNode(FieldExtractor extractor, SlotId slotId, string label,
+        FieldDisplayNode parent, string format = "F")
+    {
+        double value = extractor.GetDoubleAt(slotId);
         FieldDisplayNode newNode = new FieldDisplayNode(label + ": " + value.ToString(format));
         newNode.AddByteRange(extractor.GetByteRangeFor(slotId));
         parent.AddChild(newNode);
