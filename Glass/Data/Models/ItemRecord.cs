@@ -10,28 +10,31 @@ namespace Glass.Data.Models;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class ItemRecord
 {
-    // Identity
-    public ItemId Id { get; set; } = ItemId.None;
-    public string Name { get; set; } = string.Empty;
-    public string Lore { get; set; } = string.Empty;
+    public ItemId Id { get; set; } = ItemId.None;                   // 34
+    public string IdString { get; set; } = string.Empty;            // 1
+    public ContainerType ContainerType { get; set; }                // 3
+
+    // unknown:  7, 8
+    public string Name { get; set; } = string.Empty;                // 30
+    public string Lore { get; set; } = string.Empty;                // 31
     public uint LoreGroup { get; set; }
 
-    // Classification
+
     public byte ItemType1 { get; set; }
-    public byte ItemType2 { get; set; }
+    public byte ItemType2 { get; set; }                             // 29
     public uint ClassMask { get; set; }
     public uint RaceMask { get; set; }
     public uint UsableSlotMask { get; set; }
     public uint RequiredLevel { get; set; }
     public uint RecommendedLevel { get; set; }
 
-    public Boolean IsAttuned { get; set; }          // 13
+    public Boolean IsAttuned { get; set; }                          // 13
     public uint FoodDrinkValue { get; set; }
-    public Boolean IsTradeskill { get; set; }       // 45
+    public Boolean IsTradeskill { get; set; }                       // 45
 
     // Stat adjustments
-    public sbyte PlusStrength { get; set; }         // 52
-    public sbyte PlusStamina { get; set; }          // 53
+    public sbyte PlusStrength { get; set; }                         // 52
+    public sbyte PlusStamina { get; set; }                          // 53
     public sbyte PlusAgility { get; set; }          // 54
     public sbyte PlusDexterity { get; set; }        // 55
     public sbyte PlusCharisma { get; set; }         // 56

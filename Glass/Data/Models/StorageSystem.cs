@@ -6,7 +6,7 @@
 // Storage systems that can hold an item, with each member set to the raw wire
 // value from the item serialization header.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public enum StorageSystem : uint
+public enum StorageSystem : byte
 {
     Carried = 0,
     Bank = 1,

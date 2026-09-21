@@ -12,13 +12,13 @@ public class ItemInstance
 
     // Parent instance, set if this item is a child of another item
     public ItemInstance? Parent { get; set; }
-    public ItemId Id { get; set; } = ItemId.None;
+    public ItemId Id { get; set; } = ItemId.None;                           // 34
 
     // Location of this instance.  None until the instance has been placed.
-    public ItemPosition Position { get; set; } = ItemPosition.None;
+    public ItemPosition Position { get; set; } = ItemPosition.None;         // 4,5,6
 
     // Per-instance state
-    public uint StackSize { get; set; }
+    public uint StackSize { get; set; }                                     // 2
     public uint RemainingCharges { get; set; }
 
     // Children associated with this instance (augments, contents of containers)

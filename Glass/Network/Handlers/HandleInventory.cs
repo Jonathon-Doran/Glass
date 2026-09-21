@@ -18,12 +18,12 @@ public class HandleInventory : OpcodeHandler
 {
     private readonly GateDefinitionHandle _top_level_gate;
 
-    private readonly SlotId _Item_String_Slot;
-    private readonly SlotId _Current_Stack_Size_Slot;
-    private readonly SlotId _ContainerType_Slot;
-    private readonly SlotId _Current_Location_Slot;
-    private readonly SlotId _SubPosition_Slot;
-    private readonly SlotId _AugPosition_Slot;
+    private readonly SlotId _Item_String_Slot;                      // 1
+    private readonly SlotId _Current_Stack_Size_Slot;               // 2
+    private readonly SlotId _ContainerType_Slot;                    // 3
+    private readonly SlotId _Storage_Slot_Location_Slot;            // 4
+    private readonly SlotId _SubPosition_Slot;                      // 5
+    private readonly SlotId _AugPosition_Slot;                      // 6
     private readonly SlotId _Field_7_Slot;
     private readonly SlotId _Field_8_Slot;
     private readonly SlotId _Field_9_Slot;
@@ -43,7 +43,7 @@ public class HandleInventory : OpcodeHandler
     private readonly SlotId _Field_22_Slot;
     private readonly SlotId _Field_23_Slot;
     private readonly SlotId _Field_24_Slot;
-    private readonly SlotId _Field_25_Slot;
+    private readonly SlotId _IsCopied_Slot;
     private readonly SlotId _Field_26_Slot;
     private readonly SlotId _Field_27_Slot;
     private readonly SlotId _Item_Type2_Slot;
@@ -122,9 +122,9 @@ public class HandleInventory : OpcodeHandler
     private readonly SlotId _Field_1DC_Slot;
     private readonly SlotId _Field_1E0_Slot;
 
-    private readonly SlotId _Augment_Field_1;
-    private readonly SlotId _Augment_Field_2;
-    private readonly SlotId _Augment_Field_3;
+    private readonly SlotId _Augment_Type_Slot;
+    private readonly SlotId _Augment_Visible_Slot;
+    private readonly SlotId _Augment_Unknown_Slot;
 
     private readonly SlotId _Field_1F0_Slot;
     private readonly SlotId _Field_1E8_Slot;
@@ -259,11 +259,11 @@ public class HandleInventory : OpcodeHandler
         _Item_Name_Slot = _registry.IndexOfField(itemCollection, "ItemName");
         _Item_Lore_Slot = _registry.IndexOfField(itemCollection, "ItemLore");
 
-        _Item_String_Slot = _registry.IndexOfField(itemCollection, "ItemString");
+        _Item_String_Slot = _registry.IndexOfField(itemCollection, "IDString");
 
         _Current_Stack_Size_Slot = _registry.IndexOfField(itemCollection, "StackSize");
         _ContainerType_Slot = _registry.IndexOfField(itemCollection, "ContainerType");
-        _Current_Location_Slot = _registry.IndexOfField(itemCollection, "Location");
+        _Storage_Slot_Location_Slot = _registry.IndexOfField(itemCollection, "StorageSlot");
         _SubPosition_Slot = _registry.IndexOfField(itemCollection, "SubPosition");
         _AugPosition_Slot = _registry.IndexOfField(itemCollection, "AugPosition");
         _Field_7_Slot = _registry.IndexOfField(itemCollection, "Field7");
@@ -284,7 +284,7 @@ public class HandleInventory : OpcodeHandler
         _Field_22_Slot = _registry.IndexOfField(itemCollection, "Field22");
         _Field_23_Slot = _registry.IndexOfField(itemCollection, "Field23");
         _Field_24_Slot = _registry.IndexOfField(itemCollection, "Field24");
-        _Field_25_Slot = _registry.IndexOfField(itemCollection, "Field25");
+        _IsCopied_Slot = _registry.IndexOfField(itemCollection, "IsCopied");
         _Field_26_Slot = _registry.IndexOfField(itemCollection, "Field26");
         _Field_27_Slot = _registry.IndexOfField(itemCollection, "Field27");
         _Item_Type2_Slot = _registry.IndexOfField(itemCollection, "Item_Type_2");                   // 29
@@ -364,9 +364,9 @@ public class HandleInventory : OpcodeHandler
         _Field_1DC_Slot = _registry.IndexOfField(itemCollection, "Field_1DC");
         _Field_1E0_Slot = _registry.IndexOfField(itemCollection, "Field_1E0");
 
-        _Augment_Field_1 = _registry.IndexOfField(augmentCollection, "Augment_Field_1");
-        _Augment_Field_2 = _registry.IndexOfField(augmentCollection, "Augment_Field_2");
-        _Augment_Field_3 = _registry.IndexOfField(augmentCollection, "Augment_Field_3");
+        _Augment_Type_Slot = _registry.IndexOfField(augmentCollection, "Augment_Type");
+        _Augment_Visible_Slot = _registry.IndexOfField(augmentCollection, "Augment_Visible");
+        _Augment_Unknown_Slot = _registry.IndexOfField(augmentCollection, "Augment_Unknown");
 
         _Field_1F0_Slot = _registry.IndexOfField(itemCollection, "Field_1F0");
         _Field_1E8_Slot = _registry.IndexOfField(itemCollection, "Field_1E8");
@@ -594,7 +594,7 @@ public class HandleInventory : OpcodeHandler
         _extractor.EnterGate(itemGate, itemIndex);
 
         StorageSystem storage = (StorageSystem)_extractor.GetUIntAt(_ContainerType_Slot);
-        uint mainPosition = _extractor.GetUIntAt(_Current_Location_Slot);
+        uint mainPosition = _extractor.GetUIntAt(_Storage_Slot_Location_Slot);
         uint subPosition = _extractor.GetUIntAt(_SubPosition_Slot);
         uint augPosition = _extractor.GetUIntAt(_AugPosition_Slot);
 
@@ -822,7 +822,7 @@ public class HandleInventory : OpcodeHandler
 
         AddWornSlotNode(_Usable_Slot_Mask, "Usable Slots", locationSubtree);
 
-        uint mainPosition = _extractor.GetUIntAt(_Current_Location_Slot);
+        uint mainPosition = _extractor.GetUIntAt(_Storage_Slot_Location_Slot);
         StorageSystem storageType = (StorageSystem) _extractor.GetUIntAt(_ContainerType_Slot);
         uint subPosition = _extractor.GetUIntAt(_SubPosition_Slot);
         uint augPosition = _extractor.GetUIntAt(_AugPosition_Slot);
@@ -833,7 +833,7 @@ public class HandleInventory : OpcodeHandler
         String location = Character.DescribeLocation(storageType, mainPosition, subPosition, augPosition);
 
         FieldDisplayNode locationNode = new FieldDisplayNode("Item Location: " + location);
-        locationNode.AddByteRange(_extractor.GetByteRangeFor(_Current_Location_Slot));
+        locationNode.AddByteRange(_extractor.GetByteRangeFor(_Storage_Slot_Location_Slot));
         locationNode.AddByteRange(_extractor.GetByteRangeFor(_ContainerType_Slot));
         locationNode.AddByteRange(_extractor.GetByteRangeFor(_SubPosition_Slot));
         locationNode.AddByteRange(_extractor.GetByteRangeFor(_AugPosition_Slot));
@@ -842,7 +842,7 @@ public class HandleInventory : OpcodeHandler
 
         FieldNodes.AddLabeledNode(_extractor, _ContainerType_Slot, "Storage: " + storageText +
             " (" + storageType + ")", locationSubtree);
-        FieldNodes.AddUIntNode(_extractor, _Current_Location_Slot, "Storage Slot", locationSubtree, "D");
+        FieldNodes.AddUIntNode(_extractor, _Storage_Slot_Location_Slot, "Storage Slot", locationSubtree, "D");
         FieldNodes.AddLabeledNode(_extractor, _SubPosition_Slot, "SubPosition: " + subPosText +
             " (" + subPosition + ")", locationSubtree);
         FieldNodes.AddLabeledNode(_extractor, _AugPosition_Slot, "AugPosition: " + augPosText +
@@ -943,7 +943,7 @@ public class HandleInventory : OpcodeHandler
         FieldNodes.AddUIntNode(_extractor, _Field_22_Slot, "Field 22", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_23_Slot, "Field 23", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_24_Slot, "Field 24", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_25_Slot, "Field 25", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _IsCopied_Slot, "IsCopied", itemNode, "D");
         FieldNodes.AddUIntNode(_extractor, _Field_26_Slot, "Field 26", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_27_Slot, "Field 27", itemNode, "?");
 
@@ -1176,9 +1176,9 @@ public class HandleInventory : OpcodeHandler
             FieldDisplayNode bagNode = new FieldDisplayNode("Augment " + (bagIndex + 1));
             augmentFieldsNode.AddChild(bagNode);
 
-            FieldNodes.AddUIntNode(_extractor, _Augment_Field_1, "Field 1", bagNode, "?");
-            FieldNodes.AddUIntNode(_extractor, _Augment_Field_2, "Field 2", bagNode, "?");
-            FieldNodes.AddUIntNode(_extractor, _Augment_Field_3, "Field 3", bagNode, "?");
+            FieldNodes.AddUIntNode(_extractor, _Augment_Type_Slot, "Type", bagNode, "D");
+            FieldNodes.AddUIntNode(_extractor, _Augment_Visible_Slot, "Visible", bagNode, "D");
+            FieldNodes.AddUIntNode(_extractor, _Augment_Unknown_Slot, "Unknown", bagNode, "?");
         }
 
         DebugLog.Write(LogChannel.Opcodes, "AddAugmentFields: restoring item bag", LogLevel.Trace);
