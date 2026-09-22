@@ -85,8 +85,8 @@ public class HandleInventory : OpcodeHandler
     private readonly SlotId _Class_Mask_Slot;
     private readonly SlotId _Race_Mask_Slot;
     private readonly SlotId _Field_148_Slot;
-    private readonly SlotId _Skill_Percent_Change;
-    private readonly SlotId _Skill_Max_Change;
+    private readonly SlotId _Skill_Percent_Change_Slot;
+    private readonly SlotId _Skill_Max_Change_Slot;
     private readonly SlotId _Skill_Slot;
     private readonly SlotId _Field_124_Slot;
     private readonly SlotId _Field_128_Slot;
@@ -172,13 +172,13 @@ public class HandleInventory : OpcodeHandler
     private readonly SlotId _Field_598_Slot;
     private readonly SlotId _Field_59C_Slot;
     private readonly SlotId _Backstab_Damage_Slot;  // 140
-    private readonly SlotId _Heroic_Strength;
-    private readonly SlotId _Field_164_Slot;
-    private readonly SlotId _Field_168_Slot;
+    private readonly SlotId _Heroic_Strength_Slot;
+    private readonly SlotId _Heroic_Intelligence_Slot;
+    private readonly SlotId _Heroic_Wisdom_Slot;
     private readonly SlotId _Heroic_Agility_Slot;
-    private readonly SlotId _Field_170_Slot;
-    private readonly SlotId _Field_174_Slot;
-    private readonly SlotId _Field_178_Slot;
+    private readonly SlotId _Heroic_Dexterity_Slot;
+    private readonly SlotId _Heroic_Stamina_Slot;
+    private readonly SlotId _Heroic_Charisma_Slot;
     private readonly SlotId _Field_17C_Slot;
     private readonly SlotId _Field_180_Slot;
     private readonly SlotId _Field_5AC_Slot; // 150
@@ -299,7 +299,7 @@ public class HandleInventory : OpcodeHandler
         _DF_9_Slot = _registry.IndexOfField(itemCollection, "DF_9");
         _Size_Slot = _registry.IndexOfField(itemCollection, "Item_Size");                           // 40
         _Usable_Slot_Mask = _registry.IndexOfField(itemCollection, "Usable_Slot_Mask");             // 41
-        _Cost_Slot = _registry.IndexOfField(itemCollection, "DF_11");
+        _Cost_Slot = _registry.IndexOfField(itemCollection, "Cost");
         _Icon_ID_Slot = _registry.IndexOfField(itemCollection, "Icon_ID");
         _DF_13_Slot = _registry.IndexOfField(itemCollection, "DF_13");
         _Is_Tradeskill_Slot = _registry.IndexOfField(itemCollection, "IsTradeskill");
@@ -327,9 +327,9 @@ public class HandleInventory : OpcodeHandler
         _Class_Mask_Slot = _registry.IndexOfField(itemCollection, "Class Mask");
         _Race_Mask_Slot = _registry.IndexOfField(itemCollection, "Race Mask");
         _Field_148_Slot = _registry.IndexOfField(itemCollection, "Field_148");
-        _Skill_Percent_Change = _registry.IndexOfField(itemCollection, "Field_11C");
-        _Skill_Max_Change = _registry.IndexOfField(itemCollection, "Field_120");
-        _Skill_Slot = _registry.IndexOfField(itemCollection, "Field_118");
+        _Skill_Percent_Change_Slot = _registry.IndexOfField(itemCollection, "Skill_Percent_Chance");
+        _Skill_Max_Change_Slot = _registry.IndexOfField(itemCollection, "Skill_Max_Change");
+        _Skill_Slot = _registry.IndexOfField(itemCollection, "Skill_ID");
         _Field_124_Slot = _registry.IndexOfField(itemCollection, "Field_124");
         _Field_128_Slot = _registry.IndexOfField(itemCollection, "Field_128");
         _Field_12C_Slot = _registry.IndexOfField(itemCollection, "Field_12C");
@@ -337,20 +337,20 @@ public class HandleInventory : OpcodeHandler
         _Field_130_Slot = _registry.IndexOfField(itemCollection, "Field_130");
         _Field_150_Slot = _registry.IndexOfField(itemCollection, "Field_150");
         _Food_Drink_Value_Slot = _registry.IndexOfField(itemCollection, "FoodDrink_Value");
-        _Required_Level_Slot = _registry.IndexOfField(itemCollection, "Required_Level");
+        _Required_Level_Slot = _registry.IndexOfField(itemCollection, "Required_Level");    // 80
         _Recommended_Level_Slot = _registry.IndexOfField(itemCollection, "Recommended_Level");
-        _Bard_Value_Slot = _registry.IndexOfField(itemCollection, "Field_138");
+        _Bard_Value_Slot = _registry.IndexOfField(itemCollection, "Bard_Value");
         _Field_13C_Slot = _registry.IndexOfField(itemCollection, "Field_13C");
         _Field_151_Slot = _registry.IndexOfField(itemCollection, "Field_151");
         _Weapon_Delay_Slot = _registry.IndexOfField(itemCollection, "Weapon_Delay");
         _Field_153_Slot = _registry.IndexOfField(itemCollection, "Field_153");
         _Field_154_Slot = _registry.IndexOfField(itemCollection, "Field_154");
         _Weapon_Range_Slot = _registry.IndexOfField(itemCollection, "Weapon_Range");
-        _Base_Damage_Slot = _registry.IndexOfField(itemCollection, "Field_158");
-        _Color_Slot = _registry.IndexOfField(itemCollection, "Field_14C");
+        _Base_Damage_Slot = _registry.IndexOfField(itemCollection, "Weapon_Base_Damage");
+        _Color_Slot = _registry.IndexOfField(itemCollection, "Color");                      // 90
         _Field_18C_Slot = _registry.IndexOfField(itemCollection, "Field_18C");
         _Item_Type1_Slot = _registry.IndexOfField(itemCollection, "Item_Type_1");
-        _Material_Slot = _registry.IndexOfField(itemCollection, "Field_194");
+        _Material_Slot = _registry.IndexOfField(itemCollection, "Material");
         _Field_19C_Slot = _registry.IndexOfField(itemCollection, "Field_19C");
         _Field_198_Slot = _registry.IndexOfField(itemCollection, "Field_198");
         _Field_1A0_Slot = _registry.IndexOfField(itemCollection, "Field_1A0");
@@ -413,14 +413,14 @@ public class HandleInventory : OpcodeHandler
         _Field_5A8_Slot = _registry.IndexOfField(itemCollection, "Field_5A8");
         _Field_598_Slot = _registry.IndexOfField(itemCollection, "Field_598");
         _Field_59C_Slot = _registry.IndexOfField(itemCollection, "Field_59C");
-        _Backstab_Damage_Slot = _registry.IndexOfField(itemCollection, "Field_15C");  // 140
-        _Heroic_Strength = _registry.IndexOfField(itemCollection, "Field_160");
-        _Field_164_Slot = _registry.IndexOfField(itemCollection, "Field_164");
-        _Field_168_Slot = _registry.IndexOfField(itemCollection, "Field_168");
-        _Heroic_Agility_Slot = _registry.IndexOfField(itemCollection, "Field_16C");
-        _Field_170_Slot = _registry.IndexOfField(itemCollection, "Field_170");
-        _Field_174_Slot = _registry.IndexOfField(itemCollection, "Field_174");
-        _Field_178_Slot = _registry.IndexOfField(itemCollection, "Field_178");
+        _Backstab_Damage_Slot = _registry.IndexOfField(itemCollection, "Backstab_Damage");  // 140
+        _Heroic_Strength_Slot = _registry.IndexOfField(itemCollection, "Heroic_Strength");
+        _Heroic_Intelligence_Slot = _registry.IndexOfField(itemCollection, "Heroic_Intelligence");
+        _Heroic_Wisdom_Slot = _registry.IndexOfField(itemCollection, "Heroic_Wisdom");
+        _Heroic_Agility_Slot = _registry.IndexOfField(itemCollection, "Heroic_Agility");
+        _Heroic_Dexterity_Slot = _registry.IndexOfField(itemCollection, "Heroic_Dexterity");
+        _Heroic_Stamina_Slot = _registry.IndexOfField(itemCollection, "Heroic_Stamina");
+        _Heroic_Charisma_Slot = _registry.IndexOfField(itemCollection, "Heroic_Charisma");
         _Field_17C_Slot = _registry.IndexOfField(itemCollection, "Field_17C");
         _Field_180_Slot = _registry.IndexOfField(itemCollection, "Field_180");
         _Field_5AC_Slot = _registry.IndexOfField(itemCollection, "Field_5AC");  // 150
@@ -859,7 +859,7 @@ public class HandleInventory : OpcodeHandler
         FieldNodes.AddUIntNode(_extractor, _Food_Drink_Value_Slot, "Food/Drink Value", itemNode, "D");
         AddSizeNode(_Size_Slot, "Size", itemNode);
         FieldNodes.AddUIntNode(_extractor, _Cost_Slot, "Cost", itemNode, "D");
-        FieldNodes.AddUIntNode(_extractor, _Color_Slot, "Color", itemNode);
+
         FieldNodes.AddUIntNode(_extractor, _Haste_Slot, "Haste Percent", itemNode, "D");
 
         FieldDisplayNode bagSubtree = new FieldDisplayNode("Bag Fields");
@@ -899,8 +899,13 @@ public class HandleInventory : OpcodeHandler
         FieldNodes.AddIntNode(_extractor, _Plus_Mana_Slot, "Plus Mana", statModSubtree, "D");
         FieldNodes.AddIntNode(_extractor, _Plus_AC_Slot, "Plus AC", statModSubtree, "D");
         FieldNodes.AddIntNode(_extractor, _Plus_Endurance_Slot, "Plus Endurance", statModSubtree, "D");
-        FieldNodes.AddUIntNode(_extractor, _Heroic_Strength, "Heroic Strength", statModSubtree, "D");
+        FieldNodes.AddUIntNode(_extractor, _Heroic_Strength_Slot, "Heroic Strength", statModSubtree, "D");
+        FieldNodes.AddUIntNode(_extractor, _Heroic_Intelligence_Slot, "Heroic Intelligence", statModSubtree, "D");
+        FieldNodes.AddUIntNode(_extractor, _Heroic_Wisdom_Slot, "Heroic Wisdom", statModSubtree, "D");
         FieldNodes.AddUIntNode(_extractor, _Heroic_Agility_Slot, "Heroic Agility", statModSubtree, "D");
+        FieldNodes.AddUIntNode(_extractor, _Heroic_Dexterity_Slot, "Heroic Dexterity", statModSubtree, "D");
+        FieldNodes.AddUIntNode(_extractor, _Heroic_Stamina_Slot, "Heroic Stamina", statModSubtree, "D");
+        FieldNodes.AddUIntNode(_extractor, _Heroic_Charisma_Slot, "Heroic Charisma", statModSubtree, "D");
         FieldNodes.AddUIntNode(_extractor, _Plus_Attack_Slot, "Plus Attack", statModSubtree, "D");
 
         AddAugmentFields(itemGate, itemIndex, itemNode);
@@ -914,6 +919,7 @@ public class HandleInventory : OpcodeHandler
         AddRaceListNode(_Race_Mask_Slot, "Race Mask", itemNode);
         FieldNodes.AddUIntNode(_extractor, _Aug_Distiller_Needed, "Augmentation Distiller Needed", itemNode, "D");
         FieldNodes.AddUIntNode(_extractor, _Bard_Value_Slot, "Bard Value", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Color_Slot, "Color", itemNode);
         FieldNodes.AddUIntNode(_extractor, _Material_Slot, "Material", itemNode, "D");
         FieldNodes.AddUIntNode(_extractor, _Is_Tradeskill_Slot, "Used in Tradeskills", itemNode, "D");
 
@@ -923,8 +929,8 @@ public class HandleInventory : OpcodeHandler
         uint skillID = _extractor.GetUIntAt(_Skill_Slot);
 
         FieldNodes.AddLabeledNode(_extractor, _Skill_Slot, "Skill: " + Skills.GetSkillName(skillID), itemNode);
-        FieldNodes.AddUIntNode(_extractor, _Skill_Percent_Change, "Skill Percent Change", itemNode, "D");
-        FieldNodes.AddUIntNode(_extractor, _Skill_Max_Change, "Skill Max Change", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Skill_Percent_Change_Slot, "Skill Percent Change", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Skill_Max_Change_Slot, "Skill Max Change", itemNode, "D");
 
 
         FieldNodes.AddUIntNode(_extractor, _Field_7_Slot, "Field 7", itemNode, "?");
@@ -990,13 +996,6 @@ public class HandleInventory : OpcodeHandler
         FieldNodes.AddUIntNode(_extractor, _Field_153_Slot, "Field 153", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_154_Slot, "Field 154", itemNode, "?");
 
-
-        FieldNodes.AddUIntNode(_extractor, _Field_164_Slot, "Field 164", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_168_Slot, "Field 168", itemNode, "?");
-
-        FieldNodes.AddUIntNode(_extractor, _Field_170_Slot, "Field 170", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_174_Slot, "Field 174", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_178_Slot, "Field 178", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_17C_Slot, "Field 17C", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_180_Slot, "Field 180", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_184_Slot, "Field 184", itemNode, "?");
@@ -1032,7 +1031,7 @@ public class HandleInventory : OpcodeHandler
         FieldNodes.AddUIntNode(_extractor, _Field_541_Slot, "Field 541", itemNode, "?");
         FieldNodes.AddStringNode(_extractor, _String_542_Slot, "String 542", itemNode);
 
-        FieldNodes.AddUIntNode(_extractor, _Tribute_Slot, "Field 560", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Tribute_Slot, "Tribute", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_564_Slot, "Field 564", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_568_Slot, "Field 568", itemNode, "?");
 
