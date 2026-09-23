@@ -599,19 +599,19 @@ public class HandleInventory : OpcodeHandler
         uint augPosition = _extractor.GetUIntAt(_AugPosition_Slot);
 
         ItemInstance instance = new ItemInstance();
-        instance.Position = new ItemPosition(storage, mainPosition, subPosition, augPosition);
+        instance.Location = new ItemLocation(storage, mainPosition, subPosition, augPosition);
         instance.Id = (ItemId)_extractor.GetUIntAt(_Item_ID_Slot);
         instance.StackSize = _extractor.GetUIntAt(_Current_Stack_Size_Slot);
         instance.RemainingCharges = _extractor.GetUIntAt(_Remaining_Charges_Slot);
 
         if (character.AddItem(instance, parent) == false)
         {
-            DebugLog.Write(LogChannel.Inventory, "CaptureItem: item " + instance.Id + " at " + instance.Position +
+            DebugLog.Write(LogChannel.Inventory, "CaptureItem: item " + instance.Id + " at " + instance.Location +
                 " rejected for '" + character.Name + "'; its children are not stored", LogLevel.Warn);
             return 0;
         }
         string itemName = _extractor.GetStringAt(_Item_Name_Slot);
-        DebugLog.Write(LogChannel.Inventory, "CaptureItem: stored item " + itemName + " (" + instance.Id + ")" + " at " + instance.Position +
+        DebugLog.Write(LogChannel.Inventory, "CaptureItem: stored item " + itemName + " (" + instance.Id + ")" + " at " + instance.Location +
             " for '" + character.Name + "', stack " + instance.StackSize + ", charges " +
             instance.RemainingCharges, LogLevel.Trace);
 
@@ -620,7 +620,7 @@ public class HandleInventory : OpcodeHandler
         SlotId childItemsSlot = _registry.IndexOfField(_extractor.CollectionOf(), "ChildItems");
         if (_extractor.IsPresent(childItemsSlot) == false)
         {
-            DebugLog.Write(LogChannel.Inventory, "CaptureItem: item " + instance.Id + " at " + instance.Position +
+            DebugLog.Write(LogChannel.Inventory, "CaptureItem: item " + instance.Id + " at " + instance.Location +
                 " has no ChildItems", LogLevel.Trace);
             return storedCount;
         }
@@ -628,13 +628,13 @@ public class HandleInventory : OpcodeHandler
         GateHandle childItemsGate = _extractor.GetGateAt(childItemsSlot);
         if (childItemsGate.Exists == false)
         {
-            DebugLog.Write(LogChannel.Inventory, "CaptureItem: item " + instance.Id + " at " + instance.Position +
+            DebugLog.Write(LogChannel.Inventory, "CaptureItem: item " + instance.Id + " at " + instance.Location +
                 " ChildItems slot present but no gate", LogLevel.Warn);
             return storedCount;
         }
 
         uint childCount = _extractor.BagCount(childItemsGate);
-        DebugLog.Write(LogChannel.Inventory, "CaptureItem: item " + itemName + " (" + instance.Id + ") at " + instance.Position +
+        DebugLog.Write(LogChannel.Inventory, "CaptureItem: item " + itemName + " (" + instance.Id + ") at " + instance.Location +
             " has " + childCount + " child entries", LogLevel.Trace);
 
         for (uint childEntry = 0; childEntry < childCount; childEntry++)

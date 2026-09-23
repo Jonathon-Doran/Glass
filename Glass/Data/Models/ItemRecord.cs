@@ -206,7 +206,7 @@ public class ItemRecord
     public byte Unknown_189 { get; set; }                           // 189 (Field_F5)
     public uint Unknown_190 { get; set; }                           // 190 (Field_618)
     public string Unknown_191 { get; set; } = string.Empty;         // 191 (String_61C)
-    public uint ChildCount { get; set; }                            // 192
+
     // No 193
     // 194 = ChildItems Gate
     // No 195

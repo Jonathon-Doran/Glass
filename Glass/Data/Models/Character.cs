@@ -49,7 +49,7 @@ public class Character
     // containers and augments are entries of their own, and are also reachable
     // through their parent's Children.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private readonly Dictionary<ItemPosition, ItemInstance> _items = new Dictionary<ItemPosition, ItemInstance>();
+    private readonly Dictionary<ItemLocation, ItemInstance> _items = new Dictionary<ItemLocation, ItemInstance>();
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ClearItems
@@ -81,16 +81,16 @@ public class Character
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public bool AddItem(ItemInstance item, ItemInstance? parent)
     {
-        if (item.Position.Exists == false)
+        if (item.Location.Exists == false)
         {
             DebugLog.Write(LogChannel.Fields, "Character.AddItem: item " + item.Id +
                 " has no position; not added to '" + Name + "'", LogLevel.Warn);
             return false;
         }
 
-        if (_items.TryGetValue(item.Position, out ItemInstance? occupant))
+        if (_items.TryGetValue(item.Location, out ItemInstance? occupant))
         {
-            DebugLog.Write(LogChannel.Fields, "Character.AddItem: position " + item.Position +
+            DebugLog.Write(LogChannel.Fields, "Character.AddItem: position " + item.Location +
                 " already holds item " + occupant.Id + "; item " + item.Id + " not added to '" +
                 Name + "'", LogLevel.Warn);
             return false;
@@ -99,16 +99,16 @@ public class Character
         if (item.Parent != null)
         {
             DebugLog.Write(LogChannel.Fields, "Character.AddItem: item " + item.Id + " at " +
-                item.Position + " already has a parent; not added to '" + Name + "'", LogLevel.Warn);
+                item.Location + " already has a parent; not added to '" + Name + "'", LogLevel.Warn);
             return false;
         }
 
         if (parent != null)
         {
-            if (_items.TryGetValue(parent.Position, out ItemInstance? heldParent) == false ||
+            if (_items.TryGetValue(parent.Location, out ItemInstance? heldParent) == false ||
                 ReferenceEquals(heldParent, parent) == false)
             {
-                DebugLog.Write(LogChannel.Fields, "Character.AddItem: parent at " + parent.Position +
+                DebugLog.Write(LogChannel.Fields, "Character.AddItem: parent at " + parent.Location +
                     " is not held by '" + Name + "'; item " + item.Id + " not added", LogLevel.Warn);
                 return false;
             }
@@ -116,12 +116,12 @@ public class Character
             item.Parent = parent;
             parent.Children.Add(item);
             DebugLog.Write(LogChannel.Fields, "Character.AddItem: linked item " + item.Id + " at " +
-                item.Position + " under parent " + parent.Id + " at " + parent.Position, LogLevel.Trace);
+                item.Location + " under parent " + parent.Id + " at " + parent.Location, LogLevel.Trace);
         }
 
-        _items[item.Position] = item;
+        _items[item.Location] = item;
         DebugLog.Write(LogChannel.Fields, "Character.AddItem: added item " + item.Id + " at " +
-            item.Position + " to '" + Name + "'", LogLevel.Trace);
+            item.Location + " to '" + Name + "'", LogLevel.Trace);
         return true;
     }
 
@@ -136,7 +136,7 @@ public class Character
     //
     // Returns true if an instance is held at the position, false otherwise.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public bool TryGetItem(ItemPosition position, out ItemInstance? item)
+    public bool TryGetItem(ItemLocation position, out ItemInstance? item)
     {
         if (position.Exists == false)
         {

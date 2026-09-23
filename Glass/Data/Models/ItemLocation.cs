@@ -3,7 +3,7 @@
 namespace Glass.Data.Models;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// ItemPosition
+// ItemLocation
 //
 // The location of one item: storage system, main position, sub position, and
 // aug position.  Sub and aug positions are 0xFFFF when absent.  Immutable, and
@@ -12,10 +12,10 @@ namespace Glass.Data.Models;
 // A position is valid only when _exists is true.  Only the public constructor
 // sets it, and only when the storage value is a member of StorageSystem.  None
 // is the named invalid position, with every part set to NoneValue.  An
-// uninitialized ItemPosition is also invalid (_exists false, parts zero).  All
+// uninitialized ItemLocation is also invalid (_exists false, parts zero).  All
 // invalid positions compare equal to each other and never equal a valid one.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public readonly struct ItemPosition : IEquatable<ItemPosition>
+public readonly struct ItemLocation : IEquatable<ItemLocation>
 {
     // Value of a sub or aug position that is absent
     public const uint Absent = 0xFFFF;
@@ -24,7 +24,7 @@ public readonly struct ItemPosition : IEquatable<ItemPosition>
     public const uint NoneValue = uint.MaxValue;
 
     // The invalid position: every part is NoneValue and _exists is false
-    public static ItemPosition None => new ItemPosition(NoneValue);
+    public static ItemLocation None => new ItemLocation(NoneValue);
 
     // True only for a position built by the public constructor with a known storage value
     private readonly bool _exists;
@@ -37,7 +37,7 @@ public readonly struct ItemPosition : IEquatable<ItemPosition>
     public bool Exists => _exists;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // ItemPosition (constructor)
+    // ItemLocation (constructor)
     //
     // Builds a position from its four parts.  The position is valid only if storage
     // is a member of StorageSystem; otherwise it is left invalid and a warning is
@@ -48,7 +48,7 @@ public readonly struct ItemPosition : IEquatable<ItemPosition>
     // subPosition:   The position within a container, or Absent.
     // augPosition:   The augment position within an item, or Absent.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public ItemPosition(StorageSystem storage, uint mainPosition, uint subPosition, uint augPosition)
+    public ItemLocation(StorageSystem storage, uint mainPosition, uint subPosition, uint augPosition)
     {
         Storage = storage;
         MainPosition = mainPosition;
@@ -58,7 +58,7 @@ public readonly struct ItemPosition : IEquatable<ItemPosition>
         if (Enum.IsDefined(storage) == false)
         {
             _exists = false;
-            DebugLog.Write(LogChannel.General, "ItemPosition: unknown storage value " + (uint)storage +
+            DebugLog.Write(LogChannel.General, "ItemLocation: unknown storage value " + (uint)storage +
                 " (main " + mainPosition + ", sub " + subPosition + ", aug " + augPosition +
                 "); position is invalid", LogLevel.Warn);
             return;
@@ -68,14 +68,14 @@ public readonly struct ItemPosition : IEquatable<ItemPosition>
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // ItemPosition (constructor)
+    // ItemLocation (constructor)
     //
     // Builds an invalid position, with every part set to fill and _exists false.
     // There is no way to produce a valid position through this constructor.
     //
     // fill:  The value stored in every part.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private ItemPosition(uint fill)
+    private ItemLocation(uint fill)
     {
         Storage = (StorageSystem)fill;
         MainPosition = fill;
@@ -94,7 +94,7 @@ public readonly struct ItemPosition : IEquatable<ItemPosition>
     // other:    The position to compare with.
     // Returns:  True if the positions are equal.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public bool Equals(ItemPosition other)
+    public bool Equals(ItemLocation other)
     {
         if (_exists == false || other._exists == false)
         {
@@ -113,11 +113,11 @@ public readonly struct ItemPosition : IEquatable<ItemPosition>
     // Compares this position with an object.
     //
     // obj:      The object to compare with.
-    // Returns:  True if obj is an ItemPosition equal to this one.
+    // Returns:  True if obj is an ItemLocation equal to this one.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public override bool Equals(object? obj)
     {
-        if (obj is ItemPosition other)
+        if (obj is ItemLocation other)
         {
             return Equals(other);
         }
@@ -170,7 +170,7 @@ public readonly struct ItemPosition : IEquatable<ItemPosition>
     // right:    The second position.
     // Returns:  True if the positions are equal.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public static bool operator ==(ItemPosition left, ItemPosition right)
+    public static bool operator ==(ItemLocation left, ItemLocation right)
     {
         return left.Equals(right);
     }
@@ -184,7 +184,7 @@ public readonly struct ItemPosition : IEquatable<ItemPosition>
     // right:    The second position.
     // Returns:  True if the positions are not equal.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public static bool operator !=(ItemPosition left, ItemPosition right)
+    public static bool operator !=(ItemLocation left, ItemLocation right)
     {
         return left.Equals(right) == false;
     }

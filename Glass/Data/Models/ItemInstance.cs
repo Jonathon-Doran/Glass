@@ -15,11 +15,14 @@ public class ItemInstance
     public ItemId Id { get; set; } = ItemId.None;                           // 34
 
     // Location of this instance.  None until the instance has been placed.
-    public ItemPosition Position { get; set; } = ItemPosition.None;         // 4,5,6
+    public ItemLocation Location { get; set; } = ItemLocation.None;         // 4,5,6
 
+    public Boolean IsAttuned { get; set; }                                  // 13
     // Per-instance state
     public uint StackSize { get; set; }                                     // 2
-    public uint RemainingCharges { get; set; }
+    public uint RemainingCharges { get; set; }                              // 12
+    public Boolean IsCopied { get; set; }                                   // 26
+
 
     // Children associated with this instance (augments, contents of containers)
     public List<ItemInstance> Children { get; set; } = new List<ItemInstance>();
