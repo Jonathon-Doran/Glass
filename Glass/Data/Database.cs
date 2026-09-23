@@ -461,6 +461,31 @@ public class Database
         {
             ApplyMigration(conn, 63, Migration_063);
         }
+
+        if (version < 64)
+        {
+            using SqliteCommand pragmaOff = conn.CreateCommand();
+            pragmaOff.CommandText = "PRAGMA foreign_keys = OFF";
+            pragmaOff.ExecuteNonQuery();
+
+            ApplyMigration(conn, 64, Migration_064);
+
+            using SqliteCommand pragmaOn = conn.CreateCommand();
+            pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
+            pragmaOn.ExecuteNonQuery();
+        }
+        if (version < 65)
+        {
+            using SqliteCommand pragmaOff = conn.CreateCommand();
+            pragmaOff.CommandText = "PRAGMA foreign_keys = OFF";
+            pragmaOff.ExecuteNonQuery();
+
+            ApplyMigration(conn, 65, Migration_065);
+
+            using SqliteCommand pragmaOn = conn.CreateCommand();
+            pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
+            pragmaOn.ExecuteNonQuery();
+        }
     }
 
     private int GetSchemaVersion()
@@ -1549,6 +1574,220 @@ public class Database
 
         CREATE INDEX IF NOT EXISTS idx_itemeffects_item ON ItemEffects(item_id);
     ";
+
+
+    private const string Migration_064 = @"
+        DROP TABLE IF EXISTS ItemRecords;
+
+        CREATE TABLE ItemRecords (
+            id_string               TEXT    NOT NULL DEFAULT '',        -- 1
+            container_type          INTEGER NOT NULL DEFAULT 0,         -- 3
+            unknown_7               INTEGER NOT NULL DEFAULT 0,         -- 7
+            unknown_8               INTEGER NOT NULL DEFAULT 0,         -- 8
+            unknown_9               INTEGER NOT NULL DEFAULT 0,         -- 9
+            unknown_10              INTEGER NOT NULL DEFAULT 0,         -- 10
+            unknown_11              INTEGER NOT NULL DEFAULT 0,         -- 11
+            unknown_14              INTEGER NOT NULL DEFAULT 0,         -- 14
+            unknown_15              INTEGER NOT NULL DEFAULT 0,         -- 15
+            unknown_16              INTEGER NOT NULL DEFAULT 0,         -- 16
+            unknown_17              INTEGER NOT NULL DEFAULT 0,         -- 17
+            is_evolving_item        INTEGER NOT NULL DEFAULT 0,         -- 18
+            unknown_20              INTEGER NOT NULL DEFAULT 0,         -- 20
+            unknown_21              INTEGER NOT NULL DEFAULT 0,         -- 21
+            unknown_22              INTEGER NOT NULL DEFAULT 0,         -- 22
+            unknown_23              INTEGER NOT NULL DEFAULT 0,         -- 23
+            unknown_24              INTEGER NOT NULL DEFAULT 0,         -- 24
+            unknown_25              INTEGER NOT NULL DEFAULT 0,         -- 25
+            unknown_27              INTEGER NOT NULL DEFAULT 0,         -- 27
+            unknown_28              INTEGER NOT NULL DEFAULT 0,         -- 28
+            item_type2              INTEGER NOT NULL DEFAULT 0,         -- 29
+            name                    TEXT    NOT NULL,                   -- 30
+            lore                    TEXT    NOT NULL DEFAULT '',        -- 31
+            it_file                 INTEGER NOT NULL DEFAULT 0,         -- 32
+            unknown_33              INTEGER NOT NULL DEFAULT 0,         -- 33
+            id                      INTEGER PRIMARY KEY,                -- 34 (wire item id)
+            weight                  REAL    NOT NULL DEFAULT 0,         -- 35
+            unknown_36              INTEGER NOT NULL DEFAULT 0,         -- 36
+            unknown_37              INTEGER NOT NULL DEFAULT 0,         -- 37
+            unknown_38              INTEGER NOT NULL DEFAULT 0,         -- 38
+            size                    INTEGER NOT NULL DEFAULT 0,         -- 40
+            usable_slot_mask        INTEGER NOT NULL DEFAULT 0,         -- 41
+            cost                    INTEGER NOT NULL DEFAULT 0,         -- 42
+            icon_id                 INTEGER NOT NULL DEFAULT 0,         -- 43
+            unknown_44              INTEGER NOT NULL DEFAULT 0,         -- 44
+            is_tradeskill           INTEGER NOT NULL DEFAULT 0,         -- 45
+            save_cold               INTEGER NOT NULL DEFAULT 0,         -- 46
+            save_disease            INTEGER NOT NULL DEFAULT 0,         -- 47
+            save_poison             INTEGER NOT NULL DEFAULT 0,         -- 48
+            save_magic              INTEGER NOT NULL DEFAULT 0,         -- 49
+            save_fire               INTEGER NOT NULL DEFAULT 0,         -- 50
+            save_corruption         INTEGER NOT NULL DEFAULT 0,         -- 51
+            plus_strength           INTEGER NOT NULL DEFAULT 0,         -- 52
+            plus_stamina            INTEGER NOT NULL DEFAULT 0,         -- 53
+            plus_agility            INTEGER NOT NULL DEFAULT 0,         -- 54
+            plus_dexterity          INTEGER NOT NULL DEFAULT 0,         -- 55
+            plus_charisma           INTEGER NOT NULL DEFAULT 0,         -- 56
+            plus_intelligence       INTEGER NOT NULL DEFAULT 0,         -- 57
+            plus_wisdom             INTEGER NOT NULL DEFAULT 0,         -- 58
+            plus_hp                 INTEGER NOT NULL DEFAULT 0,         -- 59
+            plus_mana               INTEGER NOT NULL DEFAULT 0,         -- 61
+            plus_endurance          INTEGER NOT NULL DEFAULT 0,         -- 62
+            plus_ac                 INTEGER NOT NULL DEFAULT 0,         -- 63
+            hp_regen                INTEGER NOT NULL DEFAULT 0,         -- 64
+            mana_regen              INTEGER NOT NULL DEFAULT 0,         -- 65
+            unknown_66              INTEGER NOT NULL DEFAULT 0,         -- 66
+            class_mask              INTEGER NOT NULL DEFAULT 0,         -- 67
+            race_mask               INTEGER NOT NULL DEFAULT 0,         -- 68
+            unknown_69              INTEGER NOT NULL DEFAULT 0,         -- 69
+            skill_percent_chance    INTEGER NOT NULL DEFAULT 0,         -- 70
+            skill_max_change        INTEGER NOT NULL DEFAULT 0,         -- 71
+            skill_id                INTEGER NOT NULL DEFAULT 0,         -- 72
+            unknown_73              INTEGER NOT NULL DEFAULT 0,         -- 73
+            unknown_74              INTEGER NOT NULL DEFAULT 0,         -- 74
+            unknown_75              INTEGER NOT NULL DEFAULT 0,         -- 75
+            unknown_76              INTEGER NOT NULL DEFAULT 0,         -- 76
+            unknown_77              INTEGER NOT NULL DEFAULT 0,         -- 77
+            unknown_78              INTEGER NOT NULL DEFAULT 0,         -- 78
+            food_drink_value        INTEGER NOT NULL DEFAULT 0,         -- 79
+            required_level          INTEGER NOT NULL DEFAULT 0,         -- 80
+            recommended_level       INTEGER NOT NULL DEFAULT 0,         -- 81
+            bard_value              INTEGER NOT NULL DEFAULT 0,         -- 82
+            unknown_83              INTEGER NOT NULL DEFAULT 0,         -- 83
+            unknown_84              INTEGER NOT NULL DEFAULT 0,         -- 84
+            weapon_delay            INTEGER NOT NULL DEFAULT 0,         -- 85
+            unknown_86              INTEGER NOT NULL DEFAULT 0,         -- 86
+            unknown_87              INTEGER NOT NULL DEFAULT 0,         -- 87
+            weapon_range            INTEGER NOT NULL DEFAULT 0,         -- 88
+            weapon_base_damage      INTEGER NOT NULL DEFAULT 0,         -- 89
+            color                   INTEGER NOT NULL DEFAULT 0,         -- 90
+            unknown_91              INTEGER NOT NULL DEFAULT 0,         -- 91
+            item_type1              INTEGER NOT NULL DEFAULT 0,         -- 92
+            material                INTEGER NOT NULL DEFAULT 0,         -- 93
+            unknown_94              INTEGER NOT NULL DEFAULT 0,         -- 94
+            unknown_95              INTEGER NOT NULL DEFAULT 0,         -- 95
+            unknown_96              INTEGER NOT NULL DEFAULT 0,         -- 96
+            unknown_97              INTEGER NOT NULL DEFAULT 0,         -- 97
+            unknown_98              INTEGER NOT NULL DEFAULT 0,         -- 98
+            unknown_99              INTEGER NOT NULL DEFAULT 0,         -- 99
+            unknown_100             INTEGER NOT NULL DEFAULT 0,         -- 100
+            unknown_101             INTEGER NOT NULL DEFAULT 0,         -- 101
+            unknown_102             TEXT    NOT NULL DEFAULT '',        -- 102
+            unknown_103             INTEGER NOT NULL DEFAULT 0,         -- 103
+            unknown_104             INTEGER NOT NULL DEFAULT 0,         -- 104
+            unknown_105             INTEGER NOT NULL DEFAULT 0,         -- 105
+            unknown_107             INTEGER NOT NULL DEFAULT 0,         -- 107
+            unknown_108             INTEGER NOT NULL DEFAULT 0,         -- 108
+            unknown_109             INTEGER NOT NULL DEFAULT 0,         -- 109
+            unknown_110             INTEGER NOT NULL DEFAULT 0,         -- 110
+            unknown_111             INTEGER NOT NULL DEFAULT 0,         -- 111
+            bag_type                INTEGER NOT NULL DEFAULT 0,         -- 112
+            bag_slot_count          INTEGER NOT NULL DEFAULT 0,         -- 113
+            bag_size                INTEGER NOT NULL DEFAULT 0,         -- 114
+            bag_weight_reduction    INTEGER NOT NULL DEFAULT 0,         -- 115
+            unknown_116             INTEGER NOT NULL DEFAULT 0,         -- 116
+            unknown_117             INTEGER NOT NULL DEFAULT 0,         -- 117
+            unknown_118             TEXT    NOT NULL DEFAULT '',        -- 118
+            lore_group              INTEGER NOT NULL DEFAULT 0,         -- 119
+            unknown_120             INTEGER NOT NULL DEFAULT 0,         -- 120
+            tribute                 INTEGER NOT NULL DEFAULT 0,         -- 121
+            unknown_122             INTEGER NOT NULL DEFAULT 0,         -- 122
+            plus_attack             INTEGER NOT NULL DEFAULT 0,         -- 123
+            haste                   INTEGER NOT NULL DEFAULT 0,         -- 124
+            unknown_125             INTEGER NOT NULL DEFAULT 0,         -- 125
+            aug_distiller_needed    INTEGER NOT NULL DEFAULT 0,         -- 126
+            unknown_127             INTEGER NOT NULL DEFAULT 0,         -- 127
+            unknown_128             INTEGER NOT NULL DEFAULT 0,         -- 128
+            unknown_129             INTEGER NOT NULL DEFAULT 0,         -- 129
+            unknown_130             INTEGER NOT NULL DEFAULT 0,         -- 130
+            max_stack_size          INTEGER NOT NULL DEFAULT 0,         -- 131
+            unknown_132             INTEGER NOT NULL DEFAULT 0,         -- 132
+            unknown_133             INTEGER NOT NULL DEFAULT 0,         -- 133
+            unknown_134             BLOB    NOT NULL DEFAULT X'',       -- 134 (78 bytes)
+            unknown_136             INTEGER NOT NULL DEFAULT 0,         -- 136
+            unknown_137             INTEGER NOT NULL DEFAULT 0,         -- 137
+            unknown_138             INTEGER NOT NULL DEFAULT 0,         -- 138
+            unknown_139             INTEGER NOT NULL DEFAULT 0,         -- 139
+            backstab_damage         INTEGER NOT NULL DEFAULT 0,         -- 140
+            heroic_strength         INTEGER NOT NULL DEFAULT 0,         -- 141
+            heroic_intelligence     INTEGER NOT NULL DEFAULT 0,         -- 142
+            heroic_wisdom           INTEGER NOT NULL DEFAULT 0,         -- 143
+            heroic_agility          INTEGER NOT NULL DEFAULT 0,         -- 144
+            heroic_dexterity        INTEGER NOT NULL DEFAULT 0,         -- 145
+            heroic_stamina          INTEGER NOT NULL DEFAULT 0,         -- 146
+            heroic_charisma         INTEGER NOT NULL DEFAULT 0,         -- 147
+            unknown_148             INTEGER NOT NULL DEFAULT 0,         -- 148
+            unknown_149             INTEGER NOT NULL DEFAULT 0,         -- 149
+            unknown_150             INTEGER NOT NULL DEFAULT 0,         -- 150
+            unknown_151             INTEGER NOT NULL DEFAULT 0,         -- 151
+            unknown_152             INTEGER NOT NULL DEFAULT 0,         -- 152
+            unknown_153             INTEGER NOT NULL DEFAULT 0,         -- 153
+            unknown_154             INTEGER NOT NULL DEFAULT 0,         -- 154
+            unknown_155             INTEGER NOT NULL DEFAULT 0,         -- 155
+            unknown_156             INTEGER NOT NULL DEFAULT 0,         -- 156
+            unknown_157             INTEGER NOT NULL DEFAULT 0,         -- 157
+            unknown_158             INTEGER NOT NULL DEFAULT 0,         -- 158
+            unknown_159             INTEGER NOT NULL DEFAULT 0,         -- 159
+            unknown_160             INTEGER NOT NULL DEFAULT 0,         -- 160
+            unknown_161             INTEGER NOT NULL DEFAULT 0,         -- 161
+            unknown_162             INTEGER NOT NULL DEFAULT 0,         -- 162
+            unknown_163             TEXT    NOT NULL DEFAULT '',        -- 163
+            unknown_164             INTEGER NOT NULL DEFAULT 0,         -- 164
+            unknown_165             INTEGER NOT NULL DEFAULT 0,         -- 165
+            unknown_166             INTEGER NOT NULL DEFAULT 0,         -- 166
+            unknown_167             INTEGER NOT NULL DEFAULT 0,         -- 167
+            unknown_168             INTEGER NOT NULL DEFAULT 0,         -- 168
+            unknown_169             INTEGER NOT NULL DEFAULT 0,         -- 169
+            unknown_170             INTEGER NOT NULL DEFAULT 0,         -- 170
+            unknown_171             INTEGER NOT NULL DEFAULT 0,         -- 171
+            unknown_172             INTEGER NOT NULL DEFAULT 0,         -- 172
+            unknown_173             INTEGER NOT NULL DEFAULT 0,         -- 173
+            unknown_175             INTEGER NOT NULL DEFAULT 0,         -- 175
+            unknown_176             INTEGER NOT NULL DEFAULT 0,         -- 176
+            unknown_177             INTEGER NOT NULL DEFAULT 0,         -- 177
+            unknown_178             INTEGER NOT NULL DEFAULT 0,         -- 178
+            unknown_179             INTEGER NOT NULL DEFAULT 0,         -- 179
+            unknown_180             INTEGER NOT NULL DEFAULT 0,         -- 180
+            unknown_181             INTEGER NOT NULL DEFAULT 0,         -- 181
+            unknown_182             INTEGER NOT NULL DEFAULT 0,         -- 182
+            unknown_183             INTEGER NOT NULL DEFAULT 0,         -- 183
+            unknown_184             INTEGER NOT NULL DEFAULT 0,         -- 184
+            unknown_185             INTEGER NOT NULL DEFAULT 0,         -- 185
+            unknown_186             INTEGER NOT NULL DEFAULT 0,         -- 186
+            unknown_187             INTEGER NOT NULL DEFAULT 0,         -- 187
+            unknown_188             INTEGER NOT NULL DEFAULT 0,         -- 188
+            unknown_189             INTEGER NOT NULL DEFAULT 0,         -- 189
+            unknown_190             INTEGER NOT NULL DEFAULT 0,         -- 190
+            unknown_191             TEXT    NOT NULL DEFAULT '',        -- 191
+            unknown_196             INTEGER NOT NULL DEFAULT 0,         -- 196
+            unknown_198             INTEGER NOT NULL DEFAULT 0,         -- 198
+            unknown_199             INTEGER NOT NULL DEFAULT 0          -- 199
+        );
+    ";
+
+    private const string Migration_065 = @"
+        DROP TABLE IF EXISTS ItemInstances;
+
+        CREATE TABLE ItemInstances (
+            id                  INTEGER PRIMARY KEY,
+            character_id        INTEGER NOT NULL REFERENCES Characters(id),
+            parent_id           INTEGER REFERENCES ItemInstances(id),   -- NULL for top level
+            stack_size          INTEGER NOT NULL DEFAULT 0,             -- 2
+            storage             INTEGER NOT NULL,                       -- 3
+            main_position       INTEGER NOT NULL,                       -- 4
+            sub_position        INTEGER NOT NULL,                       -- 5
+            aug_position        INTEGER NOT NULL,                       -- 6
+            remaining_charges   INTEGER NOT NULL DEFAULT 0,             -- 12
+            is_attuned          INTEGER NOT NULL DEFAULT 0,             -- 13
+            is_copied           INTEGER NOT NULL DEFAULT 0,             -- 26
+            item_id             INTEGER NOT NULL REFERENCES ItemRecords(id)  -- 34
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_iteminstances_character ON ItemInstances(character_id);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_iteminstances_position
+            ON ItemInstances(character_id, storage, main_position, sub_position, aug_position);
+    ";
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"
