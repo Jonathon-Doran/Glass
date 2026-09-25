@@ -277,7 +277,7 @@ public class HandleInventory : OpcodeHandler
         _Field_15_Slot = _registry.IndexOfField(itemCollection, "Field15");
         _Field_16_Slot = _registry.IndexOfField(itemCollection, "Field16");
         _Field_17_Slot = _registry.IndexOfField(itemCollection, "Field17");
-        _Is_Evolving_Slot = _registry.IndexOfField(itemCollection, "Is Evolving");
+        _Is_Evolving_Slot = _registry.IndexOfField(itemCollection, "IsEvolving");
         _Field_19_Slot = _registry.IndexOfField(itemCollection, "Field19");
         _Field_20_Slot = _registry.IndexOfField(itemCollection, "Field20");
         _Field_21_Slot = _registry.IndexOfField(itemCollection, "Field21");
@@ -408,7 +408,9 @@ public class HandleInventory : OpcodeHandler
         _Max_Stack_Size_Slot = _registry.IndexOfField(itemCollection, "Max_Stack_Size");            // 131
         _Field_594_Slot = _registry.IndexOfField(itemCollection, "Field_594");
         _Field_5A9_Slot = _registry.IndexOfField(itemCollection, "Field_5A9");
-        // blob 4DC
+
+        _Blob_4DC_Slot = _registry.IndexOfField(itemCollection, "Blob_4DC");                        // 134
+
         _Field_5A0_Slot = _registry.IndexOfField(itemCollection, "Field_5A0");
         _Field_5A8_Slot = _registry.IndexOfField(itemCollection, "Field_5A8");
         _Field_598_Slot = _registry.IndexOfField(itemCollection, "Field_598");
@@ -569,6 +571,8 @@ public class HandleInventory : OpcodeHandler
             storedCount += CaptureItem(itemListGate, itemIndex, character, null);
         }
 
+        ItemInstanceRepository.Instance.StoreSnapshot(character);
+
         DebugLog.Write(LogChannel.Inventory, "CaptureInventory: stored " + storedCount + " items, including contents " +
             "and augments, for '" + characterName + "'", LogLevel.Trace);
     }
@@ -603,6 +607,10 @@ public class HandleInventory : OpcodeHandler
         instance.Id = (ItemId)_extractor.GetUIntAt(_Item_ID_Slot);
         instance.StackSize = _extractor.GetUIntAt(_Current_Stack_Size_Slot);
         instance.RemainingCharges = _extractor.GetUIntAt(_Remaining_Charges_Slot);
+        instance.IsAttuned = _extractor.GetUIntAt(_IsAttuned_Slot) != 0u;
+        instance.IsCopied = _extractor.GetUIntAt(_IsCopied_Slot) != 0u;
+
+        ItemRepository.Instance.Add(BuildItemRecord());
 
         if (character.AddItem(instance, parent) == false)
         {
@@ -664,6 +672,207 @@ public class HandleInventory : OpcodeHandler
         }
 
         return storedCount;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // BuildItemRecord
+    //
+    // Builds an ItemRecord from the item in the extractor's active bag.  Reads every
+    // definition field in wire order into a new record.  The effects list and the
+    // are left at their defaults.
+    //
+    // Returns:  The filled record.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private ItemRecord BuildItemRecord()
+    {
+        ItemRecord record = new ItemRecord();
+
+        record.IdString = _extractor.GetStringAt(_Item_String_Slot);                            // 1
+        record.ContainerType = (ContainerType)_extractor.GetUIntAt(_ContainerType_Slot);        // 3
+        record.Unknown_7 = _extractor.GetUInt64At(_Field_7_Slot);                               // 7
+        record.Unknown_8 = _extractor.GetUIntAt(_Field_8_Slot);                                 // 8
+        record.Unknown_9 = _extractor.GetUIntAt(_Field_9_Slot);                                 // 9
+        record.Unknown_10 = _extractor.GetUInt64At(_Field_10_Slot);                             // 10
+        record.Unknown_11 = _extractor.GetUIntAt(_Field_11_Slot);                               // 11
+        record.Unknown_14 = _extractor.GetUIntAt(_Field_14_Slot);                               // 14
+        record.Unknown_15 = _extractor.GetUIntAt(_Field_15_Slot);                               // 15
+        record.Unknown_16 = (byte)_extractor.GetUIntAt(_Field_16_Slot);                         // 16
+        record.Unknown_17 = _extractor.GetUIntAt(_Field_17_Slot);                               // 17
+        record.Is_Evolving_Item = _extractor.GetUIntAt(_Is_Evolving_Slot) != 0u;                // 18
+        record.Unknown_20 = _extractor.GetUIntAt(_Field_19_Slot);                               // 20
+        record.Unknown_21 = _extractor.GetUIntAt(_Field_20_Slot);                               // 21
+        record.Unknown_22 = _extractor.GetUIntAt(_Field_21_Slot);                               // 22
+        record.Unknown_23 = _extractor.GetUIntAt(_Field_22_Slot);                               // 23
+        record.Unknown_24 = _extractor.GetUIntAt(_Field_23_Slot);                               // 24
+        record.Unknown_25 = _extractor.GetUIntAt(_Field_24_Slot);                               // 25
+        record.Unknown_27 = _extractor.GetUIntAt(_Field_26_Slot);                               // 27
+        record.Unknown_28 = _extractor.GetUIntAt(_Field_27_Slot);                               // 28
+        record.ItemType2 = (byte)_extractor.GetUIntAt(_Item_Type2_Slot);                        // 29
+        record.Name = _extractor.GetStringAt(_Item_Name_Slot);                                  // 30
+        record.Lore = _extractor.GetStringAt(_Item_Lore_Slot);                                  // 31
+        record.IT_File = _extractor.GetUIntAt(_ITFile_Slot);                                    // 32
+        record.Unknown_33 = _extractor.GetUIntAt(_DF_4_Slot);                                   // 33
+        record.Id = (ItemId)_extractor.GetUIntAt(_Item_ID_Slot);                                // 34
+        record.Weight = _extractor.GetFloatAt(_Weight_Slot);                                    // 35
+        record.Unknown_36 = (byte)_extractor.GetUIntAt(_DF_7_Slot);                             // 36
+        record.Tradeable = (byte)_extractor.GetUIntAt(_DF_8_Slot);                             // 37
+        record.Attuneable = (byte)_extractor.GetUIntAt(_DF_9_Slot);                             // 38
+        record.Size = (byte)_extractor.GetUIntAt(_Size_Slot);                                   // 40
+        record.UsableSlotMask = _extractor.GetUIntAt(_Usable_Slot_Mask);                        // 41
+        record.Cost = _extractor.GetUIntAt(_Cost_Slot);                                         // 42
+        record.Icon_ID = _extractor.GetUIntAt(_Icon_ID_Slot);                                   // 43
+        record.Unknown_44 = (byte)_extractor.GetUIntAt(_DF_13_Slot);                            // 44
+        record.IsTradeskill = _extractor.GetUIntAt(_Is_Tradeskill_Slot) != 0u;                  // 45
+        record.SaveCold = (byte)_extractor.GetUIntAt(_Save_Cold_Slot);                          // 46
+        record.SaveDisease = (byte)_extractor.GetUIntAt(_Save_Disease_Slot);                    // 47
+        record.SavePoison = (byte)_extractor.GetUIntAt(_Save_Poison_Slot);                      // 48
+        record.SaveMagic = (byte)_extractor.GetUIntAt(_Save_Magic_Slot);                        // 49
+        record.SaveFire = (byte)_extractor.GetUIntAt(_Save_Fire_Slot);                          // 50
+        record.SaveCorruption = (byte)_extractor.GetUIntAt(_Save_Corruption_Slot);              // 51
+        record.PlusStrength = (sbyte)_extractor.GetIntAt(_Plus_Strength_Slot);                  // 52
+        record.PlusStamina = (sbyte)_extractor.GetIntAt(_Plus_Stamina_Slot);                    // 53
+        record.PlusAgility = (sbyte)_extractor.GetIntAt(_Plus_Agility_Slot);                    // 54
+        record.PlusDexterity = (sbyte)_extractor.GetIntAt(_Plus_Dexterity_Slot);                // 55
+        record.PlusCharisma = (sbyte)_extractor.GetIntAt(_Plus_Charisma_Slot);                  // 56
+        record.PlusIntelligence = (sbyte)_extractor.GetIntAt(_Plus_Intelligence_Slot);          // 57
+        record.PlusWisdom = (sbyte)_extractor.GetIntAt(_Plus_Wisdom_Slot);                      // 58
+        record.PlusHP = _extractor.GetIntAt(_Plus_HP_Slot);                                     // 59
+        record.PlusMana = _extractor.GetIntAt(_Plus_Mana_Slot);                                 // 61
+        record.PlusEndurance = _extractor.GetIntAt(_Plus_Endurance_Slot);                       // 62
+        record.PlusAC = _extractor.GetIntAt(_Plus_AC_Slot);                                     // 63
+        record.HpRegen = _extractor.GetIntAt(_HP_Regen_Slot);                                   // 64
+        record.ManaRegen = _extractor.GetIntAt(_Mana_Regen_Slot);                               // 65
+        record.Unknown_66 = _extractor.GetUIntAt(_Field_57C_Slot);                              // 66
+        record.ClassMask = _extractor.GetUIntAt(_Class_Mask_Slot);                              // 67
+        record.RaceMask = _extractor.GetUIntAt(_Race_Mask_Slot);                                // 68
+        record.Deity = _extractor.GetUIntAt(_Field_148_Slot);                                   // 69
+        record.Skill_Percent_Chance = _extractor.GetUIntAt(_Skill_Percent_Change_Slot);         // 70
+        record.Skill_Max_Change = _extractor.GetUIntAt(_Skill_Max_Change_Slot);                 // 71
+        record.Skill_ID = _extractor.GetUIntAt(_Skill_Slot);                                    // 72
+        record.Unknown_73 = _extractor.GetUIntAt(_Field_124_Slot);                              // 73
+        record.Unknown_74 = _extractor.GetUIntAt(_Field_128_Slot);                              // 74
+        record.Unknown_75 = _extractor.GetUIntAt(_Field_12C_Slot);                              // 75
+        record.Unknown_76 = _extractor.GetUIntAt(_Field_134_Slot);                              // 76
+        record.Unknown_77 = _extractor.GetUIntAt(_Field_130_Slot);                              // 77
+        record.Is_Magic = (byte)_extractor.GetUIntAt(_Field_150_Slot);                          // 78
+        record.FoodDrinkValue = _extractor.GetUIntAt(_Food_Drink_Value_Slot);                   // 79
+        record.RequiredLevel = _extractor.GetUIntAt(_Required_Level_Slot);                      // 80
+        record.RecommendedLevel = _extractor.GetUIntAt(_Recommended_Level_Slot);                // 81
+        record.Bard_Value = _extractor.GetUIntAt(_Bard_Value_Slot);                             // 82
+        record.Unknown_83 = _extractor.GetUIntAt(_Field_13C_Slot);                              // 83
+        record.Light = (byte)_extractor.GetUIntAt(_Field_151_Slot);                             // 84
+        record.Weapon_Delay = (byte)_extractor.GetUIntAt(_Weapon_Delay_Slot);                   // 85
+        record.Elemental_Damage_Type = (byte)_extractor.GetUIntAt(_Field_153_Slot);             // 86
+        record.Elemental_Damage_Amount = (byte)_extractor.GetUIntAt(_Field_154_Slot);           // 87
+        record.Weapon_Range = (byte)_extractor.GetUIntAt(_Weapon_Range_Slot);                   // 88
+        record.Weapon_Base_Damage = _extractor.GetUIntAt(_Base_Damage_Slot);                    // 89
+        record.Color = _extractor.GetUIntAt(_Color_Slot);                                       // 90
+        record.Prestige = _extractor.GetUIntAt(_Field_18C_Slot);                              // 91
+        record.ItemType1 = (byte)_extractor.GetUIntAt(_Item_Type1_Slot);                        // 92
+        record.Material = _extractor.GetUIntAt(_Material_Slot);                                 // 93
+        record.Unknown_94 = _extractor.GetUIntAt(_Field_19C_Slot);                              // 94
+        record.Unknown_95 = _extractor.GetUIntAt(_Field_198_Slot);                              // 95
+        record.Unknown_96 = _extractor.GetUIntAt(_Field_1A0_Slot);                              // 96
+        record.Material2 = _extractor.GetUIntAt(_Field_1A4_Slot);                              // 97
+        record.Unknown_98 = _extractor.GetUIntAt(_Field_21C_Slot);                              // 98
+        record.Unknown_99 = _extractor.GetUIntAt(_Field_52C_Slot);                              // 99
+        record.Unknown_100 = _extractor.GetUIntAt(_Field_530_Slot);                             // 100
+        record.CharmFileID = _extractor.GetUIntAt(_Field_534_Slot);                             // 101
+        record.CharmFile = _extractor.GetStringAt(_String_1FC_Slot);                          // 102
+        record.AugValue = _extractor.GetUIntAt(_Field_1D8_Slot);                             // 103
+        record.Unknown_104 = _extractor.GetUIntAt(_Field_1DC_Slot);                             // 104
+        record.AugRestriction = _extractor.GetUIntAt(_Field_1E0_Slot);                             // 105
+        record.LDON_Sold = _extractor.GetUIntAt(_Field_1F0_Slot);                             // 107
+        record.LDON_Theme = _extractor.GetUIntAt(_Field_1E8_Slot);                             // 108
+        record.LDON_Price = _extractor.GetUIntAt(_Field_1EC_Slot);                             // 109
+        record.Unknown_110 = _extractor.GetUIntAt(_Field_1F4_Slot);                             // 110
+        record.Unknown_111 = _extractor.GetUIntAt(_Field_1F8_Slot);                             // 111
+        record.Bag_Type = (byte)_extractor.GetUIntAt(_Bag_Type_Slot);                           // 112
+        record.Bag_Slot_Count = (byte)_extractor.GetUIntAt(_Bag_Space_Slot);                    // 113
+        record.Bag_Size = (byte)_extractor.GetUIntAt(_Bag_Size_Slot);                           // 114
+        record.Bag_Weight_Reduction = (byte)_extractor.GetUIntAt(_Weight_Reduction_Slot);       // 115
+        record.Unknown_116 = (byte)_extractor.GetUIntAt(_Field_540_Slot);                       // 116
+        record.Unknown_117 = (byte)_extractor.GetUIntAt(_Field_541_Slot);                       // 117
+        record.Unknown_118 = _extractor.GetStringAt(_String_542_Slot);                          // 118
+        record.LoreGroup = _extractor.GetUIntAt(_Lore_Group_Slot);                              // 119
+        record.Unknown_120 = (byte)_extractor.GetUIntAt(_Field_F4_Slot);                        // 120
+        record.Tribute = _extractor.GetUIntAt(_Tribute_Slot);                                   // 121
+        record.FV_Nodrop = _extractor.GetUIntAt(_Field_568_Slot);                             // 122
+        record.PlusAttack = _extractor.GetIntAt(_Plus_Attack_Slot);                             // 123
+        record.Haste = _extractor.GetUIntAt(_Haste_Slot);                                       // 124
+        record.Unknown_125 = _extractor.GetUIntAt(_Field_564_Slot);                             // 125
+        record.AugDistillerNeeded = _extractor.GetUIntAt(_Aug_Distiller_Needed);                // 126
+        record.Unknown_127 = _extractor.GetUIntAt(_Field_584_Slot);                             // 127
+        record.Unknown_128 = _extractor.GetUIntAt(_Field_588_Slot);                             // 128
+        record.Unknown_129 = (byte)_extractor.GetUIntAt(_Field_58C_Slot);                       // 129
+        record.Unknown_130 = (byte)_extractor.GetUIntAt(_Field_58D_Slot);                       // 130
+        record.Max_Stack_Size = _extractor.GetUIntAt(_Max_Stack_Size_Slot);                     // 131
+        record.Unknown_132 = (byte)_extractor.GetUIntAt(_Field_594_Slot);                       // 132
+        record.Unknown_133 = (byte)_extractor.GetUIntAt(_Field_5A9_Slot);                       // 133
+        record.Unknown_134 = _extractor.GetBlobAt(_Blob_4DC_Slot).ToArray();                    // 134
+        record.Unknown_136 = _extractor.GetUIntAt(_Field_5A0_Slot);                             // 136
+        record.Unknown_137 = (byte)_extractor.GetUIntAt(_Field_5A8_Slot);                       // 137
+        record.Unknown_138 = _extractor.GetUIntAt(_Field_598_Slot);                             // 138
+        record.Purity = _extractor.GetUIntAt(_Field_59C_Slot);                             // 139
+        record.Backstab_Damage = _extractor.GetUIntAt(_Backstab_Damage_Slot);                   // 140
+        record.Heroic_Strength = _extractor.GetUIntAt(_Heroic_Strength_Slot);                   // 141
+        record.Heroic_Intelligence = _extractor.GetUIntAt(_Heroic_Intelligence_Slot);           // 142
+        record.Heroic_Wisdom = _extractor.GetUIntAt(_Heroic_Wisdom_Slot);                       // 143
+        record.Heroic_Agility = _extractor.GetUIntAt(_Heroic_Agility_Slot);                     // 144
+        record.Heroic_Dexterity = _extractor.GetUIntAt(_Heroic_Dexterity_Slot);                 // 145
+        record.Heroic_Stamina = _extractor.GetUIntAt(_Heroic_Stamina_Slot);                     // 146
+        record.Heroic_Charisma = _extractor.GetUIntAt(_Heroic_Charisma_Slot);                   // 147
+        record.Heal_Amount = _extractor.GetUIntAt(_Field_17C_Slot);                             // 148
+        record.Spell_Damage = _extractor.GetUIntAt(_Field_180_Slot);                             // 149
+        record.Clairvoyance = _extractor.GetUIntAt(_Field_5AC_Slot);                             // 150
+        record.Unknown_151 = _extractor.GetUIntAt(_Field_5b0_Slot);                             // 151
+        record.Unknown_152 = (byte)_extractor.GetUIntAt(_Field_5b4_Slot);                       // 152
+        record.Unknown_153 = _extractor.GetUIntAt(_Field_5A4_Slot);                             // 153
+        record.Unknown_154 = (byte)_extractor.GetUIntAt(_Field_D3_Slot);                        // 154
+        record.Placeable2 = _extractor.GetUIntAt(_Field_5b8_Slot);                             // 155
+        record.Unknown_156 = (byte)_extractor.GetUIntAt(_Field_5bC_Slot);                       // 156
+        record.Unknown_157 = _extractor.GetUIntAt(_Field_5C0_Slot);                             // 157
+        record.Unknown_158 = _extractor.GetUIntAt(_Field_5C4_Slot);                             // 158
+        record.Unknown_159 = _extractor.GetUIntAt(_Field_5C8_Slot);                             // 159
+        record.Unknown_160 = _extractor.GetUIntAt(_Field_5CC_Slot);                             // 160
+        record.Unknown_161 = _extractor.GetUIntAt(_Field_5D0_Slot);                             // 161
+        record.Unknown_162 = _extractor.GetUIntAt(_Field_5D4_Slot);                             // 162
+        record.Unknown_163 = _extractor.GetStringAt(_String_5D8_Slot);                          // 163
+        record.Unknown_164 = (byte)_extractor.GetUIntAt(_Field_614_Slot);                       // 164
+        record.Unknown_165 = _extractor.GetUIntAt(_Field_5F8_Slot);                             // 165
+        record.Unknown_166 = (byte)_extractor.GetUIntAt(_Field_5FC_Slot);                       // 166
+        record.Unknown_167 = (byte)_extractor.GetUIntAt(_Field_5FD_Slot);                       // 167
+        record.Unknown_168 = _extractor.GetUIntAt(_Field_600_Slot);                             // 168
+        record.Unknown_169 = _extractor.GetUIntAt(_Field_604_Slot);                             // 169
+        record.Unknown_170 = _extractor.GetUIntAt(_Field_608_Slot);                             // 170
+        record.Unknown_171 = _extractor.GetUIntAt(_Field_60C_Slot);                             // 171
+        record.Unknown_172 = _extractor.GetUIntAt(_Field_610_Slot);                             // 172
+        record.Unknown_173 = (byte)_extractor.GetUIntAt(_Field_65C_Slot);                       // 173
+        record.Unknown_175 = (byte)_extractor.GetUIntAt(_Field_D4_Slot);                        // 175
+        record.Unknown_176 = (byte)_extractor.GetUIntAt(_Field_D5_Slot);                        // 176
+        record.Unknown_177 = (byte)_extractor.GetUIntAt(_Field_D6_Slot);                        // 177
+        record.Unknown_178 = (byte)_extractor.GetUIntAt(_Field_D7_Slot);                        // 178
+        record.Unknown_179 = _extractor.GetUIntAt(_Field_D8_Slot);                              // 179
+        record.Unknown_180 = (byte)_extractor.GetUIntAt(_Field_DC_Slot);                        // 180
+        record.Unknown_181 = (byte)_extractor.GetUIntAt(_Field_DD_Slot);                        // 181
+        record.Unknown_182 = (byte)_extractor.GetUIntAt(_Field_DE_Slot);                        // 182
+        record.Unknown_183 = (byte)_extractor.GetUIntAt(_Field_DF_Slot);                        // 183
+        record.Unknown_184 = (byte)_extractor.GetUIntAt(_Field_E0_Slot);                        // 184
+        record.Unknown_185 = _extractor.GetUIntAt(_Field_E4_Slot);                              // 185
+        record.Unknown_186 = _extractor.GetUIntAt(_Field_184_Slot);                             // 186
+        record.Unknown_187 = _extractor.GetUIntAt(_Field_188_Slot);                             // 187
+        record.Unknown_188 = _extractor.GetUIntAt(_Field_F0_Slot);                              // 188
+        record.Unknown_189 = (byte)_extractor.GetUIntAt(_Field_F5_Slot);                        // 189
+        record.Unknown_190 = _extractor.GetUIntAt(_Field_618_Slot);                             // 190
+        record.Unknown_191 = _extractor.GetStringAt(_String_61C_Slot);                          // 191
+        record.Unknown_196 = (byte)_extractor.GetUIntAt(_Field_2C_Slot);                        // 196
+        record.Unknown_198 = _extractor.GetUInt64At(_Field_30_Slot);                            // 198
+        record.Unknown_199 = _extractor.GetUIntAt(_Field_48_Slot);                              // 199
+
+        DebugLog.Write(LogChannel.Inventory, "BuildItemRecord: built record '" + record.Name + "' (" +
+            record.Id + ")", LogLevel.Trace);
+
+        return record;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

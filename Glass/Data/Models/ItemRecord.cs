@@ -51,8 +51,8 @@ public class ItemRecord
     public ItemId Id { get; set; } = ItemId.None;                   // 34 (DF_5)
     public float Weight { get; set; }                               // 35 (DF_6)
     public byte Unknown_36 { get; set; }                            // 36 (DF_7)
-    public byte Unknown_37 { get; set; }                            // 37 (DF_8)
-    public byte Unknown_38 { get; set; }                            // 38 (DF_9)
+    public byte Tradeable { get; set; }                             // 37 (DF_8)*
+    public byte Attuneable { get; set; }                            // 38 (DF_9)*
     public byte Size { get; set; }                                  // 40 (DF_10)
     public uint UsableSlotMask { get; set; }                        // 41
     public uint Cost { get; set; }                                  // 42 (DF_11)
@@ -82,7 +82,7 @@ public class ItemRecord
     public uint Unknown_66 {get; set; }                             // 66 (Field_57C)
     public uint ClassMask { get; set; }                             // 67 
     public uint RaceMask { get; set; }                              // 68
-    public uint Unknown_69 { get; set; }                            // 69 (Field_148)
+    public uint Deity { get; set; }                                 // 69 (Field_148)*
     public uint Skill_Percent_Chance { get; set; }                  // 70 (Field_11C)
     public uint Skill_Max_Change { get; set; }                      // 71 (Field_120)
     public uint Skill_ID { get; set; }                               // 72 (Field_118)
@@ -91,39 +91,39 @@ public class ItemRecord
     public uint Unknown_75 { get; set; }                            // 75 (Field_12C)
     public uint Unknown_76 { get; set; }                            // 76 (Field_134)
     public uint Unknown_77 { get; set; }                            // 77 (Field_130)
-    public byte Unknown_78 { get; set; }                            // 78 (Field_150)
+    public byte Is_Magic { get; set; }                              // 78 (Field_150) *
     public uint FoodDrinkValue { get; set; }                        // 79
     public uint RequiredLevel { get; set; }                         // 80
     public uint RecommendedLevel { get; set; }                      // 81
     public uint Bard_Value { get; set; }                            // 82 (Field_138)
     public uint Unknown_83 { get; set; }                            // 83 (Field_13C)
-    public byte Unknown_84 { get; set; }                            // 84 (Field_151)
+    public byte Light { get; set; }                                 // 84 (Field_151) *
     public byte Weapon_Delay { get; set; }                          // 85
-    public byte Unknown_86 { get; set; }                            // 86 (Field_153)
-    public byte Unknown_87 { get; set; }                            // 87 (Field_154)
+    public byte Elemental_Damage_Type { get; set; }                 // 86 (Field_153)
+    public byte Elemental_Damage_Amount { get; set; }               // 87 (Field_154) *
     public byte Weapon_Range { get; set; }                          // 88
     public uint Weapon_Base_Damage { get; set; }                    // 89 (Field_158)
     public uint Color { get; set; }                                 // 90 (Field_14C)
-    public uint Unknown_91 { get; set; }                            // 91 (Field_18C)
+    public uint Prestige { get; set; }                              // 91 (Field_18C) *
     public byte ItemType1 { get; set; }                             // 92
     public uint Material { get; set; }                              // 93 (Field_194)
     public uint Unknown_94 { get; set; }                            // 94 (Field_19C)
     public uint Unknown_95 { get; set; }                            // 95 (Field_198)
     public uint Unknown_96 { get; set; }                            // 96 (Field_1A0)
-    public uint Unknown_97 { get; set; }                            // 97 (Field_1A4)
+    public uint Material2 { get; set; }                            // 97 (Field_1A4) *
     public uint Unknown_98 { get; set; }                            // 98 (Field_21C)
     public uint Unknown_99 { get; set; }                            // 99 (Field_52C)
     public uint Unknown_100 { get; set; }                           // 100 (Field_530)
-    public uint Unknown_101 { get; set; }                           // 101 (Field_534)
-    public string Unknown_102 { get; set; } = string.Empty;         // 102 (String_1FC)
-    public uint Unknown_103 { get; set; }                           // 103 (Field_1D8)
+    public uint CharmFileID { get; set; }                           // 101 (Field_534) *
+    public string CharmFile { get; set; } = string.Empty;           // 102 (String_1FC)*
+    public uint AugValue { get; set; }                              // 103 (Field_1D8) *
     public uint Unknown_104 { get; set; }                           // 104 (Field_1DC)
-    public uint Unknown_105 { get; set; }                           // 105 (Field_1E0)
+    public uint AugRestriction { get; set; }                        // 105 (Field_1E0) *
     // 106 = Augment Gate
 
-    public uint Unknown_107 { get; set; }                           // 107 (Field_1F0)
-    public uint Unknown_108 { get; set; }                           // 108 (Field_1E8)
-    public uint Unknown_109 { get; set; }                           // 109 (Field_1EC)
+    public uint LDON_Sold { get; set; }                             // 107 (Field_1F0) *
+    public uint LDON_Theme { get; set; }                            // 108 (Field_1E8) *
+    public uint LDON_Price { get; set; }                            // 109 (Field_1EC)  *
     public uint Unknown_110 { get; set; }                           // 110 (Field_1F4)
     public uint Unknown_111 { get; set; }                           // 111 (Field_1F8)
     public byte Bag_Type { get; set; }                              // 112
@@ -136,10 +136,10 @@ public class ItemRecord
     public uint LoreGroup { get; set; }                             // 119
     public byte Unknown_120 { get; set; }                           // 120 (Field_F4)
     public uint Tribute { get; set; }                               // 121
-    public uint Unknown_122 { get; set; }                           // 122 (Field_568)
+    public uint FV_Nodrop { get; set; }                             // 122 (Field_568)  *
     public int PlusAttack { get; set; }                             // 123
     public uint Haste { get; set; }                                 // 124
-    public uint Unknown_125 { get; set; }                           // 125
+    public uint Unknown_125 { get; set; }                           // 125 (Field_564)
     public uint AugDistillerNeeded { get; set; }                    // 126
     public uint Unknown_127 { get; set; }                           // 127 (Field_584)
     public uint Unknown_128 { get; set; }                           // 128 (Field_588)
@@ -153,7 +153,7 @@ public class ItemRecord
     public uint Unknown_136 { get; set; }                           // 136 (Field_5A0)
     public byte Unknown_137 { get; set; }                           // 137 (Field_5A8)
     public uint Unknown_138 { get; set; }                           // 138 (Field_598)
-    public uint Unknown_139 { get; set; }                           // 139 (Field_59C)
+    public uint Purity { get; set; }                                // 139 (Field_59C) *
     public uint Backstab_Damage { get; set; }                       // 140 (Field_15C)
     public uint Heroic_Strength { get; set; }                       // 141 (Field_160)
     public uint Heroic_Intelligence { get; set; }                   // 142 (Field_164)
@@ -162,14 +162,14 @@ public class ItemRecord
     public uint Heroic_Dexterity { get; set; }                      // 145 (Field_170)
     public uint Heroic_Stamina { get; set; }                        // 146 (Field_174)
     public uint Heroic_Charisma { get; set; }                       // 147 (Field_178)
-    public uint Unknown_148 { get; set; }                           // 148 (Field_17C)
-    public uint Unknown_149 { get; set; }                           // 149 (Field_180)
-    public uint Unknown_150 { get; set; }                           // 150 (Field_5AC)
+    public uint Heal_Amount { get; set; }                           // 148 (Field_17C) *
+    public uint Spell_Damage { get; set; }                          // 149 (Field_180) *
+    public uint Clairvoyance { get; set; }                          // 150 (Field_5AC) *
     public uint Unknown_151 { get; set; }                           // 151 (Field_5b0)
     public byte Unknown_152 { get; set; }                           // 152 (Field_5b4)
     public uint Unknown_153 { get; set; }                           // 153 (Field_5A4)
     public byte Unknown_154 { get; set; }                           // 154 (Field_D3)
-    public uint Unknown_155 { get; set; }                           // 155 (Field_5b8)
+    public uint Placeable2 { get; set; }                            // 155 (Field_5b8) *
     public byte Unknown_156 { get; set; }                           // 156 (Field_5bC)
     public uint Unknown_157 { get; set; }                           // 157 (Field_5C0)
     public uint Unknown_158 { get; set; }                           // 158 (Field_5C4)

@@ -52,6 +52,14 @@ public class Character
     private readonly Dictionary<ItemLocation, ItemInstance> _items = new Dictionary<ItemLocation, ItemInstance>();
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Items
+    //
+    // Every item instance held by this character, in no particular order: worn
+    // items, carried items, bag contents, and socketed augments alike.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public IEnumerable<ItemInstance> Items => _items.Values;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // ClearItems
     //
     // Removes every item instance held by this character.

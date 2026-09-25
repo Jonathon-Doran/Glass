@@ -693,6 +693,47 @@ public sealed class FieldBag
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetBlobAt
+    //
+    // Reads the slot at the given index as a span over its raw blob bytes, resolved from
+    // this bag's arena.  The slot is required: an out-of-range index or a failed slot-level
+    // read is a schema or extraction integrity violation and halts the process via FailFast
+    // with the failure details preserved in the Fields log channel.
+    //
+    // The returned span is valid only until this bag is cleared or released; after that
+    // the arena bytes may belong to a new tenant.
+    //
+    // slot:     The slot identifier carrying the index of the slot to read.
+    //
+    // Returns:  The span over the slot's blob bytes.  Does not return on failure.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public ReadOnlySpan<byte> GetBlobAt(SlotId slot)
+    {
+        if (slot.Index >= _slotsInUse)
+        {
+            string rangeFailure = CollectionName + " FieldBag.GetBlobAt: slot.Index "
+                + slot.Index + " out of range [0, " + _slotsInUse + ")";
+            DebugLog.Write(LogChannel.Fields, rangeFailure, LogLevel.Error);
+            Environment.FailFast(rangeFailure);
+        }
+        ref FieldSlot fieldSlot = ref SlotAt(slot.Index);
+        ReadOnlySpan<byte> value;
+        SlotReadResult result = fieldSlot.TryGetBlobBytes(this, out value);
+        if (result != SlotReadResult.Success)
+        {
+            string readFailure = CollectionName + " FieldBag.GetBlobAt: required slot '"
+                + fieldSlot.GetName(this) + "' at index " + slot.Index
+                + " in collection '" + CollectionName + "' failed with " + result
+                + ", slot type is " + fieldSlot.Type;
+            DebugLog.Write(LogChannel.Fields, readFailure, LogLevel.Error);
+            Environment.FailFast(readFailure);
+        }
+        DebugLog.Write(LogChannel.Fields, CollectionName + " FieldBag.GetBlobAt: read " + value.Length
+            + " bytes from slot '" + fieldSlot.GetName(this) + "'", LogLevel.Trace);
+        return value;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // GetGateAt
     //
     // Reads the slot at the given index as a GateHandle.  The slot is required: an

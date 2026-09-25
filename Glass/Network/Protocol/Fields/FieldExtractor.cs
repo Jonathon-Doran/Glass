@@ -1983,6 +1983,27 @@ public class FieldExtractor
 
         return value;
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetBlobAt
+    //
+    // Reads the slot as a span over its raw blob bytes from the active bag.  Forwards to
+    // the bag's own accessor, which FailFasts on a read failure.  The active bag is the one
+    // selected by the most recently entered gate, or the root bag set when the extraction
+    // completed.
+    //
+    // The returned span is valid only until the bag is cleared or released; after that the
+    // arena bytes may belong to a new tenant.
+    //
+    // slot:  The slot to read.
+    //
+    // Returns:  The span over the slot's blob bytes.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public ReadOnlySpan<byte> GetBlobAt(SlotId slot)
+    {
+        return _bags[(int)(uint)_activeBag].GetBlobAt(slot);
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetGateAt
     //
