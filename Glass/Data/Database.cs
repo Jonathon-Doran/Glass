@@ -1,8 +1,9 @@
+using Glass.Core;
+using Glass.Core.Logging;
 using Microsoft.Data.Sqlite;
+using System.Data;
 using System.IO;
 using System.Windows.Shapes;
-using Glass.Core;
-using System.Data;
 
 namespace Glass.Data;
 
@@ -46,6 +47,10 @@ public class Database
     {
         using var conn = Connect();
         conn.Open();
+        using SqliteCommand journalCmd = conn.CreateCommand();
+        journalCmd.CommandText = "PRAGMA journal_mode = WAL";
+        object? journalMode = journalCmd.ExecuteScalar();
+        DebugLog.Write(LogChannel.Database, "Database.Initialize: journal_mode is " + journalMode, LogLevel.Trace);
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = Schema;

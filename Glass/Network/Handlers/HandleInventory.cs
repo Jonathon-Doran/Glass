@@ -610,7 +610,15 @@ public class HandleInventory : OpcodeHandler
         instance.IsAttuned = _extractor.GetUIntAt(_IsAttuned_Slot) != 0u;
         instance.IsCopied = _extractor.GetUIntAt(_IsCopied_Slot) != 0u;
 
-        ItemRepository.Instance.Add(BuildItemRecord());
+        if (ItemRepository.Instance.Contains(instance.Id) == false)
+        {
+            ItemRepository.Instance.Add(BuildItemRecord());
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.Inventory, "CaptureItem: item " + instance.Id +
+                " already defined; record not built", LogLevel.Trace);
+        }
 
         if (character.AddItem(instance, parent) == false)
         {

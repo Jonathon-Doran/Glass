@@ -17,6 +17,7 @@ public class ItemRepository
     private static ItemRepository? _instance = null;
 
     private readonly Dictionary<ItemId, ItemRecord> _recordsById;
+    private readonly HashSet<ItemId> _knownIds;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Instance
@@ -43,6 +44,7 @@ public class ItemRepository
     private ItemRepository()
     {
         _recordsById = new Dictionary<ItemId, ItemRecord>();
+        _knownIds = new HashSet<ItemId>();
         DebugLog.Write(LogChannel.Inventory, "ItemRepository: singleton instance created with empty cache.", LogLevel.Trace);
     }
 
@@ -76,8 +78,9 @@ public class ItemRepository
         }
 
         bool written = Insert(record);
-
+        _knownIds.Add(record.Id);
         _recordsById[record.Id] = record;
+
         DebugLog.Write(LogChannel.Inventory, "ItemRepository.Add: cached '" + record.Name + "' (" + record.Id +
             "), written " + written + ", " + _recordsById.Count + " records cached.", LogLevel.Trace);
         return written;
@@ -130,6 +133,51 @@ public class ItemRepository
         _recordsById[itemId] = record;
         DebugLog.Write(LogChannel.Inventory, "ItemRepository.TryGet: loaded '" + record.Name + "' (" + itemId +
             ") from table, " + _recordsById.Count + " records cached.", LogLevel.Trace);
+        return true;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Contains
+    //
+    // Reports whether an item definition with the given Id is stored.  The cached records and the ids
+    // confirmed earlier this run are checked first; otherwise the ItemRecords table is queried by id and
+    // a found id is remembered so later checks cost no query.
+    //
+    // itemId:  Id of the definition to check.
+    //
+    // Returns true if a definition with the Id is cached or in the table, false otherwise.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public bool Contains(ItemId itemId)
+    {
+        if (itemId.Exists == false)
+        {
+            DebugLog.Write(LogChannel.Inventory, "ItemRepository.Contains: itemId is None.", LogLevel.Warn);
+            return false;
+        }
+
+        if (_recordsById.ContainsKey(itemId) || _knownIds.Contains(itemId))
+        {
+            return true;
+        }
+
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT 1 FROM ItemRecords WHERE id = @id";
+        cmd.Parameters.AddWithValue("@id", (uint)itemId);
+
+        object? found = cmd.ExecuteScalar();
+        if (found == null)
+        {
+            DebugLog.Write(LogChannel.Inventory, "ItemRepository.Contains: " + itemId + " not in table.",
+                LogLevel.Trace);
+            return false;
+        }
+
+        _knownIds.Add(itemId);
+        DebugLog.Write(LogChannel.Inventory, "ItemRepository.Contains: " + itemId + " found in table, " +
+            _knownIds.Count + " ids remembered.", LogLevel.Trace);
         return true;
     }
 
