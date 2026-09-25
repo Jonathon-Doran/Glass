@@ -351,7 +351,7 @@ public class ItemRepository
         cmd.Parameters.AddWithValue("@unknown_99", record.Unknown_99);
         cmd.Parameters.AddWithValue("@unknown_100", record.Unknown_100);
         cmd.Parameters.AddWithValue("@unknown_101", record.CharmFileID);
-        cmd.Parameters.AddWithValue("@unknown_102", record.CharmFile);
+        cmd.Parameters.AddWithValue("@unknown_102", record.CharmFileName);
         cmd.Parameters.AddWithValue("@unknown_103", record.AugValue);
         cmd.Parameters.AddWithValue("@unknown_104", record.Unknown_104);
         cmd.Parameters.AddWithValue("@unknown_105", record.AugRestriction);
@@ -560,7 +560,7 @@ public class ItemRepository
         record.Unknown_99 = reader.GetFieldValue<uint>(reader.GetOrdinal("unknown_99"));
         record.Unknown_100 = reader.GetFieldValue<uint>(reader.GetOrdinal("unknown_100"));
         record.CharmFileID = reader.GetFieldValue<uint>(reader.GetOrdinal("unknown_101"));
-        record.CharmFile = reader.GetFieldValue<string>(reader.GetOrdinal("unknown_102"));
+        record.CharmFileName = reader.GetFieldValue<string>(reader.GetOrdinal("unknown_102"));
         record.AugValue = reader.GetFieldValue<uint>(reader.GetOrdinal("unknown_103"));
         record.Unknown_104 = reader.GetFieldValue<uint>(reader.GetOrdinal("unknown_104"));
         record.AugRestriction = reader.GetFieldValue<uint>(reader.GetOrdinal("unknown_105"));

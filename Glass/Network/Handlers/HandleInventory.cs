@@ -54,8 +54,8 @@ public class HandleInventory : OpcodeHandler
     private readonly SlotId _Item_ID_Slot;
     private readonly SlotId _Weight_Slot;
     private readonly SlotId _DF_7_Slot;
-    private readonly SlotId _DF_8_Slot;
-    private readonly SlotId _DF_9_Slot;
+    private readonly SlotId _Tradeable_Slot;
+    private readonly SlotId _Attuneable_Slot;
     private readonly SlotId _Size_Slot;
     private readonly SlotId _Usable_Slot_Mask;
     private readonly SlotId _Cost_Slot;
@@ -81,10 +81,10 @@ public class HandleInventory : OpcodeHandler
     private readonly SlotId _Plus_AC_Slot;
     private readonly SlotId _HP_Regen_Slot;
     private readonly SlotId _Mana_Regen_Slot;
-    private readonly SlotId _Field_57C_Slot;
+    private readonly SlotId _Unknown_66_Slot;
     private readonly SlotId _Class_Mask_Slot;
     private readonly SlotId _Race_Mask_Slot;
-    private readonly SlotId _Field_148_Slot;
+    private readonly SlotId _Deity_Slot;
     private readonly SlotId _Skill_Percent_Change_Slot;
     private readonly SlotId _Skill_Max_Change_Slot;
     private readonly SlotId _Skill_Slot;
@@ -93,42 +93,42 @@ public class HandleInventory : OpcodeHandler
     private readonly SlotId _Field_12C_Slot;
     private readonly SlotId _Field_134_Slot;
     private readonly SlotId _Field_130_Slot;
-    private readonly SlotId _Field_150_Slot;
+    private readonly SlotId _Is_Magic_Slot;
     private readonly SlotId _Food_Drink_Value_Slot;
     private readonly SlotId _Required_Level_Slot;
     private readonly SlotId _Recommended_Level_Slot;
     private readonly SlotId _Bard_Value_Slot;
     private readonly SlotId _Field_13C_Slot;
-    private readonly SlotId _Field_151_Slot;
+    private readonly SlotId _Light_Slot;
     private readonly SlotId _Weapon_Delay_Slot;
-    private readonly SlotId _Field_153_Slot;
-    private readonly SlotId _Field_154_Slot;
+    private readonly SlotId _Elemental_Dmg_Type_Slot;
+    private readonly SlotId _Elemental_Dmg_Amount_Slot;
     private readonly SlotId _Weapon_Range_Slot;
     private readonly SlotId _Base_Damage_Slot;
     private readonly SlotId _Color_Slot;
-    private readonly SlotId _Field_18C_Slot;
+    private readonly SlotId _Prestige_Slot;
     private readonly SlotId _Item_Type1_Slot;
     private readonly SlotId _Material_Slot;
     private readonly SlotId _Field_19C_Slot;
     private readonly SlotId _Field_198_Slot;
     private readonly SlotId _Field_1A0_Slot;
-    private readonly SlotId _Field_1A4_Slot;
+    private readonly SlotId _Material2_Slot;
     private readonly SlotId _Field_21C_Slot;
     private readonly SlotId _Field_52C_Slot;
     private readonly SlotId _Field_530_Slot;
-    private readonly SlotId _Field_534_Slot;
-    private readonly SlotId _String_1FC_Slot;
-    private readonly SlotId _Field_1D8_Slot;
+    private readonly SlotId _CharmFileID_Slot;
+    private readonly SlotId _CharmFileName_Slot;
+    private readonly SlotId _AugValue_Slot;
     private readonly SlotId _Field_1DC_Slot;
-    private readonly SlotId _Field_1E0_Slot;
+    private readonly SlotId _AugRestriction_Slot;
 
     private readonly SlotId _Augment_Type_Slot;
     private readonly SlotId _Augment_Visible_Slot;
     private readonly SlotId _Augment_Unknown_Slot;
 
-    private readonly SlotId _Field_1F0_Slot;
-    private readonly SlotId _Field_1E8_Slot;
-    private readonly SlotId _Field_1EC_Slot;
+    private readonly SlotId _LDON_Sold_Slot;
+    private readonly SlotId _LDON_Theme_Slot;
+    private readonly SlotId _LDON_Price_Slot;
     private readonly SlotId _Field_1F4_Slot;
     private readonly SlotId _Field_1F8_Slot;
     private readonly SlotId _Bag_Type_Slot;
@@ -141,7 +141,7 @@ public class HandleInventory : OpcodeHandler
     private readonly SlotId _Lore_Group_Slot;
     private readonly SlotId _Field_F4_Slot;
     private readonly SlotId _Tribute_Slot;
-    private readonly SlotId _Field_568_Slot;
+    private readonly SlotId _FV_Nodrop_Slot;
     private readonly SlotId _Plus_Attack_Slot;
     private readonly SlotId _Haste_Slot;
     private readonly SlotId _Field_564_Slot;
@@ -156,7 +156,7 @@ public class HandleInventory : OpcodeHandler
     private readonly SlotId _Blob_4DC_Slot;
 
     private readonly SlotId _Effect_SpellId_Slot;
-    private readonly SlotId _EffectLevel2_Slot;
+    private readonly SlotId _Effect_Level2_Slot;
     private readonly SlotId _Effect_Type_Slot;
     private readonly SlotId _Effect_Level_Slot;
     private readonly SlotId _Effect_Max_Charges_Slot;
@@ -170,7 +170,7 @@ public class HandleInventory : OpcodeHandler
     private readonly SlotId _Field_5A0_Slot;
     private readonly SlotId _Field_5A8_Slot;
     private readonly SlotId _Field_598_Slot;
-    private readonly SlotId _Field_59C_Slot;
+    private readonly SlotId _Purity_Slot;
     private readonly SlotId _Backstab_Damage_Slot;  // 140
     private readonly SlotId _Heroic_Strength_Slot;
     private readonly SlotId _Heroic_Intelligence_Slot;
@@ -179,14 +179,14 @@ public class HandleInventory : OpcodeHandler
     private readonly SlotId _Heroic_Dexterity_Slot;
     private readonly SlotId _Heroic_Stamina_Slot;
     private readonly SlotId _Heroic_Charisma_Slot;
-    private readonly SlotId _Field_17C_Slot;
-    private readonly SlotId _Field_180_Slot;
-    private readonly SlotId _Field_5AC_Slot; // 150
+    private readonly SlotId _Heal_Amount_Slot;
+    private readonly SlotId _Spell_Damage_Slot;
+    private readonly SlotId _Clairvoyance; // 150
     private readonly SlotId _Field_5b0_Slot;
     private readonly SlotId _Field_5b4_Slot;
     private readonly SlotId _Field_5A4_Slot;
     private readonly SlotId _Field_D3_Slot;
-    private readonly SlotId _Field_5b8_Slot;
+    private readonly SlotId _Placeable2;
     private readonly SlotId _Field_5bC_Slot;
     private readonly SlotId _Field_5C0_Slot;
     private readonly SlotId _Field_5C4_Slot;
@@ -253,7 +253,7 @@ public class HandleInventory : OpcodeHandler
         CollectionHandle itemCollection = _registry.GetCollectionHandle(_patchLevel, "Inventory Item");
         CollectionHandle evolvingCollection = _registry.GetCollectionHandle(_patchLevel, "Inventory_EvolvingItem");
         CollectionHandle augmentCollection = _registry.GetCollectionHandle(_patchLevel, "Inventory_AugmentFields");
-        CollectionHandle strideCollection = _registry.GetCollectionHandle(_patchLevel, "Inventory_Stride");
+        CollectionHandle effectsCollection = _registry.GetCollectionHandle(_patchLevel, "Item_Effects");
         CollectionHandle optional4sCollection = _registry.GetCollectionHandle(_patchLevel, "Inventory_Optional_4s");
 
         _Item_Name_Slot = _registry.IndexOfField(itemCollection, "ItemName");
@@ -285,18 +285,18 @@ public class HandleInventory : OpcodeHandler
         _Field_23_Slot = _registry.IndexOfField(itemCollection, "Field23");
         _Field_24_Slot = _registry.IndexOfField(itemCollection, "Field24");
         _IsCopied_Slot = _registry.IndexOfField(itemCollection, "IsCopied");
-        _Field_26_Slot = _registry.IndexOfField(itemCollection, "Field26");
-        _Field_27_Slot = _registry.IndexOfField(itemCollection, "Field27");
+        _Field_26_Slot = _registry.IndexOfField(itemCollection, "Field26");                         // 27
+        _Field_27_Slot = _registry.IndexOfField(itemCollection, "Field27");                         // 28
         _Item_Type2_Slot = _registry.IndexOfField(itemCollection, "Item_Type_2");                   // 29
         _Item_Name_Slot = _registry.IndexOfField(itemCollection, "ItemName");                       // 30
         _Item_Lore_Slot = _registry.IndexOfField(itemCollection, "ItemLore");                       // 31
         _ITFile_Slot = _registry.IndexOfField(itemCollection, "IT File");                           // 32
-        _DF_4_Slot = _registry.IndexOfField(itemCollection, "DF_4");
+        _DF_4_Slot = _registry.IndexOfField(itemCollection, "DF_4");                                // 33
+        _Item_ID_Slot = _registry.IndexOfField(itemCollection, "Item_ID");                          // 34
         _Weight_Slot = _registry.IndexOfField(itemCollection, "Weight");                            // 35
-        _Item_ID_Slot = _registry.IndexOfField(itemCollection, "Item_ID");
-        _DF_7_Slot = _registry.IndexOfField(itemCollection, "DF_7");
-        _DF_8_Slot = _registry.IndexOfField(itemCollection, "DF_8");
-        _DF_9_Slot = _registry.IndexOfField(itemCollection, "DF_9");
+        _DF_7_Slot = _registry.IndexOfField(itemCollection, "DF_7");                                // 37
+        _Tradeable_Slot = _registry.IndexOfField(itemCollection, "Tradeable");                      // 37
+        _Attuneable_Slot = _registry.IndexOfField(itemCollection, "Attuneable");                    // 38
         _Size_Slot = _registry.IndexOfField(itemCollection, "Item_Size");                           // 40
         _Usable_Slot_Mask = _registry.IndexOfField(itemCollection, "Usable_Slot_Mask");             // 41
         _Cost_Slot = _registry.IndexOfField(itemCollection, "Cost");
@@ -317,159 +317,165 @@ public class HandleInventory : OpcodeHandler
         _Plus_Intelligence_Slot = _registry.IndexOfField(itemCollection, "Plus_Intelligence");      // 57
         _Plus_Wisdom_Slot = _registry.IndexOfField(itemCollection, "Plus_Wisdom");                  // 58
         _Plus_HP_Slot = _registry.IndexOfField(itemCollection, "Plus_HP");                          // 59
+                                                                                                    // No 60
         _Plus_Mana_Slot = _registry.IndexOfField(itemCollection, "Plus_Mana");                      // 61
         _Plus_Endurance_Slot = _registry.IndexOfField(itemCollection, "Plus_End");                  // 62
         _Plus_AC_Slot = _registry.IndexOfField(itemCollection, "Plus_AC");                          // 63
-        _Plus_Attack_Slot = _registry.IndexOfField(itemCollection, "Plus_Attack");                  // 570
-        _HP_Regen_Slot = _registry.IndexOfField(itemCollection, "HP_Regen");
-        _Mana_Regen_Slot = _registry.IndexOfField(itemCollection, "Mana_Regen");
-        _Field_57C_Slot = _registry.IndexOfField(itemCollection, "Field_57C");
-        _Class_Mask_Slot = _registry.IndexOfField(itemCollection, "Class Mask");
-        _Race_Mask_Slot = _registry.IndexOfField(itemCollection, "Race Mask");
-        _Field_148_Slot = _registry.IndexOfField(itemCollection, "Field_148");
-        _Skill_Percent_Change_Slot = _registry.IndexOfField(itemCollection, "Skill_Percent_Chance");
-        _Skill_Max_Change_Slot = _registry.IndexOfField(itemCollection, "Skill_Max_Change");
-        _Skill_Slot = _registry.IndexOfField(itemCollection, "Skill_ID");
-        _Field_124_Slot = _registry.IndexOfField(itemCollection, "Field_124");
-        _Field_128_Slot = _registry.IndexOfField(itemCollection, "Field_128");
-        _Field_12C_Slot = _registry.IndexOfField(itemCollection, "Field_12C");
-        _Field_134_Slot = _registry.IndexOfField(itemCollection, "Field_134");
-        _Field_130_Slot = _registry.IndexOfField(itemCollection, "Field_130");
-        _Field_150_Slot = _registry.IndexOfField(itemCollection, "Field_150");
-        _Food_Drink_Value_Slot = _registry.IndexOfField(itemCollection, "FoodDrink_Value");
-        _Required_Level_Slot = _registry.IndexOfField(itemCollection, "Required_Level");    // 80
-        _Recommended_Level_Slot = _registry.IndexOfField(itemCollection, "Recommended_Level");
-        _Bard_Value_Slot = _registry.IndexOfField(itemCollection, "Bard_Value");
-        _Field_13C_Slot = _registry.IndexOfField(itemCollection, "Field_13C");
-        _Field_151_Slot = _registry.IndexOfField(itemCollection, "Field_151");
-        _Weapon_Delay_Slot = _registry.IndexOfField(itemCollection, "Weapon_Delay");
-        _Field_153_Slot = _registry.IndexOfField(itemCollection, "Field_153");
-        _Field_154_Slot = _registry.IndexOfField(itemCollection, "Field_154");
-        _Weapon_Range_Slot = _registry.IndexOfField(itemCollection, "Weapon_Range");
-        _Base_Damage_Slot = _registry.IndexOfField(itemCollection, "Weapon_Base_Damage");
-        _Color_Slot = _registry.IndexOfField(itemCollection, "Color");                      // 90
-        _Field_18C_Slot = _registry.IndexOfField(itemCollection, "Field_18C");
-        _Item_Type1_Slot = _registry.IndexOfField(itemCollection, "Item_Type_1");
-        _Material_Slot = _registry.IndexOfField(itemCollection, "Material");
-        _Field_19C_Slot = _registry.IndexOfField(itemCollection, "Field_19C");
-        _Field_198_Slot = _registry.IndexOfField(itemCollection, "Field_198");
-        _Field_1A0_Slot = _registry.IndexOfField(itemCollection, "Field_1A0");
-        _Field_1A4_Slot = _registry.IndexOfField(itemCollection, "Field_1A4");
-        _Field_21C_Slot = _registry.IndexOfField(itemCollection, "Field_21C");
-        _Field_52C_Slot = _registry.IndexOfField(itemCollection, "Field_52C");
-        _Field_530_Slot = _registry.IndexOfField(itemCollection, "Field_530");
-        _Field_534_Slot = _registry.IndexOfField(itemCollection, "Field_534");
-        _String_1FC_Slot = _registry.IndexOfField(itemCollection, "String_1FC");
-        _Field_1D8_Slot = _registry.IndexOfField(itemCollection, "Field_1D8");
-        _Field_1DC_Slot = _registry.IndexOfField(itemCollection, "Field_1DC");
-        _Field_1E0_Slot = _registry.IndexOfField(itemCollection, "Field_1E0");
+        _HP_Regen_Slot = _registry.IndexOfField(itemCollection, "HP_Regen");                        // 64
+        _Mana_Regen_Slot = _registry.IndexOfField(itemCollection, "Mana_Regen");                    // 65
+        _Unknown_66_Slot = _registry.IndexOfField(itemCollection, "Field_57C");                     // 66
+        _Class_Mask_Slot = _registry.IndexOfField(itemCollection, "Class Mask");                    // 67
+        _Race_Mask_Slot = _registry.IndexOfField(itemCollection, "Race Mask");                      // 68
+        _Deity_Slot = _registry.IndexOfField(itemCollection, "Deity");                              // 69
+        _Skill_Percent_Change_Slot = 
+            _registry.IndexOfField(itemCollection, "Skill_Percent_Chance");                         // 70
+        _Skill_Max_Change_Slot = _registry.IndexOfField(itemCollection, "Skill_Max_Change");        // 71
+        _Skill_Slot = _registry.IndexOfField(itemCollection, "Skill_ID");                           // 72
+        _Field_124_Slot = _registry.IndexOfField(itemCollection, "Field_124");                      // 73
+        _Field_128_Slot = _registry.IndexOfField(itemCollection, "Field_128");                      // 74
+        _Field_12C_Slot = _registry.IndexOfField(itemCollection, "Field_12C");                      // 75
+        _Field_134_Slot = _registry.IndexOfField(itemCollection, "Field_134");                      // 76
+        _Field_130_Slot = _registry.IndexOfField(itemCollection, "Field_130");                      // 77
+        _Is_Magic_Slot = _registry.IndexOfField(itemCollection, "Is_Magic");                        // 78
+        _Food_Drink_Value_Slot = _registry.IndexOfField(itemCollection, "FoodDrink_Value");         // 79
+        _Required_Level_Slot = _registry.IndexOfField(itemCollection, "Required_Level");            // 80
+        _Recommended_Level_Slot = _registry.IndexOfField(itemCollection, "Recommended_Level");      // 81
+        _Bard_Value_Slot = _registry.IndexOfField(itemCollection, "Bard_Value");                    // 82
+        _Field_13C_Slot = _registry.IndexOfField(itemCollection, "Field_13C");                      // 83
+        _Light_Slot = _registry.IndexOfField(itemCollection, "Light");                              // 84
+        _Weapon_Delay_Slot = _registry.IndexOfField(itemCollection, "Weapon_Delay");                // 85
+        _Elemental_Dmg_Type_Slot =
+            _registry.IndexOfField(itemCollection, "Elemental_Damage_Type");                        // 86
+        _Elemental_Dmg_Amount_Slot =
+            _registry.IndexOfField(itemCollection, "Elemental_Damage_Amount");                      // 87
+        _Weapon_Range_Slot = _registry.IndexOfField(itemCollection, "Weapon_Range");                // 88
+        _Base_Damage_Slot = _registry.IndexOfField(itemCollection, "Weapon_Base_Damage");           // 89
+        _Color_Slot = _registry.IndexOfField(itemCollection, "Color");                              // 90
+        _Prestige_Slot = _registry.IndexOfField(itemCollection, "Prestige");                        // 91
+        _Item_Type1_Slot = _registry.IndexOfField(itemCollection, "Item_Type_1");                   // 92
+        _Material_Slot = _registry.IndexOfField(itemCollection, "Material");                        // 93
+        _Field_19C_Slot = _registry.IndexOfField(itemCollection, "Field_19C");                      // 94
+        _Field_198_Slot = _registry.IndexOfField(itemCollection, "Field_198");                      // 95
+        _Field_1A0_Slot = _registry.IndexOfField(itemCollection, "Field_1A0");                      // 96
+        _Material2_Slot = _registry.IndexOfField(itemCollection, "Material2");                      // 97
+        _Field_21C_Slot = _registry.IndexOfField(itemCollection, "Field_21C");                      // 98
+        _Field_52C_Slot = _registry.IndexOfField(itemCollection, "Field_52C");                      // 99
+        _Field_530_Slot = _registry.IndexOfField(itemCollection, "Field_530");                      // 100
+        _CharmFileID_Slot = _registry.IndexOfField(itemCollection, "CharmFileID");                  // 101
+        _CharmFileName_Slot = _registry.IndexOfField(itemCollection, "CharmFileName");              // 102
+        _AugValue_Slot = _registry.IndexOfField(itemCollection, "AugValue");                        // 103
+        _Field_1DC_Slot = _registry.IndexOfField(itemCollection, "Field_1DC");                      // 104
+        _AugRestriction_Slot = _registry.IndexOfField(itemCollection, "AugRestriction");            // 105
+                                                                                                    // 106 Augment Gate
+        _LDON_Sold_Slot = _registry.IndexOfField(itemCollection, "LDON_Sold");                      // 107
+        _LDON_Theme_Slot = _registry.IndexOfField(itemCollection, "LDON_Theme");                    // 108
+        _LDON_Price_Slot = _registry.IndexOfField(itemCollection, "LDON_Price");                    // 109
+        _Field_1F4_Slot = _registry.IndexOfField(itemCollection, "Field_1F4");                      // 110
+        _Field_1F8_Slot = _registry.IndexOfField(itemCollection, "Field_1F8");                      // 111
+        _Bag_Type_Slot = _registry.IndexOfField(itemCollection, "Bag_Type");                        // 112
+        _Bag_Space_Slot = _registry.IndexOfField(itemCollection, "Bag_Space");                      // 113
+        _Bag_Size_Slot = _registry.IndexOfField(itemCollection, "Bag_Size");                        // 114
+        _Weight_Reduction_Slot = _registry.IndexOfField(itemCollection, "Weight_Reduction");        // 115
+        _Field_540_Slot = _registry.IndexOfField(itemCollection, "Field_540");                      // 116
+        _Field_541_Slot = _registry.IndexOfField(itemCollection, "Field_541");                      // 117
+        _String_542_Slot = _registry.IndexOfField(itemCollection, "String_542");                    // 118
+        _Lore_Group_Slot = _registry.IndexOfField(itemCollection, "Lore_Group");                    // 119
+        _Field_F4_Slot = _registry.IndexOfField(itemCollection, "Field_F4");                        // 120
+        _Tribute_Slot = _registry.IndexOfField(itemCollection, "Tribute");                          // 121
+        _FV_Nodrop_Slot = _registry.IndexOfField(itemCollection, "FV_Nodrop");                      // 122
+        _Plus_Attack_Slot = _registry.IndexOfField(itemCollection, "Plus_Attack");                  // 123
+        _Haste_Slot = _registry.IndexOfField(itemCollection, "Haste");                              // 124
+        _Field_564_Slot = _registry.IndexOfField(itemCollection, "Field_564");                      // 125
+        _Aug_Distiller_Needed = _registry.IndexOfField(itemCollection, "Aug_Distiller_Needed");     // 126
+        _Field_584_Slot = _registry.IndexOfField(itemCollection, "Field_584");                      // 127
+        _Field_588_Slot = _registry.IndexOfField(itemCollection, "Field_588");                      // 128
+        _Field_58C_Slot = _registry.IndexOfField(itemCollection, "Field_58C");                      // 129
+        _Field_58D_Slot = _registry.IndexOfField(itemCollection, "Field_58D");                      // 130
+        _Max_Stack_Size_Slot = _registry.IndexOfField(itemCollection, "Max_Stack_Size");            // 131
+        _Field_594_Slot = _registry.IndexOfField(itemCollection, "Field_594");                      // 132
+        _Field_5A9_Slot = _registry.IndexOfField(itemCollection, "Field_5A9");                      // 133
+        _Blob_4DC_Slot = _registry.IndexOfField(itemCollection, "Blob_4DC");                        // 134
+                                                                                                    // 135 Effects Gate
+        _Field_5A0_Slot = _registry.IndexOfField(itemCollection, "Field_5A0");                      // 136
+        _Field_5A8_Slot = _registry.IndexOfField(itemCollection, "Field_5A8");                      // 137
+        _Field_598_Slot = _registry.IndexOfField(itemCollection, "Field_598");                      // 138
+        _Purity_Slot = _registry.IndexOfField(itemCollection, "Purity");                            // 139
+        _Backstab_Damage_Slot = _registry.IndexOfField(itemCollection, "Backstab_Damage");          // 140
+        _Heroic_Strength_Slot = _registry.IndexOfField(itemCollection, "Heroic_Strength");          // 141
+        _Heroic_Intelligence_Slot = _registry.IndexOfField(itemCollection, "Heroic_Intelligence");  // 142
+        _Heroic_Wisdom_Slot = _registry.IndexOfField(itemCollection, "Heroic_Wisdom");              // 143
+        _Heroic_Agility_Slot = _registry.IndexOfField(itemCollection, "Heroic_Agility");            // 144
+        _Heroic_Dexterity_Slot = _registry.IndexOfField(itemCollection, "Heroic_Dexterity");        // 145
+        _Heroic_Stamina_Slot = _registry.IndexOfField(itemCollection, "Heroic_Stamina");            // 146
+        _Heroic_Charisma_Slot = _registry.IndexOfField(itemCollection, "Heroic_Charisma");          // 147
+        _Heal_Amount_Slot = _registry.IndexOfField(itemCollection, "Heal_Amount");                  // 148
+        _Spell_Damage_Slot = _registry.IndexOfField(itemCollection, "Spell_Damage");                // 149
+        _Clairvoyance = _registry.IndexOfField(itemCollection, "Clairvoyance");                     // 150
+        _Field_5b0_Slot = _registry.IndexOfField(itemCollection, "Field_5b0");                      // 151
+        _Field_5b4_Slot = _registry.IndexOfField(itemCollection, "Field_5b4");                      // 152
+        _Field_5A4_Slot = _registry.IndexOfField(itemCollection, "Field_5A4");                      // 153
+        _Field_D3_Slot = _registry.IndexOfField(itemCollection, "Field_D3");                        // 154
+        _Placeable2 = _registry.IndexOfField(itemCollection, "Placeable2");                         // 155
+        _Field_5bC_Slot = _registry.IndexOfField(itemCollection, "Field_5bC");                      // 156
+        _Field_5C0_Slot = _registry.IndexOfField(itemCollection, "Field_5C0");                      // 157
+        _Field_5C4_Slot = _registry.IndexOfField(itemCollection, "Field_5C4");                      // 158
+        _Field_5C8_Slot = _registry.IndexOfField(itemCollection, "Field_5C8");                      // 159
+        _Field_5CC_Slot = _registry.IndexOfField(itemCollection, "Field_5CC");                      // 160
+        _Field_5D0_Slot = _registry.IndexOfField(itemCollection, "Field_5D0");                      // 161
+        _Field_5D4_Slot = _registry.IndexOfField(itemCollection, "Field_5D4");                      // 162
+        _String_5D8_Slot = _registry.IndexOfField(itemCollection, "String_5D8");                    // 163
+        _Field_614_Slot = _registry.IndexOfField(itemCollection, "Field_614");                      // 164
+        _Field_5F8_Slot = _registry.IndexOfField(itemCollection, "Field_5F8");                      // 165
+        _Field_5FC_Slot = _registry.IndexOfField(itemCollection, "Field_5FC");                      // 166
+        _Field_5FD_Slot = _registry.IndexOfField(itemCollection, "Field_5FD");                      // 167
+        _Field_600_Slot = _registry.IndexOfField(itemCollection, "Field_600");                      // 168
+        _Field_604_Slot = _registry.IndexOfField(itemCollection, "Field_604");                      // 169
+        _Field_608_Slot = _registry.IndexOfField(itemCollection, "Field_608");                      // 170
+        _Field_60C_Slot = _registry.IndexOfField(itemCollection, "Field_60C");                      // 171
+        _Field_610_Slot = _registry.IndexOfField(itemCollection, "Field_610");                      // 172
+        _Field_65C_Slot = _registry.IndexOfField(itemCollection, "Field_65C");                      // 173
+                                                                                                    // 174 Optional 4s Gate
+        _Field_D4_Slot = _registry.IndexOfField(itemCollection, "Field_D4");                        // 175
+        _Field_D5_Slot = _registry.IndexOfField(itemCollection, "Field_D5");                        // 176
+        _Field_D6_Slot = _registry.IndexOfField(itemCollection, "Field_D6");                        // 177
+        _Field_D7_Slot = _registry.IndexOfField(itemCollection, "Field_D7");                        // 178
+        _Field_D8_Slot = _registry.IndexOfField(itemCollection, "Field_D8");                        // 179
+        _Field_DC_Slot = _registry.IndexOfField(itemCollection, "Field_DC");                        // 180
+        _Field_DD_Slot = _registry.IndexOfField(itemCollection, "Field_DD");                        // 181
+        _Field_DE_Slot = _registry.IndexOfField(itemCollection, "Field_DE");                        // 182
+        _Field_DF_Slot = _registry.IndexOfField(itemCollection, "Field_DF");                        // 183
+        _Field_E0_Slot = _registry.IndexOfField(itemCollection, "Field_E0");                        // 184
+        _Field_E4_Slot = _registry.IndexOfField(itemCollection, "Field_E4");                        // 185
+        _Field_184_Slot = _registry.IndexOfField(itemCollection, "Field_184");                      // 186
+        _Field_188_Slot = _registry.IndexOfField(itemCollection, "Field_188");                      // 187
+        _Field_F0_Slot = _registry.IndexOfField(itemCollection, "Field_F0");                        // 188
+        _Field_F5_Slot = _registry.IndexOfField(itemCollection, "Field_F5");                        // 189
+        _Field_618_Slot = _registry.IndexOfField(itemCollection, "Field_618");                      // 190
+        _String_61C_Slot = _registry.IndexOfField(itemCollection, "String_61C");                    // 191
+        _Child_Count_Slot = _registry.IndexOfField(itemCollection, "ChildCount");                   // 192
+                                                                                                    // 193 None
+                                                                                                    // 194 ChildItems Gate
+                                                                                                    // 195 None
+        _Field_2C_Slot = _registry.IndexOfField(itemCollection, "Field_2C");                        // 196
+                                                                                                    // 197 None
+        _Field_30_Slot = _registry.IndexOfField(itemCollection, "Field_30");                        // 198
+        _Field_48_Slot = _registry.IndexOfField(itemCollection, "Field_48");                        // 199
 
         _Augment_Type_Slot = _registry.IndexOfField(augmentCollection, "Augment_Type");
         _Augment_Visible_Slot = _registry.IndexOfField(augmentCollection, "Augment_Visible");
         _Augment_Unknown_Slot = _registry.IndexOfField(augmentCollection, "Augment_Unknown");
 
-        _Field_1F0_Slot = _registry.IndexOfField(itemCollection, "Field_1F0");
-        _Field_1E8_Slot = _registry.IndexOfField(itemCollection, "Field_1E8");
-        _Field_1EC_Slot = _registry.IndexOfField(itemCollection, "Field_1EC");
-        _Field_1F4_Slot = _registry.IndexOfField(itemCollection, "Field_1F4");
-        _Field_1F8_Slot = _registry.IndexOfField(itemCollection, "Field_1F8");
-
-        _Effect_SpellId_Slot = _registry.IndexOfField(strideCollection, "Unknown_220");
-        _EffectLevel2_Slot = _registry.IndexOfField(strideCollection, "Unknown_224");
-        _Effect_Type_Slot = _registry.IndexOfField(strideCollection, "Unknown_225");
-        _Effect_Level_Slot = _registry.IndexOfField(strideCollection, "Unknown_228");
-        _Effect_Max_Charges_Slot = _registry.IndexOfField(strideCollection, "Unknown_22C");
-        _Effect_Casttime_Slot = _registry.IndexOfField(strideCollection, "Unknown_230");
-        _Effect_Recasttime_Slot = _registry.IndexOfField(strideCollection, "Unknown_234");
-        _Effect_Recasttype_Slot = _registry.IndexOfField(strideCollection, "Unknown_238");
-        _Effect_Recastdelay_Slot = _registry.IndexOfField(strideCollection, "Unknown_23C");
-        _Effect_Name_Slot = _registry.IndexOfField(strideCollection, "String_240");
-        _Effect_Unknown7_Slot = _registry.IndexOfField(strideCollection, "Unknown_280");
-
-        _Bag_Type_Slot = _registry.IndexOfField(itemCollection, "Bag_Type");
-        _Bag_Space_Slot = _registry.IndexOfField(itemCollection, "Bag_Space");                      // 113
-        _Bag_Size_Slot = _registry.IndexOfField(itemCollection, "Bag_Size");                        // 114
-        _Weight_Reduction_Slot = _registry.IndexOfField(itemCollection, "Weight_Reduction");        // 115
-        _Field_540_Slot = _registry.IndexOfField(itemCollection, "Field_540");
-        _Field_541_Slot = _registry.IndexOfField(itemCollection, "Field_541");
-        _String_542_Slot = _registry.IndexOfField(itemCollection, "String_542");
-        _Lore_Group_Slot = _registry.IndexOfField(itemCollection, "Lore_Group");                    // 119
-        _Field_F4_Slot = _registry.IndexOfField(itemCollection, "Field_F4");
-        _Tribute_Slot = _registry.IndexOfField(itemCollection, "Tribute");                          // 121
-        _Field_568_Slot = _registry.IndexOfField(itemCollection, "Field_568");
-
-        _Haste_Slot = _registry.IndexOfField(itemCollection, "Haste");                              // 124
-        _Field_564_Slot = _registry.IndexOfField(itemCollection, "Field_564");
-        _Aug_Distiller_Needed = _registry.IndexOfField(itemCollection, "Aug_Distiller_Needed");     // 126
-        _Field_584_Slot = _registry.IndexOfField(itemCollection, "Field_584");
-        _Field_588_Slot = _registry.IndexOfField(itemCollection, "Field_588");
-        _Field_58C_Slot = _registry.IndexOfField(itemCollection, "Field_58C");
-        _Field_58D_Slot = _registry.IndexOfField(itemCollection, "Field_58D");
-        _Max_Stack_Size_Slot = _registry.IndexOfField(itemCollection, "Max_Stack_Size");            // 131
-        _Field_594_Slot = _registry.IndexOfField(itemCollection, "Field_594");
-        _Field_5A9_Slot = _registry.IndexOfField(itemCollection, "Field_5A9");
-
-        _Blob_4DC_Slot = _registry.IndexOfField(itemCollection, "Blob_4DC");                        // 134
-
-        _Field_5A0_Slot = _registry.IndexOfField(itemCollection, "Field_5A0");
-        _Field_5A8_Slot = _registry.IndexOfField(itemCollection, "Field_5A8");
-        _Field_598_Slot = _registry.IndexOfField(itemCollection, "Field_598");
-        _Field_59C_Slot = _registry.IndexOfField(itemCollection, "Field_59C");
-        _Backstab_Damage_Slot = _registry.IndexOfField(itemCollection, "Backstab_Damage");  // 140
-        _Heroic_Strength_Slot = _registry.IndexOfField(itemCollection, "Heroic_Strength");
-        _Heroic_Intelligence_Slot = _registry.IndexOfField(itemCollection, "Heroic_Intelligence");
-        _Heroic_Wisdom_Slot = _registry.IndexOfField(itemCollection, "Heroic_Wisdom");
-        _Heroic_Agility_Slot = _registry.IndexOfField(itemCollection, "Heroic_Agility");
-        _Heroic_Dexterity_Slot = _registry.IndexOfField(itemCollection, "Heroic_Dexterity");
-        _Heroic_Stamina_Slot = _registry.IndexOfField(itemCollection, "Heroic_Stamina");
-        _Heroic_Charisma_Slot = _registry.IndexOfField(itemCollection, "Heroic_Charisma");
-        _Field_17C_Slot = _registry.IndexOfField(itemCollection, "Field_17C");
-        _Field_180_Slot = _registry.IndexOfField(itemCollection, "Field_180");
-        _Field_5AC_Slot = _registry.IndexOfField(itemCollection, "Field_5AC");  // 150
-        _Field_5b0_Slot = _registry.IndexOfField(itemCollection, "Field_5b0");
-        _Field_5b4_Slot = _registry.IndexOfField(itemCollection, "Field_5b4");
-        _Field_5A4_Slot = _registry.IndexOfField(itemCollection, "Field_5A4");
-        _Field_D3_Slot = _registry.IndexOfField(itemCollection, "Field_D3");
-        _Field_5b8_Slot = _registry.IndexOfField(itemCollection, "Field_5b8");
-        _Field_5bC_Slot = _registry.IndexOfField(itemCollection, "Field_5bC");
-        _Field_5C0_Slot = _registry.IndexOfField(itemCollection, "Field_5C0");
-        _Field_5C4_Slot = _registry.IndexOfField(itemCollection, "Field_5C4");
-        _Field_5C8_Slot = _registry.IndexOfField(itemCollection, "Field_5C8");
-        _Field_5CC_Slot = _registry.IndexOfField(itemCollection, "Field_5CC");  // 160
-        _Field_5D0_Slot = _registry.IndexOfField(itemCollection, "Field_5D0");
-        _Field_5D4_Slot = _registry.IndexOfField(itemCollection, "Field_5D4");
-        _String_5D8_Slot = _registry.IndexOfField(itemCollection, "String_5D8");
-        _Field_614_Slot = _registry.IndexOfField(itemCollection, "Field_614");
-        _Field_5F8_Slot = _registry.IndexOfField(itemCollection, "Field_5F8");
-        _Field_5FC_Slot = _registry.IndexOfField(itemCollection, "Field_5FC");
-        _Field_5FD_Slot = _registry.IndexOfField(itemCollection, "Field_5FD");
-        _Field_600_Slot = _registry.IndexOfField(itemCollection, "Field_600");
-        _Field_604_Slot = _registry.IndexOfField(itemCollection, "Field_604");
-        _Field_608_Slot = _registry.IndexOfField(itemCollection, "Field_608"); // 170
-        _Field_60C_Slot = _registry.IndexOfField(itemCollection, "Field_60C");
-        _Field_610_Slot = _registry.IndexOfField(itemCollection, "Field_610");
-        _Field_65C_Slot = _registry.IndexOfField(itemCollection, "Field_65C");
-        _Field_D4_Slot = _registry.IndexOfField(itemCollection, "Field_D4");
-        _Field_D5_Slot = _registry.IndexOfField(itemCollection, "Field_D5");
-        _Field_D6_Slot = _registry.IndexOfField(itemCollection, "Field_D6");
-        _Field_D7_Slot = _registry.IndexOfField(itemCollection, "Field_D7");
-        _Field_D8_Slot = _registry.IndexOfField(itemCollection, "Field_D8");
-        _Field_DC_Slot = _registry.IndexOfField(itemCollection, "Field_DC");  // 180
-        _Field_DD_Slot = _registry.IndexOfField(itemCollection, "Field_DD");
-        _Field_DE_Slot = _registry.IndexOfField(itemCollection, "Field_DE");
-        _Field_DF_Slot = _registry.IndexOfField(itemCollection, "Field_DF");
-        _Field_E0_Slot = _registry.IndexOfField(itemCollection, "Field_E0");
-        _Field_E4_Slot = _registry.IndexOfField(itemCollection, "Field_E4");
-        _Field_184_Slot = _registry.IndexOfField(itemCollection, "Field_184");
-        _Field_188_Slot = _registry.IndexOfField(itemCollection, "Field_188");
-        _Field_F0_Slot = _registry.IndexOfField(itemCollection, "Field_F0");
-        _Field_F5_Slot = _registry.IndexOfField(itemCollection, "Field_F5");
-        _Field_618_Slot = _registry.IndexOfField(itemCollection, "Field_618");  // 190
-        _String_61C_Slot = _registry.IndexOfField(itemCollection, "String_61C");
-        _Child_Count_Slot = _registry.IndexOfField(itemCollection, "ChildCount");
-        _Field_2C_Slot = _registry.IndexOfField(itemCollection, "Field_2C");
-        _Field_30_Slot = _registry.IndexOfField(itemCollection, "Field_30");
-        _Field_48_Slot = _registry.IndexOfField(itemCollection, "Field_48");
+        _Effect_SpellId_Slot = _registry.IndexOfField(effectsCollection, "Effect_Spell_ID");
+        _Effect_Level2_Slot = _registry.IndexOfField(effectsCollection, "Effect_Level2");
+        _Effect_Type_Slot = _registry.IndexOfField(effectsCollection, "Effect_Type");
+        _Effect_Level_Slot = _registry.IndexOfField(effectsCollection, "Effect_Level");
+        _Effect_Max_Charges_Slot = _registry.IndexOfField(effectsCollection, "Effect_Max_Charges");
+        _Effect_Casttime_Slot = _registry.IndexOfField(effectsCollection, "Effect_Casttime");
+        _Effect_Recasttime_Slot = _registry.IndexOfField(effectsCollection, "Effect_Recasttime");
+        _Effect_Recasttype_Slot = _registry.IndexOfField(effectsCollection, "Effect_Recasttype");
+        _Effect_Recastdelay_Slot = _registry.IndexOfField(effectsCollection, "Effect_Recastdelay");
+        _Effect_Name_Slot = _registry.IndexOfField(effectsCollection, "Effect_Name");
+        _Effect_Unknown7_Slot = _registry.IndexOfField(effectsCollection, "Unknown_280");
 
         _Field_Optional_4_Byte_Slot = _registry.IndexOfField(optional4sCollection, "Unknown_Optional_Int");
         _Evolving_FinalItemID_Slot = _registry.IndexOfField(evolvingCollection, "Field1");
@@ -723,8 +729,8 @@ public class HandleInventory : OpcodeHandler
         record.Id = (ItemId)_extractor.GetUIntAt(_Item_ID_Slot);                                // 34
         record.Weight = _extractor.GetFloatAt(_Weight_Slot);                                    // 35
         record.Unknown_36 = (byte)_extractor.GetUIntAt(_DF_7_Slot);                             // 36
-        record.Tradeable = (byte)_extractor.GetUIntAt(_DF_8_Slot);                             // 37
-        record.Attuneable = (byte)_extractor.GetUIntAt(_DF_9_Slot);                             // 38
+        record.Tradeable = (byte)_extractor.GetUIntAt(_Tradeable_Slot);                         // 37
+        record.Attuneable = (byte)_extractor.GetUIntAt(_Attuneable_Slot);                       // 38
         record.Size = (byte)_extractor.GetUIntAt(_Size_Slot);                                   // 40
         record.UsableSlotMask = _extractor.GetUIntAt(_Usable_Slot_Mask);                        // 41
         record.Cost = _extractor.GetUIntAt(_Cost_Slot);                                         // 42
@@ -750,10 +756,10 @@ public class HandleInventory : OpcodeHandler
         record.PlusAC = _extractor.GetIntAt(_Plus_AC_Slot);                                     // 63
         record.HpRegen = _extractor.GetIntAt(_HP_Regen_Slot);                                   // 64
         record.ManaRegen = _extractor.GetIntAt(_Mana_Regen_Slot);                               // 65
-        record.Unknown_66 = _extractor.GetUIntAt(_Field_57C_Slot);                              // 66
+        record.Unknown_66 = _extractor.GetUIntAt(_Unknown_66_Slot);                             // 66
         record.ClassMask = _extractor.GetUIntAt(_Class_Mask_Slot);                              // 67
         record.RaceMask = _extractor.GetUIntAt(_Race_Mask_Slot);                                // 68
-        record.Deity = _extractor.GetUIntAt(_Field_148_Slot);                                   // 69
+        record.Deity = _extractor.GetUIntAt(_Deity_Slot);                                       // 69
         record.Skill_Percent_Chance = _extractor.GetUIntAt(_Skill_Percent_Change_Slot);         // 70
         record.Skill_Max_Change = _extractor.GetUIntAt(_Skill_Max_Change_Slot);                 // 71
         record.Skill_ID = _extractor.GetUIntAt(_Skill_Slot);                                    // 72
@@ -762,37 +768,37 @@ public class HandleInventory : OpcodeHandler
         record.Unknown_75 = _extractor.GetUIntAt(_Field_12C_Slot);                              // 75
         record.Unknown_76 = _extractor.GetUIntAt(_Field_134_Slot);                              // 76
         record.Unknown_77 = _extractor.GetUIntAt(_Field_130_Slot);                              // 77
-        record.Is_Magic = (byte)_extractor.GetUIntAt(_Field_150_Slot);                          // 78
+        record.Is_Magic = (byte)_extractor.GetUIntAt(_Is_Magic_Slot);                           // 78
         record.FoodDrinkValue = _extractor.GetUIntAt(_Food_Drink_Value_Slot);                   // 79
         record.RequiredLevel = _extractor.GetUIntAt(_Required_Level_Slot);                      // 80
         record.RecommendedLevel = _extractor.GetUIntAt(_Recommended_Level_Slot);                // 81
         record.Bard_Value = _extractor.GetUIntAt(_Bard_Value_Slot);                             // 82
         record.Unknown_83 = _extractor.GetUIntAt(_Field_13C_Slot);                              // 83
-        record.Light = (byte)_extractor.GetUIntAt(_Field_151_Slot);                             // 84
+        record.Light = (byte)_extractor.GetUIntAt(_Light_Slot);                                 // 84
         record.Weapon_Delay = (byte)_extractor.GetUIntAt(_Weapon_Delay_Slot);                   // 85
-        record.Elemental_Damage_Type = (byte)_extractor.GetUIntAt(_Field_153_Slot);             // 86
-        record.Elemental_Damage_Amount = (byte)_extractor.GetUIntAt(_Field_154_Slot);           // 87
+        record.Elemental_Damage_Type = (byte)_extractor.GetUIntAt(_Elemental_Dmg_Type_Slot);       // 86
+        record.Elemental_Damage_Amount = (byte)_extractor.GetUIntAt(_Elemental_Dmg_Amount_Slot);   // 87
         record.Weapon_Range = (byte)_extractor.GetUIntAt(_Weapon_Range_Slot);                   // 88
         record.Weapon_Base_Damage = _extractor.GetUIntAt(_Base_Damage_Slot);                    // 89
         record.Color = _extractor.GetUIntAt(_Color_Slot);                                       // 90
-        record.Prestige = _extractor.GetUIntAt(_Field_18C_Slot);                              // 91
+        record.Prestige = _extractor.GetUIntAt(_Prestige_Slot);                                 // 91
         record.ItemType1 = (byte)_extractor.GetUIntAt(_Item_Type1_Slot);                        // 92
         record.Material = _extractor.GetUIntAt(_Material_Slot);                                 // 93
         record.Unknown_94 = _extractor.GetUIntAt(_Field_19C_Slot);                              // 94
         record.Unknown_95 = _extractor.GetUIntAt(_Field_198_Slot);                              // 95
         record.Unknown_96 = _extractor.GetUIntAt(_Field_1A0_Slot);                              // 96
-        record.Material2 = _extractor.GetUIntAt(_Field_1A4_Slot);                              // 97
+        record.Material2 = _extractor.GetUIntAt(_Material2_Slot);                               // 97
         record.Unknown_98 = _extractor.GetUIntAt(_Field_21C_Slot);                              // 98
         record.Unknown_99 = _extractor.GetUIntAt(_Field_52C_Slot);                              // 99
         record.Unknown_100 = _extractor.GetUIntAt(_Field_530_Slot);                             // 100
-        record.CharmFileID = _extractor.GetUIntAt(_Field_534_Slot);                             // 101
-        record.CharmFile = _extractor.GetStringAt(_String_1FC_Slot);                          // 102
-        record.AugValue = _extractor.GetUIntAt(_Field_1D8_Slot);                             // 103
+        record.CharmFileID = _extractor.GetUIntAt(_CharmFileID_Slot);                           // 101
+        record.CharmFileName = _extractor.GetStringAt(_CharmFileName_Slot);                     // 102
+        record.AugValue = _extractor.GetUIntAt(_AugValue_Slot);                                 // 103
         record.Unknown_104 = _extractor.GetUIntAt(_Field_1DC_Slot);                             // 104
-        record.AugRestriction = _extractor.GetUIntAt(_Field_1E0_Slot);                             // 105
-        record.LDON_Sold = _extractor.GetUIntAt(_Field_1F0_Slot);                             // 107
-        record.LDON_Theme = _extractor.GetUIntAt(_Field_1E8_Slot);                             // 108
-        record.LDON_Price = _extractor.GetUIntAt(_Field_1EC_Slot);                             // 109
+        record.AugRestriction = _extractor.GetUIntAt(_AugRestriction_Slot);                     // 105
+        record.LDON_Sold = _extractor.GetUIntAt(_LDON_Sold_Slot);                               // 107
+        record.LDON_Theme = _extractor.GetUIntAt(_LDON_Theme_Slot);                             // 108
+        record.LDON_Price = _extractor.GetUIntAt(_LDON_Price_Slot);                             // 109
         record.Unknown_110 = _extractor.GetUIntAt(_Field_1F4_Slot);                             // 110
         record.Unknown_111 = _extractor.GetUIntAt(_Field_1F8_Slot);                             // 111
         record.Bag_Type = (byte)_extractor.GetUIntAt(_Bag_Type_Slot);                           // 112
@@ -805,7 +811,7 @@ public class HandleInventory : OpcodeHandler
         record.LoreGroup = _extractor.GetUIntAt(_Lore_Group_Slot);                              // 119
         record.Unknown_120 = (byte)_extractor.GetUIntAt(_Field_F4_Slot);                        // 120
         record.Tribute = _extractor.GetUIntAt(_Tribute_Slot);                                   // 121
-        record.FV_Nodrop = _extractor.GetUIntAt(_Field_568_Slot);                             // 122
+        record.FV_Nodrop = _extractor.GetUIntAt(_FV_Nodrop_Slot);                               // 122
         record.PlusAttack = _extractor.GetIntAt(_Plus_Attack_Slot);                             // 123
         record.Haste = _extractor.GetUIntAt(_Haste_Slot);                                       // 124
         record.Unknown_125 = _extractor.GetUIntAt(_Field_564_Slot);                             // 125
@@ -821,7 +827,7 @@ public class HandleInventory : OpcodeHandler
         record.Unknown_136 = _extractor.GetUIntAt(_Field_5A0_Slot);                             // 136
         record.Unknown_137 = (byte)_extractor.GetUIntAt(_Field_5A8_Slot);                       // 137
         record.Unknown_138 = _extractor.GetUIntAt(_Field_598_Slot);                             // 138
-        record.Purity = _extractor.GetUIntAt(_Field_59C_Slot);                             // 139
+        record.Purity = _extractor.GetUIntAt(_Purity_Slot);                                     // 139
         record.Backstab_Damage = _extractor.GetUIntAt(_Backstab_Damage_Slot);                   // 140
         record.Heroic_Strength = _extractor.GetUIntAt(_Heroic_Strength_Slot);                   // 141
         record.Heroic_Intelligence = _extractor.GetUIntAt(_Heroic_Intelligence_Slot);           // 142
@@ -830,14 +836,14 @@ public class HandleInventory : OpcodeHandler
         record.Heroic_Dexterity = _extractor.GetUIntAt(_Heroic_Dexterity_Slot);                 // 145
         record.Heroic_Stamina = _extractor.GetUIntAt(_Heroic_Stamina_Slot);                     // 146
         record.Heroic_Charisma = _extractor.GetUIntAt(_Heroic_Charisma_Slot);                   // 147
-        record.Heal_Amount = _extractor.GetUIntAt(_Field_17C_Slot);                             // 148
-        record.Spell_Damage = _extractor.GetUIntAt(_Field_180_Slot);                             // 149
-        record.Clairvoyance = _extractor.GetUIntAt(_Field_5AC_Slot);                             // 150
+        record.Heal_Amount = _extractor.GetUIntAt(_Heal_Amount_Slot);                           // 148
+        record.Spell_Damage = _extractor.GetUIntAt(_Spell_Damage_Slot);                         // 149
+        record.Clairvoyance = _extractor.GetUIntAt(_Clairvoyance);                              // 150
         record.Unknown_151 = _extractor.GetUIntAt(_Field_5b0_Slot);                             // 151
         record.Unknown_152 = (byte)_extractor.GetUIntAt(_Field_5b4_Slot);                       // 152
         record.Unknown_153 = _extractor.GetUIntAt(_Field_5A4_Slot);                             // 153
         record.Unknown_154 = (byte)_extractor.GetUIntAt(_Field_D3_Slot);                        // 154
-        record.Placeable2 = _extractor.GetUIntAt(_Field_5b8_Slot);                             // 155
+        record.Placeable2 = _extractor.GetUIntAt(_Placeable2);                                  // 155
         record.Unknown_156 = (byte)_extractor.GetUIntAt(_Field_5bC_Slot);                       // 156
         record.Unknown_157 = _extractor.GetUIntAt(_Field_5C0_Slot);                             // 157
         record.Unknown_158 = _extractor.GetUIntAt(_Field_5C4_Slot);                             // 158
@@ -1033,7 +1039,6 @@ public class HandleInventory : OpcodeHandler
         FieldNodes.AddUIntNode(_extractor, _Item_Type1_Slot, "Item_Type", itemNode, "D");
         FieldNodes.AddUIntNode(_extractor, _Item_Type2_Slot, "Item Type2", itemNode);
 
-
         FieldDisplayNode locationSubtree = new FieldDisplayNode("Item Location");
         itemNode.AddChild(locationSubtree);
 
@@ -1166,14 +1171,14 @@ public class HandleInventory : OpcodeHandler
         FieldNodes.AddUIntNode(_extractor, _Field_22_Slot, "Field 22", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_23_Slot, "Field 23", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_24_Slot, "Field 24", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _IsCopied_Slot, "IsCopied", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _IsCopied_Slot, "Is Copied", itemNode, "D");
         FieldNodes.AddUIntNode(_extractor, _Field_26_Slot, "Field 26", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_27_Slot, "Field 27", itemNode, "?");
 
         FieldNodes.AddUIntNode(_extractor, _DF_4_Slot, "DF 4", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _DF_7_Slot, "DF 7", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _DF_8_Slot, "DF 8", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _DF_9_Slot, "DF 9", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Tradeable_Slot, "Tradeable", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Attuneable_Slot, "Attuneable", itemNode, "D");
 
         FieldNodes.AddUIntNode(_extractor, _DF_13_Slot, "DF 13", itemNode, "?");
 
@@ -1206,70 +1211,64 @@ public class HandleInventory : OpcodeHandler
 
         FieldNodes.AddUIntNode(_extractor, _Field_13C_Slot, "Field 13C", itemNode, "?");
 
-        FieldNodes.AddUIntNode(_extractor, _Field_148_Slot, "Field 148", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Deity_Slot, "Deity Mask", itemNode, "X");
 
-        FieldNodes.AddUIntNode(_extractor, _Field_150_Slot, "Field 150", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_151_Slot, "Field 151", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_153_Slot, "Field 153", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_154_Slot, "Field 154", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Is_Magic_Slot, "Is Magic", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Light_Slot, "Light", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Elemental_Dmg_Type_Slot, "Elemental Damage Type", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Elemental_Dmg_Amount_Slot, "Elemental Damage Amount", itemNode, "D");
 
-        FieldNodes.AddUIntNode(_extractor, _Field_17C_Slot, "Field 17C", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_180_Slot, "Field 180", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Heal_Amount_Slot, "Plus Heal", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _Spell_Damage_Slot, "Plus Spell Damage", itemNode, "D");
         FieldNodes.AddUIntNode(_extractor, _Field_184_Slot, "Field 184", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_188_Slot, "Field 188", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_18C_Slot, "Field 18C", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Prestige_Slot, "Prestige", itemNode, "D");
 
         FieldNodes.AddUIntNode(_extractor, _Field_198_Slot, "Field 198", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_19C_Slot, "Field 19C", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_1A0_Slot, "Field 1A0", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_1A4_Slot, "Field 1A4", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Material2_Slot, "Material2", itemNode, "D");
 
-        FieldNodes.AddUIntNode(_extractor, _Field_1D8_Slot, "Field 1D8", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _AugValue_Slot, "Aug Value", itemNode, "D");
         FieldNodes.AddUIntNode(_extractor, _Field_1DC_Slot, "Field 1DC", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_1E0_Slot, "Field 1E0", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _AugRestriction_Slot, "Aug Restriction", itemNode, "D");
 
-        FieldNodes.AddUIntNode(_extractor, _Field_1E8_Slot, "Field 1E8", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_1EC_Slot, "Field 1EC", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_1F0_Slot, "Field 1F0", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _LDON_Theme_Slot, "LDON Theme", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _LDON_Price_Slot, "LDON Price", itemNode, "D");
+        FieldNodes.AddUIntNode(_extractor, _LDON_Sold_Slot, "LDON_Sold", itemNode, "D");
         FieldNodes.AddUIntNode(_extractor, _Field_1F4_Slot, "Field 1F4", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_1F8_Slot, "Field 1F8", itemNode, "?");
-        FieldNodes.AddStringNode(_extractor, _String_1FC_Slot, "String 1FC", itemNode);
+        FieldNodes.AddUIntNode(_extractor, _CharmFileID_Slot, "CharmFile ID", itemNode, "D");
+        FieldNodes.AddStringNode(_extractor, _CharmFileName_Slot, "Charmfile Name", itemNode);
 
         // blob 4DC
 
         FieldNodes.AddUIntNode(_extractor, _Field_21C_Slot, "Field 21C", itemNode, "?");
-
         FieldNodes.AddUIntNode(_extractor, _Field_52C_Slot, "Field 52C", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_530_Slot, "Field 530", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_534_Slot, "Field 534", itemNode, "?");
-
-
         FieldNodes.AddUIntNode(_extractor, _Field_540_Slot, "Field 540", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_541_Slot, "Field 541", itemNode, "?");
         FieldNodes.AddStringNode(_extractor, _String_542_Slot, "String 542", itemNode);
 
         FieldNodes.AddUIntNode(_extractor, _Tribute_Slot, "Tribute", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_564_Slot, "Field 564", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_568_Slot, "Field 568", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _FV_Nodrop_Slot, "FV No-Drop", itemNode, "D");
 
-        FieldNodes.AddUIntNode(_extractor, _Field_57C_Slot, "Field 57C", itemNode, "?");
-
+        FieldNodes.AddUIntNode(_extractor, _Unknown_66_Slot, "Field 57C", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_584_Slot, "Field 584", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_588_Slot, "Field 588", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_58C_Slot, "Field 58C", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_58D_Slot, "Field 58D", itemNode, "?");        // 130
-
         FieldNodes.AddUIntNode(_extractor, _Field_594_Slot, "Field 594", itemNode, "?");
-
         FieldNodes.AddUIntNode(_extractor, _Field_598_Slot, "Field 598", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_5A0_Slot, "Field 5A0", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_5A4_Slot, "Field 5A4", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_5A8_Slot, "Field 5A8", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_5A9_Slot, "Field 5A9", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_5AC_Slot, "Field 5AC", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Clairvoyance, "Clairvoyance", itemNode, "D");
         FieldNodes.AddUIntNode(_extractor, _Field_5b0_Slot, "Field 5B0", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_5b4_Slot, "Field 5B4", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_5b8_Slot, "Field 5B8", itemNode, "?");
+        FieldNodes.AddUIntNode(_extractor, _Placeable2, "Placeable2", itemNode, "D");
         FieldNodes.AddUIntNode(_extractor, _Field_5bC_Slot, "Field 5BC", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_5C0_Slot, "Field 5C0", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_5C4_Slot, "Field 5C4", itemNode, "?");
@@ -1281,19 +1280,16 @@ public class HandleInventory : OpcodeHandler
         FieldNodes.AddUIntNode(_extractor, _Field_5F8_Slot, "Field 5F8", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_5FC_Slot, "Field 5FC", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_5FD_Slot, "Field 5FD", itemNode, "?");
-
         FieldNodes.AddUIntNode(_extractor, _Field_600_Slot, "Field 600", itemNode, "?");
         FieldNodes.AddFloatNode(_extractor, _Field_604_Slot, "Field 604", itemNode);
         FieldNodes.AddUIntNode(_extractor, _Field_608_Slot, "Field 608", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_60C_Slot, "Field 60C", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_610_Slot, "Field 610", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_614_Slot, "Field 614", itemNode, "?");
-
         FieldNodes.AddUIntNode(_extractor, _Field_618_Slot, "Field 618", itemNode, "?");
         FieldNodes.AddStringNode(_extractor, _String_61C_Slot, "String 61C", itemNode);
         FieldNodes.AddUIntNode(_extractor, _Field_65C_Slot, "Field 65C", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Child_Count_Slot, "Child Count", itemNode, "?");
-
 
         AddOptional4s(itemGate, itemIndex, itemNode);
 
@@ -1417,7 +1413,7 @@ public class HandleInventory : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void AddItemEffects(GateHandle itemGate, uint itemIndex, FieldDisplayNode parent)
     {
-        SlotId effectsSlot = GlassContext.PatchRegistry.IndexOfField(_extractor.CollectionOf(), "Strides");
+        SlotId effectsSlot = GlassContext.PatchRegistry.IndexOfField(_extractor.CollectionOf(), "Effects");
         if (_extractor.IsPresent(effectsSlot) == false)
         {
             DebugLog.Write(LogChannel.Opcodes, "AddItemEffects: no Effects present", LogLevel.Trace);
@@ -1445,7 +1441,7 @@ public class HandleInventory : OpcodeHandler
 
             FieldNodes.AddUIntNode(_extractor, _Effect_SpellId_Slot, "Spell-ID", bagNode, "?");
             FieldNodes.AddUIntNode(_extractor, _Effect_Level_Slot, "Level", bagNode, "?");
-            FieldNodes.AddUIntNode(_extractor, _EffectLevel2_Slot, "Cast as Level", bagNode, "D");
+            FieldNodes.AddUIntNode(_extractor, _Effect_Level2_Slot, "Cast as Level", bagNode, "D");
             FieldNodes.AddUIntNode(_extractor, _Effect_Type_Slot, "Effect Type", bagNode, "D");
 
             FieldNodes.AddUIntNode(_extractor, _Effect_Max_Charges_Slot, "Effect Max Charges", bagNode, "?");
