@@ -94,7 +94,7 @@ public class ItemRecord
     public uint RequiredLevel { get; set; }                         // 80
     public uint RecommendedLevel { get; set; }                      // 81
     public uint Bard_Value { get; set; }                            // 82 (Field_138)
-    public uint Unknown_83 { get; set; }                            // 83 (Field_13C)
+    public uint Unknown_83 { get; set; }                            // 83 (Field_13C) -- bard related
     public byte Light { get; set; }                                 // 84 (Field_151)
     public byte Weapon_Delay { get; set; }                          // 85
     public byte Elemental_Damage_Type { get; set; }                 // 86 (Field_153)

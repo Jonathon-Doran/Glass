@@ -408,10 +408,12 @@ public class SpellCatalog
                 continue;
             }
 
-            if (_spaWhitelist.Contains(spa) == false)
+/*            // Note:  this whitelist was used to limit SPA effects to the ones expected to be used.
+ *            //        this is too restrictive.
+ *            if (_spaWhitelist.Contains(spa) == false)
             {
                 continue;
-            }
+            }*/
 
             SpellEffect effect = new SpellEffect();
             effect.Slot = slot;

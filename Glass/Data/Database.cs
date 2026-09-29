@@ -491,6 +491,18 @@ public class Database
             pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
             pragmaOn.ExecuteNonQuery();
         }
+        if (version < 66)
+        {
+            using SqliteCommand pragmaOff = conn.CreateCommand();
+            pragmaOff.CommandText = "PRAGMA foreign_keys = OFF";
+            pragmaOff.ExecuteNonQuery();
+
+            ApplyMigration(conn, 66, Migration_066);
+
+            using SqliteCommand pragmaOn = conn.CreateCommand();
+            pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
+            pragmaOn.ExecuteNonQuery();
+        }
     }
 
     private int GetSchemaVersion()
@@ -1793,6 +1805,24 @@ public class Database
             ON ItemInstances(character_id, storage, main_position, sub_position, aug_position);
     ";
 
+    private const string Migration_066 = @"
+        DROP TABLE IF EXISTS ItemEffects;
+
+        CREATE TABLE ItemEffects (
+            item_id          INTEGER NOT NULL REFERENCES ItemRecords(id),
+            category         INTEGER NOT NULL,
+            spell_id         INTEGER NOT NULL,
+            level            INTEGER NOT NULL DEFAULT 0,
+            cast_as_level    INTEGER NOT NULL DEFAULT 0,
+            max_charges      INTEGER NOT NULL DEFAULT 0,
+            cast_time_ms     INTEGER NOT NULL DEFAULT 0,
+            recast_time_s    INTEGER NOT NULL DEFAULT 0,
+            recast_type      INTEGER NOT NULL DEFAULT 0,
+            recast_delay_s   INTEGER NOT NULL DEFAULT 0,
+            name             TEXT    NOT NULL DEFAULT '',
+            PRIMARY KEY (item_id, category)
+        );
+    ";
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"

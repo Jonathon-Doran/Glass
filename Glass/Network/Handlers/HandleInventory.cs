@@ -618,7 +618,9 @@ public class HandleInventory : OpcodeHandler
 
         if (ItemRepository.Instance.Contains(instance.Id) == false)
         {
-            ItemRepository.Instance.Add(BuildItemRecord());
+            ItemRecord record = BuildItemRecord();
+            BuildItemEffects(itemGate, itemIndex, record);
+            ItemRepository.Instance.Add(record);
         }
         else
         {
@@ -888,6 +890,103 @@ public class HandleInventory : OpcodeHandler
 
         return record;
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // BuildItemEffects
+    //
+    // Appends one ItemEffect to the record for each populated entry of the Effects gate of the
+    // item in the extractor's active bag.  An entry whose spell id is 0xFFFFFFFF is empty and
+    // is skipped.  The entry's position in the list (1 through 7) and its effect type together
+    // select the category; a pairing with no category is logged at Error and not stored.
+    // Re-enters itemGate at itemIndex before returning, so the active bag on exit matches the
+    // active bag on entry.
+    //
+    // itemGate:   The gate whose instance holds the current item.
+    // itemIndex:  The instance index of the current item within itemGate.
+    // record:     The record receiving the effects.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void BuildItemEffects(GateHandle itemGate, uint itemIndex, ItemRecord record)
+    {
+        const uint EmptySpellId = 0xFFFFFFFF;
+
+        SlotId effectsSlot = _registry.IndexOfField(_extractor.CollectionOf(), "Effects");
+        if (_extractor.IsPresent(effectsSlot) == false)
+        {
+            DebugLog.Write(LogChannel.Inventory, "BuildItemEffects: item " + record.Id +
+                " has no Effects", LogLevel.Trace);
+            return;
+        }
+
+        GateHandle effectsGate = _extractor.GetGateAt(effectsSlot);
+        if (effectsGate.Exists == false)
+        {
+            DebugLog.Write(LogChannel.Inventory, "BuildItemEffects: item " + record.Id +
+                " Effects slot present but no gate", LogLevel.Warn);
+            return;
+        }
+
+        uint entryCount = _extractor.BagCount(effectsGate);
+
+        for (uint entryIndex = 0; entryIndex < entryCount; entryIndex++)
+        {
+            _extractor.EnterGate(effectsGate, entryIndex);
+
+            uint position = entryIndex + 1;
+            uint spellId = _extractor.GetUIntAt(_Effect_SpellId_Slot);
+            if (spellId == EmptySpellId)
+            {
+                DebugLog.Write(LogChannel.Inventory, "BuildItemEffects: item " + record.Id +
+                    " effect " + position + " is empty", LogLevel.Trace);
+                continue;
+            }
+
+            uint effectType = _extractor.GetUIntAt(_Effect_Type_Slot);
+            ItemEffectCategory? category = (position, effectType) switch
+            {
+                (1u, 1u) => ItemEffectCategory.Clicky,
+                (1u, 3u) => ItemEffectCategory.Expendable,
+                (1u, 5u) => ItemEffectCategory.ClickyEquipRestricted,
+                (2u, 0u) => ItemEffectCategory.Proc,
+                (3u, 2u) => ItemEffectCategory.Worn,
+                (4u, 6u) => ItemEffectCategory.Focus,
+                (5u, 7u) => ItemEffectCategory.Scribable,
+                (5u, 12u) => ItemEffectCategory.PetIllusion,
+                (6u, 8u) => ItemEffectCategory.BardFocus,
+                _ => null
+            };
+
+            if (category == null)
+            {
+                DebugLog.Write(LogChannel.Inventory, "BuildItemEffects: item " + record.Id + " '" +
+                    record.Name + "' effect " + position + " type " + effectType + " spell " + spellId +
+                    " has no category; not stored", LogLevel.Error);
+                continue;
+            }
+
+            ItemEffect effect = new ItemEffect();
+            effect.Category = category.Value;
+            effect.SpellId = (SpellId)spellId;
+            effect.Level = _extractor.GetUIntAt(_Effect_Level_Slot);
+            effect.CastAsLevel = _extractor.GetUIntAt(_Effect_Level2_Slot);
+            effect.MaxCharges = _extractor.GetUIntAt(_Effect_Max_Charges_Slot);
+            effect.CastTimeMs = _extractor.GetUIntAt(_Effect_Casttime_Slot);
+            effect.RecastTimeSeconds = _extractor.GetUIntAt(_Effect_Recasttime_Slot);
+            effect.RecastType = _extractor.GetUIntAt(_Effect_Recasttype_Slot);
+            effect.RecastDelaySeconds = _extractor.GetUIntAt(_Effect_Recastdelay_Slot);
+            effect.Name = _extractor.GetStringAt(_Effect_Name_Slot);
+
+            record.Effects.Add(effect);
+
+            DebugLog.Write(LogChannel.Inventory, "BuildItemEffects: item " + record.Id + " effect " +
+                position + " stored as " + effect.Category + ", spell " + spellId, LogLevel.Trace);
+        }
+
+        _extractor.EnterGate(itemGate, itemIndex);
+
+        DebugLog.Write(LogChannel.Inventory, "BuildItemEffects: item " + record.Id + " has " +
+            record.Effects.Count + " of " + entryCount + " effects populated", LogLevel.Trace);
+    }
+
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Describe
@@ -1413,6 +1512,8 @@ public class HandleInventory : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void AddItemEffects(GateHandle itemGate, uint itemIndex, FieldDisplayNode parent)
     {
+        int effects_seen = 0;
+
         SlotId effectsSlot = GlassContext.PatchRegistry.IndexOfField(_extractor.CollectionOf(), "Effects");
         if (_extractor.IsPresent(effectsSlot) == false)
         {
@@ -1429,15 +1530,21 @@ public class HandleInventory : OpcodeHandler
 
         uint bagCount = _extractor.BagCount(effectsGate);
 
-        FieldDisplayNode stridesNode = new FieldDisplayNode("Effects");
-        parent.AddChild(stridesNode);
+        FieldDisplayNode effectNode = new FieldDisplayNode("Effects");
 
         for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
         {
             _extractor.EnterGate(effectsGate, bagIndex);
 
+            uint spell_id = _extractor.GetUIntAt(_Effect_SpellId_Slot);
+            if (spell_id == 0xFFFFFFFF)
+            {
+                continue;
+            }
+            effects_seen++;
+
             FieldDisplayNode bagNode = new FieldDisplayNode("Effect " + (bagIndex + 1));
-            stridesNode.AddChild(bagNode);
+            effectNode.AddChild(bagNode);
 
             FieldNodes.AddUIntNode(_extractor, _Effect_SpellId_Slot, "Spell-ID", bagNode, "?");
             FieldNodes.AddUIntNode(_extractor, _Effect_Level_Slot, "Level", bagNode, "?");
@@ -1453,6 +1560,11 @@ public class HandleInventory : OpcodeHandler
             FieldNodes.AddUIntNode(_extractor, _Effect_Unknown7_Slot, "Unknown7", bagNode, "?");
         }
         _extractor.EnterGate(itemGate, itemIndex);
+
+        if (effects_seen > 0)
+        {
+            parent.AddChild(effectNode);
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

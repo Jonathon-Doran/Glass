@@ -9,9 +9,9 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class ItemEffect
 {
+    public ItemEffectCategory Category { get; set; }
     public SpellId SpellId { get; set; } = SpellId.None;
     public string Name { get; set; } = string.Empty;
-    public uint EffectType { get; set; }
     public uint Level { get; set; }
     public uint CastAsLevel { get; set; }
     public uint MaxCharges { get; set; }

@@ -129,7 +129,7 @@ public class ItemRepository
             return false;
         }
 
-        record = ReadRecord(reader);
+        record = ReadRecord(reader, conn);
         _recordsById[itemId] = record;
         DebugLog.Write(LogChannel.Inventory, "ItemRepository.TryGet: loaded '" + record.Name + "' (" + itemId +
             ") from table, " + _recordsById.Count + " records cached.", LogLevel.Trace);
@@ -184,8 +184,9 @@ public class ItemRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Insert
     //
-    // Writes one item definition to the ItemRecords table.  An existing row with the same id is left
-    // untouched and the given record is not written.  Columns are listed in wire order.
+    // Writes one item definition to the ItemRecords table, and its effects to the ItemEffects table,
+    // in a single transaction.  An existing row with the same id is left untouched, and neither the
+    // record nor its effects are written.  Columns are listed in wire order.
     //
     // record:  The definition to write.  Its Id must exist.
     //
@@ -195,8 +196,11 @@ public class ItemRepository
     {
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
+        using SqliteTransaction tx = conn.BeginTransaction();
 
         using SqliteCommand cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+
         cmd.CommandText = @"
             INSERT OR IGNORE INTO ItemRecords (
                 id_string, container_type, unknown_7, unknown_8, unknown_9, unknown_10, unknown_11,
@@ -446,12 +450,56 @@ public class ItemRepository
         if (rowsWritten == 0)
         {
             DebugLog.Write(LogChannel.Database, "ItemRepository.Insert: row for '" + record.Name + "' (" +
-                record.Id + ") already exists; not written.", LogLevel.Trace);
+                record.Id + ") already exists; record and effects not written.", LogLevel.Trace);
             return false;
         }
 
+        uint effectsWritten = 0;
+        foreach (ItemEffect effect in record.Effects)
+        {
+            using SqliteCommand effectCmd = conn.CreateCommand();
+            effectCmd.Transaction = tx;
+            effectCmd.CommandText = @"
+                INSERT OR IGNORE INTO ItemEffects (
+                    item_id, category, spell_id, level, cast_as_level, max_charges,
+                    cast_time_ms, recast_time_s, recast_type, recast_delay_s, name
+                ) VALUES (
+                    @item_id, @category, @spell_id, @level, @cast_as_level, @max_charges,
+                    @cast_time_ms, @recast_time_s, @recast_type, @recast_delay_s, @name
+                )";
+
+            effectCmd.Parameters.AddWithValue("@item_id", (uint)record.Id);
+            effectCmd.Parameters.AddWithValue("@category", (uint)effect.Category);
+            effectCmd.Parameters.AddWithValue("@spell_id", (uint)effect.SpellId);
+            effectCmd.Parameters.AddWithValue("@level", effect.Level);
+            effectCmd.Parameters.AddWithValue("@cast_as_level", effect.CastAsLevel);
+            effectCmd.Parameters.AddWithValue("@max_charges", effect.MaxCharges);
+            effectCmd.Parameters.AddWithValue("@cast_time_ms", effect.CastTimeMs);
+            effectCmd.Parameters.AddWithValue("@recast_time_s", effect.RecastTimeSeconds);
+            effectCmd.Parameters.AddWithValue("@recast_type", effect.RecastType);
+            effectCmd.Parameters.AddWithValue("@recast_delay_s", effect.RecastDelaySeconds);
+            effectCmd.Parameters.AddWithValue("@name", effect.Name);
+
+            int effectRows = effectCmd.ExecuteNonQuery();
+            if (effectRows == 0)
+            {
+                DebugLog.Write(LogChannel.Database, "ItemRepository.Insert: '" + record.Name + "' (" +
+                    record.Id + ") has a second " + effect.Category + " effect (spell " + effect.SpellId +
+                    "); not written.", LogLevel.Warn);
+                continue;
+            }
+
+            effectsWritten++;
+            DebugLog.Write(LogChannel.Database, "ItemRepository.Insert: wrote " + effect.Category +
+                " effect (spell " + effect.SpellId + ") for '" + record.Name + "' (" + record.Id + ").",
+                LogLevel.Trace);
+        }
+
+        tx.Commit();
+
         DebugLog.Write(LogChannel.Database, "ItemRepository.Insert: wrote '" + record.Name + "' (" +
-            record.Id + ").", LogLevel.Trace);
+            record.Id + ") with " + effectsWritten + " of " + record.Effects.Count + " effects.",
+            LogLevel.Trace);
         return true;
     }
 
@@ -459,13 +507,15 @@ public class ItemRepository
     // ReadRecord
     //
     // Builds an item definition from the current row of a reader positioned on an ItemRecords row that
-    // selected every column.  Columns are read by name.  The effects list is left at its default.
+    // selected every column, then loads the item's rows from the ItemEffects table into its effects list.
+    // Columns are read by name.  An effect row whose category is not a known value is logged and skipped.
     //
     // reader:  A reader positioned on the row to read.
+    // conn:    The open connection the reader belongs to, used for the effects query.
     //
     // Returns the filled definition.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private static ItemRecord ReadRecord(SqliteDataReader reader)
+    private static ItemRecord ReadRecord(SqliteDataReader reader, SqliteConnection conn)
     {
         ItemRecord record = new ItemRecord();
 
@@ -651,8 +701,43 @@ public class ItemRepository
         record.Unknown_198 = reader.GetFieldValue<ulong>(reader.GetOrdinal("unknown_198"));
         record.Unknown_199 = reader.GetFieldValue<uint>(reader.GetOrdinal("unknown_199"));
 
+        using SqliteCommand effectCmd = conn.CreateCommand();
+        effectCmd.CommandText = "SELECT * FROM ItemEffects WHERE item_id = @item_id";
+        effectCmd.Parameters.AddWithValue("@item_id", (uint)record.Id);
+
+        using SqliteDataReader effectReader = effectCmd.ExecuteReader();
+        while (effectReader.Read() == true)
+        {
+            uint categoryValue = effectReader.GetFieldValue<uint>(effectReader.GetOrdinal("category"));
+            if (Enum.IsDefined(typeof(ItemEffectCategory), categoryValue) == false)
+            {
+                DebugLog.Write(LogChannel.Database, "ItemRepository.ReadRecord: '" + record.Name + "' (" +
+                    record.Id + ") has effect row with unknown category " + categoryValue + "; skipped.",
+                    LogLevel.Error);
+                continue;
+            }
+
+            ItemEffect effect = new ItemEffect();
+            effect.Category = (ItemEffectCategory)categoryValue;
+            effect.SpellId = (SpellId)effectReader.GetFieldValue<uint>(effectReader.GetOrdinal("spell_id"));
+            effect.Level = effectReader.GetFieldValue<uint>(effectReader.GetOrdinal("level"));
+            effect.CastAsLevel = effectReader.GetFieldValue<uint>(effectReader.GetOrdinal("cast_as_level"));
+            effect.MaxCharges = effectReader.GetFieldValue<uint>(effectReader.GetOrdinal("max_charges"));
+            effect.CastTimeMs = effectReader.GetFieldValue<uint>(effectReader.GetOrdinal("cast_time_ms"));
+            effect.RecastTimeSeconds = effectReader.GetFieldValue<uint>(effectReader.GetOrdinal("recast_time_s"));
+            effect.RecastType = effectReader.GetFieldValue<uint>(effectReader.GetOrdinal("recast_type"));
+            effect.RecastDelaySeconds = effectReader.GetFieldValue<uint>(effectReader.GetOrdinal("recast_delay_s"));
+            effect.Name = effectReader.GetFieldValue<string>(effectReader.GetOrdinal("name"));
+
+            record.Effects.Add(effect);
+
+            DebugLog.Write(LogChannel.Database, "ItemRepository.ReadRecord: loaded " + effect.Category +
+                " effect (spell " + effect.SpellId + ") for '" + record.Name + "' (" + record.Id + ").",
+                LogLevel.Trace);
+        }
+
         DebugLog.Write(LogChannel.Database, "ItemRepository.ReadRecord: read '" + record.Name + "' (" +
-            record.Id + ").", LogLevel.Trace);
+            record.Id + ") with " + record.Effects.Count + " effects.", LogLevel.Trace);
 
         return record;
     }
