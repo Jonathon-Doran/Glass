@@ -203,7 +203,7 @@ public class ItemRepository
 
         cmd.CommandText = @"
             INSERT OR IGNORE INTO ItemRecords (
-                id_string, container_type, unknown_7, unknown_8, unknown_9, unknown_10, unknown_11,
+                id_string, unknown_7, unknown_8, unknown_9, unknown_10, unknown_11,
                 unknown_14, unknown_15, unknown_16, unknown_17, is_evolving_item,
                 unknown_20, unknown_21, unknown_22, unknown_23, unknown_24, unknown_25,
                 unknown_27, unknown_28, item_type2, name, lore, it_file, unknown_33, id, weight,
@@ -265,7 +265,6 @@ public class ItemRepository
             )";
 
         cmd.Parameters.AddWithValue("@id_string", record.IdString);
-        cmd.Parameters.AddWithValue("@container_type", (byte)record.ContainerType);
         cmd.Parameters.AddWithValue("@unknown_7", record.Unknown_7);
         cmd.Parameters.AddWithValue("@unknown_8", record.Unknown_8);
         cmd.Parameters.AddWithValue("@unknown_9", record.Unknown_9);
@@ -520,7 +519,6 @@ public class ItemRepository
         ItemRecord record = new ItemRecord();
 
         record.IdString = reader.GetFieldValue<string>(reader.GetOrdinal("id_string"));
-        record.ContainerType = (ContainerType)reader.GetFieldValue<byte>(reader.GetOrdinal("container_type"));
         record.Unknown_7 = reader.GetFieldValue<ulong>(reader.GetOrdinal("unknown_7"));
         record.Unknown_8 = reader.GetFieldValue<uint>(reader.GetOrdinal("unknown_8"));
         record.Unknown_9 = reader.GetFieldValue<uint>(reader.GetOrdinal("unknown_9"));

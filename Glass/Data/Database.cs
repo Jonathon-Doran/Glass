@@ -503,6 +503,10 @@ public class Database
             pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
             pragmaOn.ExecuteNonQuery();
         }
+        if (version < 67)
+        {
+            ApplyMigration(conn, 67, Migration_067);
+        }
     }
 
     private int GetSchemaVersion()
@@ -1822,6 +1826,10 @@ public class Database
             name             TEXT    NOT NULL DEFAULT '',
             PRIMARY KEY (item_id, category)
         );
+    ";
+
+    private const string Migration_067 = @"
+        CREATE INDEX IF NOT EXISTS idx_iteminstances_parent ON ItemInstances(parent_id);
     ";
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

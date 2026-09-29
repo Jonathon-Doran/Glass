@@ -704,7 +704,6 @@ public class HandleInventory : OpcodeHandler
         ItemRecord record = new ItemRecord();
 
         record.IdString = _extractor.GetStringAt(_Item_String_Slot);                            // 1
-        record.ContainerType = (ContainerType)_extractor.GetUIntAt(_ContainerType_Slot);        // 3
         record.Unknown_7 = _extractor.GetUInt64At(_Field_7_Slot);                               // 7
         record.Unknown_8 = _extractor.GetUIntAt(_Field_8_Slot);                                 // 8
         record.Unknown_9 = _extractor.GetUIntAt(_Field_9_Slot);                                 // 9
