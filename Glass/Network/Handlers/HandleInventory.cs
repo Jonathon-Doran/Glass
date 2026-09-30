@@ -36,7 +36,6 @@ public class HandleInventory : OpcodeHandler
     private readonly SlotId _Field_16_Slot;
     private readonly SlotId _Field_17_Slot;
     private readonly SlotId _Is_Evolving_Slot;
-    private readonly SlotId _Gate_Evolving_Item_Slot;
     private readonly SlotId _Field_19_Slot;
     private readonly SlotId _Field_20_Slot;
     private readonly SlotId _Field_21_Slot;
@@ -620,6 +619,7 @@ public class HandleInventory : OpcodeHandler
         {
             ItemRecord record = BuildItemRecord();
             BuildItemEffects(itemGate, itemIndex, record);
+            BuildItemAugmentationSlots(itemGate, itemIndex, record);
             ItemRepository.Instance.Add(record);
         }
         else
@@ -986,6 +986,77 @@ public class HandleInventory : OpcodeHandler
             record.Effects.Count + " of " + entryCount + " effects populated", LogLevel.Trace);
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // BuildItemAugmentationSlots
+    //
+    // Appends one AugmentationSlot to the record for each populated bag of the AugmentFields
+    // gate of the item in the extractor's active bag.  A bag whose type is 0 describes a slot
+    // the item does not have and is skipped.  Index is the bag's position within the gate,
+    // starting at 0.  A type with no AugmentationType value is logged at Warn and still stored.
+    // Re-enters itemGate at itemIndex before returning, so the active bag on exit matches the
+    // active bag on entry.
+    //
+    // itemGate:   The gate whose instance holds the current item.
+    // itemIndex:  The instance index of the current item within itemGate.
+    // record:     The record receiving the augmentation slots.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void BuildItemAugmentationSlots(GateHandle itemGate, uint itemIndex, ItemRecord record)
+    {
+        SlotId augmentFieldsSlot = _registry.IndexOfField(_extractor.CollectionOf(), "AugmentFields");
+        if (_extractor.IsPresent(augmentFieldsSlot) == false)
+        {
+            DebugLog.Write(LogChannel.Inventory, "BuildItemAugmentationSlots: item " + record.Id +
+                " has no AugmentFields", LogLevel.Trace);
+            return;
+        }
+
+        GateHandle augmentFieldsGate = _extractor.GetGateAt(augmentFieldsSlot);
+        if (augmentFieldsGate.Exists == false)
+        {
+            DebugLog.Write(LogChannel.Inventory, "BuildItemAugmentationSlots: item " + record.Id +
+                " AugmentFields slot present but no gate", LogLevel.Warn);
+            return;
+        }
+
+        uint bagCount = _extractor.BagCount(augmentFieldsGate);
+
+        for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
+        {
+            _extractor.EnterGate(augmentFieldsGate, bagIndex);
+
+            uint type = _extractor.GetUIntAt(_Augment_Type_Slot);
+            if (type == 0u)
+            {
+                DebugLog.Write(LogChannel.Inventory, "BuildItemAugmentationSlots: item " + record.Id +
+                    " slot " + bagIndex + " has type 0; not stored", LogLevel.Trace);
+                continue;
+            }
+
+            AugmentationType augmentationType = (AugmentationType)type;
+            if (Enum.IsDefined(augmentationType) == false)
+            {
+                DebugLog.Write(LogChannel.Inventory, "BuildItemAugmentationSlots: item " + record.Id + " '" +
+                    record.Name + "' slot " + bagIndex + " has unknown type " + type, LogLevel.Warn);
+            }
+
+            AugmentationSlot slot = new AugmentationSlot();
+            slot.Index = bagIndex;
+            slot.Type = augmentationType;
+            slot.Visible = _extractor.GetUIntAt(_Augment_Visible_Slot) != 0u;
+            slot.Unknown_4 = _extractor.GetUIntAt(_Augment_Unknown_Slot);
+
+            record.AugmentationSlots.Add(slot);
+
+            DebugLog.Write(LogChannel.Inventory, "BuildItemAugmentationSlots: item " + record.Id + " slot " +
+                bagIndex + " stored as type " + type + ", visible " + slot.Visible + ", unknown_4 " +
+                slot.Unknown_4, LogLevel.Trace);
+        }
+
+        _extractor.EnterGate(itemGate, itemIndex);
+
+        DebugLog.Write(LogChannel.Inventory, "BuildItemAugmentationSlots: item " + record.Id + " has " +
+            record.AugmentationSlots.Count + " of " + bagCount + " slots populated", LogLevel.Trace);
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Describe
@@ -1461,6 +1532,8 @@ public class HandleInventory : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void AddAugmentFields(GateHandle itemGate, uint itemIndex, FieldDisplayNode parent)
     {
+        uint num_augment_slots = 0;
+
         SlotId augmentFieldsSlot = GlassContext.PatchRegistry.IndexOfField(_extractor.CollectionOf(), "AugmentFields");
         if (_extractor.IsPresent(augmentFieldsSlot) == false)
         {
@@ -1476,21 +1549,44 @@ public class HandleInventory : OpcodeHandler
         }
 
         uint bagCount = _extractor.BagCount(augmentFieldsGate);
-        FieldDisplayNode augmentFieldsNode = new FieldDisplayNode("Augment Fields");
-        parent.AddChild(augmentFieldsNode);
+        FieldDisplayNode? augmentFieldsNode = null;
 
         for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
         {
             _extractor.EnterGate(augmentFieldsGate, bagIndex);
 
-            FieldDisplayNode bagNode = new FieldDisplayNode("Augment " + (bagIndex + 1));
+            uint typeAsUInt = _extractor.GetUIntAt(_Augment_Type_Slot);
+            AugmentationType type = (AugmentationType)typeAsUInt;
+            if (type == 0)
+            {
+                continue;
+            }
+            num_augment_slots++;
+
+            if (augmentFieldsNode == null)
+            {
+                augmentFieldsNode = new FieldDisplayNode();
+            }
+            FieldDisplayNode bagNode = new FieldDisplayNode("Type " + typeAsUInt + " Augment slot");
+
             augmentFieldsNode.AddChild(bagNode);
 
+            FieldNodes.AddLabeledNode(_extractor, _Augment_Type_Slot, type.ToDisplayString() + " (" + typeAsUInt + ")", bagNode);
             FieldNodes.AddUIntNode(_extractor, _Augment_Type_Slot, "Type", bagNode, "D");
             FieldNodes.AddUIntNode(_extractor, _Augment_Visible_Slot, "Visible", bagNode, "D");
             FieldNodes.AddUIntNode(_extractor, _Augment_Unknown_Slot, "Unknown", bagNode, "?");
         }
 
+        if (num_augment_slots == 1)
+        {
+            augmentFieldsNode!.Text = "1 Augment slot";
+            parent.AddChild(augmentFieldsNode);
+        }
+        else if (num_augment_slots > 1)
+        {
+            augmentFieldsNode!.Text = num_augment_slots.ToString() + " Augment slots";
+                    parent.AddChild(augmentFieldsNode);
+        }
         DebugLog.Write(LogChannel.Opcodes, "AddAugmentFields: restoring item bag", LogLevel.Trace);
         _extractor.EnterGate(itemGate, itemIndex);
     }

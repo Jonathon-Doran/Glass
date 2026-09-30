@@ -184,9 +184,9 @@ public class ItemRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Insert
     //
-    // Writes one item definition to the ItemRecords table, and its effects to the ItemEffects table,
-    // in a single transaction.  An existing row with the same id is left untouched, and neither the
-    // record nor its effects are written.  Columns are listed in wire order.
+    // Writes one item definition to the ItemRecords table, its effects to the ItemEffects table,
+    // and its augmentation slots to the ItemAugmentationSlots table, in a single transaction.  An
+    // existing row with the same id is left untouched, and none of the three are written.
     //
     // record:  The definition to write.  Its Id must exist.
     //
@@ -198,316 +198,361 @@ public class ItemRepository
         conn.Open();
         using SqliteTransaction tx = conn.BeginTransaction();
 
-        using SqliteCommand cmd = conn.CreateCommand();
-        cmd.Transaction = tx;
-
-        cmd.CommandText = @"
-            INSERT OR IGNORE INTO ItemRecords (
-                id_string, unknown_7, unknown_8, unknown_9, unknown_10, unknown_11,
-                unknown_14, unknown_15, unknown_16, unknown_17, is_evolving_item,
-                unknown_20, unknown_21, unknown_22, unknown_23, unknown_24, unknown_25,
-                unknown_27, unknown_28, item_type2, name, lore, it_file, unknown_33, id, weight,
-                unknown_36, unknown_37, unknown_38, size, usable_slot_mask, cost, icon_id, unknown_44,
-                is_tradeskill, save_cold, save_disease, save_poison, save_magic, save_fire, save_corruption,
-                plus_strength, plus_stamina, plus_agility, plus_dexterity, plus_charisma, plus_intelligence,
-                plus_wisdom, plus_hp, plus_mana, plus_endurance, plus_ac, hp_regen, mana_regen, unknown_66,
-                class_mask, race_mask, unknown_69, skill_percent_chance, skill_max_change, skill_id,
-                unknown_73, unknown_74, unknown_75, unknown_76, unknown_77, unknown_78,
-                food_drink_value, required_level, recommended_level, bard_value, unknown_83, unknown_84,
-                weapon_delay, unknown_86, unknown_87, weapon_range, weapon_base_damage, color, unknown_91,
-                item_type1, material, unknown_94, unknown_95, unknown_96, unknown_97, unknown_98,
-                unknown_99, unknown_100, unknown_101, unknown_102, unknown_103, unknown_104, unknown_105,
-                unknown_107, unknown_108, unknown_109, unknown_110, unknown_111,
-                bag_type, bag_slot_count, bag_size, bag_weight_reduction, unknown_116, unknown_117, unknown_118,
-                lore_group, unknown_120, tribute, unknown_122, plus_attack, haste, unknown_125,
-                aug_distiller_needed, unknown_127, unknown_128, unknown_129, unknown_130, max_stack_size,
-                unknown_132, unknown_133, unknown_134, unknown_136, unknown_137, unknown_138, unknown_139,
-                backstab_damage, heroic_strength, heroic_intelligence, heroic_wisdom, heroic_agility,
-                heroic_dexterity, heroic_stamina, heroic_charisma, unknown_148, unknown_149,
-                unknown_150, unknown_151, unknown_152, unknown_153, unknown_154, unknown_155, unknown_156,
-                unknown_157, unknown_158, unknown_159, unknown_160, unknown_161, unknown_162, unknown_163,
-                unknown_164, unknown_165, unknown_166, unknown_167, unknown_168, unknown_169,
-                unknown_170, unknown_171, unknown_172, unknown_173,
-                unknown_175, unknown_176, unknown_177, unknown_178, unknown_179,
-                unknown_180, unknown_181, unknown_182, unknown_183, unknown_184, unknown_185,
-                unknown_186, unknown_187, unknown_188, unknown_189, unknown_190, unknown_191,
-                unknown_196, unknown_198, unknown_199
-            ) VALUES (
-                @id_string, @container_type, @unknown_7, @unknown_8, @unknown_9, @unknown_10, @unknown_11,
-                @unknown_14, @unknown_15, @unknown_16, @unknown_17, @is_evolving_item,
-                @unknown_20, @unknown_21, @unknown_22, @unknown_23, @unknown_24, @unknown_25,
-                @unknown_27, @unknown_28, @item_type2, @name, @lore, @it_file, @unknown_33, @id, @weight,
-                @unknown_36, @unknown_37, @unknown_38, @size, @usable_slot_mask, @cost, @icon_id, @unknown_44,
-                @is_tradeskill, @save_cold, @save_disease, @save_poison, @save_magic, @save_fire, @save_corruption,
-                @plus_strength, @plus_stamina, @plus_agility, @plus_dexterity, @plus_charisma, @plus_intelligence,
-                @plus_wisdom, @plus_hp, @plus_mana, @plus_endurance, @plus_ac, @hp_regen, @mana_regen, @unknown_66,
-                @class_mask, @race_mask, @unknown_69, @skill_percent_chance, @skill_max_change, @skill_id,
-                @unknown_73, @unknown_74, @unknown_75, @unknown_76, @unknown_77, @unknown_78,
-                @food_drink_value, @required_level, @recommended_level, @bard_value, @unknown_83, @unknown_84,
-                @weapon_delay, @unknown_86, @unknown_87, @weapon_range, @weapon_base_damage, @color, @unknown_91,
-                @item_type1, @material, @unknown_94, @unknown_95, @unknown_96, @unknown_97, @unknown_98,
-                @unknown_99, @unknown_100, @unknown_101, @unknown_102, @unknown_103, @unknown_104, @unknown_105,
-                @unknown_107, @unknown_108, @unknown_109, @unknown_110, @unknown_111,
-                @bag_type, @bag_slot_count, @bag_size, @bag_weight_reduction, @unknown_116, @unknown_117, @unknown_118,
-                @lore_group, @unknown_120, @tribute, @unknown_122, @plus_attack, @haste, @unknown_125,
-                @aug_distiller_needed, @unknown_127, @unknown_128, @unknown_129, @unknown_130, @max_stack_size,
-                @unknown_132, @unknown_133, @unknown_134, @unknown_136, @unknown_137, @unknown_138, @unknown_139,
-                @backstab_damage, @heroic_strength, @heroic_intelligence, @heroic_wisdom, @heroic_agility,
-                @heroic_dexterity, @heroic_stamina, @heroic_charisma, @unknown_148, @unknown_149,
-                @unknown_150, @unknown_151, @unknown_152, @unknown_153, @unknown_154, @unknown_155, @unknown_156,
-                @unknown_157, @unknown_158, @unknown_159, @unknown_160, @unknown_161, @unknown_162, @unknown_163,
-                @unknown_164, @unknown_165, @unknown_166, @unknown_167, @unknown_168, @unknown_169,
-                @unknown_170, @unknown_171, @unknown_172, @unknown_173,
-                @unknown_175, @unknown_176, @unknown_177, @unknown_178, @unknown_179,
-                @unknown_180, @unknown_181, @unknown_182, @unknown_183, @unknown_184, @unknown_185,
-                @unknown_186, @unknown_187, @unknown_188, @unknown_189, @unknown_190, @unknown_191,
-                @unknown_196, @unknown_198, @unknown_199
-            )";
-
-        cmd.Parameters.AddWithValue("@id_string", record.IdString);
-        cmd.Parameters.AddWithValue("@unknown_7", record.Unknown_7);
-        cmd.Parameters.AddWithValue("@unknown_8", record.Unknown_8);
-        cmd.Parameters.AddWithValue("@unknown_9", record.Unknown_9);
-        cmd.Parameters.AddWithValue("@unknown_10", record.Unknown_10);
-        cmd.Parameters.AddWithValue("@unknown_11", record.Unknown_11);
-        cmd.Parameters.AddWithValue("@unknown_14", record.Unknown_14);
-        cmd.Parameters.AddWithValue("@unknown_15", record.Unknown_15);
-        cmd.Parameters.AddWithValue("@unknown_16", record.Unknown_16);
-        cmd.Parameters.AddWithValue("@unknown_17", record.Unknown_17);
-        cmd.Parameters.AddWithValue("@is_evolving_item", record.Is_Evolving_Item);
-        cmd.Parameters.AddWithValue("@unknown_20", record.Unknown_20);
-        cmd.Parameters.AddWithValue("@unknown_21", record.Unknown_21);
-        cmd.Parameters.AddWithValue("@unknown_22", record.Unknown_22);
-        cmd.Parameters.AddWithValue("@unknown_23", record.Unknown_23);
-        cmd.Parameters.AddWithValue("@unknown_24", record.Unknown_24);
-        cmd.Parameters.AddWithValue("@unknown_25", record.Unknown_25);
-        cmd.Parameters.AddWithValue("@unknown_27", record.Unknown_27);
-        cmd.Parameters.AddWithValue("@unknown_28", record.Unknown_28);
-        cmd.Parameters.AddWithValue("@item_type2", record.ItemType2);
-        cmd.Parameters.AddWithValue("@name", record.Name);
-        cmd.Parameters.AddWithValue("@lore", record.Lore);
-        cmd.Parameters.AddWithValue("@it_file", record.IT_File);
-        cmd.Parameters.AddWithValue("@unknown_33", record.Unknown_33);
-        cmd.Parameters.AddWithValue("@id", (uint)record.Id);
-        cmd.Parameters.AddWithValue("@weight", record.Weight);
-        cmd.Parameters.AddWithValue("@unknown_36", record.Unknown_36);
-        cmd.Parameters.AddWithValue("@unknown_37", record.Tradeable);
-        cmd.Parameters.AddWithValue("@unknown_38", record.Attuneable);
-        cmd.Parameters.AddWithValue("@size", record.Size);
-        cmd.Parameters.AddWithValue("@usable_slot_mask", record.UsableSlotMask);
-        cmd.Parameters.AddWithValue("@cost", record.Cost);
-        cmd.Parameters.AddWithValue("@icon_id", record.Icon_ID);
-        cmd.Parameters.AddWithValue("@unknown_44", record.Unknown_44);
-        cmd.Parameters.AddWithValue("@is_tradeskill", record.IsTradeskill);
-        cmd.Parameters.AddWithValue("@save_cold", record.SaveCold);
-        cmd.Parameters.AddWithValue("@save_disease", record.SaveDisease);
-        cmd.Parameters.AddWithValue("@save_poison", record.SavePoison);
-        cmd.Parameters.AddWithValue("@save_magic", record.SaveMagic);
-        cmd.Parameters.AddWithValue("@save_fire", record.SaveFire);
-        cmd.Parameters.AddWithValue("@save_corruption", record.SaveCorruption);
-        cmd.Parameters.AddWithValue("@plus_strength", record.PlusStrength);
-        cmd.Parameters.AddWithValue("@plus_stamina", record.PlusStamina);
-        cmd.Parameters.AddWithValue("@plus_agility", record.PlusAgility);
-        cmd.Parameters.AddWithValue("@plus_dexterity", record.PlusDexterity);
-        cmd.Parameters.AddWithValue("@plus_charisma", record.PlusCharisma);
-        cmd.Parameters.AddWithValue("@plus_intelligence", record.PlusIntelligence);
-        cmd.Parameters.AddWithValue("@plus_wisdom", record.PlusWisdom);
-        cmd.Parameters.AddWithValue("@plus_hp", record.PlusHP);
-        cmd.Parameters.AddWithValue("@plus_mana", record.PlusMana);
-        cmd.Parameters.AddWithValue("@plus_endurance", record.PlusEndurance);
-        cmd.Parameters.AddWithValue("@plus_ac", record.PlusAC);
-        cmd.Parameters.AddWithValue("@hp_regen", record.HpRegen);
-        cmd.Parameters.AddWithValue("@mana_regen", record.ManaRegen);
-        cmd.Parameters.AddWithValue("@unknown_66", record.Unknown_66);
-        cmd.Parameters.AddWithValue("@class_mask", record.ClassMask);
-        cmd.Parameters.AddWithValue("@race_mask", record.RaceMask);
-        cmd.Parameters.AddWithValue("@unknown_69", record.Deity);
-        cmd.Parameters.AddWithValue("@skill_percent_chance", record.Skill_Percent_Chance);
-        cmd.Parameters.AddWithValue("@skill_max_change", record.Skill_Max_Change);
-        cmd.Parameters.AddWithValue("@skill_id", record.Skill_ID);
-        cmd.Parameters.AddWithValue("@unknown_73", record.Unknown_73);
-        cmd.Parameters.AddWithValue("@unknown_74", record.Unknown_74);
-        cmd.Parameters.AddWithValue("@unknown_75", record.Unknown_75);
-        cmd.Parameters.AddWithValue("@unknown_76", record.Unknown_76);
-        cmd.Parameters.AddWithValue("@unknown_77", record.Unknown_77);
-        cmd.Parameters.AddWithValue("@unknown_78", record.Is_Magic);
-        cmd.Parameters.AddWithValue("@food_drink_value", record.FoodDrinkValue);
-        cmd.Parameters.AddWithValue("@required_level", record.RequiredLevel);
-        cmd.Parameters.AddWithValue("@recommended_level", record.RecommendedLevel);
-        cmd.Parameters.AddWithValue("@bard_value", record.Bard_Value);
-        cmd.Parameters.AddWithValue("@unknown_83", record.Unknown_83);
-        cmd.Parameters.AddWithValue("@unknown_84", record.Light);
-        cmd.Parameters.AddWithValue("@weapon_delay", record.Weapon_Delay);
-        cmd.Parameters.AddWithValue("@unknown_86", record.Elemental_Damage_Type);
-        cmd.Parameters.AddWithValue("@unknown_87", record.Elemental_Damage_Amount);
-        cmd.Parameters.AddWithValue("@weapon_range", record.Weapon_Range);
-        cmd.Parameters.AddWithValue("@weapon_base_damage", record.Weapon_Base_Damage);
-        cmd.Parameters.AddWithValue("@color", record.Color);
-        cmd.Parameters.AddWithValue("@unknown_91", record.Prestige);
-        cmd.Parameters.AddWithValue("@item_type1", record.ItemType1);
-        cmd.Parameters.AddWithValue("@material", record.Material);
-        cmd.Parameters.AddWithValue("@unknown_94", record.Unknown_94);
-        cmd.Parameters.AddWithValue("@unknown_95", record.Unknown_95);
-        cmd.Parameters.AddWithValue("@unknown_96", record.Unknown_96);
-        cmd.Parameters.AddWithValue("@unknown_97", record.Material2);
-        cmd.Parameters.AddWithValue("@unknown_98", record.Unknown_98);
-        cmd.Parameters.AddWithValue("@unknown_99", record.Unknown_99);
-        cmd.Parameters.AddWithValue("@unknown_100", record.Unknown_100);
-        cmd.Parameters.AddWithValue("@unknown_101", record.CharmFileID);
-        cmd.Parameters.AddWithValue("@unknown_102", record.CharmFileName);
-        cmd.Parameters.AddWithValue("@unknown_103", record.AugValue);
-        cmd.Parameters.AddWithValue("@unknown_104", record.Unknown_104);
-        cmd.Parameters.AddWithValue("@unknown_105", record.AugRestriction);
-        cmd.Parameters.AddWithValue("@unknown_107", record.LDON_Sold);
-        cmd.Parameters.AddWithValue("@unknown_108", record.LDON_Theme);
-        cmd.Parameters.AddWithValue("@unknown_109", record.LDON_Price);
-        cmd.Parameters.AddWithValue("@unknown_110", record.Unknown_110);
-        cmd.Parameters.AddWithValue("@unknown_111", record.Unknown_111);
-        cmd.Parameters.AddWithValue("@bag_type", record.Bag_Type);
-        cmd.Parameters.AddWithValue("@bag_slot_count", record.Bag_Slot_Count);
-        cmd.Parameters.AddWithValue("@bag_size", record.Bag_Size);
-        cmd.Parameters.AddWithValue("@bag_weight_reduction", record.Bag_Weight_Reduction);
-        cmd.Parameters.AddWithValue("@unknown_116", record.Unknown_116);
-        cmd.Parameters.AddWithValue("@unknown_117", record.Unknown_117);
-        cmd.Parameters.AddWithValue("@unknown_118", record.Unknown_118);
-        cmd.Parameters.AddWithValue("@lore_group", record.LoreGroup);
-        cmd.Parameters.AddWithValue("@unknown_120", record.Unknown_120);
-        cmd.Parameters.AddWithValue("@tribute", record.Tribute);
-        cmd.Parameters.AddWithValue("@unknown_122", record.FV_Nodrop);
-        cmd.Parameters.AddWithValue("@plus_attack", record.PlusAttack);
-        cmd.Parameters.AddWithValue("@haste", record.Haste);
-        cmd.Parameters.AddWithValue("@unknown_125", record.Unknown_125);
-        cmd.Parameters.AddWithValue("@aug_distiller_needed", record.AugDistillerNeeded);
-        cmd.Parameters.AddWithValue("@unknown_127", record.Unknown_127);
-        cmd.Parameters.AddWithValue("@unknown_128", record.Unknown_128);
-        cmd.Parameters.AddWithValue("@unknown_129", record.Unknown_129);
-        cmd.Parameters.AddWithValue("@unknown_130", record.Unknown_130);
-        cmd.Parameters.AddWithValue("@max_stack_size", record.Max_Stack_Size);
-        cmd.Parameters.AddWithValue("@unknown_132", record.Unknown_132);
-        cmd.Parameters.AddWithValue("@unknown_133", record.Unknown_133);
-        cmd.Parameters.AddWithValue("@unknown_134", record.Unknown_134);
-        cmd.Parameters.AddWithValue("@unknown_136", record.Unknown_136);
-        cmd.Parameters.AddWithValue("@unknown_137", record.Unknown_137);
-        cmd.Parameters.AddWithValue("@unknown_138", record.Unknown_138);
-        cmd.Parameters.AddWithValue("@unknown_139", record.Purity);
-        cmd.Parameters.AddWithValue("@backstab_damage", record.Backstab_Damage);
-        cmd.Parameters.AddWithValue("@heroic_strength", record.Heroic_Strength);
-        cmd.Parameters.AddWithValue("@heroic_intelligence", record.Heroic_Intelligence);
-        cmd.Parameters.AddWithValue("@heroic_wisdom", record.Heroic_Wisdom);
-        cmd.Parameters.AddWithValue("@heroic_agility", record.Heroic_Agility);
-        cmd.Parameters.AddWithValue("@heroic_dexterity", record.Heroic_Dexterity);
-        cmd.Parameters.AddWithValue("@heroic_stamina", record.Heroic_Stamina);
-        cmd.Parameters.AddWithValue("@heroic_charisma", record.Heroic_Charisma);
-        cmd.Parameters.AddWithValue("@unknown_148", record.Heal_Amount);
-        cmd.Parameters.AddWithValue("@unknown_149", record.Spell_Damage);
-        cmd.Parameters.AddWithValue("@unknown_150", record.Clairvoyance);
-        cmd.Parameters.AddWithValue("@unknown_151", record.Unknown_151);
-        cmd.Parameters.AddWithValue("@unknown_152", record.Unknown_152);
-        cmd.Parameters.AddWithValue("@unknown_153", record.Unknown_153);
-        cmd.Parameters.AddWithValue("@unknown_154", record.Unknown_154);
-        cmd.Parameters.AddWithValue("@unknown_155", record.Placeable2);
-        cmd.Parameters.AddWithValue("@unknown_156", record.Unknown_156);
-        cmd.Parameters.AddWithValue("@unknown_157", record.Unknown_157);
-        cmd.Parameters.AddWithValue("@unknown_158", record.Unknown_158);
-        cmd.Parameters.AddWithValue("@unknown_159", record.Unknown_159);
-        cmd.Parameters.AddWithValue("@unknown_160", record.Unknown_160);
-        cmd.Parameters.AddWithValue("@unknown_161", record.Unknown_161);
-        cmd.Parameters.AddWithValue("@unknown_162", record.Unknown_162);
-        cmd.Parameters.AddWithValue("@unknown_163", record.Unknown_163);
-        cmd.Parameters.AddWithValue("@unknown_164", record.Unknown_164);
-        cmd.Parameters.AddWithValue("@unknown_165", record.Unknown_165);
-        cmd.Parameters.AddWithValue("@unknown_166", record.Unknown_166);
-        cmd.Parameters.AddWithValue("@unknown_167", record.Unknown_167);
-        cmd.Parameters.AddWithValue("@unknown_168", record.Unknown_168);
-        cmd.Parameters.AddWithValue("@unknown_169", record.Unknown_169);
-        cmd.Parameters.AddWithValue("@unknown_170", record.Unknown_170);
-        cmd.Parameters.AddWithValue("@unknown_171", record.Unknown_171);
-        cmd.Parameters.AddWithValue("@unknown_172", record.Unknown_172);
-        cmd.Parameters.AddWithValue("@unknown_173", record.Unknown_173);
-        cmd.Parameters.AddWithValue("@unknown_175", record.Unknown_175);
-        cmd.Parameters.AddWithValue("@unknown_176", record.Unknown_176);
-        cmd.Parameters.AddWithValue("@unknown_177", record.Unknown_177);
-        cmd.Parameters.AddWithValue("@unknown_178", record.Unknown_178);
-        cmd.Parameters.AddWithValue("@unknown_179", record.Unknown_179);
-        cmd.Parameters.AddWithValue("@unknown_180", record.Unknown_180);
-        cmd.Parameters.AddWithValue("@unknown_181", record.Unknown_181);
-        cmd.Parameters.AddWithValue("@unknown_182", record.Unknown_182);
-        cmd.Parameters.AddWithValue("@unknown_183", record.Unknown_183);
-        cmd.Parameters.AddWithValue("@unknown_184", record.Unknown_184);
-        cmd.Parameters.AddWithValue("@unknown_185", record.Unknown_185);
-        cmd.Parameters.AddWithValue("@unknown_186", record.Unknown_186);
-        cmd.Parameters.AddWithValue("@unknown_187", record.Unknown_187);
-        cmd.Parameters.AddWithValue("@unknown_188", record.Unknown_188);
-        cmd.Parameters.AddWithValue("@unknown_189", record.Unknown_189);
-        cmd.Parameters.AddWithValue("@unknown_190", record.Unknown_190);
-        cmd.Parameters.AddWithValue("@unknown_191", record.Unknown_191);
-        cmd.Parameters.AddWithValue("@unknown_196", record.Unknown_196);
-        cmd.Parameters.AddWithValue("@unknown_198", record.Unknown_198);
-        cmd.Parameters.AddWithValue("@unknown_199", record.Unknown_199);
-
-        int rowsWritten = cmd.ExecuteNonQuery();
-        if (rowsWritten == 0)
+        try
         {
-            DebugLog.Write(LogChannel.Database, "ItemRepository.Insert: row for '" + record.Name + "' (" +
-                record.Id + ") already exists; record and effects not written.", LogLevel.Trace);
-            return false;
-        }
+            using SqliteCommand cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
 
-        uint effectsWritten = 0;
-        foreach (ItemEffect effect in record.Effects)
-        {
-            using SqliteCommand effectCmd = conn.CreateCommand();
-            effectCmd.Transaction = tx;
-            effectCmd.CommandText = @"
-                INSERT OR IGNORE INTO ItemEffects (
-                    item_id, category, spell_id, level, cast_as_level, max_charges,
-                    cast_time_ms, recast_time_s, recast_type, recast_delay_s, name
+            cmd.CommandText = @"
+                INSERT OR IGNORE INTO ItemRecords (
+                    id_string, unknown_7, unknown_8, unknown_9, unknown_10, unknown_11,
+                    unknown_14, unknown_15, unknown_16, unknown_17, is_evolving_item,
+                    unknown_20, unknown_21, unknown_22, unknown_23, unknown_24, unknown_25,
+                    unknown_27, unknown_28, item_type2, name, lore, it_file, unknown_33, id, weight,
+                    unknown_36, unknown_37, unknown_38, size, usable_slot_mask, cost, icon_id, unknown_44,
+                    is_tradeskill, save_cold, save_disease, save_poison, save_magic, save_fire, save_corruption,
+                    plus_strength, plus_stamina, plus_agility, plus_dexterity, plus_charisma, plus_intelligence,
+                    plus_wisdom, plus_hp, plus_mana, plus_endurance, plus_ac, hp_regen, mana_regen, unknown_66,
+                    class_mask, race_mask, unknown_69, skill_percent_chance, skill_max_change, skill_id,
+                    unknown_73, unknown_74, unknown_75, unknown_76, unknown_77, unknown_78,
+                    food_drink_value, required_level, recommended_level, bard_value, unknown_83, unknown_84,
+                    weapon_delay, unknown_86, unknown_87, weapon_range, weapon_base_damage, color, unknown_91,
+                    item_type1, material, unknown_94, unknown_95, unknown_96, unknown_97, unknown_98,
+                    unknown_99, unknown_100, unknown_101, unknown_102, unknown_103, unknown_104, unknown_105,
+                    unknown_107, unknown_108, unknown_109, unknown_110, unknown_111,
+                    bag_type, bag_slot_count, bag_size, bag_weight_reduction, unknown_116, unknown_117, unknown_118,
+                    lore_group, unknown_120, tribute, unknown_122, plus_attack, haste, unknown_125,
+                    aug_distiller_needed, unknown_127, unknown_128, unknown_129, unknown_130, max_stack_size,
+                    unknown_132, unknown_133, unknown_134, unknown_136, unknown_137, unknown_138, unknown_139,
+                    backstab_damage, heroic_strength, heroic_intelligence, heroic_wisdom, heroic_agility,
+                    heroic_dexterity, heroic_stamina, heroic_charisma, unknown_148, unknown_149,
+                    unknown_150, unknown_151, unknown_152, unknown_153, unknown_154, unknown_155, unknown_156,
+                    unknown_157, unknown_158, unknown_159, unknown_160, unknown_161, unknown_162, unknown_163,
+                    unknown_164, unknown_165, unknown_166, unknown_167, unknown_168, unknown_169,
+                    unknown_170, unknown_171, unknown_172, unknown_173,
+                    unknown_175, unknown_176, unknown_177, unknown_178, unknown_179,
+                    unknown_180, unknown_181, unknown_182, unknown_183, unknown_184, unknown_185,
+                    unknown_186, unknown_187, unknown_188, unknown_189, unknown_190, unknown_191,
+                    unknown_196, unknown_198, unknown_199
                 ) VALUES (
-                    @item_id, @category, @spell_id, @level, @cast_as_level, @max_charges,
-                    @cast_time_ms, @recast_time_s, @recast_type, @recast_delay_s, @name
+                    @id_string, @unknown_7, @unknown_8, @unknown_9, @unknown_10, @unknown_11,
+                    @unknown_14, @unknown_15, @unknown_16, @unknown_17, @is_evolving_item,
+                    @unknown_20, @unknown_21, @unknown_22, @unknown_23, @unknown_24, @unknown_25,
+                    @unknown_27, @unknown_28, @item_type2, @name, @lore, @it_file, @unknown_33, @id, @weight,
+                    @unknown_36, @unknown_37, @unknown_38, @size, @usable_slot_mask, @cost, @icon_id, @unknown_44,
+                    @is_tradeskill, @save_cold, @save_disease, @save_poison, @save_magic, @save_fire, @save_corruption,
+                    @plus_strength, @plus_stamina, @plus_agility, @plus_dexterity, @plus_charisma, @plus_intelligence,
+                    @plus_wisdom, @plus_hp, @plus_mana, @plus_endurance, @plus_ac, @hp_regen, @mana_regen, @unknown_66,
+                    @class_mask, @race_mask, @unknown_69, @skill_percent_chance, @skill_max_change, @skill_id,
+                    @unknown_73, @unknown_74, @unknown_75, @unknown_76, @unknown_77, @unknown_78,
+                    @food_drink_value, @required_level, @recommended_level, @bard_value, @unknown_83, @unknown_84,
+                    @weapon_delay, @unknown_86, @unknown_87, @weapon_range, @weapon_base_damage, @color, @unknown_91,
+                    @item_type1, @material, @unknown_94, @unknown_95, @unknown_96, @unknown_97, @unknown_98,
+                    @unknown_99, @unknown_100, @unknown_101, @unknown_102, @unknown_103, @unknown_104, @unknown_105,
+                    @unknown_107, @unknown_108, @unknown_109, @unknown_110, @unknown_111,
+                    @bag_type, @bag_slot_count, @bag_size, @bag_weight_reduction, @unknown_116, @unknown_117, @unknown_118,
+                    @lore_group, @unknown_120, @tribute, @unknown_122, @plus_attack, @haste, @unknown_125,
+                    @aug_distiller_needed, @unknown_127, @unknown_128, @unknown_129, @unknown_130, @max_stack_size,
+                    @unknown_132, @unknown_133, @unknown_134, @unknown_136, @unknown_137, @unknown_138, @unknown_139,
+                    @backstab_damage, @heroic_strength, @heroic_intelligence, @heroic_wisdom, @heroic_agility,
+                    @heroic_dexterity, @heroic_stamina, @heroic_charisma, @unknown_148, @unknown_149,
+                    @unknown_150, @unknown_151, @unknown_152, @unknown_153, @unknown_154, @unknown_155, @unknown_156,
+                    @unknown_157, @unknown_158, @unknown_159, @unknown_160, @unknown_161, @unknown_162, @unknown_163,
+                    @unknown_164, @unknown_165, @unknown_166, @unknown_167, @unknown_168, @unknown_169,
+                    @unknown_170, @unknown_171, @unknown_172, @unknown_173,
+                    @unknown_175, @unknown_176, @unknown_177, @unknown_178, @unknown_179,
+                    @unknown_180, @unknown_181, @unknown_182, @unknown_183, @unknown_184, @unknown_185,
+                    @unknown_186, @unknown_187, @unknown_188, @unknown_189, @unknown_190, @unknown_191,
+                    @unknown_196, @unknown_198, @unknown_199
                 )";
 
-            effectCmd.Parameters.AddWithValue("@item_id", (uint)record.Id);
-            effectCmd.Parameters.AddWithValue("@category", (uint)effect.Category);
-            effectCmd.Parameters.AddWithValue("@spell_id", (uint)effect.SpellId);
-            effectCmd.Parameters.AddWithValue("@level", effect.Level);
-            effectCmd.Parameters.AddWithValue("@cast_as_level", effect.CastAsLevel);
-            effectCmd.Parameters.AddWithValue("@max_charges", effect.MaxCharges);
-            effectCmd.Parameters.AddWithValue("@cast_time_ms", effect.CastTimeMs);
-            effectCmd.Parameters.AddWithValue("@recast_time_s", effect.RecastTimeSeconds);
-            effectCmd.Parameters.AddWithValue("@recast_type", effect.RecastType);
-            effectCmd.Parameters.AddWithValue("@recast_delay_s", effect.RecastDelaySeconds);
-            effectCmd.Parameters.AddWithValue("@name", effect.Name);
+            cmd.Parameters.AddWithValue("@id_string", record.IdString);
+            cmd.Parameters.AddWithValue("@unknown_7", record.Unknown_7);
+            cmd.Parameters.AddWithValue("@unknown_8", record.Unknown_8);
+            cmd.Parameters.AddWithValue("@unknown_9", record.Unknown_9);
+            cmd.Parameters.AddWithValue("@unknown_10", record.Unknown_10);
+            cmd.Parameters.AddWithValue("@unknown_11", record.Unknown_11);
+            cmd.Parameters.AddWithValue("@unknown_14", record.Unknown_14);
+            cmd.Parameters.AddWithValue("@unknown_15", record.Unknown_15);
+            cmd.Parameters.AddWithValue("@unknown_16", record.Unknown_16);
+            cmd.Parameters.AddWithValue("@unknown_17", record.Unknown_17);
+            cmd.Parameters.AddWithValue("@is_evolving_item", record.Is_Evolving_Item);
+            cmd.Parameters.AddWithValue("@unknown_20", record.Unknown_20);
+            cmd.Parameters.AddWithValue("@unknown_21", record.Unknown_21);
+            cmd.Parameters.AddWithValue("@unknown_22", record.Unknown_22);
+            cmd.Parameters.AddWithValue("@unknown_23", record.Unknown_23);
+            cmd.Parameters.AddWithValue("@unknown_24", record.Unknown_24);
+            cmd.Parameters.AddWithValue("@unknown_25", record.Unknown_25);
+            cmd.Parameters.AddWithValue("@unknown_27", record.Unknown_27);
+            cmd.Parameters.AddWithValue("@unknown_28", record.Unknown_28);
+            cmd.Parameters.AddWithValue("@item_type2", record.ItemType2);
+            cmd.Parameters.AddWithValue("@name", record.Name);
+            cmd.Parameters.AddWithValue("@lore", record.Lore);
+            cmd.Parameters.AddWithValue("@it_file", record.IT_File);
+            cmd.Parameters.AddWithValue("@unknown_33", record.Unknown_33);
+            cmd.Parameters.AddWithValue("@id", (uint)record.Id);
+            cmd.Parameters.AddWithValue("@weight", record.Weight);
+            cmd.Parameters.AddWithValue("@unknown_36", record.Unknown_36);
+            cmd.Parameters.AddWithValue("@unknown_37", record.Tradeable);
+            cmd.Parameters.AddWithValue("@unknown_38", record.Attuneable);
+            cmd.Parameters.AddWithValue("@size", record.Size);
+            cmd.Parameters.AddWithValue("@usable_slot_mask", record.UsableSlotMask);
+            cmd.Parameters.AddWithValue("@cost", record.Cost);
+            cmd.Parameters.AddWithValue("@icon_id", record.Icon_ID);
+            cmd.Parameters.AddWithValue("@unknown_44", record.Unknown_44);
+            cmd.Parameters.AddWithValue("@is_tradeskill", record.IsTradeskill);
+            cmd.Parameters.AddWithValue("@save_cold", record.SaveCold);
+            cmd.Parameters.AddWithValue("@save_disease", record.SaveDisease);
+            cmd.Parameters.AddWithValue("@save_poison", record.SavePoison);
+            cmd.Parameters.AddWithValue("@save_magic", record.SaveMagic);
+            cmd.Parameters.AddWithValue("@save_fire", record.SaveFire);
+            cmd.Parameters.AddWithValue("@save_corruption", record.SaveCorruption);
+            cmd.Parameters.AddWithValue("@plus_strength", record.PlusStrength);
+            cmd.Parameters.AddWithValue("@plus_stamina", record.PlusStamina);
+            cmd.Parameters.AddWithValue("@plus_agility", record.PlusAgility);
+            cmd.Parameters.AddWithValue("@plus_dexterity", record.PlusDexterity);
+            cmd.Parameters.AddWithValue("@plus_charisma", record.PlusCharisma);
+            cmd.Parameters.AddWithValue("@plus_intelligence", record.PlusIntelligence);
+            cmd.Parameters.AddWithValue("@plus_wisdom", record.PlusWisdom);
+            cmd.Parameters.AddWithValue("@plus_hp", record.PlusHP);
+            cmd.Parameters.AddWithValue("@plus_mana", record.PlusMana);
+            cmd.Parameters.AddWithValue("@plus_endurance", record.PlusEndurance);
+            cmd.Parameters.AddWithValue("@plus_ac", record.PlusAC);
+            cmd.Parameters.AddWithValue("@hp_regen", record.HpRegen);
+            cmd.Parameters.AddWithValue("@mana_regen", record.ManaRegen);
+            cmd.Parameters.AddWithValue("@unknown_66", record.Unknown_66);
+            cmd.Parameters.AddWithValue("@class_mask", record.ClassMask);
+            cmd.Parameters.AddWithValue("@race_mask", record.RaceMask);
+            cmd.Parameters.AddWithValue("@unknown_69", record.Deity);
+            cmd.Parameters.AddWithValue("@skill_percent_chance", record.Skill_Percent_Chance);
+            cmd.Parameters.AddWithValue("@skill_max_change", record.Skill_Max_Change);
+            cmd.Parameters.AddWithValue("@skill_id", record.Skill_ID);
+            cmd.Parameters.AddWithValue("@unknown_73", record.Unknown_73);
+            cmd.Parameters.AddWithValue("@unknown_74", record.Unknown_74);
+            cmd.Parameters.AddWithValue("@unknown_75", record.Unknown_75);
+            cmd.Parameters.AddWithValue("@unknown_76", record.Unknown_76);
+            cmd.Parameters.AddWithValue("@unknown_77", record.Unknown_77);
+            cmd.Parameters.AddWithValue("@unknown_78", record.Is_Magic);
+            cmd.Parameters.AddWithValue("@food_drink_value", record.FoodDrinkValue);
+            cmd.Parameters.AddWithValue("@required_level", record.RequiredLevel);
+            cmd.Parameters.AddWithValue("@recommended_level", record.RecommendedLevel);
+            cmd.Parameters.AddWithValue("@bard_value", record.Bard_Value);
+            cmd.Parameters.AddWithValue("@unknown_83", record.Unknown_83);
+            cmd.Parameters.AddWithValue("@unknown_84", record.Light);
+            cmd.Parameters.AddWithValue("@weapon_delay", record.Weapon_Delay);
+            cmd.Parameters.AddWithValue("@unknown_86", record.Elemental_Damage_Type);
+            cmd.Parameters.AddWithValue("@unknown_87", record.Elemental_Damage_Amount);
+            cmd.Parameters.AddWithValue("@weapon_range", record.Weapon_Range);
+            cmd.Parameters.AddWithValue("@weapon_base_damage", record.Weapon_Base_Damage);
+            cmd.Parameters.AddWithValue("@color", record.Color);
+            cmd.Parameters.AddWithValue("@unknown_91", record.Prestige);
+            cmd.Parameters.AddWithValue("@item_type1", record.ItemType1);
+            cmd.Parameters.AddWithValue("@material", record.Material);
+            cmd.Parameters.AddWithValue("@unknown_94", record.Unknown_94);
+            cmd.Parameters.AddWithValue("@unknown_95", record.Unknown_95);
+            cmd.Parameters.AddWithValue("@unknown_96", record.Unknown_96);
+            cmd.Parameters.AddWithValue("@unknown_97", record.Material2);
+            cmd.Parameters.AddWithValue("@unknown_98", record.Unknown_98);
+            cmd.Parameters.AddWithValue("@unknown_99", record.Unknown_99);
+            cmd.Parameters.AddWithValue("@unknown_100", record.Unknown_100);
+            cmd.Parameters.AddWithValue("@unknown_101", record.CharmFileID);
+            cmd.Parameters.AddWithValue("@unknown_102", record.CharmFileName);
+            cmd.Parameters.AddWithValue("@unknown_103", record.AugValue);
+            cmd.Parameters.AddWithValue("@unknown_104", record.Unknown_104);
+            cmd.Parameters.AddWithValue("@unknown_105", record.AugRestriction);
+            cmd.Parameters.AddWithValue("@unknown_107", record.LDON_Sold);
+            cmd.Parameters.AddWithValue("@unknown_108", record.LDON_Theme);
+            cmd.Parameters.AddWithValue("@unknown_109", record.LDON_Price);
+            cmd.Parameters.AddWithValue("@unknown_110", record.Unknown_110);
+            cmd.Parameters.AddWithValue("@unknown_111", record.Unknown_111);
+            cmd.Parameters.AddWithValue("@bag_type", record.Bag_Type);
+            cmd.Parameters.AddWithValue("@bag_slot_count", record.Bag_Slot_Count);
+            cmd.Parameters.AddWithValue("@bag_size", record.Bag_Size);
+            cmd.Parameters.AddWithValue("@bag_weight_reduction", record.Bag_Weight_Reduction);
+            cmd.Parameters.AddWithValue("@unknown_116", record.Unknown_116);
+            cmd.Parameters.AddWithValue("@unknown_117", record.Unknown_117);
+            cmd.Parameters.AddWithValue("@unknown_118", record.Unknown_118);
+            cmd.Parameters.AddWithValue("@lore_group", record.LoreGroup);
+            cmd.Parameters.AddWithValue("@unknown_120", record.Unknown_120);
+            cmd.Parameters.AddWithValue("@tribute", record.Tribute);
+            cmd.Parameters.AddWithValue("@unknown_122", record.FV_Nodrop);
+            cmd.Parameters.AddWithValue("@plus_attack", record.PlusAttack);
+            cmd.Parameters.AddWithValue("@haste", record.Haste);
+            cmd.Parameters.AddWithValue("@unknown_125", record.Unknown_125);
+            cmd.Parameters.AddWithValue("@aug_distiller_needed", record.AugDistillerNeeded);
+            cmd.Parameters.AddWithValue("@unknown_127", record.Unknown_127);
+            cmd.Parameters.AddWithValue("@unknown_128", record.Unknown_128);
+            cmd.Parameters.AddWithValue("@unknown_129", record.Unknown_129);
+            cmd.Parameters.AddWithValue("@unknown_130", record.Unknown_130);
+            cmd.Parameters.AddWithValue("@max_stack_size", record.Max_Stack_Size);
+            cmd.Parameters.AddWithValue("@unknown_132", record.Unknown_132);
+            cmd.Parameters.AddWithValue("@unknown_133", record.Unknown_133);
+            cmd.Parameters.AddWithValue("@unknown_134", record.Unknown_134);
+            cmd.Parameters.AddWithValue("@unknown_136", record.Unknown_136);
+            cmd.Parameters.AddWithValue("@unknown_137", record.Unknown_137);
+            cmd.Parameters.AddWithValue("@unknown_138", record.Unknown_138);
+            cmd.Parameters.AddWithValue("@unknown_139", record.Purity);
+            cmd.Parameters.AddWithValue("@backstab_damage", record.Backstab_Damage);
+            cmd.Parameters.AddWithValue("@heroic_strength", record.Heroic_Strength);
+            cmd.Parameters.AddWithValue("@heroic_intelligence", record.Heroic_Intelligence);
+            cmd.Parameters.AddWithValue("@heroic_wisdom", record.Heroic_Wisdom);
+            cmd.Parameters.AddWithValue("@heroic_agility", record.Heroic_Agility);
+            cmd.Parameters.AddWithValue("@heroic_dexterity", record.Heroic_Dexterity);
+            cmd.Parameters.AddWithValue("@heroic_stamina", record.Heroic_Stamina);
+            cmd.Parameters.AddWithValue("@heroic_charisma", record.Heroic_Charisma);
+            cmd.Parameters.AddWithValue("@unknown_148", record.Heal_Amount);
+            cmd.Parameters.AddWithValue("@unknown_149", record.Spell_Damage);
+            cmd.Parameters.AddWithValue("@unknown_150", record.Clairvoyance);
+            cmd.Parameters.AddWithValue("@unknown_151", record.Unknown_151);
+            cmd.Parameters.AddWithValue("@unknown_152", record.Unknown_152);
+            cmd.Parameters.AddWithValue("@unknown_153", record.Unknown_153);
+            cmd.Parameters.AddWithValue("@unknown_154", record.Unknown_154);
+            cmd.Parameters.AddWithValue("@unknown_155", record.Placeable2);
+            cmd.Parameters.AddWithValue("@unknown_156", record.Unknown_156);
+            cmd.Parameters.AddWithValue("@unknown_157", record.Unknown_157);
+            cmd.Parameters.AddWithValue("@unknown_158", record.Unknown_158);
+            cmd.Parameters.AddWithValue("@unknown_159", record.Unknown_159);
+            cmd.Parameters.AddWithValue("@unknown_160", record.Unknown_160);
+            cmd.Parameters.AddWithValue("@unknown_161", record.Unknown_161);
+            cmd.Parameters.AddWithValue("@unknown_162", record.Unknown_162);
+            cmd.Parameters.AddWithValue("@unknown_163", record.Unknown_163);
+            cmd.Parameters.AddWithValue("@unknown_164", record.Unknown_164);
+            cmd.Parameters.AddWithValue("@unknown_165", record.Unknown_165);
+            cmd.Parameters.AddWithValue("@unknown_166", record.Unknown_166);
+            cmd.Parameters.AddWithValue("@unknown_167", record.Unknown_167);
+            cmd.Parameters.AddWithValue("@unknown_168", record.Unknown_168);
+            cmd.Parameters.AddWithValue("@unknown_169", record.Unknown_169);
+            cmd.Parameters.AddWithValue("@unknown_170", record.Unknown_170);
+            cmd.Parameters.AddWithValue("@unknown_171", record.Unknown_171);
+            cmd.Parameters.AddWithValue("@unknown_172", record.Unknown_172);
+            cmd.Parameters.AddWithValue("@unknown_173", record.Unknown_173);
+            cmd.Parameters.AddWithValue("@unknown_175", record.Unknown_175);
+            cmd.Parameters.AddWithValue("@unknown_176", record.Unknown_176);
+            cmd.Parameters.AddWithValue("@unknown_177", record.Unknown_177);
+            cmd.Parameters.AddWithValue("@unknown_178", record.Unknown_178);
+            cmd.Parameters.AddWithValue("@unknown_179", record.Unknown_179);
+            cmd.Parameters.AddWithValue("@unknown_180", record.Unknown_180);
+            cmd.Parameters.AddWithValue("@unknown_181", record.Unknown_181);
+            cmd.Parameters.AddWithValue("@unknown_182", record.Unknown_182);
+            cmd.Parameters.AddWithValue("@unknown_183", record.Unknown_183);
+            cmd.Parameters.AddWithValue("@unknown_184", record.Unknown_184);
+            cmd.Parameters.AddWithValue("@unknown_185", record.Unknown_185);
+            cmd.Parameters.AddWithValue("@unknown_186", record.Unknown_186);
+            cmd.Parameters.AddWithValue("@unknown_187", record.Unknown_187);
+            cmd.Parameters.AddWithValue("@unknown_188", record.Unknown_188);
+            cmd.Parameters.AddWithValue("@unknown_189", record.Unknown_189);
+            cmd.Parameters.AddWithValue("@unknown_190", record.Unknown_190);
+            cmd.Parameters.AddWithValue("@unknown_191", record.Unknown_191);
+            cmd.Parameters.AddWithValue("@unknown_196", record.Unknown_196);
+            cmd.Parameters.AddWithValue("@unknown_198", record.Unknown_198);
+            cmd.Parameters.AddWithValue("@unknown_199", record.Unknown_199);
 
-            int effectRows = effectCmd.ExecuteNonQuery();
-            if (effectRows == 0)
+            int rowsWritten = cmd.ExecuteNonQuery();
+            if (rowsWritten == 0)
             {
-                DebugLog.Write(LogChannel.Database, "ItemRepository.Insert: '" + record.Name + "' (" +
-                    record.Id + ") has a second " + effect.Category + " effect (spell " + effect.SpellId +
-                    "); not written.", LogLevel.Warn);
-                continue;
+                DebugLog.Write(LogChannel.Database, "ItemRepository.Insert: row for '" + record.Name + "' (" +
+                    record.Id + ") already exists; record and effects not written.", LogLevel.Trace);
+                return false;
             }
 
-            effectsWritten++;
-            DebugLog.Write(LogChannel.Database, "ItemRepository.Insert: wrote " + effect.Category +
-                " effect (spell " + effect.SpellId + ") for '" + record.Name + "' (" + record.Id + ").",
-                LogLevel.Trace);
+            uint effectsWritten = 0;
+            foreach (ItemEffect effect in record.Effects)
+            {
+                using SqliteCommand effectCmd = conn.CreateCommand();
+                effectCmd.Transaction = tx;
+                effectCmd.CommandText = @"
+                    INSERT OR IGNORE INTO ItemEffects (
+                        item_id, category, spell_id, level, cast_as_level, max_charges,
+                        cast_time_ms, recast_time_s, recast_type, recast_delay_s, name
+                    ) VALUES (
+                        @item_id, @category, @spell_id, @level, @cast_as_level, @max_charges,
+                        @cast_time_ms, @recast_time_s, @recast_type, @recast_delay_s, @name
+                    )";
+
+                effectCmd.Parameters.AddWithValue("@item_id", (uint)record.Id);
+                effectCmd.Parameters.AddWithValue("@category", (uint)effect.Category);
+                effectCmd.Parameters.AddWithValue("@spell_id", (uint)effect.SpellId);
+                effectCmd.Parameters.AddWithValue("@level", effect.Level);
+                effectCmd.Parameters.AddWithValue("@cast_as_level", effect.CastAsLevel);
+                effectCmd.Parameters.AddWithValue("@max_charges", effect.MaxCharges);
+                effectCmd.Parameters.AddWithValue("@cast_time_ms", effect.CastTimeMs);
+                effectCmd.Parameters.AddWithValue("@recast_time_s", effect.RecastTimeSeconds);
+                effectCmd.Parameters.AddWithValue("@recast_type", effect.RecastType);
+                effectCmd.Parameters.AddWithValue("@recast_delay_s", effect.RecastDelaySeconds);
+                effectCmd.Parameters.AddWithValue("@name", effect.Name);
+
+                int effectRows = effectCmd.ExecuteNonQuery();
+                if (effectRows == 0)
+                {
+                    DebugLog.Write(LogChannel.Database, "ItemRepository.Insert: '" + record.Name + "' (" +
+                        record.Id + ") has a second " + effect.Category + " effect (spell " + effect.SpellId +
+                        "); not written.", LogLevel.Warn);
+                    continue;
+                }
+
+                effectsWritten++;
+                DebugLog.Write(LogChannel.Database, "ItemRepository.Insert: wrote " + effect.Category +
+                    " effect (spell " + effect.SpellId + ") for '" + record.Name + "' (" + record.Id + ").",
+                    LogLevel.Trace);
+            }
+
+            uint slotsWritten = 0;
+            foreach (AugmentationSlot slot in record.AugmentationSlots)
+            {
+                using SqliteCommand slotCmd = conn.CreateCommand();
+                slotCmd.Transaction = tx;
+                slotCmd.CommandText = @"
+                    INSERT OR IGNORE INTO ItemAugmentationSlots (
+                        item_id, slot_index, type, visible, unknown_4
+                    ) VALUES (
+                        @item_id, @slot_index, @type, @visible, @unknown_4
+                    )";
+
+                slotCmd.Parameters.AddWithValue("@item_id", (uint)record.Id);
+                slotCmd.Parameters.AddWithValue("@slot_index", slot.Index);
+                slotCmd.Parameters.AddWithValue("@type", (uint)slot.Type);
+                slotCmd.Parameters.AddWithValue("@visible", slot.Visible);
+                slotCmd.Parameters.AddWithValue("@unknown_4", slot.Unknown_4);
+
+                int slotRows = slotCmd.ExecuteNonQuery();
+                if (slotRows == 0)
+                {
+                    DebugLog.Write(LogChannel.Database, "ItemRepository.Insert: '" + record.Name + "' (" +
+                        record.Id + ") has a second augmentation slot at index " + slot.Index + "; not written.",
+                        LogLevel.Warn);
+                    continue;
+                }
+
+                slotsWritten++;
+                DebugLog.Write(LogChannel.Database, "ItemRepository.Insert: wrote augmentation slot " + slot.Index +
+                    " (type " + (uint)slot.Type + ") for '" + record.Name + "' (" + record.Id + ").",
+                    LogLevel.Trace);
+            }
+
+            tx.Commit();
+
+            DebugLog.Write(LogChannel.Database, "ItemRepository.Insert: wrote '" + record.Name + "' (" +
+                record.Id + ") with " + effectsWritten + " of " + record.Effects.Count + " effects and " +
+                slotsWritten + " of " + record.AugmentationSlots.Count + " augmentation slots.", LogLevel.Trace);
+            return true;
         }
-
-        tx.Commit();
-
-        DebugLog.Write(LogChannel.Database, "ItemRepository.Insert: wrote '" + record.Name + "' (" +
-            record.Id + ") with " + effectsWritten + " of " + record.Effects.Count + " effects.",
-            LogLevel.Trace);
-        return true;
+        catch (Exception ex)
+        {
+            DebugLog.Write(LogChannel.Database, "ItemRepository.Insert: failed writing '" + record.Name +
+                "' (" + record.Id + "); transaction rolled back: " + ex.GetType().Name + ": " + ex.Message,
+                LogLevel.Error);
+            throw;
+        }
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // ReadRecord
     //
     // Builds an item definition from the current row of a reader positioned on an ItemRecords row that
-    // selected every column, then loads the item's rows from the ItemEffects table into its effects list.
+    // selected every column, then loads the item's rows from the ItemEffects table into its effects list
+    // and its rows from the ItemAugmentationSlots table, in slot order, into its augmentation slot list.
     // Columns are read by name.  An effect row whose category is not a known value is logged and skipped.
+    // An augmentation slot whose type is not a known value is logged and kept.
     //
     // reader:  A reader positioned on the row to read.
     // conn:    The open connection the reader belongs to, used for the effects query.
@@ -734,8 +779,36 @@ public class ItemRepository
                 LogLevel.Trace);
         }
 
+        using SqliteCommand slotCmd = conn.CreateCommand();
+        slotCmd.CommandText = "SELECT * FROM ItemAugmentationSlots WHERE item_id = @item_id ORDER BY slot_index";
+        slotCmd.Parameters.AddWithValue("@item_id", (uint)record.Id);
+
+        using SqliteDataReader slotReader = slotCmd.ExecuteReader();
+        while (slotReader.Read() == true)
+        {
+            AugmentationSlot slot = new AugmentationSlot();
+            slot.Index = slotReader.GetFieldValue<uint>(slotReader.GetOrdinal("slot_index"));
+            slot.Type = (AugmentationType)slotReader.GetFieldValue<byte>(slotReader.GetOrdinal("type"));
+            slot.Visible = slotReader.GetFieldValue<bool>(slotReader.GetOrdinal("visible"));
+            slot.Unknown_4 = slotReader.GetFieldValue<uint>(slotReader.GetOrdinal("unknown_4"));
+
+            if (Enum.IsDefined(slot.Type) == false)
+            {
+                DebugLog.Write(LogChannel.Database, "ItemRepository.ReadRecord: '" + record.Name + "' (" +
+                    record.Id + ") augmentation slot " + slot.Index + " has unknown type " + (uint)slot.Type +
+                    "; kept.", LogLevel.Warn);
+            }
+
+            record.AugmentationSlots.Add(slot);
+
+            DebugLog.Write(LogChannel.Database, "ItemRepository.ReadRecord: loaded augmentation slot " +
+                slot.Index + " (type " + (uint)slot.Type + ") for '" + record.Name + "' (" + record.Id + ").",
+                LogLevel.Trace);
+        }
+
         DebugLog.Write(LogChannel.Database, "ItemRepository.ReadRecord: read '" + record.Name + "' (" +
-            record.Id + ") with " + record.Effects.Count + " effects.", LogLevel.Trace);
+            record.Id + ") with " + record.Effects.Count + " effects and " + record.AugmentationSlots.Count +
+            " augmentation slots.", LogLevel.Trace);
 
         return record;
     }

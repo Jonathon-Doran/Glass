@@ -215,4 +215,6 @@ public class ItemRecord
 
     // Effects granted by this item
     public List<ItemEffect> Effects { get; set; } = new List<ItemEffect>();
+    // Augmentation slots on this item
+    public List<AugmentationSlot> AugmentationSlots { get; set; } = new List<AugmentationSlot>();
 }

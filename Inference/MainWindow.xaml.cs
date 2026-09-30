@@ -152,7 +152,7 @@ public partial class MainWindow : Window
 
         // The inference debug log.  Debug messages for the inference app
         GlassDebugLogHandler debugLogHandler = new GlassDebugLogHandler("debug.log");
-        DebugLog.AddHandler(LogSink.InferenceDebugLogfile, debugLogHandler);
+        DebugLog.AddHandler(LogSink.GlassDebugLogfile, debugLogHandler);
         DebugLog.Route(LogChannel.InferenceDebug, LogSink.InferenceDebugLogfile);
 
         // The debug tab, just debug messages for inference

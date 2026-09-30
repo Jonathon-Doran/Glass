@@ -507,6 +507,11 @@ public class Database
         {
             ApplyMigration(conn, 67, Migration_067);
         }
+
+        if (version < 68)
+        {
+            ApplyMigration(conn, 68, Migration_068);
+        }
     }
 
     private int GetSchemaVersion()
@@ -1831,6 +1836,19 @@ public class Database
     private const string Migration_067 = @"
         CREATE INDEX IF NOT EXISTS idx_iteminstances_parent ON ItemInstances(parent_id);
     ";
+
+    private const string Migration_068 = @"
+        CREATE TABLE IF NOT EXISTS ItemAugmentationSlots (
+            item_id     INTEGER NOT NULL REFERENCES ItemRecords(id),
+            slot_index  INTEGER NOT NULL,
+            type        INTEGER NOT NULL,
+            visible     INTEGER NOT NULL DEFAULT 0,
+            unknown_4     INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (item_id, slot_index)
+        );
+    ";
+
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"
