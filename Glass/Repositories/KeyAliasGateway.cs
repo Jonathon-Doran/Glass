@@ -6,11 +6,11 @@ using Microsoft.Data.Sqlite;
 namespace Glass.Data.Repositories;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// KeyAliasRepository
+// KeyAliasGateway
 //
 // Provides access to key aliases in the database.
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-public class KeyAliasRepository
+public class KeyAliasGateway
 {
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // GetAllAliases
@@ -37,6 +37,7 @@ public class KeyAliasRepository
             });
         }
 
+        DebugLog.Write(LogChannel.Database, "GetAllAliases return " + aliases.Count + " members", LogLevel.Trace);
         return aliases;
     }
 
@@ -59,7 +60,7 @@ public class KeyAliasRepository
         using var reader = cmd.ExecuteReader();
         if (!reader.Read())
         {
-            DebugLog.Write(LogChannel.Database, $"KeyAliasRepository.GetAlias: name='{name}' not found.");
+            DebugLog.Write(LogChannel.Database, $"KeyAliasRepository.GetAlias: name='{name}' not found.", LogLevel.Warn);
             return null;
         }
 
@@ -92,7 +93,7 @@ public class KeyAliasRepository
 
         if (result == null)
         {
-            DebugLog.Write(LogChannel.Database, $"KeyAliasRepository.Resolve: name='{name}' not found.");
+            DebugLog.Write(LogChannel.Database, $"KeyAliasRepository.Resolve: name='{name}' not found.", LogLevel.Warn);
             return null;
         }
 
@@ -122,7 +123,7 @@ public class KeyAliasRepository
             cmd.Parameters.AddWithValue("@name", alias.Name);
             cmd.Parameters.AddWithValue("@value", alias.Value);
             alias.Id = Convert.ToInt32(cmd.ExecuteScalar());
-            DebugLog.Write(LogChannel.Database, $"KeyAliasRepository.Save: inserted. id={alias.Id}.");
+            DebugLog.Write(LogChannel.Database, $"KeyAliasRepository.Save: inserted. id={alias.Id}.", LogLevel.Trace);
         }
         else
         {
@@ -132,7 +133,7 @@ public class KeyAliasRepository
             cmd.Parameters.AddWithValue("@value", alias.Value);
             cmd.Parameters.AddWithValue("@id", alias.Id);
             cmd.ExecuteNonQuery();
-            DebugLog.Write(LogChannel.Database, $"KeyAliasRepository.Save: updated. id={alias.Id}.");
+            DebugLog.Write(LogChannel.Database, $"KeyAliasRepository.Save: updated. id={alias.Id}.", LogLevel.Trace);
         }
     }
 
@@ -155,6 +156,6 @@ public class KeyAliasRepository
         cmd.Parameters.AddWithValue("@id", id);
         cmd.ExecuteNonQuery();
 
-        DebugLog.Write(LogChannel.Database, $"KeyAliasRepository.Delete: deleted.");
+        DebugLog.Write(LogChannel.Database, $"KeyAliasRepository.Delete: deleted.", LogLevel.Trace);
     }
 }

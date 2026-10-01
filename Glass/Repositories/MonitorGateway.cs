@@ -8,12 +8,12 @@ using Monitor = Glass.Data.Models.Monitor;
 namespace Glass.Data.Repositories;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// MonitorRepository
+// MonitorGateway
 //
 // Handles persistence of Monitor records.
 // Monitors represent physical displays attached to a machine.
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-public class MonitorRepository
+public class MonitorGateway
 {
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // GetFirstMonitor
@@ -23,8 +23,6 @@ public class MonitorRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public (int Width, int Height)? GetFirstMonitor()
     {
-        DebugLog.Write(LogChannel.Database, "MonitorRepository.GetFirstMonitor: loading.");
-
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
 
@@ -38,13 +36,15 @@ public class MonitorRepository
         using SqliteDataReader reader = cmd.ExecuteReader();
         if (!reader.Read())
         {
-            DebugLog.Write(LogChannel.Database, "MonitorRepository.GetFirstMonitor: no monitors found.");
+            DebugLog.Write(LogChannel.Database, "MonitorRepository.GetFirstMonitor: no monitors found.",
+                LogLevel.Warn);
             return null;
         }
 
         int width = reader.GetInt32(0);
         int height = reader.GetInt32(1);
-        DebugLog.Write(LogChannel.Database, $"MonitorRepository.GetFirstMonitor: found {width}x{height}.");
+        DebugLog.Write(LogChannel.Database, $"MonitorRepository.GetFirstMonitor: found {width}x{height}.",
+            LogLevel.Trace);
         return (width, height);
     }
 
@@ -57,8 +57,6 @@ public class MonitorRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public List<Monitor> GetForMachine(int machineId)
     {
-        DebugLog.Write(LogChannel.Database, $"MonitorRepository.GetForMachine: machineId={machineId}.");
-
         List<Monitor> monitors = new List<Monitor>();
 
         using SqliteConnection conn = Database.Instance.Connect();
@@ -86,10 +84,10 @@ public class MonitorRepository
                 Height = reader.GetInt32(6)
             };
             monitors.Add(monitor);
-            DebugLog.Write(LogChannel.Database, $"MonitorRepository.GetForMachine: id={monitor.Id} adapter='{monitor.AdapterName}' pnpId='{monitor.PnpId}' serial='{monitor.Serial}' {monitor.Width}x{monitor.Height}.");
-        }
+       }
 
-        DebugLog.Write(LogChannel.Database, $"MonitorRepository.GetForMachine: {monitors.Count} monitors found.");
+        DebugLog.Write(LogChannel.Database, $"MonitorRepository.GetForMachine: {monitors.Count} monitors found.",
+            LogLevel.Trace);
         return monitors;
     }
 
@@ -102,8 +100,6 @@ public class MonitorRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public Monitor? GetById(int monitorId)
     {
-        DebugLog.Write(LogChannel.Database, $"MonitorRepository.GetById: monitorId={monitorId}.");
-
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
 
@@ -118,7 +114,8 @@ public class MonitorRepository
 
         if (!reader.Read())
         {
-            DebugLog.Write(LogChannel.Database, $"MonitorRepository.GetById: monitorId={monitorId} not found.");
+            DebugLog.Write(LogChannel.Database, $"MonitorRepository.GetById: monitorId={monitorId} not found.",
+                LogLevel.Warn);
             return null;
         }
 
@@ -133,7 +130,7 @@ public class MonitorRepository
             Height = reader.GetInt32(6)
         };
 
-        DebugLog.Write(LogChannel.Database, $"MonitorRepository.GetById: found id={monitor.Id} adapter='{monitor.AdapterName}' pnpId='{monitor.PnpId}' serial='{monitor.Serial}' {monitor.Width}x{monitor.Height}.");
+        DebugLog.Write(LogChannel.Database, $"MonitorRepository.GetById: found id={monitor.Id} adapter='{monitor.AdapterName}' pnpId='{monitor.PnpId}' serial='{monitor.Serial}' {monitor.Width}x{monitor.Height}.", LogLevel.Trace);
         return monitor;
     }
 
@@ -149,8 +146,6 @@ public class MonitorRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public List<string> SyncFromHardware(int machineId)
     {
-        DebugLog.Write(LogChannel.Database, $"MonitorRepository.SyncFromHardware: machineId={machineId}.");
-
         List<string> changes = new List<string>();
 
         // Enumerate logical monitors (resolution, DPI).
@@ -160,7 +155,7 @@ public class MonitorRepository
         MonitorInfoHelper.EnumerateMonitors((hMonitor, dpiScale, deviceName, width, height) =>
         {
             logical[deviceName] = (width, height, dpiScale);
-            DebugLog.Write(LogChannel.Database, $"MonitorRepository.SyncFromHardware: logical adapter='{deviceName}' {width}x{height} dpi={dpiScale:F2}.");
+            DebugLog.Write(LogChannel.Database, $"MonitorRepository.SyncFromHardware: logical adapter='{deviceName}' {width}x{height} dpi={dpiScale:F2}.", LogLevel.Trace);
         });
 
         // Enumerate display devices (PnP ID per adapter).
@@ -196,7 +191,7 @@ public class MonitorRepository
                     }
                 }
 
-                DebugLog.Write(LogChannel.Database, $"MonitorRepository.SyncFromHardware: upserting adapter='{adapterName}' pnpId='{pnpId}' {width}x{height}.");
+                DebugLog.Write(LogChannel.Database, $"MonitorRepository.SyncFromHardware: upserting adapter='{adapterName}' pnpId='{pnpId}' {width}x{height}.", LogLevel.Trace);
 
                 // Check for existing record.
                 using SqliteCommand checkCmd = conn.CreateCommand();
@@ -223,14 +218,14 @@ public class MonitorRepository
                     {
                         string change = $"{adapterName}: hardware changed from {existingPnpId} to {pnpId}.";
                         changes.Add(change);
-                        DebugLog.Write(LogChannel.Database, $"MonitorRepository.SyncFromHardware: {change}");
+                        DebugLog.Write(LogChannel.Database, $"MonitorRepository.SyncFromHardware: {change}", LogLevel.Trace);
                     }
 
                     if (resolutionChanged)
                     {
                         string change = $"{adapterName}: resolution changed from {existingWidth}x{existingHeight} to {width}x{height}.";
                         changes.Add(change);
-                        DebugLog.Write(LogChannel.Database, $"MonitorRepository.SyncFromHardware: {change}");
+                        DebugLog.Write(LogChannel.Database, $"MonitorRepository.SyncFromHardware: {change}", LogLevel.Trace);
                     }
 
                     reader.Close();
@@ -248,7 +243,7 @@ public class MonitorRepository
                     updateCmd.Parameters.AddWithValue("@machineId", machineId);
                     updateCmd.Parameters.AddWithValue("@adapterName", adapterName);
                     updateCmd.ExecuteNonQuery();
-                    DebugLog.Write(LogChannel.Database, $"MonitorRepository.SyncFromHardware: updated adapter='{adapterName}'.");
+                    DebugLog.Write(LogChannel.Database, $"MonitorRepository.SyncFromHardware: updated adapter='{adapterName}'.", LogLevel.Trace);
                 }
                 else
                 {
@@ -266,16 +261,17 @@ public class MonitorRepository
                     insertCmd.Parameters.AddWithValue("@width", width);
                     insertCmd.Parameters.AddWithValue("@height", height);
                     insertCmd.ExecuteNonQuery();
-                    DebugLog.Write(LogChannel.Database, $"MonitorRepository.SyncFromHardware: inserted new monitor adapter='{adapterName}'.");
+                    DebugLog.Write(LogChannel.Database, $"MonitorRepository.SyncFromHardware: inserted new monitor adapter='{adapterName}'.",
+                        LogLevel.Trace);
                 }
             }
 
             tx.Commit();
-            DebugLog.Write(LogChannel.Database, $"MonitorRepository.SyncFromHardware: committed. {changes.Count} change(s) detected.");
+            DebugLog.Write(LogChannel.Database, $"MonitorRepository.SyncFromHardware: committed. {changes.Count} change(s) detected.", LogLevel.Trace);
         }
         catch (Exception ex)
         {
-            DebugLog.Write(LogChannel.Database, $"MonitorRepository.SyncFromHardware: exception: {ex.Message}, rolling back.");
+            DebugLog.Write(LogChannel.Database, $"MonitorRepository.SyncFromHardware: exception: {ex.Message}, rolling back.", LogLevel.Error);
             tx.Rollback();
             throw;
         }

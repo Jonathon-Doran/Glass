@@ -101,7 +101,7 @@ public partial class ManageVideoDestinationsDialog : Window
     {
         DebugLog.Write(LogChannel.General, "ManageVideoDestinationsDialog.LoadUISkins: loading skins.");
 
-        UISkinRepository skinRepo = new UISkinRepository();
+        UISkinGateway skinRepo = new UISkinGateway();
         List<UISkin> skins = skinRepo.GetAll();
 
         UISkinComboBox.ItemsSource = skins;
@@ -160,7 +160,7 @@ public partial class ManageVideoDestinationsDialog : Window
 
         DebugLog.Write(LogChannel.General, $"ManageVideoDestinationsDialog.LoadSources: loading sources for skin '{_selectedSkin.Name}'.");
 
-        VideoSourceRepository repo = new VideoSourceRepository();
+        VideoSourceGateway repo = new VideoSourceGateway();
         List<VideoSource> sources = repo.GetByUISkin(_selectedSkin.Id);
 
         SourceComboBox.ItemsSource = null;
@@ -186,7 +186,7 @@ public partial class ManageVideoDestinationsDialog : Window
 
         DebugLog.Write(LogChannel.General, $"ManageVideoDestinationsDialog.LoadDestinations: loading destinations for skin '{_selectedSkin.Name}'.");
 
-        VideoDestinationRepository repo = new VideoDestinationRepository();
+        VideoDestinationGateway repo = new VideoDestinationGateway();
         _destinations = repo.GetByUISkin(_selectedSkin.Id).ToList();
 
         DestinationListView.ItemsSource = null;
@@ -337,7 +337,7 @@ public partial class ManageVideoDestinationsDialog : Window
             return;
         }
 
-        VideoDestinationRepository repo = new VideoDestinationRepository();
+        VideoDestinationGateway repo = new VideoDestinationGateway();
 
         if (_selectedDestination != null)
         {
@@ -414,7 +414,7 @@ public partial class ManageVideoDestinationsDialog : Window
         {
             DebugLog.Write(LogChannel.General, $"ManageVideoDestinationsDialog.DeleteButton_Click: deleting destination id={_selectedDestination.Id}.");
 
-            VideoDestinationRepository repo = new VideoDestinationRepository();
+            VideoDestinationGateway repo = new VideoDestinationGateway();
             repo.Delete(_selectedDestination.Id);
 
             _destinations.Remove(_selectedDestination);

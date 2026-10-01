@@ -155,7 +155,7 @@ public class ProfileManager
         WindowLayout? layout = layoutRepo.GetLayoutById(layoutId);
         if (layout?.UISkinId.HasValue == true)
         {
-            VideoSourceRepository sourceRepo = new VideoSourceRepository();
+            VideoSourceGateway sourceRepo = new VideoSourceGateway();
             IReadOnlyList<VideoSource> sources = sourceRepo.GetByUISkin(layout.UISkinId.Value);
             foreach (VideoSource source in sources)
             {
@@ -174,7 +174,7 @@ public class ProfileManager
             DebugLog.Write(LogChannel.Video, "ProfileManager.SendGlassVideoLayout: no UI skin assigned to layout, skipping video sources.", LogLevel.Trace);
         }
 
-        VideoDestinationRepository destRepo = new VideoDestinationRepository();
+        VideoDestinationGateway destRepo = new VideoDestinationGateway();
         IReadOnlyList<VideoDestination> destinations = destRepo.GetAll();
         foreach (VideoDestination dest in destinations)
         {

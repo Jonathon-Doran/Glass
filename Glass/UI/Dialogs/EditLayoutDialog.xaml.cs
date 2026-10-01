@@ -71,7 +71,7 @@ public partial class EditLayoutDialog : Window
     {
         DebugLog.Write(LogChannel.General, "EditLayoutDialog.LoadMachineComboBox: loading.");
 
-        MachineRepository machineRepo = new MachineRepository();
+        MachineGateway machineRepo = new MachineGateway();
         List<Machine> machines = machineRepo.GetAll();
 
         MachineComboBox.Items.Clear();
@@ -128,7 +128,7 @@ public partial class EditLayoutDialog : Window
 
         Monitors.Clear();
 
-        MonitorRepository monitorRepo = new MonitorRepository();
+        MonitorGateway monitorRepo = new MonitorGateway();
         int machineIdForLookup = _existingLayout.MachineId ?? GlassContext.CurrentMachine?.Id ?? 0;
         List<Glass.Data.Models.Monitor> machineMonitors = monitorRepo.GetForMachine(machineIdForLookup);
 
@@ -192,7 +192,7 @@ public partial class EditLayoutDialog : Window
 
         Monitors.Clear();
 
-        MonitorRepository monitorRepo = new MonitorRepository();
+        MonitorGateway monitorRepo = new MonitorGateway();
         List<Glass.Data.Models.Monitor> machineMonitors = monitorRepo.GetForMachine(machineId);
 
         int position = 1;
@@ -251,7 +251,7 @@ public partial class EditLayoutDialog : Window
         List<Glass.Data.Models.Monitor> machineMonitors = new List<Glass.Data.Models.Monitor>();
         if (machineId > 0)
         {
-            MonitorRepository monitorRepo = new MonitorRepository();
+            MonitorGateway monitorRepo = new MonitorGateway();
             machineMonitors = monitorRepo.GetForMachine(machineId);
         }
 
@@ -714,14 +714,14 @@ public partial class EditLayoutDialog : Window
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // LoadUISkinComboBox
     //
-    // Populates the UI skin dropdown from UISkinRepository.
+    // Populates the UI skin dropdown from UISkinGateway.
     // Pre-selects the skin assigned to the current layout if one exists.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void LoadUISkinComboBox()
     {
         DebugLog.Write(LogChannel.General, "EditLayoutDialog.LoadUISkinComboBox: loading.");
 
-        UISkinRepository skinRepo = new UISkinRepository();
+        UISkinGateway skinRepo = new UISkinGateway();
         List<UISkin> skins = skinRepo.GetAll();
 
         UISkinComboBox.Items.Clear();

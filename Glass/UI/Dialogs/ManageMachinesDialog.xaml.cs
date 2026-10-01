@@ -39,7 +39,7 @@ public partial class ManageMachinesDialog : Window
     {
         DebugLog.Write(LogChannel.Database, "ManageMachinesDialog.LoadMachineList: loading.");
 
-        var repo = new MachineRepository();
+        var repo = new MachineGateway();
         var machines = repo.GetAll();
 
         MachineListView.ItemsSource = machines;
@@ -141,7 +141,7 @@ public partial class ManageMachinesDialog : Window
         DebugLog.Write(LogChannel.Database, $"ManageMachinesDialog.SaveMachineName: saving name='{name}'.");
 
         _selectedMachine.Name = name;
-        var repo = new MachineRepository();
+        var repo = new MachineGateway();
         repo.Save(_selectedMachine);
 
         int savedId = _selectedMachine.Id;
@@ -163,7 +163,7 @@ public partial class ManageMachinesDialog : Window
         {
             DebugLog.Write(LogChannel.General, $"ManageMachinesDialog.NewMachine_Click: updating machine id={_selectedMachine.Id} name='{name}'.");
             _selectedMachine.Name = name;
-            var repo = new MachineRepository();
+            var repo = new MachineGateway();
             repo.Save(_selectedMachine);
             int savedId = _selectedMachine.Id;
             LoadMachineList();
@@ -174,7 +174,7 @@ public partial class ManageMachinesDialog : Window
 
         DebugLog.Write(LogChannel.General, $"ManageMachinesDialog.NewMachine_Click: creating machine name='{name}'.");
         var machine = new Machine { Name = name };
-        var updateRepo = new MachineRepository();
+        var updateRepo = new MachineGateway();
         updateRepo.Save(machine);
         DebugLog.Write(LogChannel.General, $"ManageMachinesDialog.NewMachine_Click: created id={machine.Id}.");
         LoadMachineList();
@@ -204,7 +204,7 @@ public partial class ManageMachinesDialog : Window
             return;
         }
 
-        var repo = new MachineRepository();
+        var repo = new MachineGateway();
         repo.Delete(_selectedMachine.Id);
 
         DebugLog.Write(LogChannel.General, $"ManageMachinesDialog.DeleteMachine_Click: deleted.");
@@ -281,7 +281,7 @@ public partial class ManageMachinesDialog : Window
 
         DebugLog.Write(LogChannel.Database, $"ManageMachinesDialog.SaveDevices: machineId={_selectedMachine.Id} count={_devices.Count}.");
 
-        var repo = new MachineRepository();
+        var repo = new MachineGateway();
         repo.SaveDevices(_selectedMachine.Id, _devices.ToList());
     }
 
@@ -296,7 +296,7 @@ public partial class ManageMachinesDialog : Window
 
         if (_selectedMachine != null)
         {
-            var repo = new MachineRepository();
+            var repo = new MachineGateway();
             repo.SaveDevices(_selectedMachine.Id, _devices.ToList());
         }
 

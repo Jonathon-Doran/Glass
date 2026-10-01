@@ -6,13 +6,13 @@ using Microsoft.Data.Sqlite;
 namespace Glass.Data.Repositories;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// ProfilePageRepository
+// ProfilePageGateway
 //
 // Provides access to the ProfilePages table.
 // Manages the association between profiles and key pages,
 // including which page is the start page per device.
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-public class ProfilePageRepository
+public class ProfilePageGateway
 {
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // GetPagesForProfile
@@ -24,8 +24,6 @@ public class ProfilePageRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public List<ProfilePage> GetPagesForProfile(int profileId)
     {
-        DebugLog.Write(LogChannel.Database, $"ProfilePageRepository.GetPagesForProfile: characterSetId={profileId}.");
-
         using var conn = Database.Instance.Connect();
         conn.Open();
 
@@ -54,7 +52,8 @@ public class ProfilePageRepository
             });
         }
 
-        DebugLog.Write(LogChannel.Database, $"ProfilePageRepository.GetPagesForProfile: found {pages.Count} pages.");
+        DebugLog.Write(LogChannel.Database, $"ProfilePageRepository.GetPagesForProfile: found {pages.Count} pages.",
+            LogLevel.Trace);
         return pages;
     }
 
@@ -69,8 +68,6 @@ public class ProfilePageRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void SetPagesForProfile(int characterSetId, List<ProfilePage> pages)
     {
-        DebugLog.Write(LogChannel.Database, $"ProfilePageRepository.SetPagesForProfile: characterSetId={characterSetId} count={pages.Count}.");
-
         using var conn = Database.Instance.Connect();
         conn.Open();
 
@@ -97,12 +94,13 @@ public class ProfilePageRepository
             }
 
             tx.Commit();
-            DebugLog.Write(LogChannel.Database, $"ProfilePageRepository.SetPagesForProfile: committed.");
+            DebugLog.Write(LogChannel.Database, $"ProfilePageRepository.SetPagesForProfile: committed.", LogLevel.Trace);
         }
         catch (Exception ex)
         {
             tx.Rollback();
-            DebugLog.Write(LogChannel.Database, $"ProfilePageRepository.SetPagesForProfile: exception: {ex.Message}, rolling back.");
+            DebugLog.Write(LogChannel.Database, $"ProfilePageRepository.SetPagesForProfile: exception: {ex.Message}, rolling back.",
+                LogLevel.Error);
             throw;
         }
     }

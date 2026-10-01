@@ -93,7 +93,7 @@ public class WindowLayoutRepository
         }
 
         int monitorId = layout.Monitors[0].MonitorId;
-        MonitorRepository monitorRepo = new MonitorRepository();
+        MonitorGateway monitorRepo = new MonitorGateway();
         Monitor? monitor = monitorRepo.GetById(monitorId);
 
         if (monitor == null)

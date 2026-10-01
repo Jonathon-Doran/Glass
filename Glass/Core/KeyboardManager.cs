@@ -110,7 +110,7 @@ public class KeyboardManager
             return;
         }
 
-        var profilePageRepo = new ProfilePageRepository();
+        var profilePageRepo = new ProfilePageGateway();
         var profilePages = profilePageRepo.GetPagesForProfile(profileId);
 
         if (profilePages.Count == 0)
@@ -119,9 +119,9 @@ public class KeyboardManager
             return;
         }
 
-        var pageRepo = new KeyPageRepository();
-        var bindingRepo = new KeyBindingRepository();
-        var commandRepo = new CommandRepository();
+        var pageRepo = new KeyPageGateway();
+        var bindingRepo = new KeyBindingGateway();
+        var commandRepo = new CommandGateway();
 
         foreach (var command in commandRepo.GetAllCommands())
         {

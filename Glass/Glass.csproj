@@ -33,6 +33,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="Repositories\UISkinGateway.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="LibDeflate.NET" Version="1.19.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.3" />
     <PackageReference Include="ModernWpfUI" Version="0.9.6" />

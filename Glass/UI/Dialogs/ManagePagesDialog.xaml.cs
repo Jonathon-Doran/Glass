@@ -32,7 +32,7 @@ public partial class ManagePagesDialog : Window
     {
         DebugLog.Write(LogChannel.Database, "ManagePagesDialog.LoadPageList: loading.");
 
-        var repo = new KeyPageRepository();
+        var repo = new KeyPageGateway();
         var pages = repo.GetAllPages();
 
         PageListView.ItemsSource = pages;
@@ -219,7 +219,7 @@ public partial class ManagePagesDialog : Window
             return;
         }
 
-        var repo = new KeyPageRepository();
+        var repo = new KeyPageGateway();
         var existing = repo.GetAllPages();
 
         if (existing.Any(p => (p.Name == newName) && (p.Id != _selectedPage.Id)))
@@ -261,7 +261,7 @@ public partial class ManagePagesDialog : Window
         {
             DebugLog.Write(LogChannel.General, $"ManagePagesDialog.NewRename_Click: creating page name='{name}' device='{device}'.");
 
-            var repo = new KeyPageRepository();
+            var repo = new KeyPageGateway();
             var existing = repo.GetAllPages();
 
             if (existing.Any(p => p.Name == name))
@@ -314,7 +314,7 @@ public partial class ManagePagesDialog : Window
             return;
         }
 
-        var repo = new KeyPageRepository();
+        var repo = new KeyPageGateway();
         repo.Delete(_selectedPage.Id);
 
         DebugLog.Write(LogChannel.General, $"ManagePagesDialog.DeletePage_Click: deleted.");

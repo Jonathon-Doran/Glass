@@ -508,7 +508,7 @@ public partial class ProfileDialog : Window
 
         if (CommandTypeComboBox.SelectedItem is ComboBoxItem selected && selected.Tag is int selectedCommandId)
         {
-            Command? cmd = new CommandRepository().GetCommand(selectedCommandId);
+            Command? cmd = new CommandGateway().GetCommand(selectedCommandId);
             if (cmd != null)
             {
                 LabelTextBox.Text = cmd.Label;
@@ -562,7 +562,7 @@ public partial class ProfileDialog : Window
 
         DebugLog.Write(LogChannel.Profiles, $"ProfileDialog.LoadKeyboardLayoutTab: profileId={profileId}.");
 
-        var pageRepo = new ProfilePageRepository();
+        var pageRepo = new ProfilePageGateway();
         var pages = pageRepo.GetPagesForProfile(profileId);
 
         var items = pages.Select(p => new ProfilePageViewModel
@@ -588,7 +588,7 @@ public partial class ProfileDialog : Window
     {
         DebugLog.Write(LogChannel.Profiles, "ProfileDialog.LoadMachineComboBox: loading.");
 
-        var repo = new MachineRepository();
+        var repo = new MachineGateway();
         var machines = repo.GetAll();
 
         MachineComboBox.Items.Clear();
@@ -632,7 +632,7 @@ public partial class ProfileDialog : Window
     {
         DebugLog.Write(LogChannel.Profiles, "ProfileDialog.LoadRelayGroupsTab: loading.");
 
-        List<RelayGroup> groups = new RelayGroupRepository().GetAllGroups();
+        List<RelayGroup> groups = new RelayGroupGateway().GetAllGroups();
         DebugLog.Write(LogChannel.Profiles, $"ProfileDialog.LoadRelayGroupsTab: {groups.Count} groups.");
 
         List<Character> characters = _slotAssignments
@@ -1005,7 +1005,7 @@ public partial class ProfileDialog : Window
             .Select(m => m.Monitor)
             .ToList();
 
-        MonitorRepository monitorRepo = new MonitorRepository();
+        MonitorGateway monitorRepo = new MonitorGateway();
         int machineId = GetSelectedMachineId();
         List<Glass.Data.Models.Monitor> available = monitorRepo.GetForMachine(machineId);
 
@@ -1084,11 +1084,11 @@ public partial class ProfileDialog : Window
     {
         DebugLog.Write(LogChannel.Profiles, $"ProfileDialog.LoadBindingList: pageId={pageId}.");
 
-        List<KeyBinding> bindings = new KeyBindingRepository().GetBindingsForPage(pageId)
+        List<KeyBinding> bindings = new KeyBindingGateway().GetBindingsForPage(pageId)
             .OrderBy(b => System.Text.RegularExpressions.Regex.Replace(b.Key, @"\d+", m => m.Value.PadLeft(4, '0')))
             .ToList();
-        Dictionary<int, Command> commandMap = new CommandRepository().GetAllCommands().ToDictionary(c => c.Id, c => c);
-        Dictionary<int, string> groupMap = new RelayGroupRepository().GetAllGroups().ToDictionary(g => g.Id, g => g.Name);
+        Dictionary<int, Command> commandMap = new CommandGateway().GetAllCommands().ToDictionary(c => c.Id, c => c);
+        Dictionary<int, string> groupMap = new RelayGroupGateway().GetAllGroups().ToDictionary(g => g.Id, g => g.Name);
 
         List<KeyBindingViewModel> items = bindings.Select(b =>
         {
@@ -1140,7 +1140,7 @@ public partial class ProfileDialog : Window
         TargetGroupComboBox.Items.Add(new ComboBoxItem { Content = "All", Tag = 2 });
         TargetGroupComboBox.Items.Add(new ComboBoxItem { Content = "Others", Tag = 3 });
 
-        RelayGroupRepository repo = new RelayGroupRepository();
+        RelayGroupGateway repo = new RelayGroupGateway();
         List<RelayGroup> groups = repo.GetAllGroups();
 
         foreach (RelayGroup group in groups)
@@ -1189,7 +1189,7 @@ public partial class ProfileDialog : Window
             return;
         }
 
-        ProfilePageRepository pageRepo = new ProfilePageRepository();
+        ProfilePageGateway pageRepo = new ProfilePageGateway();
         List<ProfilePage> pages = pageRepo.GetPagesForProfile(profileId);
 
         foreach (ProfilePage page in pages)
@@ -1271,7 +1271,7 @@ public partial class ProfileDialog : Window
     {
         DebugLog.Write(LogChannel.Profiles, "ProfileDialog.LoadCommandComboBox: loading.");
 
-        var repo = new CommandRepository();
+        var repo = new CommandGateway();
         var commands = repo.GetAllCommands();
 
         CommandTypeComboBox.Items.Clear();
@@ -1623,7 +1623,7 @@ public partial class ProfileDialog : Window
             }
             else if (binding.Binding.CommandId.HasValue)
             {
-                Command? cmd = new CommandRepository().GetCommand(binding.Binding.CommandId.Value);
+                Command? cmd = new CommandGateway().GetCommand(binding.Binding.CommandId.Value);
                 LabelTextBox.Text = cmd?.Label ?? string.Empty;
             }
             else
@@ -1702,7 +1702,7 @@ public partial class ProfileDialog : Window
         binding.KeyType = RepeatCheckBox.IsChecked == true ? KeyType.Toggle : KeyType.Momentary;
         binding.RepeatIntervalMs = (int)(double.TryParse(RepeatIntervalTextBox.Text, out double seconds) && seconds >= 2.0 ? seconds * 1000 : 2000);
 
-        KeyBindingRepository repo = new KeyBindingRepository();
+        KeyBindingGateway repo = new KeyBindingGateway();
         repo.Save(binding);
 
         DebugLog.Write(LogChannel.Profiles, $"ProfileDialog.SaveBinding_Click: saved. id={binding.Id}.");
@@ -1742,7 +1742,7 @@ public partial class ProfileDialog : Window
             return;
         }
 
-        var repo = new KeyBindingRepository();
+        var repo = new KeyBindingGateway();
         repo.Delete(existing.Binding.Id);
 
         DebugLog.Write(LogChannel.Profiles, $"ProfileDialog.ClearBinding_Click: deleted. id={existing.Binding.Id}.");
@@ -1911,7 +1911,7 @@ public partial class ProfileDialog : Window
     {
         DebugLog.Write(LogChannel.Profiles, $"ProfileDialog.RelayGroupMatrixControl_MembershipChanged: groupId={e.GroupId} characterId={e.CharacterId} added={e.Added}.");
 
-        RelayGroupRepository repo = new RelayGroupRepository();
+        RelayGroupGateway repo = new RelayGroupGateway();
 
         if (e.Added)
         {

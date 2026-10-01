@@ -212,6 +212,7 @@ public class CharacterRepository
 
         character.CharacterId = Convert.ToInt32(cmd.ExecuteScalar());
         _characters.Add(character);
+        _charactersById[character.CharacterId] = character;
 
         DebugLog.Write(LogChannel.Database, "CharacterRepository.Add: added character="
             + character.Name + " id=" + character.CharacterId

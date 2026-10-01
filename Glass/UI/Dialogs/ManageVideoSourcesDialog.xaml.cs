@@ -43,7 +43,7 @@ public partial class ManageVideoSourcesDialog : Window
     {
         DebugLog.Write(LogChannel.General, "ManageVideoSourcesDialog.LoadUISkins: loading skins.");
 
-        UISkinRepository skinRepo = new UISkinRepository();
+        UISkinGateway skinRepo = new UISkinGateway();
         List<UISkin> skins = skinRepo.GetAll();
 
         UISkinComboBox.ItemsSource = skins;
@@ -94,7 +94,7 @@ public partial class ManageVideoSourcesDialog : Window
 
         DebugLog.Write(LogChannel.General, $"ManageVideoSourcesDialog.LoadSources: loading sources for skin '{_selectedSkin.Name}'.");
 
-        VideoSourceRepository repo = new VideoSourceRepository();
+        VideoSourceGateway repo = new VideoSourceGateway();
         _sources = repo.GetByUISkin(_selectedSkin.Id).ToList();
 
         SourceListView.ItemsSource = null;
@@ -229,7 +229,7 @@ public partial class ManageVideoSourcesDialog : Window
             return;
         }
 
-        VideoSourceRepository repo = new VideoSourceRepository();
+        VideoSourceGateway repo = new VideoSourceGateway();
 
         if (_selectedSource != null)
         {
@@ -289,7 +289,7 @@ public partial class ManageVideoSourcesDialog : Window
         {
             DebugLog.Write(LogChannel.General, $"ManageVideoSourcesDialog.DeleteButton_Click: deleting source id={_selectedSource.Id}.");
 
-            VideoSourceRepository repo = new VideoSourceRepository();
+            VideoSourceGateway repo = new VideoSourceGateway();
             repo.Delete(_selectedSource.Id);
 
             _sources.Remove(_selectedSource);

@@ -6,12 +6,11 @@ using Microsoft.Data.Sqlite;
 namespace Glass.Data.Repositories;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// KeyPageRepository
+// KeyPageGateway
 //
 // Provides access to key pages in the database.
-// Pages are queried on demand — no preloaded cache.
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-public class KeyPageRepository
+public class KeyPageGateway
 {
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -23,8 +22,6 @@ public class KeyPageRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public List<string> GetPageNames(KeyboardType device)
     {
-        DebugLog.Write(LogChannel.Database, $"KeyPageRepository.GetPageNames: device={device}.");
-
         using var conn = Database.Instance.Connect();
         conn.Open();
 
@@ -39,7 +36,8 @@ public class KeyPageRepository
             names.Add(reader.GetString(0));
         }
 
-        DebugLog.Write(LogChannel.Database, $"KeyPageRepository.GetPageNames: device={device} found {names.Count} pages.");
+        DebugLog.Write(LogChannel.Database, $"KeyPageRepository.GetPageNames: device={device} found {names.Count} pages.",
+            LogLevel.Trace);
         return names;
     }
 
@@ -52,8 +50,6 @@ public class KeyPageRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public KeyPage? GetPage(int id)
     {
-        DebugLog.Write(LogChannel.Database, $"KeyPageRepository.GetPage: id={id}.");
-
         using var conn = Database.Instance.Connect();
         conn.Open();
 
@@ -64,9 +60,11 @@ public class KeyPageRepository
         using var reader = cmd.ExecuteReader();
         if (!reader.Read())
         {
-            DebugLog.Write(LogChannel.Database, $"KeyPageRepository.GetPage: id={id} not found.");
+            DebugLog.Write(LogChannel.Database, $"KeyPageRepository.GetPage: id={id} not found.", LogLevel.Warn);
             return null;
         }
+
+        DebugLog.Write(LogChannel.Database, $"KeyPageRepository.GetPage: Returning page id={id}", LogLevel.Trace);
 
         return new KeyPage
         {
@@ -86,8 +84,6 @@ public class KeyPageRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public KeyPage? GetPage(string name, KeyboardType device)
     {
-        DebugLog.Write(LogChannel.Database, $"KeyPageRepository.GetPage: name='{name}' device={device}.");
-
         using var conn = Database.Instance.Connect();
         conn.Open();
 
@@ -99,11 +95,13 @@ public class KeyPageRepository
         using var reader = cmd.ExecuteReader();
         if (!reader.Read())
         {
-            DebugLog.Write(LogChannel.Database, $"KeyPageRepository.GetPage: name='{name}' device={device} not found.");
+            DebugLog.Write(LogChannel.Database, $"KeyPageRepository.GetPage: name='{name}' device={device} not found.",
+                LogLevel.Warn);
             return null;
         }
 
-        DebugLog.Write(LogChannel.Database, $"KeyPageRepository.GetPage: name='{name}' device={device} found. id={reader.GetInt32(0)}.");
+        DebugLog.Write(LogChannel.Database, $"KeyPageRepository.GetPage: name='{name}' device={device} found. id={reader.GetInt32(0)}.",
+            LogLevel.Trace);
 
         return new KeyPage
         {
@@ -120,8 +118,6 @@ public class KeyPageRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public List<KeyPage> GetAllPages()
     {
-        DebugLog.Write(LogChannel.Database, "KeyPageRepository.GetAllPages: loading.");
-
         using var conn = Database.Instance.Connect();
         conn.Open();
 
@@ -140,7 +136,7 @@ public class KeyPageRepository
             });
         }
 
-        DebugLog.Write(LogChannel.Database, $"KeyPageRepository.GetAllPages: found {pages.Count} pages.");
+        DebugLog.Write(LogChannel.Database, $"KeyPageRepository.GetAllPages: found {pages.Count} pages.", LogLevel.Trace);
         return pages;
     }
 
@@ -154,8 +150,6 @@ public class KeyPageRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Save(KeyPage page)
     {
-        DebugLog.Write(LogChannel.Database, $"KeyPageRepository.Save: name='{page.Name}' device={page.Device}.");
-
         using var conn = Database.Instance.Connect();
         conn.Open();
 
@@ -166,7 +160,7 @@ public class KeyPageRepository
             cmd.Parameters.AddWithValue("@name", page.Name);
             cmd.Parameters.AddWithValue("@device", page.Device.ToString());
             page.Id = Convert.ToInt32(cmd.ExecuteScalar());
-            DebugLog.Write(LogChannel.Database, $"KeyPageRepository.Save: inserted. id={page.Id}.");
+            DebugLog.Write(LogChannel.Database, $"KeyPageRepository.Save: inserted. id={page.Id}.", LogLevel.Trace);
         }
         else
         {
@@ -176,7 +170,7 @@ public class KeyPageRepository
             cmd.Parameters.AddWithValue("@device", page.Device.ToString());
             cmd.Parameters.AddWithValue("@id", page.Id);
             cmd.ExecuteNonQuery();
-            DebugLog.Write(LogChannel.Database, $"KeyPageRepository.Save: updated. id={page.Id}.");
+            DebugLog.Write(LogChannel.Database, $"KeyPageRepository.Save: updated. id={page.Id}.", LogLevel.Trace);
         }
     }
 
@@ -189,8 +183,6 @@ public class KeyPageRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Delete(int id)
     {
-        DebugLog.Write(LogChannel.Database, $"KeyPageRepository.Delete: id={id}.");
-
         using var conn = Database.Instance.Connect();
         conn.Open();
 
@@ -199,7 +191,7 @@ public class KeyPageRepository
         cmd.Parameters.AddWithValue("@id", id);
         cmd.ExecuteNonQuery();
 
-        DebugLog.Write(LogChannel.Database, $"KeyPageRepository.Delete: deleted. id={id}.");
+        DebugLog.Write(LogChannel.Database, $"KeyPageRepository.Delete: deleted. id={id}.", LogLevel.Trace);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -211,8 +203,6 @@ public class KeyPageRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public int? GetPageId(string name)
     {
-        DebugLog.Write(LogChannel.Database, $"KeyPageRepository.GetPageId: name='{name}'.");
-
         using var conn = Database.Instance.Connect();
         conn.Open();
 
@@ -224,12 +214,12 @@ public class KeyPageRepository
 
         if (result == null)
         {
-            DebugLog.Write(LogChannel.Database, $"KeyPageRepository.GetPageId: name='{name}' not found.");
+            DebugLog.Write(LogChannel.Database, $"KeyPageRepository.GetPageId: name='{name}' not found.", LogLevel.Warn);
             return null;
         }
 
         int id = Convert.ToInt32(result);
-        DebugLog.Write(LogChannel.Database, $"KeyPageRepository.GetPageId: name='{name}' -> id={id}.");
+        DebugLog.Write(LogChannel.Database, $"KeyPageRepository.GetPageId: name='{name}' -> id={id}.", LogLevel.Trace);
         return id;
     }
 }

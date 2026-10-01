@@ -43,7 +43,7 @@ public class WindowLayout
             return $"{Name} {slotLabel}";
         }
 
-        MachineRepository machineRepo = new MachineRepository();
+        MachineGateway machineRepo = new MachineGateway();
         Machine? machine = machineRepo.GetById(MachineId.Value);
         string machineTag = machine != null ? $"[{machine.Name}] " : $"[machine {MachineId}] ";
 

@@ -43,8 +43,8 @@ public partial class ProfilePagesDialog : Window
     {
         DebugLog.Write(LogChannel.Database, $"ProfilePagesDialog.LoadPages: characterSetId={_characterSetId}.");
 
-        var pageRepo = new KeyPageRepository();
-        var profilePageRepo = new ProfilePageRepository();
+        var pageRepo = new KeyPageGateway();
+        var profilePageRepo = new ProfilePageGateway();
 
         var allPages = pageRepo.GetAllPages();
         var profilePages = profilePageRepo.GetPagesForProfile(_characterSetId)
@@ -163,7 +163,7 @@ public partial class ProfilePagesDialog : Window
             })
             .ToList();
 
-        var repo = new ProfilePageRepository();
+        var repo = new ProfilePageGateway();
         repo.SetPagesForProfile(_characterSetId, pages);
 
         DebugLog.Write(LogChannel.Input, $"ProfilePagesDialog.Save_Click: saved {pages.Count} pages.");

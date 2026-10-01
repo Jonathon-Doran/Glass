@@ -12,7 +12,7 @@ namespace Glass.Data.Repositories;
 // Machines are identified by hostname. GetOrCreate ensures the current
 // machine always has a database entry.
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-public class MachineRepository
+public class MachineGateway
 {
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // GetOrCreate
@@ -41,6 +41,8 @@ public class MachineRepository
             };
             reader.Close();
             machine.Devices = GetDevices(conn, machine.Id);
+            DebugLog.Write(LogChannel.Database, $"MachineRepository.GetOrCreate: returned id={machine.Id}.",
+                LogLevel.Trace);
             return machine;
         }
 
@@ -51,7 +53,7 @@ public class MachineRepository
         insertCmd.Parameters.AddWithValue("@name", hostname);
         int id = Convert.ToInt32(insertCmd.ExecuteScalar());
 
-        DebugLog.Write(LogChannel.Database, $"MachineRepository.GetOrCreate: created id={id}.");
+        DebugLog.Write(LogChannel.Database, $"MachineRepository.GetOrCreate: created id={id}.", LogLevel.Trace);
 
         return new Machine { Id = id, Name = hostname };
     }
@@ -88,7 +90,7 @@ public class MachineRepository
             machine.Devices = GetDevices(conn, machine.Id);
         }
 
-        DebugLog.Write(LogChannel.Database, $"MachineRepository.GetAll: found {machines.Count} machines.");
+        DebugLog.Write(LogChannel.Database, $"MachineRepository.GetAll: found {machines.Count} machines.", LogLevel.Trace);
         return machines;
     }
 
@@ -99,8 +101,6 @@ public class MachineRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public Machine? GetById(int id)
     {
-        DebugLog.Write(LogChannel.Database, $"MachineRepository.GetById: id={id}.");
-
         using var conn = Database.Instance.Connect();
         conn.Open();
 
@@ -111,7 +111,7 @@ public class MachineRepository
         using var reader = cmd.ExecuteReader();
         if (!reader.Read())
         {
-            DebugLog.Write(LogChannel.Database, $"MachineRepository.GetById: id={id} not found.");
+            DebugLog.Write(LogChannel.Database, $"MachineRepository.GetById: id={id} not found.", LogLevel.Warn);
             return null;
         }
 
@@ -123,7 +123,8 @@ public class MachineRepository
         reader.Close();
         machine.Devices = GetDevices(conn, machine.Id);
 
-        DebugLog.Write(LogChannel.Database, $"MachineRepository.GetById: found name='{machine.Name}' devices={machine.Devices.Count}.");
+        DebugLog.Write(LogChannel.Database, $"MachineRepository.GetById: found name='{machine.Name}' devices={machine.Devices.Count}."
+            , LogLevel.Trace);
         return machine;
     }
 
@@ -134,8 +135,6 @@ public class MachineRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Save(Machine machine)
     {
-        DebugLog.Write(LogChannel.Database, $"MachineRepository.Save: name='{machine.Name}'.");
-
         using var conn = Database.Instance.Connect();
         conn.Open();
 
@@ -145,7 +144,7 @@ public class MachineRepository
             cmd.CommandText = "INSERT INTO Machines (name) VALUES (@name); SELECT last_insert_rowid();";
             cmd.Parameters.AddWithValue("@name", machine.Name);
             machine.Id = Convert.ToInt32(cmd.ExecuteScalar());
-            DebugLog.Write(LogChannel.Database, $"MachineRepository.Save: inserted id={machine.Id}.");
+            DebugLog.Write(LogChannel.Database, $"MachineRepository.Save: inserted id={machine.Id}.", LogLevel.Trace);
         }
         else
         {
@@ -154,7 +153,7 @@ public class MachineRepository
             cmd.Parameters.AddWithValue("@name", machine.Name);
             cmd.Parameters.AddWithValue("@id", machine.Id);
             cmd.ExecuteNonQuery();
-            DebugLog.Write(LogChannel.Database, $"MachineRepository.Save: updated id={machine.Id}.");
+            DebugLog.Write(LogChannel.Database, $"MachineRepository.Save: updated id={machine.Id}.", LogLevel.Trace);
         }
     }
 
@@ -165,8 +164,6 @@ public class MachineRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void SaveDevices(int machineId, List<MachineDevice> devices)
     {
-        DebugLog.Write(LogChannel.Database, $"MachineRepository.SaveDevices: machineId={machineId} count={devices.Count}.");
-
         using var conn = Database.Instance.Connect();
         conn.Open();
 
@@ -193,12 +190,13 @@ public class MachineRepository
             }
 
             tx.Commit();
-            DebugLog.Write(LogChannel.Database, $"MachineRepository.SaveDevices: committed.");
+            DebugLog.Write(LogChannel.Database, $"MachineRepository.SaveDevices: committed.", LogLevel.Trace);
         }
         catch (Exception ex)
         {
             tx.Rollback();
-            DebugLog.Write(LogChannel.Database, $"MachineRepository.SaveDevices: exception: {ex.Message}, rolling back.");
+            DebugLog.Write(LogChannel.Database, $"MachineRepository.SaveDevices: exception: {ex.Message}, rolling back.",
+                LogLevel.Error);
             throw;
         }
     }
@@ -210,8 +208,6 @@ public class MachineRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Delete(int id)
     {
-        DebugLog.Write(LogChannel.Database, $"MachineRepository.Delete: id={id}.");
-
         using var conn = Database.Instance.Connect();
         conn.Open();
 
@@ -231,12 +227,13 @@ public class MachineRepository
             deleteMachine.ExecuteNonQuery();
 
             tx.Commit();
-            DebugLog.Write(LogChannel.Database, $"MachineRepository.Delete: deleted id={id}.");
+            DebugLog.Write(LogChannel.Database, $"MachineRepository.Delete: deleted id={id}.", LogLevel.Trace);
         }
         catch (Exception ex)
         {
             tx.Rollback();
-            DebugLog.Write(LogChannel.Database, $"MachineRepository.Delete: exception: {ex.Message}, rolling back.");
+            DebugLog.Write(LogChannel.Database, $"MachineRepository.Delete: exception: {ex.Message}, rolling back.",
+                LogLevel.Error);
             throw;
         }
     }
@@ -266,6 +263,8 @@ public class MachineRepository
             });
         }
 
+        DebugLog.Write(LogChannel.Database, "GetDevices: Returning " + devices.Count + " devices",
+            LogLevel.Trace);
         return devices;
     }
 }

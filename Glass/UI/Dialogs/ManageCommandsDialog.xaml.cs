@@ -33,7 +33,7 @@ public partial class ManageCommandsDialog : Window
     {
         DebugLog.Write(LogChannel.Database, "ManageCommandsDialog.LoadCommandList: loading.");
 
-        var repo = new CommandRepository();
+        var repo = new CommandGateway();
         var commands = repo.GetAllCommands();
 
         CommandListView.ItemsSource = commands;
@@ -57,7 +57,7 @@ public partial class ManageCommandsDialog : Window
 
         DebugLog.Write(LogChannel.Database, $"ManageCommandsDialog.LoadStepList: commandId={_selectedCommand.Id}.");
 
-        var repo = new CommandRepository();
+        var repo = new CommandGateway();
         var command = repo.GetCommand(_selectedCommand.Id);
 
         if (command == null)
@@ -198,7 +198,7 @@ public partial class ManageCommandsDialog : Window
             return;
         }
 
-        var repo = new CommandRepository();
+        var repo = new CommandGateway();
         var existing = repo.GetAllCommands();
 
         if (existing.Any(c => (c.Name == newName) && (c.Id != _selectedCommand.Id)))
@@ -302,7 +302,7 @@ public partial class ManageCommandsDialog : Window
         {
             DebugLog.Write(LogChannel.Input, $"ManageCommandsDialog.NewRename_Click: creating command name='{name}' label='{label}'.");
 
-            var repo = new CommandRepository();
+            var repo = new CommandGateway();
             var existing = repo.GetAllCommands();
 
             if (existing.Any(c => c.Name == name))
@@ -350,7 +350,7 @@ public partial class ManageCommandsDialog : Window
             return;
         }
 
-        var repo = new CommandRepository();
+        var repo = new CommandGateway();
         repo.DeleteCommand(_selectedCommand.Id);
 
         DebugLog.Write(LogChannel.Input, $"ManageCommandsDialog.DeleteCommand_Click: deleted.");
@@ -381,7 +381,7 @@ public partial class ManageCommandsDialog : Window
 
         DebugLog.Write(LogChannel.Input, $"ManageCommandsDialog.DeleteStep_Click: deleting step id={_selectedStep.Id}.");
 
-        var repo = new CommandRepository();
+        var repo = new CommandGateway();
         repo.DeleteStep(_selectedStep.Id);
 
         DebugLog.Write(LogChannel.Input, $"ManageCommandsDialog.DeleteStep_Click: deleted.");
@@ -475,7 +475,7 @@ public partial class ManageCommandsDialog : Window
             return;
         }
 
-        var repo = new CommandRepository();
+        var repo = new CommandGateway();
 
         if (_selectedStep == null)
         {
@@ -562,7 +562,7 @@ public partial class ManageCommandsDialog : Window
 
         DebugLog.Write(LogChannel.Input, $"ManageCommandsDialog.MoveStepUp_Click: moving step id={_selectedStep.Id} up.");
 
-        var repo = new CommandRepository();
+        var repo = new CommandGateway();
         int seqA = steps[index].Sequence;
         int seqB = steps[index - 1].Sequence;
         int tempSeq = steps.Max(s => s.Sequence) + 1;
@@ -612,7 +612,7 @@ public partial class ManageCommandsDialog : Window
 
         DebugLog.Write(LogChannel.Input, $"ManageCommandsDialog.MoveStepDown_Click: moving step id={_selectedStep.Id} down.");
 
-        var repo = new CommandRepository();
+        var repo = new CommandGateway();
         int seqA = steps[index].Sequence;
         int seqB = steps[index + 1].Sequence;
         int tempSeq = steps.Max(s => s.Sequence) + 1;

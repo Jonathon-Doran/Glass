@@ -173,6 +173,8 @@ public class Character
     // when the storage system is Carried and the main position is one of the
     // named worn positions.
     //
+    // Note that multiple items may be at a location (armor + augments).  Callers need to be prepared.
+    //
     // storageSystem:  Storage system holding the item
     // mainPosition:   Index within the storage system
     // wornPosition:   Receives the worn position when the location is worn,

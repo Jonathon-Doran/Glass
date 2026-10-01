@@ -31,7 +31,7 @@ public class EqClientFileGenerator
 
         DebugLog.Write(LogChannel.Database, "EqClientFileGenerator: loading monitor dimensions.");
 
-        var monitorRepo = new MonitorRepository();
+        var monitorRepo = new MonitorGateway();
         var monitor = monitorRepo.GetFirstMonitor();
 
         if (monitor.HasValue)

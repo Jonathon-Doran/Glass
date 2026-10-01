@@ -32,7 +32,7 @@ public partial class ManageKeyAliasesDialog : Window
     {
         DebugLog.Write(LogChannel.General, "ManageKeyAliasesDialog.LoadAliasList: loading.");
 
-        var repo = new KeyAliasRepository();
+        var repo = new KeyAliasGateway();
         var aliases = repo.GetAllAliases();
 
         AliasListView.ItemsSource = aliases;
@@ -211,7 +211,7 @@ public partial class ManageKeyAliasesDialog : Window
             return;
         }
 
-        var repo = new KeyAliasRepository();
+        var repo = new KeyAliasGateway();
         var existing = repo.GetAllAliases();
 
         if (existing.Any(a => (a.Name == newName) && (a.Id != _selectedAlias.Id)))
@@ -258,7 +258,7 @@ public partial class ManageKeyAliasesDialog : Window
                 return;
             }
 
-            var repo = new KeyAliasRepository();
+            var repo = new KeyAliasGateway();
             var existing = repo.GetAllAliases();
 
             if (existing.Any(a => a.Name == name))
@@ -307,7 +307,7 @@ public partial class ManageKeyAliasesDialog : Window
             return;
         }
 
-        var repo = new KeyAliasRepository();
+        var repo = new KeyAliasGateway();
         repo.Delete(_selectedAlias.Id);
 
         DebugLog.Write(LogChannel.General, $"ManageKeyAliasesDialog.DeleteAlias_Click: deleted.");

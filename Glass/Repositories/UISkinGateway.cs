@@ -7,11 +7,11 @@ using System.Collections.Generic;
 namespace Glass.Data.Repositories;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// UISkinRepository
+// UISkinGateway
 //
 // Repository for loading UI skin definitions.
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-public class UISkinRepository
+public class UISkinGateway
 {
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // GetAll
@@ -20,8 +20,6 @@ public class UISkinRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public List<UISkin> GetAll()
     {
-        DebugLog.Write(LogChannel.Database, "UISkinRepository.GetAll: loading all skins.");
-
         List<UISkin> skins = new List<UISkin>();
 
         using var conn = Database.Instance.Connect();
@@ -41,7 +39,7 @@ public class UISkinRepository
             skins.Add(skin);
         }
 
-        DebugLog.Write(LogChannel.Database, $"UISkinRepository.GetAll: loaded {skins.Count} skins.");
+        DebugLog.Write(LogChannel.Database, $"UISkinGateway.GetAll: loaded {skins.Count} skins.", LogLevel.Trace);
         return skins;
     }
 
@@ -54,8 +52,6 @@ public class UISkinRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public UISkin? GetById(int id)
     {
-        DebugLog.Write(LogChannel.Database, $"UISkinRepository.GetById: id={id}.");
-
         using var conn = Database.Instance.Connect();
         conn.Open();
 
@@ -71,11 +67,11 @@ public class UISkinRepository
                 Id = reader.GetInt32(0),
                 Name = reader.GetString(1)
             };
-            DebugLog.Write(LogChannel.Database, $"UISkinRepository.GetById: found '{skin.Name}'.");
+            DebugLog.Write(LogChannel.Database, $"UISkinGateway.GetById: found '{skin.Name}'.", LogLevel.Trace);
             return skin;
         }
 
-        DebugLog.Write(LogChannel.Database, $"UISkinRepository.GetById: id={id} not found.");
+        DebugLog.Write(LogChannel.Database, $"UISkinGateway.GetById: id={id} not found.", LogLevel.Warn);
         return null;
     }
 }

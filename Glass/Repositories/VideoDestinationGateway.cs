@@ -6,13 +6,13 @@ using Microsoft.Data.Sqlite;
 namespace Glass.Data.Repositories;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// VideoDestinationRepository
+// VideoDestinationGateway
 //
 // Handles persistence of VideoDestination records.
 // VideoDestinations are global and define slot-relative render coordinates
 // for each named VideoSource region, keyed by name and UI skin.
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-public class VideoDestinationRepository
+public class VideoDestinationGateway
 {
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // GetAll
@@ -21,8 +21,6 @@ public class VideoDestinationRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public List<VideoDestination> GetAll()
     {
-        DebugLog.Write(LogChannel.Database, "VideoDestinationRepository.GetAll: loading destinations.");
-
         List<VideoDestination> destinations = new List<VideoDestination>();
 
         using SqliteConnection conn = Database.Instance.Connect();
@@ -47,7 +45,7 @@ public class VideoDestinationRepository
             destinations.Add(destination);
         }
 
-        DebugLog.Write(LogChannel.Database, $"VideoDestinationRepository.GetAll: loaded {destinations.Count} destinations.");
+        DebugLog.Write(LogChannel.Database, $"VideoDestinationRepository.GetAll: loaded {destinations.Count} destinations.", LogLevel.Trace);
         return destinations;
     }
 
@@ -60,8 +58,6 @@ public class VideoDestinationRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public List<VideoDestination> GetByUISkin(int uiSkinId)
     {
-        DebugLog.Write(LogChannel.Database, $"VideoDestinationRepository.GetByUISkin: uiSkinId={uiSkinId}.");
-
         List<VideoDestination> destinations = new List<VideoDestination>();
 
         using SqliteConnection conn = Database.Instance.Connect();
@@ -87,7 +83,7 @@ public class VideoDestinationRepository
             destinations.Add(destination);
         }
 
-        DebugLog.Write(LogChannel.Database, $"VideoDestinationRepository.GetByUISkin: loaded {destinations.Count} destinations.");
+        DebugLog.Write(LogChannel.Database, $"VideoDestinationRepository.GetByUISkin: loaded {destinations.Count} destinations.", LogLevel.Trace);
         return destinations;
     }
 
@@ -101,8 +97,6 @@ public class VideoDestinationRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public VideoDestination? GetByNameAndSkin(string name, int uiSkinId)
     {
-        DebugLog.Write(LogChannel.Database, $"VideoDestinationRepository.GetByNameAndSkin: name='{name}' uiSkinId={uiSkinId}.");
-
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
 
@@ -124,11 +118,11 @@ public class VideoDestinationRepository
                 Width = reader.GetInt32(5),
                 Height = reader.GetInt32(6)
             };
-            DebugLog.Write(LogChannel.Database, $"VideoDestinationRepository.GetByNameAndSkin: found id={destination.Id}.");
+            DebugLog.Write(LogChannel.Database, $"VideoDestinationRepository.GetByNameAndSkin: found id={destination.Id}.", LogLevel.Trace);
             return destination;
         }
 
-        DebugLog.Write(LogChannel.Database, $"VideoDestinationRepository.GetByNameAndSkin: not found.");
+        DebugLog.Write(LogChannel.Database, $"VideoDestinationRepository.GetByNameAndSkin: not found.", LogLevel.Warn);
         return null;
     }
 
@@ -141,8 +135,6 @@ public class VideoDestinationRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Save(VideoDestination destination)
     {
-        DebugLog.Write(LogChannel.Database, $"VideoDestinationRepository.Save: name='{destination.Name}' uiSkinId={destination.UISkinId}.");
-
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
 
@@ -157,7 +149,7 @@ public class VideoDestinationRepository
             cmd.Parameters.AddWithValue("@width", destination.Width);
             cmd.Parameters.AddWithValue("@height", destination.Height);
             destination.Id = Convert.ToInt32(cmd.ExecuteScalar());
-            DebugLog.Write(LogChannel.Database, $"VideoDestinationRepository.Save: inserted id={destination.Id}.");
+            DebugLog.Write(LogChannel.Database, $"VideoDestinationRepository.Save: inserted id={destination.Id}.", LogLevel.Trace);
         }
         else
         {
@@ -171,7 +163,7 @@ public class VideoDestinationRepository
             cmd.Parameters.AddWithValue("@height", destination.Height);
             cmd.Parameters.AddWithValue("@id", destination.Id);
             cmd.ExecuteNonQuery();
-            DebugLog.Write(LogChannel.Database, $"VideoDestinationRepository.Save: updated id={destination.Id}.");
+            DebugLog.Write(LogChannel.Database, $"VideoDestinationRepository.Save: updated id={destination.Id}.", LogLevel.Trace);
         }
     }
 
@@ -184,8 +176,6 @@ public class VideoDestinationRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Delete(int id)
     {
-        DebugLog.Write(LogChannel.Database, $"VideoDestinationRepository.Delete: id={id}.");
-
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
 
@@ -194,6 +184,6 @@ public class VideoDestinationRepository
         cmd.Parameters.AddWithValue("@id", id);
         cmd.ExecuteNonQuery();
 
-        DebugLog.Write(LogChannel.Database, $"VideoDestinationRepository.Delete: deleted id={id}.");
+        DebugLog.Write(LogChannel.Database, $"VideoDestinationRepository.Delete: deleted id={id}.", LogLevel.Trace);
     }
 }

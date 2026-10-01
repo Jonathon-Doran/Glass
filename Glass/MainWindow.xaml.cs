@@ -47,7 +47,7 @@ public partial class MainWindow : Window
 
         if (Database.IsInitialized)
         {
-            MachineRepository machineRepo = new MachineRepository();
+            MachineGateway machineRepo = new MachineGateway();
             GlassContext.CurrentMachine = machineRepo.GetOrCreate(Environment.MachineName);
             DebugLog.Write(LogChannel.General, $"MainWindow: current machine id={GlassContext.CurrentMachine.Id} name='{GlassContext.CurrentMachine.Name}'.", LogLevel.Trace);
             if (GlassContext.CurrentMachine.Devices.Count == 0)
@@ -380,7 +380,7 @@ public partial class MainWindow : Window
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void PushRelayGroupState(int profileId)
     {
-        List<RelayGroup> groups = new RelayGroupRepository().GetAllGroupsForProfile(profileId);
+        List<RelayGroup> groups = new RelayGroupGateway().GetAllGroupsForProfile(profileId);
 
         foreach (RelayGroup group in groups)
         {
@@ -411,12 +411,12 @@ public partial class MainWindow : Window
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void PushCommandState()
     {
-        List<Command> commands = new CommandRepository().GetAllCommands();
-        KeyAliasRepository aliasRepo = new KeyAliasRepository();
+        List<Command> commands = new CommandGateway().GetAllCommands();
+        KeyAliasGateway aliasRepo = new KeyAliasGateway();
 
         foreach (Command command in commands)
         {
-            Command? full = new CommandRepository().GetCommand(command.Id);
+            Command? full = new CommandGateway().GetCommand(command.Id);
             if (full == null)
             {
                 DebugLog.Write(LogChannel.ISXGlass, $"MainWindow.PushCommandState: commandId={command.Id} not found, skipping.", LogLevel.Trace);
