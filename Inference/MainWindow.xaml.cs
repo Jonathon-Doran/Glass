@@ -104,6 +104,7 @@ public partial class MainWindow : Window
 
         OpenDatabase();
         ProtocolStackBootstrap.Initialize();
+        CharacterRepository.Instance.Load();
 
         BuildRecentPatchesMenu();
         RestoreLastPatchLevel();

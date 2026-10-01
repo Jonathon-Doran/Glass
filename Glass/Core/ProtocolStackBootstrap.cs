@@ -1,5 +1,4 @@
 ﻿using Glass.Core.Logging;
-using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 
@@ -31,10 +30,6 @@ public static class ProtocolStackBootstrap
     public static void Initialize()
     {
         DebugLog.Write(LogChannel.General, "ProtocolStackBootstrap.Initialize: starting");
-
-        CharacterRepository.Instance.Load();
-        DebugLog.Write(LogChannel.General,
-            "ProtocolStackBootstrap.Initialize: CharacterRepository loaded", LogLevel.Trace);
 
         GlassContext.FieldExtractor = new FieldExtractor();
         DebugLog.Write(LogChannel.General,

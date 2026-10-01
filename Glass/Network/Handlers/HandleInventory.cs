@@ -576,7 +576,7 @@ public class HandleInventory : OpcodeHandler
             storedCount += CaptureItem(itemListGate, itemIndex, character, null);
         }
 
-        ItemInstanceRepository.Instance.StoreSnapshot(character);
+        ItemInstanceGateway.Instance.StoreSnapshot(character);
 
         DebugLog.Write(LogChannel.Inventory, "CaptureInventory: stored " + storedCount + " items, including contents " +
             "and augments, for '" + characterName + "'", LogLevel.Trace);

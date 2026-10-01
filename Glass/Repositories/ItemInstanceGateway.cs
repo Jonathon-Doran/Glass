@@ -5,28 +5,28 @@ using Microsoft.Data.Sqlite;
 namespace Glass.Data.Repositories;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// ItemInstanceRepository
+// ItemInstancGateway
 //
 // Database-backed store of the item instances held by each character.  A character's rows are replaced
 // as a whole from that character's current instances; nothing is cached here, the character object is
 // the in-memory copy.
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-public class ItemInstanceRepository
+public class ItemInstanceGateway
 {
-    private static ItemInstanceRepository? _instance = null;
+    private static ItemInstanceGateway? _instance = null;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Instance
     //
     // Lazy singleton accessor.  The instance is created on first access.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public static ItemInstanceRepository Instance
+    public static ItemInstanceGateway Instance
     {
         get
         {
             if (_instance == null)
             {
-                _instance = new ItemInstanceRepository();
+                _instance = new ItemInstanceGateway();
             }
             return _instance;
         }
@@ -37,7 +37,7 @@ public class ItemInstanceRepository
     //
     // Private constructor.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private ItemInstanceRepository()
+    private ItemInstanceGateway()
     {
         DebugLog.Write(LogChannel.Inventory, "ItemInstanceRepository: singleton instance created.", LogLevel.Trace);
     }

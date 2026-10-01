@@ -65,11 +65,11 @@ public class ProfileManager
             return;
         }
 
-        ProfileRepository repo = new ProfileRepository(profileName);
-        CharacterRepository.Instance.Load(repo.GetCharacterIds());
-        IReadOnlyList<SlotAssignment> slots = repo.GetSlots();
+        ProfileRepository profile = new ProfileRepository(profileName);
+        CharacterRepository.Instance.Load(profile.GetCharacterIds());
+        IReadOnlyList<SlotAssignment> slots = profile.GetSlots();
 
-        _activeProfile = repo;
+        _activeProfile = profile;
         _definedSlots.Clear();
         GlassContext.KeyboardManager.LoadProfile(profileName);
 
@@ -79,7 +79,7 @@ public class ProfileManager
         GlassContext.FocusTracker.Start();
         GlassContext.ISXGlassPipe.Send("new_profile");
 
-        int layoutId = repo.GetLayoutId() ?? 0;
+        int layoutId = profile.GetLayoutId() ?? 0;
         if (layoutId != 0)
         {
             SendGlassVideoLayout(layoutId);
