@@ -227,7 +227,7 @@ public class FieldExtractor
             " (" + gateName + ") kind " + gate.Kind + " child " + gate.ChildCollection +
             " (" + CollectionNameOf(gate.ChildCollection) + ")", LogLevel.Trace);
         DebugLog.Write(LogChannel.Memory, "Starting Expand for '" + gateName + "'", LogLevel.Trace);
-        GlassContext.BufferPool.LogStatistics();
+        //GlassContext.BufferPool.LogStatistics();
         switch (gate.Kind)
         {
             case MultiplicityKind.Once:

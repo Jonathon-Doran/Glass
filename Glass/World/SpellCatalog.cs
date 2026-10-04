@@ -185,6 +185,57 @@ public class SpellCatalog
         return _spellsById.Count;
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // LogStatCalcTally
+    //
+    // Counts, for every spell in the catalog, the effects whose SPA changes a character stat
+    // (maximum HP, mana, and endurance, AC, attack, the seven base stats, and the six
+    // resists), grouped by Calc value, and logs one line per Calc value in ascending order.
+    // Temporary verification aid; logs at Warn so the output is visible under the normal
+    // log level.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void LogStatCalcTally()
+    {
+        HashSet<SPAId> statSpas = new HashSet<SPAId>
+        {
+            SPAId.MaxHitpoints, SPAId.MaxMana, SPAId.MaxEndurance, SPAId.ArmorClass, SPAId.AttackPower,
+            SPAId.Strength, SPAId.Stamina, SPAId.Agility, SPAId.Dexterity, SPAId.Charisma,
+            SPAId.Intelligence, SPAId.Wisdom, SPAId.ResistCold, SPAId.ResistDisease, SPAId.ResistPoison,
+            SPAId.ResistMagic, SPAId.ResistFire, SPAId.ResistCorruption
+        };
+
+        Dictionary<uint, uint> tally = new Dictionary<uint, uint>();
+        uint effectCount = 0;
+
+        foreach (SpellRecord record in _spellsById.Values)
+        {
+            foreach (SpellEffect effect in record.Effects)
+            {
+                if (statSpas.Contains(effect.Spa) == false)
+                {
+                    continue;
+                }
+
+                tally.TryGetValue(effect.Calc, out uint count);
+                tally[effect.Calc] = count + 1;
+                effectCount++;
+            }
+        }
+
+        List<uint> calcs = new List<uint>(tally.Keys);
+        calcs.Sort();
+
+        foreach (uint calc in calcs)
+        {
+            DebugLog.Write(LogChannel.Reference, "SpellCatalog.LogStatCalcTally: calc " + calc + ": " +
+                tally[calc] + " stat effects", LogLevel.Info);
+        }
+
+        DebugLog.Write(LogChannel.Reference, "SpellCatalog.LogStatCalcTally: " + effectCount +
+            " stat effects across " + calcs.Count + " calc values in " + _spellsById.Count + " spells",
+            LogLevel.Info);
+    }
+
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // LogParseSpotCheck
@@ -262,7 +313,7 @@ public class SpellCatalog
         uint id = 0;
         uint range = 0;
         uint castTime = 0;
-        uint recastTime = 0;
+        int recastTimeSigned = 0;
         uint durationFormula = 0;
         uint durationCap = 0;
         uint mana = 0;
@@ -275,7 +326,7 @@ public class SpellCatalog
         bool parsed = uint.TryParse(columns[ColumnId], out id)
             && uint.TryParse(columns[ColumnRange], out range)
             && uint.TryParse(columns[ColumnCastTime], out castTime)
-            && uint.TryParse(columns[ColumnRecastTime], out recastTime)
+            && int.TryParse(columns[ColumnRecastTime], out recastTimeSigned)
             && uint.TryParse(columns[ColumnDurationFormula], out durationFormula)
             && uint.TryParse(columns[ColumnDurationCap], out durationCap)
             && uint.TryParse(columns[ColumnMana], out mana)
@@ -287,9 +338,36 @@ public class SpellCatalog
 
         if (parsed == false)
         {
+            int[] numericColumns =
+            {
+                ColumnId, ColumnRange, ColumnCastTime, ColumnRecastTime, ColumnDurationFormula,
+                ColumnDurationCap, ColumnMana, ColumnPrimaryCategory, ColumnSecondaryCategory,
+                ColumnSecondaryCategory2, ColumnTargetType, ColumnCastRestriction
+            };
+
+            string failedColumns = string.Empty;
+            foreach (int column in numericColumns)
+            {
+                if (uint.TryParse(columns[column], out uint _) == false)
+                {
+                    failedColumns += " " + column + "='" + columns[column] + "'";
+                }
+            }
+
             DebugLog.Write(LogChannel.Reference, "SpellCatalog.ParseLine: line " + lineNumber
-                + " has an unparseable numeric column, skipping", LogLevel.Warn);
+                + " has unparseable numeric columns:" + failedColumns + ", skipping", LogLevel.Warn);
             return null;
+        }
+
+        uint recastTime = 0;
+        if (recastTimeSigned < 0)
+        {
+            DebugLog.Write(LogChannel.Reference, "SpellCatalog.ParseLine: line " + lineNumber
+                + " has negative recast time " + recastTimeSigned + "; stored as 0", LogLevel.Trace);
+        }
+        else
+        {
+            recastTime = (uint)recastTimeSigned;
         }
 
         SpellRecord record = new SpellRecord();
@@ -356,6 +434,7 @@ public class SpellCatalog
     // pipe-separated sextet of slot, SPA, base1, base2, calc, and max.  Groups whose SPA
     // is not in the whitelist are dropped.  A structurally bad group is logged at Warn and
     // skipped without failing the containing spell.  An empty column yields an empty array.
+    // A value too large for its field is clamped to the field's range
     //
     // packed:      The final column's raw text.
     // spellId:     The owning spell's ID, for log attribution.
@@ -386,17 +465,17 @@ public class SpellCatalog
 
             uint slot = 0;
             uint spaValue = 0;
-            int base1 = 0;
-            int base2 = 0;
-            uint calc = 0;
-            int max = 0;
+            long base1Wide = 0;
+            long base2Wide = 0;
+            ulong calcWide = 0;
+            long maxWide = 0;
 
             bool parsed = uint.TryParse(parts[0], out slot)
                 && uint.TryParse(parts[1], out spaValue)
-                && int.TryParse(parts[2], out base1)
-                && int.TryParse(parts[3], out base2)
-                && uint.TryParse(parts[4], out calc)
-                && int.TryParse(parts[5], out max);
+                && long.TryParse(parts[2], out base1Wide)
+                && long.TryParse(parts[3], out base2Wide)
+                && ulong.TryParse(parts[4], out calcWide)
+                && long.TryParse(parts[5], out maxWide);
 
             SPAId spa = (SPAId)spaValue;
 
@@ -408,12 +487,24 @@ public class SpellCatalog
                 continue;
             }
 
-/*            // Note:  this whitelist was used to limit SPA effects to the ones expected to be used.
- *            //        this is too restrictive.
- *            if (_spaWhitelist.Contains(spa) == false)
+            int base1 = (int)Math.Clamp(base1Wide, int.MinValue, int.MaxValue);
+            int base2 = (int)Math.Clamp(base2Wide, int.MinValue, int.MaxValue);
+            uint calc = (uint)Math.Min(calcWide, uint.MaxValue);
+            int max = (int)Math.Clamp(maxWide, int.MinValue, int.MaxValue);
+
+            if (base1 != base1Wide || base2 != base2Wide || calc != calcWide || max != maxWide)
             {
-                continue;
-            }*/
+                DebugLog.Write(LogChannel.Reference, "SpellCatalog.ParseEffects: spell "
+                    + spellId + " line " + lineNumber + " effect group '" + group
+                    + "' has values outside the field range; clamped", LogLevel.Trace);
+            }
+
+            /*            // Note:  this whitelist was used to limit SPA effects to the ones expected to be used.
+             *            //        this is too restrictive.
+             *            if (_spaWhitelist.Contains(spa) == false)
+                        {
+                            continue;
+                        }*/
 
             SpellEffect effect = new SpellEffect();
             effect.Slot = slot;
@@ -606,6 +697,9 @@ public class SpellCatalog
 
         DebugLog.Write(LogChannel.Reference, "SpellCatalog.LoadCategoryNames: loaded "
             + _categoryNames.Count + " category names from " + filePath, LogLevel.Trace);
+
+        // Used to gather stats on calculation usage
+        // LogStatCalcTally();
 
         return _categoryNames.Count;
     }

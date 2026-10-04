@@ -1,5 +1,6 @@
 using Glass.Core.Logging;
 using Glass.Data.Repositories;
+using Glass.World;
 
 namespace Glass.Data.Models;
 
@@ -44,6 +45,20 @@ public class Character
     public SpellId[] SpellGems { get; set; } = Array.Empty<SpellId>();
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // _activeSpells
+    //
+    // Every spell currently affecting this character, keyed by spell position.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private readonly Dictionary<uint, ActiveSpell> _activeSpells = new Dictionary<uint, ActiveSpell>();
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ActiveSpells
+    //
+    // Every spell currently affecting this character, in no particular order.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public IEnumerable<ActiveSpell> ActiveSpells => _activeSpells.Values;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // _items
     //
     // Every item instance held by this character, keyed by position.  Contents of
@@ -71,6 +86,19 @@ public class Character
         _items.Clear();
         DebugLog.Write(LogChannel.Fields, "Character.ClearItems: removed " + removedCount +
             " items from '" + Name + "'", LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ClearActiveSpells
+    //
+    // Removes every spell currently affecting this character.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public void ClearActiveSpells()
+    {
+        int removedCount = _activeSpells.Count;
+        _activeSpells.Clear();
+        DebugLog.Write(LogChannel.Fields, "Character.ClearActiveSpells: removed " + removedCount +
+            " active spells from '" + Name + "'", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -288,6 +316,67 @@ public class Character
         return bonuses;
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // SumActiveSpellBonuses
+    //
+    // Builds new bonus totals from every spell currently affecting this character.  Each
+    // spell's stat effects are computed at the level of its caster.  A spell missing from the
+    // spell catalog is logged and skipped.
+    //
+    // Returns new totals holding the bonuses of the active spells.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public StatBonuses SumActiveSpellBonuses()
+    {
+        StatBonuses bonuses = new StatBonuses();
+        uint counted = 0;
+        uint missing = 0;
+
+        foreach (ActiveSpell spell in _activeSpells.Values)
+        {
+            if (SpellCatalog.Instance.TryGet(spell.SpellId, out SpellRecord? record) == false)
+            {
+                missing++;
+                DebugLog.Write(LogChannel.Fields, "Character.SumActiveSpellBonuses: spell " + spell.SpellId +
+                    " at position " + spell.Position + " on '" + Name + "' not in spell catalog; skipped",
+                    LogLevel.Warn);
+                continue;
+            }
+
+            bonuses.AddSpellBonuses(record, spell.CasterLevel);
+            counted++;
+        }
+
+        DebugLog.Write(LogChannel.Fields, "Character.SumActiveSpellBonuses: '" + Name + "' bonuses from " +
+            counted + " active spells, " + missing + " not in catalog: HP " + bonuses.HP + ", mana " +
+            bonuses.Mana + ", AC " + bonuses.AC, LogLevel.Info);
+
+        return bonuses;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // SetActiveSpell
+    //
+    // Stores an active spell at its buff position on this character, replacing any spell
+    // already held at that position.
+    //
+    // spell:  The active spell to store.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public void SetActiveSpell(ActiveSpell spell)
+    {
+        if (_activeSpells.TryGetValue(spell.Position, out ActiveSpell? previous))
+        {
+            DebugLog.Write(LogChannel.Fields, "Character.SetActiveSpell: position " + spell.Position +
+                " on '" + Name + "' held spell " + previous.SpellId + "; replaced by spell " +
+                spell.SpellId, LogLevel.Trace);
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.Fields, "Character.SetActiveSpell: stored spell " + spell.SpellId +
+                " at position " + spell.Position + " on '" + Name + "'", LogLevel.Trace);
+        }
+
+        _activeSpells[spell.Position] = spell;
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // StorageSystemNames

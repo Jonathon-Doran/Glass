@@ -521,7 +521,7 @@ public class PatchData
             CollectionHandle handle = registry.RegisterCollection(this, index);
 
             DebugLog.Write(LogChannel.Fields, "Collection '" + collectionName + "' has collection handle=" + handle,
-                LogLevel.Info);
+                LogLevel.Trace);
 
             _collectionIndexByCollectionName[collectionName] = index;
             _collectionHandleByIndex[handleIndex] = handle;

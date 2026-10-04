@@ -161,7 +161,8 @@ public class HandlePlayerProfile : OpcodeHandler
                 Character? character = CharacterRepository.Instance.GetByName(name);
                 if (character == null)
                 {
-                    DebugLog.Write(LogChannel.Opcodes, _opcodeName + ": no Character named '" + name + "' in repository; fields not stored.");
+                    DebugLog.Write(LogChannel.Opcodes, _opcodeName + ": no Character named '" + name + 
+                        "' in repository; fields not stored.", LogLevel.Trace);
                     return;
                 }
                 character.Level = _extractor.GetUIntAt(_levelSlot);
@@ -199,11 +200,20 @@ public class HandlePlayerProfile : OpcodeHandler
                     character.SpellGems[index] = (SpellId)spellgems[index];
                 }
 
+                CaptureActiveSpells(character, rootGate, bagIndex);
+                StatBonuses spellBonuses = character.SumActiveSpellBonuses();
+                DebugLog.Write(LogChannel.Fields, "HandlePlayerProfile.HandleZoneToClient: '" + name +
+                    "' spell bonuses STR " + spellBonuses.Strength + ", STA " + spellBonuses.Stamina +
+                    ", AGI " + spellBonuses.Agility + ", DEX " + spellBonuses.Dexterity + ", CHA " +
+                    spellBonuses.Charisma + ", HP " + spellBonuses.HP + ", AC " + spellBonuses.AC +
+                    ", magic " + spellBonuses.SaveMagic, LogLevel.Info);
+
                 // PlayerProfile is the first time we see the character name on the network.
                 if (metadata.SessionId == -1)
                 {
                     GlassContext.SessionRegistry.IdentifyConnection(name, metadata);
-                    DebugLog.Write(LogChannel.Inference, "identifying port " + metadata.DestPort + " as " + name);
+                    DebugLog.Write(LogChannel.Inference, "identifying port " + metadata.DestPort + " as " + name,
+                        LogLevel.Trace);
                     GlassContext.SessionRegistry.FindConnectionByCharacter(name);
                 }
             }
@@ -212,6 +222,67 @@ public class HandlePlayerProfile : OpcodeHandler
         {
             _extractor.Release();
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // CaptureActiveSpells
+    //
+    // Replaces the character's active spells with those in the profile's buff table.  Each
+    // entry of the Buffs_Gate is one buff position; an entry whose caster id is 0 is empty and
+    // is skipped.  Re-enters rootGate at bagIndex before returning, so the active bag on exit
+    // matches the active bag on entry.
+    //
+    // character:  The character receiving the active spells.
+    // rootGate:   The gate whose instance holds the profile.
+    // bagIndex:   The instance index of the profile within rootGate.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void CaptureActiveSpells(Character character, GateHandle rootGate, uint bagIndex)
+    {
+        character.ClearActiveSpells();
+
+        SlotId buffsGateSlot = _registry.IndexOfField(_extractor.CollectionOf(), "Buffs_Gate");
+        if (_extractor.IsPresent(buffsGateSlot) == false)
+        {
+            DebugLog.Write(LogChannel.Fields, "HandlePlayerProfile.CaptureActiveSpells: no Buffs_Gate for '" +
+                character.Name + "'; no active spells stored", LogLevel.Warn);
+            return;
+        }
+
+        GateHandle buffsGate = _extractor.GetGateAt(buffsGateSlot);
+        if (buffsGate.Exists == false)
+        {
+            DebugLog.Write(LogChannel.Fields, "HandlePlayerProfile.CaptureActiveSpells: Buffs_Gate present but no gate for '" +
+                character.Name + "'; no active spells stored", LogLevel.Warn);
+            return;
+        }
+
+        uint positionCount = _extractor.BagCount(buffsGate);
+        uint storedCount = 0;
+
+        for (uint position = 0; position < positionCount; position++)
+        {
+            _extractor.EnterGate(buffsGate, position);
+
+            uint casterId = _extractor.GetUIntAt(_buff_casterID_Slot);
+            if (casterId == 0)
+            {
+                continue;
+            }
+
+            SpellId spellId = (SpellId)_extractor.GetUIntAt(_buff_spellID_Slot);
+            uint casterLevel = _extractor.GetUIntAt(_buff_casterLevel_Slot);
+            uint totalTicks = _extractor.GetUIntAt(_buff_totalTicks_Slot);
+            uint remainingTicks = _extractor.GetUIntAt(_buff_remainingTicks_Slot);
+
+            character.SetActiveSpell(new ActiveSpell(position, spellId, casterId, casterLevel, totalTicks,
+                remainingTicks));
+            storedCount++;
+        }
+
+        _extractor.EnterGate(rootGate, bagIndex);
+
+        DebugLog.Write(LogChannel.Fields, "HandlePlayerProfile.CaptureActiveSpells: stored " + storedCount +
+            " active spells of " + positionCount + " positions for '" + character.Name + "'", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -456,7 +527,8 @@ public class HandlePlayerProfile : OpcodeHandler
             return name;
         }
 
-        DebugLog.Write(LogChannel.Opcodes, $"[GetClassName] classId=0x{classId:X2} not in map, returning 'Unknown'");
+        DebugLog.Write(LogChannel.Opcodes, $"[GetClassName] classId=0x{classId:X2} not in map, returning 'Unknown'",
+            LogLevel.Trace);
         return $"Unknown(0x{classId:X2})";
     }
 }

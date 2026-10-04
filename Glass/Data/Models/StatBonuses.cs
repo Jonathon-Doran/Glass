@@ -1,4 +1,5 @@
 ﻿using Glass.Core.Logging;
+using Glass.World;
 
 namespace Glass.Data.Models;
 
@@ -193,5 +194,176 @@ public class StatBonuses
 
         DebugLog.Write(LogChannel.Inventory, "StatBonuses.AddScaledBonuses: totals now HP " + HP +
             ", mana " + Mana + ", AC " + AC, LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // SpellEffectValue
+    //
+    // Computes the value of one spell effect for a caster of the given level.  The magnitude of
+    // Base1 is scaled by the Calc formula: 0 and 100 leave it unchanged, 1 through 99 add the
+    // caster level times the Calc value, and 101 through 105 add half the level, the level,
+    // twice, three times, or four times the level.  A nonzero Max caps the scaled magnitude.
+    // The result takes the sign of Base1.  For any other Calc value, a nonzero Max is used with
+    // the sign of Base1; with no Max, Base1 is used and the unsupported Calc value is logged.
+    //
+    // effect:       The spell effect to evaluate.
+    // casterLevel:  Level of the caster of the spell.
+    //
+    // Returns the effect's value.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private static int SpellEffectValue(SpellEffect effect, uint casterLevel)
+    {
+        int level = (int)casterLevel;
+        int magnitude = Math.Abs(effect.Base1);
+        int scaled;
+
+        if (effect.Calc == 0 || effect.Calc == 100)
+        {
+            scaled = magnitude;
+        }
+        else if (effect.Calc >= 1 && effect.Calc <= 99)
+        {
+            scaled = magnitude + level * (int)effect.Calc;
+        }
+        else if (effect.Calc == 101)
+        {
+            scaled = magnitude + level / 2;
+        }
+        else if (effect.Calc == 102)
+        {
+            scaled = magnitude + level;
+        }
+        else if (effect.Calc == 103)
+        {
+            scaled = magnitude + 2 * level;
+        }
+        else if (effect.Calc == 104)
+        {
+            scaled = magnitude + 3 * level;
+        }
+        else if (effect.Calc == 105)
+        {
+            scaled = magnitude + 4 * level;
+        }
+        else if (effect.Max != 0)
+        {
+            int fallback = effect.Base1 < 0 ? -Math.Abs(effect.Max) : Math.Abs(effect.Max);
+            DebugLog.Write(LogChannel.Fields, "StatBonuses.SpellEffectValue: SPA " + effect.Spa +
+                " calc " + effect.Calc + " not supported at caster level " + casterLevel +
+                "; using max, value " + fallback, LogLevel.Warn);
+            return fallback;
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.Fields, "StatBonuses.SpellEffectValue: SPA " + effect.Spa +
+                " calc " + effect.Calc + " not supported at caster level " + casterLevel +
+                "; using base " + effect.Base1, LogLevel.Warn);
+            return effect.Base1;
+        }
+
+        if (effect.Max != 0 && scaled > Math.Abs(effect.Max))
+        {
+            scaled = Math.Abs(effect.Max);
+        }
+
+        int value = effect.Base1 < 0 ? -scaled : scaled;
+
+        DebugLog.Write(LogChannel.Fields, "StatBonuses.SpellEffectValue: SPA " + effect.Spa + " calc " +
+            effect.Calc + " base " + effect.Base1 + " max " + effect.Max + " at caster level " +
+            casterLevel + ", value " + value, LogLevel.Trace);
+
+        return value;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // AddSpellBonuses
+    //
+    // Adds the stat effects of one spell to these totals.  Each effect's value is computed for
+    // the given caster level and added to the matching total: maximum HP, maximum mana,
+    // maximum endurance, AC, attack, the seven base stats, and the six resists.  Effects with
+    // any other SPA are skipped.
+    //
+    // record:       The spell whose effects are added.
+    // casterLevel:  Level of the caster of the spell.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public void AddSpellBonuses(SpellRecord record, uint casterLevel)
+    {
+        uint applied = 0;
+        uint skipped = 0;
+
+        foreach (SpellEffect effect in record.Effects)
+        {
+            switch (effect.Spa)
+            {
+                case SPAId.MaxHitpoints:
+                    HP += SpellEffectValue(effect, casterLevel);
+                    break;
+                case SPAId.MaxMana:
+                    Mana += SpellEffectValue(effect, casterLevel);
+                    break;
+                case SPAId.MaxEndurance:
+                    Endurance += SpellEffectValue(effect, casterLevel);
+                    break;
+                case SPAId.ArmorClass:
+                    AC += SpellEffectValue(effect, casterLevel);
+                    break;
+                case SPAId.AttackPower:
+                    Attack += SpellEffectValue(effect, casterLevel);
+                    break;
+                case SPAId.Strength:
+                    Strength += SpellEffectValue(effect, casterLevel);
+                    break;
+                case SPAId.Stamina:
+                    Stamina += SpellEffectValue(effect, casterLevel);
+                    break;
+                case SPAId.Agility:
+                    Agility += SpellEffectValue(effect, casterLevel);
+                    break;
+                case SPAId.Dexterity:
+                    Dexterity += SpellEffectValue(effect, casterLevel);
+                    break;
+                case SPAId.Charisma:
+                    Charisma += SpellEffectValue(effect, casterLevel);
+                    break;
+                case SPAId.Intelligence:
+                    Intelligence += SpellEffectValue(effect, casterLevel);
+                    break;
+                case SPAId.Wisdom:
+                    Wisdom += SpellEffectValue(effect, casterLevel);
+                    break;
+                case SPAId.ResistCold:
+                    SaveCold += SpellEffectValue(effect, casterLevel);
+                    break;
+                case SPAId.ResistDisease:
+                    SaveDisease += SpellEffectValue(effect, casterLevel);
+                    break;
+                case SPAId.ResistPoison:
+                    SavePoison += SpellEffectValue(effect, casterLevel);
+                    break;
+                case SPAId.ResistMagic:
+                    SaveMagic += SpellEffectValue(effect, casterLevel);
+                    break;
+                case SPAId.ResistFire:
+                    SaveFire += SpellEffectValue(effect, casterLevel);
+                    break;
+                case SPAId.ResistCorruption:
+                    SaveCorruption += SpellEffectValue(effect, casterLevel);
+                    break;
+                default:
+                    skipped++;
+                    continue;
+            }
+
+            applied++;
+        }
+
+        if (skipped > 0)
+        {
+            DebugLog.Write(LogChannel.Fields, "StatBonuses:  skipped " + skipped + " effects", LogLevel.Warn);
+        }
+
+        DebugLog.Write(LogChannel.Fields, "StatBonuses.AddSpellBonuses: '" + record.Name + "' (" +
+            record.Id + ") at caster level " + casterLevel + ": " + applied + " effects applied, " +
+            skipped + " skipped; totals now HP " + HP + ", AC " + AC, LogLevel.Trace);
     }
 }
