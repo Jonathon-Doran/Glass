@@ -120,11 +120,9 @@ public class HandleInventory : OpcodeHandler
     private readonly SlotId _AugValue_Slot;
     private readonly SlotId _Field_1DC_Slot;
     private readonly SlotId _AugRestriction_Slot;
-
     private readonly SlotId _Augment_Type_Slot;
     private readonly SlotId _Augment_Visible_Slot;
     private readonly SlotId _Augment_Unknown_Slot;
-
     private readonly SlotId _LDON_Sold_Slot;
     private readonly SlotId _LDON_Theme_Slot;
     private readonly SlotId _LDON_Price_Slot;
@@ -153,7 +151,6 @@ public class HandleInventory : OpcodeHandler
     private readonly SlotId _Field_594_Slot;
     private readonly SlotId _Field_5A9_Slot;
     private readonly SlotId _Blob_4DC_Slot;
-
     private readonly SlotId _Effect_SpellId_Slot;
     private readonly SlotId _Effect_Level2_Slot;
     private readonly SlotId _Effect_Type_Slot;
@@ -165,7 +162,6 @@ public class HandleInventory : OpcodeHandler
     private readonly SlotId _Effect_Recastdelay_Slot;
     private readonly SlotId _Effect_Name_Slot;
     private readonly SlotId _Effect_Unknown7_Slot;
-
     private readonly SlotId _Field_5A0_Slot;
     private readonly SlotId _Field_5A8_Slot;
     private readonly SlotId _Field_598_Slot;
@@ -577,6 +573,10 @@ public class HandleInventory : OpcodeHandler
         }
 
         ItemInstanceGateway.Instance.StoreSnapshot(character);
+        StatBonuses wornBonuses = character.SumWornBonuses();
+        DebugLog.Write(LogChannel.Inventory, "CaptureInventory: '" + characterName + "' worn HP bonus " +
+            wornBonuses.HP + ", heroic stamina " + wornBonuses.HeroicStamina, LogLevel.Info);
+
 
         DebugLog.Write(LogChannel.Inventory, "CaptureInventory: stored " + storedCount + " items, including contents " +
             "and augments, for '" + characterName + "'", LogLevel.Trace);

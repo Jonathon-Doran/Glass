@@ -154,7 +154,7 @@ public class FieldExtractor
 
             DebugLog.Write(LogChannel.Fields, "FieldExtractor.Extract: top-level gate '" + gateName
                 + "' (" + gateDefinitionHandle + "), payload " + payload.Length + " bytes",
-                LogLevel.Info);
+                LogLevel.Trace);
 
             if (payload.Length == 0)
             {
@@ -226,7 +226,7 @@ public class FieldExtractor
         DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExpandMultiplicity: gate " + gateHandle +
             " (" + gateName + ") kind " + gate.Kind + " child " + gate.ChildCollection +
             " (" + CollectionNameOf(gate.ChildCollection) + ")", LogLevel.Trace);
-        DebugLog.Write(LogChannel.Memory, "Starting Expand for '" + gateName + "'", LogLevel.Info);
+        DebugLog.Write(LogChannel.Memory, "Starting Expand for '" + gateName + "'", LogLevel.Trace);
         GlassContext.BufferPool.LogStatistics();
         switch (gate.Kind)
         {
@@ -276,7 +276,7 @@ public class FieldExtractor
                         {
                             String name = CollectionNameOf(gate.ChildCollection);
                             DebugLog.Write(LogChannel.Fields, "Collection (" + name + ") Times iteration " +
-                                instanceIndex + " of " + resolvedCount + ":", LogLevel.Info);
+                                instanceIndex + " of " + resolvedCount + ":", LogLevel.Trace);
                         }
                         BagHandle bagHandle = CreateBag(gate.ChildCollection);
                         _bags[(int)(uint)bagHandle].ParentGate = gateHandle;
@@ -428,7 +428,7 @@ public class FieldExtractor
                     + " effectiveOffset=" + effectiveBitOffset
                     + " effectiveByte=" + (effectiveBitOffset / 8u)
                     + " bitLength=" + definition.BitLength
-                    + " byteLength=" + (definition.BitLength / 8u), LogLevel.Info);
+                    + " byteLength=" + (definition.BitLength / 8u), LogLevel.Trace);
             }
 
             if (definition.Predicate.Op != PredicateOp.None)
@@ -438,7 +438,7 @@ public class FieldExtractor
                     resolvedEndBits[(int)definitionIndex] = localStartBit;
                     DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExtractCollection: field '"
                         + definition.Name + "' in collection (" + CollectionNameOf(collection) 
-                        + ") predicate false, skipped", LogLevel.Info);
+                        + ") predicate false, skipped", LogLevel.Trace);
                     continue;
                 }
             }
@@ -448,7 +448,7 @@ public class FieldExtractor
                 DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExtractCollection: field '"
                     + definition.Name + "' ran off payload at offset " + effectiveBitOffset
                     + " for length " + definition.BitLength + "; abandoning instance, cursor left at "
-                    + _bitCursor, LogLevel.Warn);
+                    + _bitCursor, LogLevel.Trace);
                 return false;
             }
 
@@ -649,7 +649,7 @@ public class FieldExtractor
                 DebugLog.Write(LogChannel.Fields, "Inventory field '"
                     + definition.Name + "' value='" + slot.AsString(bag)
                     + "' wireBitLength=" + slot.WireBitLength
-                    + " wireByteLength=" + (slot.WireBitLength / 8u) + "\n\n", LogLevel.Info);
+                    + " wireByteLength=" + (slot.WireBitLength / 8u) + "\n\n", LogLevel.Trace);
             }
 
             uint localEndBit = localStartBit + slot.WireBitLength;
@@ -1322,7 +1322,7 @@ public class FieldExtractor
             string logString = System.Text.Encoding.ASCII.GetString(stringBytes.Slice(0, logLength));
             DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExtractNullTerminatedString: field '"
                 + slot.GetName(bag) + "' at byteOffset " + byteOffset
-                + " value='" + logString + "' length=" + stringBytes.Length, LogLevel.Info);
+                + " value='" + logString + "' length=" + stringBytes.Length, LogLevel.Trace);
         }
 
         return (uint)stringBytes.Length + 1;
@@ -2181,13 +2181,13 @@ public class FieldExtractor
 
             DebugLog.Write(LogChannel.Fields, "FieldExtractor.FindChildGate: bag has child "
                 + "gate for collection (" + CollectionNameOf(gate.ChildCollection) + ")",
-                LogLevel.Info);
+                LogLevel.Trace);
 
             if (gate.ChildCollection == collection)
             {
                 DebugLog.Write(LogChannel.Fields, "FieldExtractor.FindChildGate: found gate '"
                     + GateNameOf(walk) + "' for collection (" + CollectionNameOf(collection)
-                    + ")", LogLevel.Info);
+                    + ")", LogLevel.Trace);
                 return walk;
             }
             walk = gate.NextSibling;

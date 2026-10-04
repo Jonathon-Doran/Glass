@@ -6,6 +6,7 @@ using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using Glass.World;
 using System;
+using System.Reflection;
 
 namespace Glass.Network.Handlers;
 
@@ -37,12 +38,26 @@ public class HandlePlayerProfile : OpcodeHandler
     private readonly SlotId _goldCarriedSlot;
     private readonly SlotId _silverCarriedSlot;
     private readonly SlotId _copperCarriedSlot;
+    private readonly SlotId _numAASlot;
+    private readonly SlotId _numSkillsSlot;
+    private readonly SlotId _genderSlot;
+    private readonly SlotId _raceSlot;
+    private readonly SlotId _numLanguagesSlot;
 
     // spell info
     private readonly SlotId _spellbookCountSlot;
     private readonly SlotId _spellbookSlot;
     private readonly SlotId _spellgemCountSlot;
     private readonly SlotId _spellgemSlot;
+
+    private readonly SlotId _buff_unknown_1_Slot;
+    private readonly SlotId _buff_casterID_Slot;
+    private readonly SlotId _buff_unknown_2_Slot;
+    private readonly SlotId _buff_remainingTicks_Slot;
+    private readonly SlotId _buff_totalTicks_Slot;
+    private readonly SlotId _buff_casterLevel_Slot;
+    private readonly SlotId _buff_spellID_Slot;
+    private readonly SlotId _buff_unknown_3_Slot;
 
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -58,6 +73,7 @@ public class HandlePlayerProfile : OpcodeHandler
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_PlayerProfile");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
+        CollectionHandle characterBuffs = _registry.GetCollectionHandle(_patchLevel, "Character_Buffs");
 
         _nameSlot = _registry.IndexOfField(_collectionHandle, "name");
         _levelSlot = _registry.IndexOfField(_collectionHandle, "level");
@@ -78,11 +94,27 @@ public class HandlePlayerProfile : OpcodeHandler
         _silverCarriedSlot = _registry.IndexOfField(_collectionHandle, "silver_carried");
         _copperCarriedSlot = _registry.IndexOfField(_collectionHandle, "copper_carried");
 
+        _numAASlot = _registry.IndexOfField(_collectionHandle, "num_aa");
+        _numSkillsSlot = _registry.IndexOfField(_collectionHandle, "num_skills");
+        _genderSlot = _registry.IndexOfField(_collectionHandle, "gender");
+        _raceSlot = _registry.IndexOfField(_collectionHandle, "race");
+        _numLanguagesSlot = _registry.IndexOfField(_collectionHandle, "num_languages");
+
         // spell info
         _spellbookCountSlot = _registry.IndexOfField(_collectionHandle, "spellbook_count");
         _spellbookSlot = _registry.IndexOfField(_collectionHandle, "spellbook");
         _spellgemCountSlot = _registry.IndexOfField(_collectionHandle, "spellgem_count");
         _spellgemSlot = _registry.IndexOfField(_collectionHandle, "mem_spells");
+
+        // character buffs
+        _buff_unknown_1_Slot = _registry.IndexOfField(characterBuffs, "Unknown_1");
+        _buff_casterID_Slot = _registry.IndexOfField(characterBuffs, "Caster_ID");
+        _buff_unknown_2_Slot = _registry.IndexOfField(characterBuffs, "Unknown_2");
+        _buff_remainingTicks_Slot = _registry.IndexOfField(characterBuffs, "Remaining_Ticks");
+        _buff_totalTicks_Slot = _registry.IndexOfField(characterBuffs, "Total_Ticks");
+        _buff_casterLevel_Slot = _registry.IndexOfField(characterBuffs, "Caster_Level");
+        _buff_spellID_Slot = _registry.IndexOfField(characterBuffs, "Spell_ID");
+        _buff_unknown_3_Slot = _registry.IndexOfField(characterBuffs, "Unknown_3");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -145,10 +177,10 @@ public class HandlePlayerProfile : OpcodeHandler
                 character.Agility = _extractor.GetUIntAt(_agilitySlot);
                 character.Wisdom = _extractor.GetUIntAt(_wisdomSlot);
 
-                character.Platinum = _extractor.GetUIntAt(_platinumCarriedSlot);
-                character.Gold = _extractor.GetUIntAt(_goldCarriedSlot);
-                character.Silver = _extractor.GetUIntAt(_silverCarriedSlot);
-                character.Copper = _extractor.GetUIntAt(_copperCarriedSlot);
+                character.Platinum = _extractor.GetUInt64At(_platinumCarriedSlot);
+                character.Gold = _extractor.GetUInt64At(_goldCarriedSlot);
+                character.Silver = _extractor.GetUInt64At(_silverCarriedSlot);
+                character.Copper = _extractor.GetUInt64At(_copperCarriedSlot);
 
                 character.CurrentZone = _extractor.GetUIntAt(_zoneIdSlot);
 
@@ -234,12 +266,18 @@ public class HandlePlayerProfile : OpcodeHandler
 
             FieldDisplayNode moneySubtree = new FieldDisplayNode("Money");
             root.AddChild(moneySubtree);
-            FieldNodes.AddUIntNode(_extractor, _platinumCarriedSlot, "Platinum", moneySubtree, "D");
-            FieldNodes.AddUIntNode(_extractor, _goldCarriedSlot, "Gold", moneySubtree, "D");
-            FieldNodes.AddUIntNode(_extractor, _silverCarriedSlot, "Silver", moneySubtree, "D");
-            FieldNodes.AddUIntNode(_extractor, _copperCarriedSlot, "Copper", moneySubtree, "D");
+            FieldNodes.AddUInt64Node(_extractor, _platinumCarriedSlot, "Platinum", moneySubtree, "D");
+            FieldNodes.AddUInt64Node(_extractor, _goldCarriedSlot, "Gold", moneySubtree, "D");
+            FieldNodes.AddUInt64Node(_extractor, _silverCarriedSlot, "Silver", moneySubtree, "D");
+            FieldNodes.AddUInt64Node(_extractor, _copperCarriedSlot, "Copper", moneySubtree, "D");
 
+            FieldNodes.AddUIntNode(_extractor, _numAASlot, "Num AAs", root, "D");
+            FieldNodes.AddUIntNode(_extractor, _numSkillsSlot, "Num Skills", root, "D");
+            FieldNodes.AddUIntNode(_extractor, _numLanguagesSlot, "Num Languages", root, "D");
+            FieldNodes.AddUIntNode(_extractor, _genderSlot, "Gender", root, "D");
+            FieldNodes.AddUIntNode(_extractor, _raceSlot, "Race", root, "D");
             AddSpellNode(root);
+            AddBuffsNode(root);
         }
         finally
         {
@@ -253,7 +291,7 @@ public class HandlePlayerProfile : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // AddSpellNode
     //
-    // Builds the spellbook display subtree under the given root: a "Spells" node containing a
+    // Builds the spellbook display subtree under the given parent: a "Spells" node containing a
     // "SpellBook" node with one leaf child per known spell.  The spellbook array is read from
     // the active bag; entries holding the empty sentinel (0xFFFFFFFF) are skipped.  Each leaf
     // is labeled with a running count and the raw spell ID.  The SpellBook node's text carries
@@ -262,7 +300,7 @@ public class HandlePlayerProfile : OpcodeHandler
     //
     // root:  The display node that receives the "Spells" subtree.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void AddSpellNode (FieldDisplayNode root)
+    private void AddSpellNode (FieldDisplayNode parent)
     {
         uint spellBookSize = _extractor.GetUIntAt(_spellbookCountSlot);
         uint spellGemCount = _extractor.GetUIntAt(_spellgemCountSlot);
@@ -272,7 +310,7 @@ public class HandlePlayerProfile : OpcodeHandler
         ReadOnlySpan<uint> spellgems = _extractor.GetUIntSpanAt(_spellgemSlot);
 
         FieldDisplayNode spellSubtree = new FieldDisplayNode("Spells");
-        root.AddChild(spellSubtree);
+        parent.AddChild(spellSubtree);
 
         FieldDisplayNode spellBookTree = new FieldDisplayNode();
         spellSubtree.AddChild(spellBookTree);
@@ -309,6 +347,77 @@ public class HandlePlayerProfile : OpcodeHandler
             }
         }
         spellGemTree.Text = "Memorized Spells (" + knownSpellCount + " entries)";
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // AddBuffsNode
+    //
+    // Builds the buffs display subtree under the given root: a "Buffs" node containing a
+    // "Buff" node with one leaf child per buff active on the character.
+    //
+    // parent:  The parent display node
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void AddBuffsNode(FieldDisplayNode parent)
+    {
+        uint buffs_seen = 0;
+
+        SlotId buffsGate_Slot = _registry.IndexOfField(_extractor.CollectionOf(), "Buffs_Gate");
+        if (_extractor.IsPresent(buffsGate_Slot) == false)
+        {
+            DebugLog.Write(LogChannel.Fields, "PlayerProfile: No Buffs_Gate found", LogLevel.Error);
+            return;
+        }
+
+        GateHandle buffsGate = _extractor.GetGateAt(buffsGate_Slot);
+        if (buffsGate.Exists == false)
+        {
+            DebugLog.Write(LogChannel.Fields, "PlayerProfile: Buffs slot found but no gate", LogLevel.Error);
+            return;
+        }
+
+        uint bagCount = _extractor.BagCount(buffsGate);
+        if (bagCount == 0)
+        {
+            return;         // no bags extracted
+        }
+
+        FieldDisplayNode buffsRoot = new FieldDisplayNode("Active Buffs");
+
+        for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
+        {
+            _extractor.EnterGate(buffsGate, bagIndex);
+
+            uint CasterID = _extractor.GetUIntAt(_buff_casterID_Slot);
+
+            if (CasterID == 0)
+            {
+                continue;
+            }
+            buffs_seen++;
+            FieldDisplayNode buffNode = new FieldDisplayNode();
+            buffsRoot.AddChild(buffNode);
+
+            SpellId spellID = (SpellId)_extractor.GetUIntAt(_buff_spellID_Slot);
+
+            String spellName = SpellCatalog.Instance.LookupSpell(spellID);
+            string spellEntry = spellName + " (0x" + spellID.ToString() + ")";
+
+            buffNode.Text = bagIndex.ToString() + ": " + spellEntry;
+
+            FieldNodes.AddLabeledNode(_extractor, _buff_spellID_Slot, spellEntry, buffNode);
+            FieldNodes.AddUIntNode(_extractor, _buff_casterID_Slot, "Caster ID", buffNode, "X");
+            FieldNodes.AddUIntNode(_extractor, _buff_casterLevel_Slot, "Caster Level", buffNode, "D");
+            FieldNodes.AddUIntNode(_extractor, _buff_totalTicks_Slot, "Total Ticks", buffNode, "D");
+            FieldNodes.AddUIntNode(_extractor, _buff_remainingTicks_Slot, "Remaining Ticks", buffNode, "D");
+            FieldNodes.AddFloatNode(_extractor, _buff_unknown_1_Slot, "Unknown 1", buffNode, "F2");
+            FieldNodes.AddUIntNode(_extractor, _buff_unknown_2_Slot, "Unknown 2", buffNode, "?");
+            FieldNodes.AddUIntNode(_extractor, _buff_unknown_3_Slot, "Unknown 3", buffNode, "?");
+        }
+
+        if (buffs_seen > 0)
+        {
+            parent.AddChild(buffsRoot);
+        }
     }
 
     private static readonly Dictionary<uint, string> ClassNames = new Dictionary<uint, string>()

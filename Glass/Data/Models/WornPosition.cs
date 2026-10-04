@@ -33,7 +33,6 @@ public enum WornPosition : uint
     Feet = 19,
     Waist = 20,
     PowerSource = 21,
-    Ammo = 22,
     None = 0xFFFF
 }
 
@@ -72,8 +71,7 @@ public static class WornPositionExtensions
         { WornPosition.Legs,        "Legs" },
         { WornPosition.Feet,        "Feet" },
         { WornPosition.Waist,       "Waist" },
-        { WornPosition.PowerSource, "Power Source" },
-        { WornPosition.Ammo,        "Ammo" }
+        { WornPosition.PowerSource, "Power Source" }
     };
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

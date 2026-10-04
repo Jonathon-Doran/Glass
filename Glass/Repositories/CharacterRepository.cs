@@ -178,10 +178,10 @@ public class CharacterRepository
             Agility = reader.IsDBNull(15) ? null : (uint?)reader.GetInt32(15),
             Wisdom = reader.IsDBNull(16) ? null : (uint?)reader.GetInt32(16),
 
-            Platinum = reader.IsDBNull(17) ? null : (uint?)reader.GetInt32(17),
-            Gold = reader.IsDBNull(18) ? null : (uint?)reader.GetInt32(18),
-            Silver = reader.IsDBNull(19) ? null : (uint?)reader.GetInt32(19),
-            Copper = reader.IsDBNull(20) ? null : (uint?)reader.GetInt32(20),
+            Platinum = reader.IsDBNull(17) ? null : (ulong?)reader.GetInt64(17),
+            Gold = reader.IsDBNull(18) ? null : (ulong?)reader.GetInt64(18),
+            Silver = reader.IsDBNull(19) ? null : (ulong?)reader.GetInt64(19),
+            Copper = reader.IsDBNull(20) ? null : (ulong?)reader.GetInt64(20),
 
             CurrentZone = reader.IsDBNull(21) ? null : (uint?)reader.GetInt32(21)
         };

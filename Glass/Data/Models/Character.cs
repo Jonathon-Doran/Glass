@@ -1,4 +1,5 @@
 using Glass.Core.Logging;
+using Glass.Data.Repositories;
 
 namespace Glass.Data.Models;
 
@@ -29,10 +30,10 @@ public class Character
     public uint? Agility { get; set; }
     public uint? Wisdom { get; set; }
 
-    public uint? Platinum { get; set; }
-    public uint? Gold { get; set; }
-    public uint? Silver { get; set; }
-    public uint? Copper { get; set; }
+    public ulong? Platinum { get; set; }
+    public ulong? Gold { get; set; }
+    public ulong? Silver { get; set; }
+    public ulong? Copper { get; set; }
     public float? XPos { get; set; }
     public float? YPos { get; set; }
     public float? ZPos { get; set; }
@@ -73,7 +74,7 @@ public class Character
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // AddItem
+    // AddItemBonuses
     //
     // Adds an item instance to this character at the instance's position.  When a
     // parent is given, links the instance into the parent's Children and sets the
@@ -91,14 +92,14 @@ public class Character
     {
         if (item.Location.Exists == false)
         {
-            DebugLog.Write(LogChannel.Fields, "Character.AddItem: item " + item.Id +
+            DebugLog.Write(LogChannel.Fields, "Character.AddItemBonuses: item " + item.Id +
                 " has no position; not added to '" + Name + "'", LogLevel.Warn);
             return false;
         }
 
         if (_items.TryGetValue(item.Location, out ItemInstance? occupant))
         {
-            DebugLog.Write(LogChannel.Fields, "Character.AddItem: position " + item.Location +
+            DebugLog.Write(LogChannel.Fields, "Character.AddItemBonuses: position " + item.Location +
                 " already holds item " + occupant.Id + "; item " + item.Id + " not added to '" +
                 Name + "'", LogLevel.Warn);
             return false;
@@ -106,7 +107,7 @@ public class Character
 
         if (item.Parent != null)
         {
-            DebugLog.Write(LogChannel.Fields, "Character.AddItem: item " + item.Id + " at " +
+            DebugLog.Write(LogChannel.Fields, "Character.AddItemBonuses: item " + item.Id + " at " +
                 item.Location + " already has a parent; not added to '" + Name + "'", LogLevel.Warn);
             return false;
         }
@@ -116,19 +117,19 @@ public class Character
             if (_items.TryGetValue(parent.Location, out ItemInstance? heldParent) == false ||
                 ReferenceEquals(heldParent, parent) == false)
             {
-                DebugLog.Write(LogChannel.Fields, "Character.AddItem: parent at " + parent.Location +
+                DebugLog.Write(LogChannel.Fields, "Character.AddItemBonuses: parent at " + parent.Location +
                     " is not held by '" + Name + "'; item " + item.Id + " not added", LogLevel.Warn);
                 return false;
             }
 
             item.Parent = parent;
             parent.Children.Add(item);
-            DebugLog.Write(LogChannel.Fields, "Character.AddItem: linked item " + item.Id + " at " +
+            DebugLog.Write(LogChannel.Fields, "Character.AddItemBonuses: linked item " + item.Id + " at " +
                 item.Location + " under parent " + parent.Id + " at " + parent.Location, LogLevel.Trace);
         }
 
         _items[item.Location] = item;
-        DebugLog.Write(LogChannel.Fields, "Character.AddItem: added item " + item.Id + " at " +
+        DebugLog.Write(LogChannel.Fields, "Character.AddItemBonuses: added item " + item.Id + " at " +
             item.Location + " to '" + Name + "'", LogLevel.Trace);
         return true;
     }
@@ -188,8 +189,6 @@ public class Character
 
         if (storageSystem != StorageSystem.Carried)
         {
-            DebugLog.Write(LogChannel.Fields, "TryGetWornPosition: storage system " + (uint)storageSystem +
-                " is not Carried, not worn", LogLevel.Trace);
             return false;
         }
 
@@ -206,6 +205,89 @@ public class Character
         DebugLog.Write(LogChannel.Fields, "TryGetWornPosition: worn position " + candidate.DisplayName(), LogLevel.Trace);
         return true;
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // SumWornBonuses
+    //
+    // Builds new bonus totals from every item worn by this character.  A worn item is a
+    // top-level item held in the Carried storage system at a worn position.  Each worn item's
+    // bonuses and those of the items socketed in it are added together, then the combined
+    // total is added to the character's totals, adjusted by the worn item's recommended level.
+    // An item whose definition is not found is logged and skipped.  A character with no level
+    // gets empty totals.
+    //
+    // Returns new totals holding the effective bonuses of the worn items.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public StatBonuses SumWornBonuses()
+    {
+        StatBonuses bonuses = new StatBonuses();
+
+        if (Level.HasValue == false)
+        {
+            DebugLog.Write(LogChannel.Fields, "Character.SumWornBonuses: '" + Name +
+                "' has no level; bonuses cannot be adjusted, returning empty totals", LogLevel.Warn);
+            return bonuses;
+        }
+
+        uint characterLevel = Level.Value;
+        uint counted = 0;
+        uint missing = 0;
+
+        foreach (ItemInstance item in _items.Values)
+        {
+            if (item.Parent != null)
+            {
+                continue;
+            }
+
+            ItemLocation location = item.Location;
+            if (TryGetWornPosition(location.Storage, location.MainPosition, out WornPosition wornPosition) == false)
+            {
+                continue;
+            }
+
+            if (ItemRepository.Instance.TryGet(item.Id, out ItemRecord? record) == false)
+            {
+                missing++;
+                DebugLog.Write(LogChannel.Fields, "Character.SumWornBonuses: no definition for worn item " +
+                    item.Id + " at " + location + " on '" + Name + "'; skipped with its children", LogLevel.Warn);
+                continue;
+            }
+
+            StatBonuses itemTotals = new StatBonuses();
+            itemTotals.AddItemBonuses(record);
+            counted++;
+
+            foreach (ItemInstance child in item.Children)
+            {
+                if (ItemRepository.Instance.TryGet(child.Id, out ItemRecord? childRecord) == false)
+                {
+                    missing++;
+                    DebugLog.Write(LogChannel.Fields, "Character.SumWornBonuses: no definition for item " +
+                        child.Id + " at " + child.Location + " in '" + record.Name + "' on '" + Name +
+                        "'; skipped", LogLevel.Warn);
+                    continue;
+                }
+
+                itemTotals.AddItemBonuses(childRecord);
+                counted++;
+                DebugLog.Write(LogChannel.Fields, "Character.SumWornBonuses: added '" + childRecord.Name +
+                    "' in '" + record.Name + "' on '" + Name + "'", LogLevel.Trace);
+            }
+
+            bonuses.AddScaledBonuses(itemTotals, characterLevel, record.RecommendedLevel);
+            DebugLog.Write(LogChannel.Fields, "Character.SumWornBonuses: added '" + record.Name + "' at " +
+                wornPosition.DisplayName() + " on '" + Name + "', item HP " + itemTotals.HP +
+                ", recommended level " + record.RecommendedLevel, LogLevel.Trace);
+        }
+
+        DebugLog.Write(LogChannel.Fields, "Character.SumWornBonuses: '" + Name + "' worn bonuses from " +
+            counted + " items, " + missing + " without definitions: HP " + bonuses.HP + ", mana " +
+            bonuses.Mana + ", AC " + bonuses.AC, LogLevel.Trace);
+
+        return bonuses;
+    }
+
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // StorageSystemNames
@@ -329,6 +411,7 @@ public class Character
     public static string DescribeLocation(StorageSystem storageSystem, uint mainPosition, uint subPosition, uint augPosition)
     {
         const uint NoPosition = 0xFFFF;
+        const uint AmmoPosition = 22;
 
         string location;
 
@@ -339,6 +422,10 @@ public class Character
             if (wornPosition.IsWorn())
             {
                 location = "Worn: " + wornPosition.DisplayName();
+            }
+            else if (mainPosition == AmmoPosition)
+            {
+                location = "Ammo ";
             }
             else if (mainPosition >= 23 && mainPosition <= 34)
             {
