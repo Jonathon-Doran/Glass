@@ -64,8 +64,9 @@ public partial class SpellBrowser : Window
 
         foreach (string name in names)
         {
+            object value = Enum.Parse(enumType, name);
             ComboBoxItem item = new ComboBoxItem();
-            item.Content = name;
+            item.Content = name + " (" + Convert.ToUInt32(value) + ")";
             item.Tag = Enum.Parse(enumType, name);
             combo.Items.Add(item);
         }
@@ -148,6 +149,7 @@ public partial class SpellBrowser : Window
         ResultGrid.ItemsSource = null;
         ResultCount.Text = "No search yet";
         DetailText.Text = string.Empty;
+        FilterSpaNumber.Text = string.Empty;
 
         DebugLog.Write(LogChannel.InferenceDebug, "SpellBrowser: filters cleared",
             LogLevel.Trace);
@@ -182,8 +184,9 @@ public partial class SpellBrowser : Window
     // RunSearch
     //
     // Builds a SpellFilter from the filter controls, runs it against the catalog, and
-    // fills the result grid sorted by spell name.  Unparseable max level text is
-    // reported in the result count line and aborts the search.
+    // fills the result grid sorted by spell name.  A filled-in SPA number is used in place
+    // of the SPA list selection.  Unparseable SPA number or max level text is reported in
+    // the result count line and aborts the search.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void RunSearch()
     {
@@ -198,6 +201,24 @@ public partial class SpellBrowser : Window
         if (spaItem != null && spaItem.Tag != null)
         {
             filter.Spa = (SPAId)spaItem.Tag;
+        }
+
+        if (FilterSpaNumber.Text.Length > 0)
+        {
+            uint spaNumber = 0;
+            if (uint.TryParse(FilterSpaNumber.Text, out spaNumber) == false)
+            {
+                ResultCount.Text = "SPA number is not a number: " + FilterSpaNumber.Text;
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "SpellBrowser.RunSearch: unparseable SPA number '" + FilterSpaNumber.Text
+                    + "', search aborted", LogLevel.Warn);
+                return;
+            }
+
+            filter.Spa = (SPAId)spaNumber;
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "SpellBrowser.RunSearch: SPA number " + spaNumber + " used in place of the SPA list",
+                LogLevel.Trace);
         }
 
         ComboBoxItem? targetItem = FilterTargetType.SelectedItem as ComboBoxItem;
@@ -471,9 +492,10 @@ public partial class SpellBrowser : Window
         {
             foreach (SpellEffect effect in record.Effects)
             {
-                lines.Add("Effect slot " + effect.Slot + ": " + effect.Spa
+                lines.Add("Effect slot " + effect.Slot + ": " + effect.Spa + " (" + (int)effect.Spa + ")"
                     + "  base1 " + effect.Base1 + "  base2 " + effect.Base2
                     + "  calc " + effect.Calc + "  max " + effect.Max);
+
             }
         }
 

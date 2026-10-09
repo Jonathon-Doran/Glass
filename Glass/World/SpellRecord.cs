@@ -111,7 +111,7 @@ public enum SPAId
    SummonTarget = 82,
    Portal = 83,
    NpcOnlyHitpoints = 84,
-   ContactAbility = 85,
+   CombatProc = 85,
    NpcHelpRadius = 86,
    Telescope = 87,
    Evacuate = 88,

@@ -8,7 +8,20 @@ namespace Glass.Data.Models;
 
 public class Character
 {
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // CharacterId
+    //
+    // Our database key for this character, unrelated to the EQ IDs.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     public int CharacterId { get; set; }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // PersistentId
+    //
+    // The server's persistent id for this character, unchanged across zones and sessions.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public uint? PersistentId { get; set; }
+
     public string Name { get; set; } = string.Empty;
     public EQClass Class { get; set; }
     public int AccountId { get; set; }
@@ -231,6 +244,54 @@ public class Character
 
         wornPosition = candidate;
         DebugLog.Write(LogChannel.Fields, "TryGetWornPosition: worn position " + candidate.DisplayName(), LogLevel.Trace);
+        return true;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // TryGetActiveSpell
+    //
+    // Looks up the active spell held by this character at a buff position.
+    //
+    // position:  The buff position to look up.
+    // spell:     Receives the active spell at the position, or null when the position is empty.
+    //
+    // Returns true if an active spell is held at the position, false otherwise.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public bool TryGetActiveSpell(uint position, out ActiveSpell? spell)
+    {
+        if (_activeSpells.TryGetValue(position, out spell) == false)
+        {
+            DebugLog.Write(LogChannel.Fields, "Character.TryGetActiveSpell: no active spell at position " +
+                position + " on '" + Name + "'", LogLevel.Trace);
+            return false;
+        }
+
+        DebugLog.Write(LogChannel.Fields, "Character.TryGetActiveSpell: spell " + spell.SpellId +
+            " at position " + position + " on '" + Name + "'", LogLevel.Trace);
+        return true;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // RemoveActiveSpell
+    //
+    // Removes the active spell held by this character at a buff position.  An empty position
+    // is left unchanged.
+    //
+    // position:  The buff position to clear.
+    //
+    // Returns true if a spell was removed, false if the position was empty.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public bool RemoveActiveSpell(uint position)
+    {
+        if (_activeSpells.Remove(position, out ActiveSpell? removed) == false)
+        {
+            DebugLog.Write(LogChannel.Fields, "Character.RemoveActiveSpell: no active spell at position " +
+                position + " on '" + Name + "'; nothing removed", LogLevel.Trace);
+            return false;
+        }
+
+        DebugLog.Write(LogChannel.Fields, "Character.RemoveActiveSpell: removed spell " + removed.SpellId +
+            " at position " + position + " from '" + Name + "'", LogLevel.Trace);
         return true;
     }
 

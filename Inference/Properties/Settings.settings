@@ -11,5 +11,8 @@
     <Setting Name="RecentPatches" Type="System.Collections.Specialized.StringCollection" Scope="User">
       <Value Profile="(Default)" />
     </Setting>
+    <Setting Name="EverQuestFolder" Type="System.String" Scope="User">
+      <Value Profile="(Default)">C:\Games\EverQuest</Value>
+    </Setting>
   </Settings>
 </SettingsFile>

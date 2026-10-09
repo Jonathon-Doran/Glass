@@ -1,5 +1,7 @@
 ﻿using Glass.Core.Logging;
+using Glass.Data;
 using Glass.Data.Models;
+using Glass.Data.Repositories;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 
@@ -16,12 +18,8 @@ public class SpellCatalog
 {
     // Hard-coded spell data file location, pending a proper settings mechanism.
     private const string SpellFilePath = @"C:\Games\EverQuest\spells_us.txt";
-    // Hard-coded database string file location, pending a proper settings mechanism.
-    private const string DbStringFilePath = @"C:\Games\EverQuest\dbstr_us.txt";
 
     private readonly Dictionary<SpellId, SpellRecord> _spellsById = new Dictionary<SpellId, SpellRecord>();
-    // The database string type whose entries are spell category names.
-    private const uint DbStringTypeSpellCategory = 5;
 
     private readonly Dictionary<SpellCategoryId, string> _categoryNames = new Dictionary<SpellCategoryId, string>();
 
@@ -69,7 +67,7 @@ public class SpellCatalog
     private SpellCatalog()
     {
         Load(SpellFilePath);
-        LoadCategoryNames(DbStringFilePath);
+        LoadCategoryNames();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -635,25 +633,15 @@ public class SpellCatalog
     ///////////////////////////////////////////////////////////////////////////////////////////
     // LoadCategoryNames
     //
-    // Populates the category name lookup from the given database string file, retaining
-    // only the spell category entries.  Lines of other string types are ignored.  A
-    // malformed line within the wanted type is logged at Warn and skipped.  A missing
-    // file is logged at Warn and leaves the lookup empty — categories then display as
-    // raw numbers.
-    //
-    // filePath:  Full path to the database string file (dbstr_us.txt).
+    // Populates the category name lookup from the spell category names stored in the
+    // database, replacing any earlier contents.  When the database is not initialized or
+    // holds no category names, the lookup is left empty and categories display as raw
+    // numbers.
     //
     // Returns:   The number of category names loaded.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public int LoadCategoryNames(string filePath)
+    public int LoadCategoryNames()
     {
-        if (File.Exists(filePath) == false)
-        {
-            DebugLog.Write(LogChannel.Reference, "SpellCatalog.LoadCategoryNames: file not found: "
-                + filePath + ", category names unavailable", LogLevel.Warn);
-            return 0;
-        }
-
         if (_categoryNames.Count > 0)
         {
             DebugLog.Write(LogChannel.Reference, "SpellCatalog.LoadCategoryNames: reloading, clearing "
@@ -661,45 +649,29 @@ public class SpellCatalog
             _categoryNames.Clear();
         }
 
-        uint lineNumber = 0;
-
-        foreach (string line in File.ReadLines(filePath))
+        if (Database.IsInitialized == false)
         {
-            lineNumber++;
-
-            string[] columns = line.Split('^');
-            if (columns.Length < 3)
-            {
-                continue;
-            }
-
-            uint stringType = 0;
-            if (uint.TryParse(columns[1], out stringType) == false)
-            {
-                continue;
-            }
-
-            if (stringType != DbStringTypeSpellCategory)
-            {
-                continue;
-            }
-
-            uint categoryId = 0;
-            if (uint.TryParse(columns[0], out categoryId) == false)
-            {
-                DebugLog.Write(LogChannel.Reference, "SpellCatalog.LoadCategoryNames: line "
-                    + lineNumber + " has an unparseable category id, skipping", LogLevel.Warn);
-                continue;
-            }
-
-            _categoryNames[(SpellCategoryId) categoryId] = columns[2];
+            DebugLog.Write(LogChannel.Reference, "SpellCatalog.LoadCategoryNames: the database is not "
+                + "initialized, category names unavailable", LogLevel.Warn);
+            return 0;
         }
 
-        DebugLog.Write(LogChannel.Reference, "SpellCatalog.LoadCategoryNames: loaded "
-            + _categoryNames.Count + " category names from " + filePath, LogLevel.Trace);
+        Dictionary<SpellCategoryId, string> stored = SpellGateway.Instance.LoadCategories();
+        foreach (KeyValuePair<SpellCategoryId, string> category in stored)
+        {
+            _categoryNames[category.Key] = category.Value;
+        }
 
-        // Used to gather stats on calculation usage
-        // LogStatCalcTally();
+        if (_categoryNames.Count == 0)
+        {
+            DebugLog.Write(LogChannel.Reference, "SpellCatalog.LoadCategoryNames: no category names are "
+                + "stored, category names unavailable", LogLevel.Warn);
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.Reference, "SpellCatalog.LoadCategoryNames: loaded "
+                + _categoryNames.Count + " category names from the database", LogLevel.Trace);
+        }
 
         return _categoryNames.Count;
     }

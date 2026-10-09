@@ -1,5 +1,7 @@
-﻿using Glass.Network.Protocol.Fields;
+﻿using Glass.Core.Logging;
+using Glass.Data.Repositories;
 using Glass.Network.Protocol;
+using Glass.Network.Protocol.Fields;
 using System.Configuration;
 
 namespace Glass.Network.Handlers;
@@ -253,5 +255,47 @@ public static class FieldNodes
         newNode.AddByteRange(extractor.GetByteRangeFor(slotId));
         parent.AddChild(newNode);
         return newNode;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // AddDbStringNode
+    //
+    // Builds a display node for a field holding a database string id and adds it beneath the
+    // supplied parent.  The field is read as a signed value from the extractor's active bag.
+    // The node shows the stored text for the string id, followed by the string id in
+    // parentheses, and carries the slot's byte range.  A negative string id means the field
+    // carries no string and is shown as "none".
+    //
+    // extractor:  The extractor whose active bag holds the field.
+    // slotId:     The slot to extract.
+    // type:       The string type the id belongs to.
+    // label:      The label to use in the new display node.
+    // parent:     The display node's parent.
+    //
+    // Returns:    The text shown for the string id.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public static string AddDbStringNode(FieldExtractor extractor, SlotId slotId, DbStringType type,
+        string label, FieldDisplayNode parent)
+    {
+        int stringId = extractor.GetIntAt(slotId);
+        string text;
+
+        if (stringId < 0)
+        {
+            text = "none";
+            DebugLog.Write(LogChannel.Opcodes, "FieldNodes.AddDbStringNode: " + label +
+                " carries no string id.", LogLevel.Trace);
+        }
+        else
+        {
+            text = DbStringGateway.Instance.LookupString(type, (uint)stringId);
+            DebugLog.Write(LogChannel.Opcodes, "FieldNodes.AddDbStringNode: " + label + " string id " +
+                stringId + " is '" + text + "'.", LogLevel.Trace);
+        }
+
+        FieldDisplayNode newNode = new FieldDisplayNode(label + ": " + text + " (SID " + stringId + ")");
+        newNode.AddByteRange(extractor.GetByteRangeFor(slotId));
+        parent.AddChild(newNode);
+        return text;
     }
 }

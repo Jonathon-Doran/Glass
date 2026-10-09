@@ -57,3 +57,4 @@ public readonly struct SpellCategoryTag { }        // Spell category identifier 
 public readonly struct MessageIndexTag { }         // Arrival position of a message within a capture.
 public readonly struct ItemTag { }                 // Item identifier from the item serialization.
 public readonly struct ItemInstanceTag { }         // Database-assigned item instance identifier.
+public readonly struct AATag { }                   // Alternate advancement ability identifier assigned by the server.

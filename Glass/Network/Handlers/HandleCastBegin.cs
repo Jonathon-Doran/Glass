@@ -116,7 +116,7 @@ public class HandleCastBegin : OpcodeHandler
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
             if (!rootGate.Exists)
             {
-                DebugLog.Write(LogChannel.Opcodes, "HandlCastBegin:  No RootGate", LogLevel.Error);
+                DebugLog.Write(LogChannel.Opcodes, "HandleCastBegin:  No RootGate", LogLevel.Error);
                 return root;
             }
 

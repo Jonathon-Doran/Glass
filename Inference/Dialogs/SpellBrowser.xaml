@@ -10,7 +10,9 @@
             <TextBox x:Name="FilterName" Width="160" Margin="0,0,12,0"
                      KeyDown="FilterName_KeyDown"/>
             <TextBlock Text="SPA:" VerticalAlignment="Center" Margin="0,0,4,0"/>
-            <ComboBox x:Name="FilterSpa" Width="180" Margin="0,0,12,0"/>
+            <ComboBox x:Name="FilterSpa" Width="180" Margin="0,0,4,0"/>
+            <TextBox x:Name="FilterSpaNumber" Width="60" Margin="0,0,12,0"
+                     ToolTip="SPA number.  Overrides the SPA list when filled in."/>
             <TextBlock Text="Target:" VerticalAlignment="Center" Margin="0,0,4,0"/>
             <ComboBox x:Name="FilterTargetType" Width="160" Margin="0,0,12,0"/>
             <TextBlock Text="Class:" VerticalAlignment="Center" Margin="0,0,4,0"/>

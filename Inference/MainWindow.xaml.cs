@@ -928,6 +928,19 @@ public partial class MainWindow : Window
             "MenuItem_OpenPcap_Click: title set to pcap " + dialog.FileName, LogLevel.Trace);
 
 
+        try
+        {
+            AAImporter aaImporter = new AAImporter();
+            bool aasImported = aaImporter.ImportAARecords(_packetCatalog);
+            DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_OpenPcap_Click: AA import stored records = " +
+                aasImported, LogLevel.Trace);
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_OpenPcap_Click: AA import failed, " +
+                ex.GetType().Name + ": " + ex.Message, LogLevel.Error);
+        }
+
         StatusCapture.Text = "Capture: Pcap complete (" + routed + " packets)";
         UpdateControlStates();
 
@@ -2953,6 +2966,66 @@ public partial class MainWindow : Window
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "Button_RejectProposal_Click: rejected " + selected.OpcodeHex, LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // MenuItem_ImportClientFiles_Click
+    //
+    // Imports the client's database string file and the spell catalog's spells into the
+    // database, showing the wait cursor while the import runs, and reports the outcome in a
+    // message box.
+    //
+    // sender:  The menu item.
+    // e:       The routed event args.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void MenuItem_ImportClientFiles_Click(object sender, RoutedEventArgs e)
+    {
+        DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_ImportClientFiles_Click: starting import.",
+            LogLevel.Trace);
+
+        ClientFileImporter importer = new ClientFileImporter();
+        bool stringsImported = false;
+        bool spellsImported = false;
+        string? failure = null;
+
+        System.Windows.Input.Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
+        try
+        {
+            stringsImported = importer.ImportDbStringFile();
+            spellsImported = importer.ImportSpells();
+        }
+        catch (Exception ex)
+        {
+            failure = ex.Message;
+            DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_ImportClientFiles_Click: import failed, " +
+                ex.GetType().Name + ": " + ex.Message, LogLevel.Error);
+        }
+        finally
+        {
+            System.Windows.Input.Mouse.OverrideCursor = null;
+        }
+
+        if (failure != null)
+        {
+            MessageBox.Show("Import failed: " + failure, "Import Client Files",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        if ((stringsImported == true) && (spellsImported == true))
+        {
+            DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_ImportClientFiles_Click: strings and spells " +
+                "imported.", LogLevel.Trace);
+            MessageBox.Show("Strings and spells imported.", "Import Client Files",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_ImportClientFiles_Click: incomplete, strings " +
+            "imported = " + stringsImported + ", spells imported = " + spellsImported + ".", LogLevel.Warn);
+        MessageBox.Show("Import incomplete.  Strings imported: " + stringsImported + ".  Spells imported: " +
+            spellsImported + ".  See the log for the reason.", "Import Client Files",
+            MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////

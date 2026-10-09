@@ -21,6 +21,7 @@ public class HandlePlayerProfile : OpcodeHandler
     private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _nameSlot;
+    private readonly SlotId _persistentID_Slot;
     private readonly SlotId _levelSlot;
     private readonly SlotId _zoneIdSlot;
     private readonly SlotId _playerClassSlot;
@@ -76,6 +77,7 @@ public class HandlePlayerProfile : OpcodeHandler
         CollectionHandle characterBuffs = _registry.GetCollectionHandle(_patchLevel, "Character_Buffs");
 
         _nameSlot = _registry.IndexOfField(_collectionHandle, "name");
+        _persistentID_Slot = _registry.IndexOfField(_collectionHandle, "persistent_id");
         _levelSlot = _registry.IndexOfField(_collectionHandle, "level");
         _zoneIdSlot = _registry.IndexOfField(_collectionHandle, "zone_id");
         _playerClassSlot = _registry.IndexOfField(_collectionHandle, "player_class");
@@ -165,6 +167,7 @@ public class HandlePlayerProfile : OpcodeHandler
                         "' in repository; fields not stored.", LogLevel.Trace);
                     return;
                 }
+                character.PersistentId = _extractor.GetUIntAt(_persistentID_Slot);
                 character.Level = _extractor.GetUIntAt(_levelSlot);
                 character.PracticePoints = _extractor.GetUIntAt(_practicePointsSlot);
                 character.MaxHP = _extractor.GetUIntAt(_hitpointsSlot);
@@ -316,6 +319,7 @@ public class HandlePlayerProfile : OpcodeHandler
             String zoneName = ZoneRepository.Instance.GetZoneName(zoneId);
 
             FieldNodes.AddStringNode(_extractor, _nameSlot, "Name", root);
+            FieldNodes.AddUIntNode(_extractor, _persistentID_Slot, "Persistent ID", root);
             FieldNodes.AddUIntNode(_extractor, _levelSlot, "Level", root, "D");
             FieldNodes.AddLabeledNode(_extractor, _playerClassSlot, "Class: " + GetClassName(playerClass), root);
             FieldNodes.AddLabeledNode(_extractor, _zoneIdSlot, "Zone: " + zoneName + 
@@ -471,7 +475,7 @@ public class HandlePlayerProfile : OpcodeHandler
             SpellId spellID = (SpellId)_extractor.GetUIntAt(_buff_spellID_Slot);
 
             String spellName = SpellCatalog.Instance.LookupSpell(spellID);
-            string spellEntry = spellName + " (0x" + spellID.ToString() + ")";
+            string spellEntry = spellName + " (" + spellID.ToString() + ", 0x" + spellID.Value.ToString("X4") + ")";
 
             buffNode.Text = bagIndex.ToString() + ": " + spellEntry;
 

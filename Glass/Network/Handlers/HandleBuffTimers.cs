@@ -1,5 +1,6 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
@@ -69,19 +70,24 @@ public class HandleBuffTimers : OpcodeHandler
     {
         switch (metadata.Channel)
         {
-            case SoeConstants.StreamId.StreamClientToZone:
+            case SoeConstants.StreamId.StreamZoneToClient:
                 HandleZoneToClient(data, metadata);
                 break;
         }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleClientToZone
+    // HandleZoneToClient
     //
-    // Processes client-to-zone traffic
+    // Applies a buff timers packet from the zone stream to the active spells of the character
+    // bound to the stream's connection.  Kind 1 sets the remaining ticks of the spell stored at
+    // each listed position; positions not listed are left unchanged.  Kind 0 with the empty
+    // spell id removes the spell at the listed position; a kind 0 entry with any other spell id
+    // sets the remaining ticks the same as a kind 1 entry.  A listed position whose stored spell
+    // is missing or differs from the entry is logged and skipped.
     //
     // data:      The application payload
-    // metadata:  Packet metadata (timestamp, source/dest)
+    // metadata:  Packet metadata; selects the connection whose character is updated
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
@@ -89,32 +95,96 @@ public class HandleBuffTimers : OpcodeHandler
         try
         {
             GateHandle rootGate = extractor.Extract(_top_level_gate, data);
+            if (rootGate.Exists == false)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleBuffTimers.HandleZoneToClient: no root gate; " +
+                    "timers not applied", LogLevel.Error);
+                return;
+            }
+
+            Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+            if (character == null)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleBuffTimers.HandleZoneToClient: connection has no " +
+                    "character; timers not applied", LogLevel.Warn);
+                return;
+            }
+
+            uint playerId = extractor.GetUIntAt(_playerIdSlot);
+            uint interTickGap = extractor.GetUIntAt(_interTickGapSlot);
+            uint kind = extractor.GetUIntAt(_kindSlot);
+
+            if (kind != 0 && kind != 1)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleBuffTimers.HandleZoneToClient: unknown kind " + kind +
+                    " for '" + character.Name + "'; timers not applied", LogLevel.Warn);
+                return;
+            }
 
             if (extractor.IsPresent(_buffsGateSlot) == false)
             {
-                DebugLog.Write(LogChannel.Opcodes,
-                    "HandleBuffTimers: no Buffs gate present", LogLevel.Warn);
+                DebugLog.Write(LogChannel.Opcodes, "HandleBuffTimers.HandleZoneToClient: no Buffs gate present",
+                    LogLevel.Warn);
                 return;
             }
 
             GateHandle entriesGate = extractor.GetGateAt(_buffsGateSlot);
             if (entriesGate.Exists == false)
             {
-                DebugLog.Write(LogChannel.Opcodes,
-                    "HandleBuffTimers: Buffs present but no gate", LogLevel.Warn);
+                DebugLog.Write(LogChannel.Opcodes, "HandleBuffTimers.HandleZoneToClient: Buffs present but no gate",
+                    LogLevel.Warn);
                 return;
             }
 
             uint bagCount = extractor.BagCount(entriesGate);
+            uint applied = 0;
 
             for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
             {
                 extractor.EnterGate(entriesGate, bagIndex);
 
-                uint playerID = extractor.GetUIntAt(_playerIdSlot);
-                uint interTickGap = extractor.GetUIntAt(_interTickGapSlot);
-                uint kind = extractor.GetUIntAt(_kindSlot);
+                uint position = extractor.GetUIntAt(_buffPosSlot);
+                uint rawSpellId = extractor.GetUIntAt(_spellIdSlot);
+                uint ticksRemaining = extractor.GetUIntAt(_ticksRemainingSlot);
+
+                if (kind == 0 && rawSpellId == SpellId.None)
+                {
+                    if (character.RemoveActiveSpell(position))
+                    {
+                        applied++;
+                    }
+                    DebugLog.Write(LogChannel.Opcodes, "HandleBuffTimers.HandleZoneToClient: removal at position " +
+                        position + " for '" + character.Name + "'", LogLevel.Trace);
+                    continue;
+                }
+
+                if (character.TryGetActiveSpell(position, out ActiveSpell? spell) == false || spell == null)
+                {
+                    DebugLog.Write(LogChannel.Opcodes, "HandleBuffTimers: no stored spell at " +
+                        "position " + position + " for '" + character.Name + "'; entry spell " + rawSpellId +
+                        " skipped", LogLevel.Warn);
+                    continue;
+                }
+
+                if (spell.SpellId.Value != rawSpellId)
+                {
+                    DebugLog.Write(LogChannel.Opcodes, "HandleBuffTimers: position " + position +
+                        " for '" + character.Name + "' holds spell " + spell.SpellId + " but entry has spell " +
+                        rawSpellId + "; skipped", LogLevel.Warn);
+                    continue;
+                }
+
+                spell.RemainingTicks = ticksRemaining;
+                applied++;
+                DebugLog.Write(LogChannel.Opcodes, "HandleBuffTimers: spell " + rawSpellId +
+                    " at position " + position + " for '" + character.Name + "' now " + ticksRemaining +
+                    " ticks", LogLevel.Info);
             }
+
+            DebugLog.Write(LogChannel.Opcodes, "HandleBuffTimers: kind " + kind + " for '" +
+                character.Name + "' (spawn 0x" + playerId.ToString("X4") + ", gap 0x" +
+                interTickGap.ToString("X") + "): applied " + applied + " of " + bagCount + " entries",
+                LogLevel.Info);
         }
         finally
         {

@@ -98,7 +98,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             spawn.SpawnId = (SpawnId)spawnId;
             MobRepository.Instance.Add(spawn);
             DebugLog.Write(LogChannel.Opcodes, "SpawnHandler: created new record for " + name + ", zoneId=" + zoneId
-                + " spawnId=" + spawnId.ToString("X4") + ".", LogLevel.Info);
+                + " spawnId=" + spawnId.ToString("X4") + ".", LogLevel.Trace);
         }
 
         spawn.Name = name;

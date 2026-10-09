@@ -19,3 +19,4 @@ global using SpellId = Glass.World.Id<Glass.World.SpellTag>;
 global using SpellCategoryId = Glass.World.Id<Glass.World.SpellCategoryTag>;
 global using ItemId = Glass.World.Id<Glass.World.ItemTag>;
 global using ItemInstanceId = Glass.World.Id<Glass.World.ItemInstanceTag>;
+global using AAId = Glass.World.Id<Glass.World.AATag>;

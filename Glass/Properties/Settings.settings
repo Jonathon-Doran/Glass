@@ -11,5 +11,8 @@
     <Setting Name="ClientFilesPath" Type="System.String" Scope="User">
       <Value Profile="(Default)">C:\Users\jhd0044\source\repos\Glass\Glass\UI Files</Value>
     </Setting>
+    <Setting Name="EverQuestFolder" Type="System.String" Scope="User">
+      <Value Profile="(Default)">C:\Games\EverQuest</Value>
+    </Setting>
   </Settings>
 </SettingsFile>

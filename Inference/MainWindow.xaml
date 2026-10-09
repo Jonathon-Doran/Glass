@@ -137,6 +137,8 @@
                 <MenuItem Header="_Gate Editor" Click="MenuItem_GateEditor_Click"/>
                 <Separator/>
                 <MenuItem Header="_Spell Browser" Click="MenuItem_SpellBrowser_Click"/>
+                <Separator/>
+                <MenuItem Header="_Import Client Files" Click="MenuItem_ImportClientFiles_Click"/>
             </MenuItem>
         </Menu>
         <StatusBar DockPanel.Dock="Bottom">

@@ -512,6 +512,16 @@ public class Database
         {
             ApplyMigration(conn, 68, Migration_068);
         }
+
+        if (version < 69)
+        {
+            ApplyMigration(conn, 69, Migration_069);
+        }
+
+        if (version < 70)
+        {
+            ApplyMigration(conn, 70, Migration_070);
+        }
     }
 
     private int GetSchemaVersion()
@@ -1848,6 +1858,87 @@ public class Database
         );
     ";
 
+    private const string Migration_069 = @"
+        CREATE TABLE IF NOT EXISTS AARecords (
+            id              INTEGER PRIMARY KEY,                -- wire AA id
+            name            TEXT    NOT NULL DEFAULT '',
+            description     TEXT    NOT NULL DEFAULT '',
+            required_level  INTEGER NOT NULL DEFAULT 0,
+            cost            INTEGER NOT NULL DEFAULT 0,
+            seq             INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS AAEffects (
+            aa_id       INTEGER NOT NULL REFERENCES AARecords(id),
+            slot        INTEGER NOT NULL,
+            spa         INTEGER NOT NULL,
+            base        INTEGER NOT NULL DEFAULT 0,
+            unknown_1   INTEGER NOT NULL DEFAULT 0,
+            unknown_2   INTEGER NOT NULL DEFAULT 0,
+            unknown_3   INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (aa_id, slot)
+        );
+
+        CREATE TABLE IF NOT EXISTS SpellCategories (
+            id      INTEGER PRIMARY KEY,
+            name    TEXT    NOT NULL
+        );
+    ";
+
+    private const string Migration_070 = @"
+        CREATE TABLE IF NOT EXISTS DbStrings (
+            type    INTEGER NOT NULL,
+            id      INTEGER NOT NULL,
+            text    TEXT    NOT NULL,
+            PRIMARY KEY (type, id)
+        );
+
+        CREATE TABLE IF NOT EXISTS SpellRecords (
+            id                      INTEGER PRIMARY KEY,                -- spell id
+            name                    TEXT    NOT NULL DEFAULT '',
+            cast_range              INTEGER NOT NULL DEFAULT 0,
+            cast_time_ms            INTEGER NOT NULL DEFAULT 0,
+            recast_time_ms          INTEGER NOT NULL DEFAULT 0,
+            duration_formula        INTEGER NOT NULL DEFAULT 0,
+            duration_cap_ticks      INTEGER NOT NULL DEFAULT 0,
+            mana                    INTEGER NOT NULL DEFAULT 0,
+            primary_category        INTEGER NOT NULL DEFAULT 0,
+            secondary_category      INTEGER NOT NULL DEFAULT 0,
+            secondary_category_2    INTEGER NOT NULL DEFAULT 0,
+            target_type             INTEGER NOT NULL DEFAULT 0,
+            cast_restriction        INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS SpellEffects (
+            spell_id    INTEGER NOT NULL REFERENCES SpellRecords(id),
+            slot        INTEGER NOT NULL,
+            spa         INTEGER NOT NULL,
+            base1       INTEGER NOT NULL DEFAULT 0,
+            base2       INTEGER NOT NULL DEFAULT 0,
+            calc        INTEGER NOT NULL DEFAULT 0,
+            max_value   INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (spell_id, slot)
+        );
+
+        CREATE TABLE IF NOT EXISTS SpellClassLevels (
+            spell_id    INTEGER NOT NULL REFERENCES SpellRecords(id),
+            class       INTEGER NOT NULL,                               -- EQClass value
+            level       INTEGER NOT NULL,
+            PRIMARY KEY (spell_id, class)
+        );
+
+        CREATE TABLE IF NOT EXISTS SpellReagents (
+            spell_id    INTEGER NOT NULL REFERENCES SpellRecords(id),
+            expended    INTEGER NOT NULL,                               -- 1 when the cast consumes it
+            position    INTEGER NOT NULL,
+            item_id     INTEGER NOT NULL,
+            quantity    INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (spell_id, expended, position)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_spelleffects_spa ON SpellEffects(spa);
+        CREATE INDEX IF NOT EXISTS idx_spellclasslevels_class ON SpellClassLevels(class, level);
+    ";
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

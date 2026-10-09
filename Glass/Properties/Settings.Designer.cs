@@ -57,5 +57,17 @@ namespace Glass.Properties {
                 this["ClientFilesPath"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("C:\\Games\\EverQuest")]
+        public string EverQuestFolder {
+            get {
+                return ((string)(this["EverQuestFolder"]));
+            }
+            set {
+                this["EverQuestFolder"] = value;
+            }
+        }
     }
 }
