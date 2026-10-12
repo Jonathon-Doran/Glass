@@ -36,6 +36,7 @@ public struct UdpDatagram
     public int SourcePort;
     public string DestIp;
     public int DestPort;
-    public int SessionId;
+    public SessionId SessionId;
+    public CharacterId CharacterId;
     public StreamId Channel;
 }

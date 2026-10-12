@@ -100,8 +100,6 @@ public partial class LaunchProfileDialog : Window
     private void Button_Launch_Click(object sender, RoutedEventArgs e)
     {
         SelectedProfileName = (string)ProfileList.SelectedItem;
-        ProfileRepository profile = new ProfileRepository(SelectedProfileName);
-        CharacterRepository.Instance.Load(profile.GetCharacterIds());
         DebugLog.Write(LogChannel.Inference, "LaunchProfileDialog.Button_Launch_Click: selected '"
             + SelectedProfileName + "'", LogLevel.Trace);
 

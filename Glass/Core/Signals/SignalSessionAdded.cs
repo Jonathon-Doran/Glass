@@ -18,7 +18,7 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class SignalSessionAdded
 {
-    public int SessionId
+    public SessionId SessionId
     {
         get;
     }
@@ -37,7 +37,7 @@ public class SignalSessionAdded
     //                 the signal is raised only on identification, so an
     //                 empty name here would be a publisher bug.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public SignalSessionAdded(int sessionId, string characterName)
+    public SignalSessionAdded(SessionId sessionId, string characterName)
     {
         SessionId = sessionId;
         CharacterName = characterName;

@@ -13,14 +13,14 @@ public class Character
     //
     // Our database key for this character, unrelated to the EQ IDs.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public int CharacterId { get; set; }
+    public DatabaseId DatabaseId { get; set; }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // PersistentId
     //
     // The server's persistent id for this character, unchanged across zones and sessions.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public uint? PersistentId { get; set; }
+    public CharacterId CharacterId { get; set; } = CharacterId.None;
 
     public string Name { get; set; } = string.Empty;
     public EQClass Class { get; set; }

@@ -21,7 +21,7 @@ public class HandlePlayerProfile : OpcodeHandler
     private readonly GateDefinitionHandle _top_level_gate;
 
     private readonly SlotId _nameSlot;
-    private readonly SlotId _persistentID_Slot;
+    private readonly SlotId _characterIdSlot;
     private readonly SlotId _levelSlot;
     private readonly SlotId _zoneIdSlot;
     private readonly SlotId _playerClassSlot;
@@ -77,7 +77,7 @@ public class HandlePlayerProfile : OpcodeHandler
         CollectionHandle characterBuffs = _registry.GetCollectionHandle(_patchLevel, "Character_Buffs");
 
         _nameSlot = _registry.IndexOfField(_collectionHandle, "name");
-        _persistentID_Slot = _registry.IndexOfField(_collectionHandle, "persistent_id");
+        _characterIdSlot = _registry.IndexOfField(_collectionHandle, "persistent_id");
         _levelSlot = _registry.IndexOfField(_collectionHandle, "level");
         _zoneIdSlot = _registry.IndexOfField(_collectionHandle, "zone_id");
         _playerClassSlot = _registry.IndexOfField(_collectionHandle, "player_class");
@@ -164,10 +164,10 @@ public class HandlePlayerProfile : OpcodeHandler
                 if (character == null)
                 {
                     DebugLog.Write(LogChannel.Opcodes, _opcodeName + ": no Character named '" + name + 
-                        "' in repository; fields not stored.", LogLevel.Trace);
+                        "' in repository; fields not stored.", LogLevel.Error);
                     return;
                 }
-                character.PersistentId = _extractor.GetUIntAt(_persistentID_Slot);
+                character.CharacterId = (CharacterId) _extractor.GetUIntAt(_characterIdSlot);
                 character.Level = _extractor.GetUIntAt(_levelSlot);
                 character.PracticePoints = _extractor.GetUIntAt(_practicePointsSlot);
                 character.MaxHP = _extractor.GetUIntAt(_hitpointsSlot);
@@ -212,7 +212,7 @@ public class HandlePlayerProfile : OpcodeHandler
                     ", magic " + spellBonuses.SaveMagic, LogLevel.Info);
 
                 // PlayerProfile is the first time we see the character name on the network.
-                if (metadata.SessionId == -1)
+                if (! metadata.SessionId.Exists)
                 {
                     GlassContext.SessionRegistry.IdentifyConnection(name, metadata);
                     DebugLog.Write(LogChannel.Inference, "identifying port " + metadata.DestPort + " as " + name,
@@ -319,7 +319,7 @@ public class HandlePlayerProfile : OpcodeHandler
             String zoneName = ZoneRepository.Instance.GetZoneName(zoneId);
 
             FieldNodes.AddStringNode(_extractor, _nameSlot, "Name", root);
-            FieldNodes.AddUIntNode(_extractor, _persistentID_Slot, "Persistent ID", root);
+            FieldNodes.AddUIntNode(_extractor, _characterIdSlot, "Character ID", root);
             FieldNodes.AddUIntNode(_extractor, _levelSlot, "Level", root, "D");
             FieldNodes.AddLabeledNode(_extractor, _playerClassSlot, "Class: " + GetClassName(playerClass), root);
             FieldNodes.AddLabeledNode(_extractor, _zoneIdSlot, "Zone: " + zoneName + 

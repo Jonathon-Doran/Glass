@@ -1,5 +1,4 @@
-﻿using Glass.Core;
-using Glass.Core.Logging;
+﻿using Glass.Core.Logging;
 using Glass.Data.Models;
 using Microsoft.Data.Sqlite;
 
@@ -13,18 +12,60 @@ namespace Glass.Data.Repositories;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 public class ProfileRepository
 {
-    private Profile _profile;
+    private static ProfileRepository? _instance = null;
+    private Profile? _profile = null;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // ProfileRepository
+    // Instance
     //
-    // Loads the named profile from the database, including its slot assignments.
-    // If the profile does not exist, an empty profile is created ready for saving.
+    // The single ProfileRepository.  Created the first time it is requested.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public static ProfileRepository Instance
+    {
+        get
+        {
+            if (_instance == null)
+            {
+                _instance = new ProfileRepository();
+            }
+
+            return _instance;
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // ProfileRepository (constructor)
+    //
+    // Creates the repository holding an empty, unnamed profile.  No database access.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private ProfileRepository()
+    {
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // LoadProfile
+    //
+    // Loads the named profile from the database, including its slot assignments, and makes it the
+    // profile held by this repository.  If that profile is already the one held, nothing is read.
+    // If no profile with that name exists, an empty profile with that name is held, ready for saving.
     //
     // profileName:  The name of the profile to load.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public ProfileRepository(string profileName)
+    public void LoadProfile(string profileName)
     {
+        if ((_profile != null) && (_profile.Name == profileName))
+        {
+            DebugLog.Write(LogChannel.Database, "ProfileRepository.LoadProfile: '" + profileName
+                + "' is already loaded, not reading it again", LogLevel.Trace);
+            return;
+        }
+        else if (_profile != null)
+        {
+            DebugLog.Write(LogChannel.Database, "ProfileRepository.LoadProfile: discarding the held profile '"
+                + _profile.Name + "' before loading '" + profileName + "'", LogLevel.Trace);
+            _profile = null;
+        }
+
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
 
@@ -37,7 +78,7 @@ public class ProfileRepository
         {
             _profile = new Profile
             {
-                Id = reader.GetInt32(0),
+                Id = (ProfileId) (uint) reader.GetInt32(0),
                 Name = reader.GetString(1),
                 MachineId = reader.IsDBNull(2) ? null : reader.GetInt32(2),
                 LayoutId = reader.IsDBNull(3) ? null : reader.GetInt32(3),
@@ -52,7 +93,7 @@ public class ProfileRepository
                 FROM ProfileSlots
                 WHERE profile_id = @id
                 ORDER BY slot_number";
-            slotsCmd.Parameters.AddWithValue("@id", _profile.Id);
+            slotsCmd.Parameters.AddWithValue("@id", _profile.Id.Value);
 
             using SqliteDataReader slotsReader = slotsCmd.ExecuteReader();
             while (slotsReader.Read())
@@ -60,11 +101,11 @@ public class ProfileRepository
                 _profile.Slots.Add(new SlotAssignment
                 {
                     SlotNumber = slotsReader.GetInt32(0),
-                    CharacterId = slotsReader.GetInt32(1)
+                    DatabaseId = (DatabaseId) (uint) slotsReader.GetInt32(1)
                 });
             }
 
-            DebugLog.Write(LogChannel.Database, $"ProfileRepository: loaded. id={_profile.Id} layoutId={_profile.LayoutId} slots={_profile.Slots.Count}.");
+            DebugLog.Write(LogChannel.Database, $"ProfileRepository: loaded. id={_profile.Id} layoutId={_profile.LayoutId} slots={_profile.Slots.Count}.", LogLevel.Info);
         }
         else
         {
@@ -72,18 +113,91 @@ public class ProfileRepository
             {
                 Name = profileName
             };
-            DebugLog.Write(LogChannel.Database, $"ProfileRepository: '{profileName}' not found, created empty.");
+            DebugLog.Write(LogChannel.Database, $"ProfileRepository: '{profileName}' not found, created empty.", LogLevel.Error);
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // CreateProfile
+    //
+    // Makes a new, empty profile with the given name the profile held by this repository.  Any
+    // profile already held is discarded.  Nothing is read from or written to the database.
+    //
+    // profileName:  The name of the new profile.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void CreateProfile(string profileName)
+    {
+        if (_profile != null)
+        {
+            DebugLog.Write(LogChannel.Database, "ProfileRepository.CreateProfile: discarding the held profile '"
+                + _profile.Name + "' before creating '" + profileName + "'", LogLevel.Trace);
+        }
+
+        _profile = new Profile
+        {
+            Name = profileName
+        };
+
+        DebugLog.Write(LogChannel.Database, "ProfileRepository.CreateProfile: created empty profile '"
+            + profileName + "'", LogLevel.Trace);
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // ProfileExists
+    //
+    // Reports whether the Profiles table has a row with the given name.  Does not change the
+    // profile held by this repository.
+    //
+    // profileName:  The profile name to look for.
+    //
+    // Returns:  True if a profile with that name is in the database, false otherwise.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public bool ProfileExists(string profileName)
+    {
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM Profiles WHERE name = @name";
+        cmd.Parameters.AddWithValue("@name", profileName);
+
+        long rowCount = (long)cmd.ExecuteScalar()!;
+        bool exists = rowCount > 0;
+
+        DebugLog.Write(LogChannel.Database, "ProfileRepository.ProfileExists: '" + profileName + "' "
+            + (exists ? "exists" : "does not exist"), LogLevel.Trace);
+        return exists;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // LoadedProfile
+    //
+    // The profile held by this repository.  Throws InvalidOperationException when no profile has
+    // been loaded, because using a profile before loading one is a programming error.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private Profile LoadedProfile
+    {
+        get
+        {
+            if (_profile == null)
+            {
+                DebugLog.Write(LogChannel.Database, "ProfileRepository.LoadedProfile: a profile was used before one was loaded",
+                    LogLevel.Error);
+                Environment.FailFast("ProfileRepository: a profile was used before one was loaded.");
+            }
+
+            return _profile;
         }
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // GetId
     //
-    // Returns the ID of the loaded profile, or 0 if not found.
+    // Returns the ID of the loaded profile.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public int GetId()
+    public ProfileId GetId()
     {
-        return _profile?.Id ?? 0;
+        return LoadedProfile.Id;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -93,7 +207,7 @@ public class ProfileRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public int? GetLayoutId()
     {
-        return _profile.LayoutId;
+        return LoadedProfile.LayoutId;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -106,8 +220,8 @@ public class ProfileRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void SetLayoutId(int? layoutId)
     {
-        DebugLog.Write(LogChannel.Database, $"ProfileRepository.SetLayoutId: layoutId={layoutId?.ToString() ?? "null"}.");
-        _profile.LayoutId = layoutId;
+        DebugLog.Write(LogChannel.Database, $"ProfileRepository.SetLayoutId: layoutId={layoutId?.ToString() ?? "null"}.", LogLevel.Trace);
+        LoadedProfile.LayoutId = layoutId;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -117,7 +231,7 @@ public class ProfileRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public int? GetMachineId()
     {
-        return _profile.MachineId;
+        return LoadedProfile.MachineId;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -129,7 +243,7 @@ public class ProfileRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void SetMachineId(int? machineId)
     {
-        _profile.MachineId = machineId;
+        LoadedProfile.MachineId = machineId;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -137,7 +251,7 @@ public class ProfileRepository
     //
     // Returns a read-only view of the cached slot assignments.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public IReadOnlyList<SlotAssignment> GetSlots() => _profile.Slots.AsReadOnly();
+    public IReadOnlyList<SlotAssignment> GetSlots() => LoadedProfile.Slots.AsReadOnly();
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // SetSlots
@@ -148,8 +262,8 @@ public class ProfileRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void SetSlots(List<SlotAssignment> slots)
     {
-        DebugLog.Write(LogChannel.Database, $"ProfileRepository.SetSlots: {slots.Count} slots.");
-        _profile.Slots = slots;
+        DebugLog.Write(LogChannel.Database, $"ProfileRepository.SetSlots: {slots.Count} slots.", LogLevel.Trace);
+        LoadedProfile.Slots = slots;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -159,112 +273,113 @@ public class ProfileRepository
     //
     // characterId:  The character to query.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public SlotAssignment? GetSlotForCharacter(int characterId)
+    public SlotAssignment? GetSlotForCharacter(DatabaseId characterId)
     {
-        return _profile.Slots.FirstOrDefault(s => s.CharacterId == characterId);
+        return LoadedProfile.Slots.FirstOrDefault(s => s.DatabaseId == characterId);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Save
     //
     // Persists the profile name, machine_id, layout_id, and slot assignments currently held by this
-    // repository to the database. Returns the profile ID on success, or -1 if the profile already
-    // exists and overwrite is false.
+    // repository to the database.
     //
     // overwrite:  If true, replaces an existing profile with the same name.
     //             If false and the profile exists, returns -1 and makes no changes.
+    //
+    // Returns the profileId or None if the profile already exists and overwrite is false
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public int Save(bool overwrite = false)
+    public ProfileId Save(bool overwrite = false)
     {
-        string profileName = _profile.Name;
-        DebugLog.Write(LogChannel.Database, $"ProfileRepository.Save: name='{profileName}' slots={_profile.Slots.Count} overwrite={overwrite}.");
+        string profileName = LoadedProfile.Name;
+        DebugLog.Write(LogChannel.Database, $"ProfileRepository.Save: name='{profileName}' slots={LoadedProfile.Slots.Count} overwrite={overwrite}.", LogLevel.Trace);
 
         if (string.IsNullOrWhiteSpace(profileName))
         {
-            DebugLog.Write(LogChannel.Database, "ProfileRepository.Save: profile name is empty, aborting.");
+            DebugLog.Write(LogChannel.Database, "ProfileRepository.Save: profile name is empty, aborting.", LogLevel.Error);
             throw new InvalidOperationException("Profile name must be set before calling Save.");
         }
 
-        using var conn = Database.Instance.Connect();
+        using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
-        using var tx = conn.BeginTransaction();
+        using SqliteTransaction tx = conn.BeginTransaction();
 
         try
         {
-            using var checkCmd = conn.CreateCommand();
+            using SqliteCommand checkCmd = conn.CreateCommand();
             checkCmd.Transaction = tx;
             checkCmd.CommandText = "SELECT id FROM Profiles WHERE name = @name";
             checkCmd.Parameters.AddWithValue("@name", profileName);
-            var existingId = checkCmd.ExecuteScalar();
+            object? existingId = checkCmd.ExecuteScalar();
 
-            int profileId;
+            ProfileId profileId;
 
             if (existingId != null)
             {
                 if (!overwrite)
                 {
-                    DebugLog.Write(LogChannel.Database, "ProfileRepository.Save: profile exists and overwrite=false, returning -1.");
+                    DebugLog.Write(LogChannel.Database, "ProfileRepository.Save: profile exists and overwrite=false, returning -1.", LogLevel.Warn);
                     tx.Rollback();
-                    return -1;
+                    return ProfileId.None;
                 }
 
-                profileId = Convert.ToInt32(existingId);
-                DebugLog.Write(LogChannel.Database, $"ProfileRepository.Save: overwriting profileId={profileId}, deleting existing slots.");
+                profileId = (ProfileId) (uint) Convert.ToInt32(existingId);
+                DebugLog.Write(LogChannel.Database, $"ProfileRepository.Save: overwriting profileId={profileId}, deleting existing slots.", LogLevel.Trace);
 
-                using var deleteCmd = conn.CreateCommand();
+                using SqliteCommand deleteCmd = conn.CreateCommand();
                 deleteCmd.Transaction = tx;
                 deleteCmd.CommandText = "DELETE FROM ProfileSlots WHERE profile_id = @id";
-                deleteCmd.Parameters.AddWithValue("@id", profileId);
+                deleteCmd.Parameters.AddWithValue("@id", profileId.Value);
                 deleteCmd.ExecuteNonQuery();
 
-                using var updateCmd = conn.CreateCommand();
+                using SqliteCommand updateCmd = conn.CreateCommand();
                 updateCmd.Transaction = tx;
                 updateCmd.CommandText = "UPDATE Profiles SET machine_id = @machineId, layout_id = @layoutId, ServerType = @serverType, Server = @server WHERE id = @id";
-                updateCmd.Parameters.AddWithValue("@machineId", _profile.MachineId.HasValue ? _profile.MachineId.Value : DBNull.Value);
-                updateCmd.Parameters.AddWithValue("@layoutId", _profile.LayoutId.HasValue ? _profile.LayoutId.Value : DBNull.Value);
-                updateCmd.Parameters.AddWithValue("@serverType", _profile.ServerType);
-                updateCmd.Parameters.AddWithValue("@server", _profile.Server);
-                updateCmd.Parameters.AddWithValue("@id", profileId);
+                updateCmd.Parameters.AddWithValue("@machineId", LoadedProfile.MachineId.HasValue ? LoadedProfile.MachineId.Value : DBNull.Value);
+                updateCmd.Parameters.AddWithValue("@layoutId", LoadedProfile.LayoutId.HasValue ? LoadedProfile.LayoutId.Value : DBNull.Value);
+                updateCmd.Parameters.AddWithValue("@serverType", LoadedProfile.ServerType);
+                updateCmd.Parameters.AddWithValue("@server", LoadedProfile.Server);
+                updateCmd.Parameters.AddWithValue("@id", profileId.Value);
                 updateCmd.ExecuteNonQuery();
 
-                DebugLog.Write(LogChannel.Database, $"ProfileRepository.Save: updated profile. machineId={_profile.MachineId} layoutId={_profile.LayoutId}.");
+                DebugLog.Write(LogChannel.Database, $"ProfileRepository.Save: updated profile. machineId={LoadedProfile.MachineId} layoutId={LoadedProfile.LayoutId}.", LogLevel.Trace);
             }
             else
             {
-                using var insertCmd = conn.CreateCommand();
+                using SqliteCommand insertCmd = conn.CreateCommand();
                 insertCmd.Transaction = tx;
                 insertCmd.CommandText = "INSERT INTO Profiles (name, machine_id, layout_id, ServerType, Server) VALUES (@name, @machineId, @layoutId, @serverType, @server); SELECT last_insert_rowid();";
                 insertCmd.Parameters.AddWithValue("@name", profileName);
-                insertCmd.Parameters.AddWithValue("@machineId", _profile.MachineId.HasValue ? _profile.MachineId.Value : DBNull.Value);
-                insertCmd.Parameters.AddWithValue("@layoutId", _profile.LayoutId.HasValue ? _profile.LayoutId.Value : DBNull.Value);
-                insertCmd.Parameters.AddWithValue("@serverType", _profile.ServerType);
-                insertCmd.Parameters.AddWithValue("@server", _profile.Server);
-                profileId = Convert.ToInt32(insertCmd.ExecuteScalar());
+                insertCmd.Parameters.AddWithValue("@machineId", LoadedProfile.MachineId.HasValue ? LoadedProfile.MachineId.Value : DBNull.Value);
+                insertCmd.Parameters.AddWithValue("@layoutId", LoadedProfile.LayoutId.HasValue ? LoadedProfile.LayoutId.Value : DBNull.Value);
+                insertCmd.Parameters.AddWithValue("@serverType", LoadedProfile.ServerType);
+                insertCmd.Parameters.AddWithValue("@server", LoadedProfile.Server);
+                profileId = (ProfileId)(uint)Convert.ToInt32(insertCmd.ExecuteScalar());
 
-                DebugLog.Write(LogChannel.Database, $"ProfileRepository.Save: inserted new profile, profileId={profileId}. machineId={_profile.MachineId} layoutId={_profile.LayoutId}.");
+                DebugLog.Write(LogChannel.Database, $"ProfileRepository.Save: inserted new profile, profileId={profileId}. machineId={LoadedProfile.MachineId} layoutId={LoadedProfile.LayoutId}.", LogLevel.Trace);
             }
 
-            foreach (var slot in _profile.Slots)
+            foreach (SlotAssignment slot in LoadedProfile.Slots)
             {
-                DebugLog.Write(LogChannel.Database, $"ProfileRepository.Save: slot {slot.SlotNumber} = characterId={slot.CharacterId}.");
+                DebugLog.Write(LogChannel.Database, $"ProfileRepository.Save: slot {slot.SlotNumber} = characterId={slot.DatabaseId}.", LogLevel.Trace);
 
-                using var insertSlot = conn.CreateCommand();
+                using SqliteCommand insertSlot = conn.CreateCommand();
                 insertSlot.Transaction = tx;
                 insertSlot.CommandText = "INSERT INTO ProfileSlots (profile_id, slot_number, character_id) VALUES (@setId, @slotNumber, @charId)";
-                insertSlot.Parameters.AddWithValue("@setId", profileId);
+                insertSlot.Parameters.AddWithValue("@setId", profileId.Value);
                 insertSlot.Parameters.AddWithValue("@slotNumber", slot.SlotNumber);
-                insertSlot.Parameters.AddWithValue("@charId", slot.CharacterId);
+                insertSlot.Parameters.AddWithValue("@charId", slot.DatabaseId.Value);
                 insertSlot.ExecuteNonQuery();
             }
 
             tx.Commit();
-            _profile.Id = profileId;
-            DebugLog.Write(LogChannel.Database, $"ProfileRepository.Save: committed. profileId={profileId}.");
+            LoadedProfile.Id = profileId;
+            DebugLog.Write(LogChannel.Database, $"ProfileRepository.Save: committed. profileId={profileId}.", LogLevel.Trace);
             return profileId;
         }
         catch (Exception ex)
         {
-            DebugLog.Write(LogChannel.Database, $"ProfileRepository.Save: exception: {ex.Message}, rolling back.");
+            DebugLog.Write(LogChannel.Database, $"ProfileRepository.Save: exception: {ex.Message}, rolling back.", LogLevel.Error);
             tx.Rollback();
             throw;
         }
@@ -277,7 +392,7 @@ public class ProfileRepository
     ///////////////////////////////////////////////////////////////////////////////////////////
     public string GetServerType()
     {
-        return _profile.ServerType;
+        return LoadedProfile.ServerType;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -287,7 +402,7 @@ public class ProfileRepository
     ///////////////////////////////////////////////////////////////////////////////////////////
     public string GetServer()
     {
-        return _profile.Server;
+        return LoadedProfile.Server;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -299,7 +414,7 @@ public class ProfileRepository
     ///////////////////////////////////////////////////////////////////////////////////////////
     public void SetServerType(string serverType)
     {
-        _profile.ServerType = serverType;
+        LoadedProfile.ServerType = serverType;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -311,7 +426,7 @@ public class ProfileRepository
     ///////////////////////////////////////////////////////////////////////////////////////////
     public void SetServer(string server)
     {
-        _profile.Server = server;
+        LoadedProfile.Server = server;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -359,7 +474,7 @@ public class ProfileRepository
         object? result = cmd.ExecuteScalar();
         if (result == null || result == DBNull.Value)
         {
-            DebugLog.Write(LogChannel.Database, $"ProfileRepository.GetServerTypeForProfile: '{profileName}' not found.");
+            DebugLog.Write(LogChannel.Database, $"ProfileRepository.GetServerTypeForProfile: '{profileName}' not found.", LogLevel.Error);
             return null;
         }
 
@@ -367,15 +482,15 @@ public class ProfileRepository
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // GetCharacterIds
+    // GetDatabaseIds
     //
-    // Returns the character ids assigned to slots in this profile.
+    // Returns the database ids assigned to slots in this profile.
     // Generated on demand from the cached slot list; not itself cached.
     // Cold-path usage only (e.g., feeding CharacterRepository.Load(profileId) at profile launch).
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public List<int> GetCharacterIds()
+    public List<DatabaseId> GetDatabaseIds()
     {
-        List<int> characterIds = _profile.Slots.Select(slot => slot.CharacterId).ToList();
-        return characterIds;
+        List<DatabaseId> databaseIds = LoadedProfile.Slots.Select(slot => slot.DatabaseId).ToList();
+        return databaseIds;
     }
 }

@@ -7,6 +7,7 @@
 global using MobId = Glass.World.Id<Glass.World.MobTag>;
 global using ZoneId = Glass.World.Id<Glass.World.ZoneTag>;
 global using SpawnId = Glass.World.Id<Glass.World.SpawnTag>;
+global using CharacterId = Glass.World.Id<Glass.World.CharacterTag>;
 
 global using OpcodeHandle = Glass.World.Id<Glass.World.OpcodeTag>;
 global using CollectionHandle = Glass.World.Id<Glass.World.CollectionTag>;
@@ -20,3 +21,6 @@ global using SpellCategoryId = Glass.World.Id<Glass.World.SpellCategoryTag>;
 global using ItemId = Glass.World.Id<Glass.World.ItemTag>;
 global using ItemInstanceId = Glass.World.Id<Glass.World.ItemInstanceTag>;
 global using AAId = Glass.World.Id<Glass.World.AATag>;
+global using DatabaseId = Glass.World.Id<Glass.World.DatabaseTag>;
+global using SessionId = Glass.World.Id<Glass.World.SessionTag>;
+global using ProfileId = Glass.World.Id<Glass.World.ProfileTag>;

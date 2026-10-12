@@ -4,5 +4,5 @@
 public class SlotAssignment
 {
     public int SlotNumber { get; set; }
-    public int CharacterId { get; set; }
+    public DatabaseId DatabaseId { get; set; }
 }

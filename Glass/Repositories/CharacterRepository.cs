@@ -23,7 +23,8 @@ public class CharacterRepository
     private static CharacterRepository? _instance = null;
 
     private readonly List<Character> _characters;
-    private readonly Dictionary<int, Character> _charactersById;
+    private readonly Dictionary<DatabaseId, Character> _charactersByDatabaseId;
+    private readonly Dictionary<CharacterId, Character> _charactersByCharacterId;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Instance
@@ -53,8 +54,9 @@ public class CharacterRepository
     private CharacterRepository()
     {
         _characters = new List<Character>();
-        _charactersById = new Dictionary<int, Character>();
-        DebugLog.Write(LogChannel.Database, "CharacterRepository: singleton instance created with empty caches.");
+        _charactersByCharacterId = new Dictionary<CharacterId, Character>();
+        _charactersByDatabaseId = new Dictionary<DatabaseId, Character>();
+        DebugLog.Write(LogChannel.Database, "CharacterRepository: singleton instance created with empty caches.", LogLevel.Trace);
     }
 
     // Returns all cached characters.
@@ -75,34 +77,33 @@ public class CharacterRepository
     //
     // Cold path. Two usage modes:
     //   - Load(null) or Load() : loads all characters in the Characters table.
-    //   - Load(idList)         : loads only the characters with the given ids. Caller typically
-    //                            obtains the id list from ProfileRepository.GetCharacterIds().
+    //   - Load(idList)         : loads only the characters with the given ids.
     //
-    // characterIds:  Optional list of character ids to load. If null, all characters are loaded.
+    // databaseIds:  Optional list of Character IDs to load. If null, all characters are loaded.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public void Load(List<int>? characterIds = null)
+    public void Load(List<DatabaseId>? databaseIds = null)
     {
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
 
         // Resolve the full id list when no list was supplied.
-        if (characterIds == null)
+        if (databaseIds == null)
         {
-            characterIds = new List<int>();
+            databaseIds = new List<DatabaseId>();
             using SqliteCommand idsCmd = conn.CreateCommand();
             idsCmd.CommandText = "SELECT id FROM Characters";
             using SqliteDataReader idsReader = idsCmd.ExecuteReader();
             while (idsReader.Read())
             {
-                characterIds.Add(idsReader.GetInt32(0));
+                databaseIds.Add((DatabaseId) (uint) idsReader.GetInt32(0));
             }
         }
 
         // Filter to ids not already cached.
-        List<int> missingIds = new List<int>();
-        foreach (int candidateId in characterIds)
+        List<DatabaseId> missingIds = new List<DatabaseId>();
+        foreach (DatabaseId candidateId in databaseIds)
         {
-            if (!_charactersById.ContainsKey(candidateId))
+            if (!_charactersByDatabaseId.ContainsKey(candidateId))
             {
                 missingIds.Add(candidateId);
             }
@@ -122,14 +123,15 @@ public class CharacterRepository
                level, practice_points, max_hp, max_mana,
                strength, stamina, charisma, dexterity,
                intelligence, agility, wisdom,
-               platinum, gold, silver, copper, current_zone
+               platinum, gold, silver, copper, current_zone,
+               character_id
         FROM Characters
         WHERE id IN (" + idPlaceholders + @")
         ORDER BY account_id, name";
 
         for (int parameterIndex = 0; parameterIndex < missingIds.Count; parameterIndex++)
         {
-            cmd.Parameters.AddWithValue("@id" + parameterIndex, missingIds[parameterIndex]);
+            cmd.Parameters.AddWithValue("@id" + parameterIndex, missingIds[parameterIndex].Value);
         }
 
         using SqliteDataReader reader = cmd.ExecuteReader();
@@ -137,8 +139,27 @@ public class CharacterRepository
         {
             Character character = ReadCharacterRow(reader);
             _characters.Add(character);
-            _charactersById[character.CharacterId] = character;
+            _charactersByDatabaseId[(DatabaseId) (uint) character.DatabaseId] = character;
             DebugLog.Write(LogChannel.General, "Loaded character " + character.Name, LogLevel.Trace);
+
+            if (character.CharacterId.Exists)
+            {
+                if (_charactersByCharacterId.TryGetValue(character.CharacterId, out Character? existing))
+                {
+                    DebugLog.Write(LogChannel.Database, "CharacterRepository.Load: characterId="
+                        + character.CharacterId + " is already indexed for '" + existing.Name
+                        + "', replacing it with '" + character.Name + "'", LogLevel.Warn);
+                }
+
+                _charactersByCharacterId[character.CharacterId] = character;
+                DebugLog.Write(LogChannel.Database, "CharacterRepository.Load: indexed '" + character.Name
+                    + "' by characterId=" + character.CharacterId, LogLevel.Trace);
+            }
+            else
+            {
+                DebugLog.Write(LogChannel.Database, "CharacterRepository.Load: '" + character.Name
+                    + "' has no character id, not indexed by character id", LogLevel.Trace);
+            }
         }
     }
 
@@ -158,14 +179,14 @@ public class CharacterRepository
     {
         Character character = new Character
         {
-            CharacterId = reader.GetInt32(0),
+            DatabaseId = (DatabaseId) (uint) reader.GetInt32(0),
             Name = reader.GetString(1),
             Class = (EQClass)reader.GetInt32(2),
             AccountId = reader.GetInt32(3),
             Progression = reader.GetInt32(4) != 0,
             Server = reader.GetString(5),
 
-            Level = reader.IsDBNull(6) ? null : (uint?) reader.GetInt32(6),
+            Level = reader.IsDBNull(6) ? null : (uint?)reader.GetInt32(6),
             PracticePoints = reader.IsDBNull(7) ? null : (uint?)reader.GetInt32(7),
             MaxHP = reader.IsDBNull(8) ? null : (uint?)reader.GetInt32(8),
             MaxMana = reader.IsDBNull(9) ? null : (uint?)reader.GetInt32(9),
@@ -183,7 +204,8 @@ public class CharacterRepository
             Silver = reader.IsDBNull(19) ? null : (ulong?)reader.GetInt64(19),
             Copper = reader.IsDBNull(20) ? null : (ulong?)reader.GetInt64(20),
 
-            CurrentZone = reader.IsDBNull(21) ? null : (uint?)reader.GetInt32(21)
+            CurrentZone = reader.IsDBNull(21) ? null : (uint?)reader.GetInt32(21),
+            CharacterId = reader.IsDBNull(22) ? CharacterId.None : (CharacterId)(uint)reader.GetInt64(22)
         };
 
         return character;
@@ -210,15 +232,15 @@ public class CharacterRepository
         cmd.Parameters.AddWithValue("@server", character.Server);
         cmd.Parameters.AddWithValue("@progression", character.Progression ? 1 : 0);
 
-        character.CharacterId = Convert.ToInt32(cmd.ExecuteScalar());
+        character.DatabaseId = (DatabaseId) Convert.ToUInt32(cmd.ExecuteScalar());
         _characters.Add(character);
-        _charactersById[character.CharacterId] = character;
+        _charactersByDatabaseId[(DatabaseId) (uint) character.DatabaseId] = character;
 
         DebugLog.Write(LogChannel.Database, "CharacterRepository.Add: added character="
-            + character.Name + " id=" + character.CharacterId
+            + character.Name + " id=" + character.DatabaseId
             + " server=" + character.Server
             + " class=" + character.Class
-            + " accountId=" + character.AccountId);
+            + " accountId=" + character.AccountId, LogLevel.Trace);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -233,11 +255,11 @@ public class CharacterRepository
 //
 // characterId:  The persistent Glass character id of the character to save.
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-public void Save(int characterId)
+public void Save(DatabaseId databaseId)
 {
-    if (!_charactersById.TryGetValue(characterId, out Character? character))
+    if (!_charactersByDatabaseId.TryGetValue(databaseId, out Character? character))
     {
-        DebugLog.Write(LogChannel.Database, $"CharacterRepository.Save: characterId={characterId} not in cache, ignoring.");
+        DebugLog.Write(LogChannel.Database, $"CharacterRepository.Save: databaseId={databaseId} not in cache, ignoring.", LogLevel.Warn);
         return;
     }
 
@@ -267,7 +289,8 @@ public void Save(int characterId)
             gold = @gold,
             silver = @silver,
             copper = @copper,
-            current_zone = @currentZone
+            current_zone = @currentZone,
+            character_id = @characterId
         WHERE id = @id";
 
     cmd.Parameters.AddWithValue("@name", character.Name);
@@ -294,32 +317,58 @@ public void Save(int characterId)
     cmd.Parameters.AddWithValue("@silver",   character.Silver.HasValue   ? character.Silver.Value   : DBNull.Value);
     cmd.Parameters.AddWithValue("@copper",   character.Copper.HasValue   ? character.Copper.Value   : DBNull.Value);
     cmd.Parameters.AddWithValue("@currentZone", character.CurrentZone.HasValue ? character.CurrentZone.Value : DBNull.Value);
-    cmd.Parameters.AddWithValue("@id", character.CharacterId);
+    cmd.Parameters.AddWithValue("@characterId", character.CharacterId.Exists ? character.CharacterId.Value : DBNull.Value);
+    cmd.Parameters.AddWithValue("@id", character.DatabaseId.Value);
 
     cmd.ExecuteNonQuery();
 
-    DebugLog.Write(LogChannel.Database, "CharacterRepository.Save: persisted characterId=" + character.CharacterId
+    DebugLog.Write(LogChannel.Database, "CharacterRepository.Save: persisted character record " + character.DatabaseId
         + " name=" + character.Name
         + " class=" + character.Class
         + " level=" + (character.Level?.ToString() ?? "null")
         + " maxHp=" + (character.MaxHP?.ToString() ?? "null")
-        + " maxMana=" + (character.MaxMana?.ToString() ?? "null"));
+        + " maxMana=" + (character.MaxMana?.ToString() ?? "null"), LogLevel.Trace);
 }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // GetById
+    // GetByDatabaseId
     //
-    // Hot-path lookup. Returns the cached Character with the given persistent Glass character id,
-    // or null if not found.
+    // Returns the cached Character whose row in the Characters table has the given database id.
     //
-    // characterId:  The persistent Glass character id.
+    // databaseId:  The database id (Characters.id) of the character.
+    //
+    // Returns:  The cached Character, or null if no cached character has that database id.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public Character? GetById(int characterId)
+    public Character? GetByDatabaseId(DatabaseId databaseId)
     {
-        if (_charactersById.TryGetValue(characterId, out Character? character))
+        if (_charactersByDatabaseId.TryGetValue(databaseId, out Character? character))
         {
             return character;
         }
+
+        DebugLog.Write(LogChannel.Database, "CharacterRepository.GetByDatabaseId: no cached character for databaseId="
+            + databaseId, LogLevel.Trace);
+        return null;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // GetByCharacterId
+    //
+    // Returns the cached Character whose row in the Characters table has the given character id.
+    //
+    // characterId:  The server assigned persistent character id of the character.
+    //
+    // Returns:  The cached Character, or null if no cached character has that character id.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public Character? GetByCharacterId(CharacterId characterId)
+    {
+        if (_charactersByCharacterId.TryGetValue(characterId, out Character? character))
+        {
+            return character;
+        }
+
+        DebugLog.Write(LogChannel.Database, "CharacterRepository.GetByCharacterId: no cached character for characterId="
+            + characterId, LogLevel.Trace);
         return null;
     }
 }

@@ -22,8 +22,8 @@ public class Connection : IDisposable
     private readonly int _localPort;
     private readonly Dictionary<StreamId, SoeStream> _streams;
     private bool _disposed;
-    private int _sessionId = -1;
-    private int _characterId = -1;
+    private SessionId _sessionId = SessionId.None;
+    private CharacterId _characterId = CharacterId.None;
     private Character? _character = null;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -59,14 +59,14 @@ public class Connection : IDisposable
             + " with " + _streams.Count + " streams");
     }
 
-    public int SessionId
+    public SessionId SessionId
     {
         get { return _sessionId; }
         set { _sessionId = value; }
     }
 
 
-    public int CharacterId
+    public CharacterId CharacterId
     {
         get { return _characterId; }
         set { _characterId = value; }

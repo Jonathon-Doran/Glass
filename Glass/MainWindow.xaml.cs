@@ -140,13 +140,14 @@ public partial class MainWindow : Window
         DebugLog.AddHandler(LogSink.Aux3LogFile, inputLogHandler);
         DebugLog.Route(LogChannel.Input, LogSink.Aux3LogFile);
 
-        //        GlassDebugLogHandler lowNetLogHandler = new GlassDebugLogHandler("lowNetwork.log");
-        //       DebugLog.AddHandler(LogSink.Aux2LogFile, lowNetLogHandler);
-        //       DebugLog.Route(LogChannel.LowNetwork, LogSink.Aux2LogFile);
+                GlassDebugLogHandler lowNetLogHandler = new GlassDebugLogHandler("lowNetwork.log");
+               DebugLog.AddHandler(LogSink.Aux2LogFile, lowNetLogHandler);
+              DebugLog.Route(LogChannel.LowNetwork, LogSink.Aux2LogFile);
 
         GlassConsoleLogHandler glassConsoleLogHandler = new GlassConsoleLogHandler(ConsoleOutput, ConsoleScroller);
         DebugLog.AddHandler(LogSink.GlassConsole, glassConsoleLogHandler);
         DebugLog.Route(LogChannel.General, LogSink.GlassConsole);
+        DebugLog.SetMinimumLevel(LogLevel.Trace);
 
         DebugLog.Write(LogChannel.General, "MainWindow: logging initialized", LogLevel.Trace);
     }
@@ -393,7 +394,7 @@ public partial class MainWindow : Window
             sb.Append($"relay_group {group.Id}");
             foreach (Character character in group.Characters)
             {
-                sb.Append($" {character.CharacterId}");
+                sb.Append($" {character.DatabaseId}");
             }
 
             string message = sb.ToString();
@@ -775,7 +776,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        ProfileRepository repo = new ProfileRepository(select.SelectedProfileName);
+        ProfileRepository repo = ProfileRepository.Instance;
+        repo.LoadProfile(select.SelectedProfileName);
         string serverType = repo.GetServerType();
 
         GlassContext.CurrentPatchLevel = GlassContext.PatchRegistry.LoadLatestPatchLevel(serverType);

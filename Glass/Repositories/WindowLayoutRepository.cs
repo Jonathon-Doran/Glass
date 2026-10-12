@@ -216,7 +216,7 @@ public class WindowLayoutRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public int Save(ProfileRepository profileRepo, string layoutName, List<SlotAssignment> slots, List<LayoutMonitorViewModel> monitors)
     {
-        int profileId = profileRepo.GetId();
+        ProfileId profileId = profileRepo.GetId();
         int? machineId = profileRepo.GetMachineId();
 
         using SqliteConnection conn = Database.Instance.Connect();
@@ -269,7 +269,7 @@ public class WindowLayoutRepository
             profileCmd.Transaction = tx;
             profileCmd.CommandText = "UPDATE Profiles SET layout_id = @layoutId WHERE id = @profileId";
             profileCmd.Parameters.AddWithValue("@layoutId", layoutId);
-            profileCmd.Parameters.AddWithValue("@profileId", profileId);
+            profileCmd.Parameters.AddWithValue("@profileId", profileId.Value);
             profileCmd.ExecuteNonQuery();
  
             // TODO: populate pnp_id and serial once MonitorRepository.SyncFromHardware is implemented.
@@ -591,7 +591,7 @@ public class WindowLayoutRepository
         {
             Profile profile = new Profile
             {
-                Id = reader.GetInt32(0),
+                Id = (ProfileId) (uint) reader.GetInt32(0),
                 Name = reader.GetString(1)
             };
 

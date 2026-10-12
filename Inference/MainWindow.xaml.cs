@@ -162,19 +162,13 @@ public partial class MainWindow : Window
         DebugLog.AddHandler(LogSink.InferenceDebugTab, debugTabHandler);
         DebugLog.Route(LogChannel.InferenceDebug, LogSink.InferenceDebugTab);
 
-        // The inference logfile.  Just inference messages
-        GlassDebugLogHandler inferenceLogHandler = new GlassDebugLogHandler("inference.log");
-        DebugLog.AddHandler(LogSink.InferenceLogfile, inferenceLogHandler);
-        DebugLog.Route(LogChannel.Inference, LogSink.InferenceLogfile);
-        DebugLog.Route(LogChannel.Opcodes, LogSink.InferenceLogfile);
+        GlassDebugLogHandler aux1Handler = new GlassDebugLogHandler("database.log");
+        DebugLog.AddHandler(LogSink.Aux1LogFile, aux1Handler);
+        DebugLog.Route(LogChannel.Database, LogSink.Aux1LogFile);
 
-        GlassDebugLogHandler opcodesLogHandler = new GlassDebugLogHandler("opcodes.log");
-        DebugLog.AddHandler(LogSink.Aux1LogFile, opcodesLogHandler);
-        DebugLog.Route(LogChannel.Opcodes, LogSink.Aux1LogFile);
-
-        GlassDebugLogHandler memoryLogHandler = new GlassDebugLogHandler("memory.log");
-        DebugLog.AddHandler(LogSink.Aux2LogFile, memoryLogHandler);
-        DebugLog.Route(LogChannel.Memory, LogSink.Aux2LogFile);
+        GlassDebugLogHandler aux2Handler = new GlassDebugLogHandler("lownetwork.log");
+        DebugLog.AddHandler(LogSink.Aux2LogFile, aux2Handler);
+        DebugLog.Route(LogChannel.LowNetwork, LogSink.Aux2LogFile);
 
         GlassDebugLogHandler aux3LogHandler = new GlassDebugLogHandler("fields.log");
         DebugLog.AddHandler(LogSink.Aux3LogFile, aux3LogHandler);

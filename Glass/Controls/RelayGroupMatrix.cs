@@ -26,11 +26,22 @@ public class RelayGroupMatrix : Control
     public class MembershipChangedEventArgs : EventArgs
     {
         public int GroupId { get; init; }
-        public int CharacterId { get; init; }
+        public DatabaseId CharacterDatabaseId { get; init; }
         public bool Added { get; init; }
     }
 
     public event EventHandler<RelayGroupMatrix.MembershipChangedEventArgs>? MembershipChanged;
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Membership
+    //
+    // Identifies one cell of the matrix: one character in one relay group.  Two values with the same
+    // group id and database id compare as equal.
+    //
+    // GroupId:     The relay group id.
+    // DatabaseId:  The database id (Characters.id) of the character.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public readonly record struct Membership(int GroupId, DatabaseId DatabaseId);
 
     private const string PartHeaderScrollViewer = "PART_HeaderScrollViewer";
     private const string PartLabelScrollViewer = "PART_LabelScrollViewer";
@@ -50,11 +61,11 @@ public class RelayGroupMatrix : Control
 
     private List<RelayGroup> _groups = new();
     private List<Character> _characters = new();
-    private HashSet<(int GroupId, int CharacterId)> _membership = new();
+    private HashSet<Membership> _membership = new();
 
     // for header clicks
-    private int _selectedCharacterId = -1;
-    private readonly Dictionary<int, List<Border>> _cellsByCharacter = new();
+    private DatabaseId _selectedDatabaseId = DatabaseId.None;
+    private readonly Dictionary<DatabaseId, List<Border>> _cellsByCharacter = new();
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Static constructor
@@ -133,7 +144,7 @@ public class RelayGroupMatrix : Control
     public void Load(
         List<RelayGroup> groups,
         List<Character> characters,
-        HashSet<(int GroupId, int CharacterId)> membership)
+        HashSet<Membership> membership)
     {
         DebugLog.Write(LogChannel.Input, $"RelayGroupMatrix.Load: groups={groups.Count} characters={characters.Count} memberships={membership.Count}.");
 
@@ -175,7 +186,7 @@ public class RelayGroupMatrix : Control
         _grid.ColumnDefinitions.Clear();
 
         _cellsByCharacter.Clear();
-        _selectedCharacterId = -1;
+        _selectedDatabaseId = DatabaseId.None;
 
         GridLength fixedRow = new GridLength(RowHeight);
 
@@ -219,14 +230,14 @@ public class RelayGroupMatrix : Control
                 Margin = new Thickness(4, 4, 4, 2),
                 LayoutTransform = new RotateTransform(-90),
                 Cursor = Cursors.Hand,
-                Tag = character.CharacterId
+                Tag = character.DatabaseId
             };
 
             header.MouseLeftButtonDown += (s, e) =>
             {
-                if (s is TextBlock tb && tb.Tag is int charId)
+                if (s is TextBlock tb && tb.Tag is DatabaseId dbId)
                 {
-                    SelectColumn(charId);
+                    SelectColumn(dbId);
                 }
             };
 
@@ -261,15 +272,15 @@ public class RelayGroupMatrix : Control
             for (int col = 0; col < _characters.Count; col++)
             {
                 Character character = _characters[col];
-                bool isMember = _membership.Contains((group.Id, character.CharacterId));
+                bool isMember = _membership.Contains(new Membership(GroupId: group.Id, DatabaseId: (DatabaseId)(uint)character.DatabaseId));
 
-                Border cell = BuildCell(group.Id, character.CharacterId, isMember);
+                Border cell = BuildCell(group.Id, (int) character.DatabaseId.Value, isMember);
 
-                if (!_cellsByCharacter.ContainsKey(character.CharacterId))
+                if (!_cellsByCharacter.ContainsKey(character.DatabaseId))
                 {
-                    _cellsByCharacter[character.CharacterId] = new List<Border>();
+                    _cellsByCharacter[character.DatabaseId] = new List<Border>();
                 }
-                _cellsByCharacter[character.CharacterId].Add(cell);
+                _cellsByCharacter[character.DatabaseId].Add(cell);
 
                 Grid.SetRow(cell, row);
                 Grid.SetColumn(cell, gridCol);
@@ -340,17 +351,17 @@ public class RelayGroupMatrix : Control
             return;
         }
 
-        var (groupId, characterId) = ((int GroupId, int CharacterId))border.Tag;
-        bool wasMember = _membership.Contains((groupId, characterId));
+        Membership clicked = (Membership)border.Tag;
+        bool wasMember = _membership.Contains(clicked);
         bool nowMember = !wasMember;
 
         if (nowMember)
         {
-            _membership.Add((groupId, characterId));
+            _membership.Add(clicked);
         }
         else
         {
-            _membership.Remove((groupId, characterId));
+            _membership.Remove(clicked);
         }
 
         if (border.Child is TextBlock text)
@@ -361,12 +372,13 @@ public class RelayGroupMatrix : Control
 
         border.BorderBrush = MemberBorderBrush(nowMember);
 
-        DebugLog.Write(LogChannel.Input, $"RelayGroupMatrix.Cell_Click: groupId={groupId} characterId={characterId} nowMember={nowMember}.");
+        DebugLog.Write(LogChannel.Input, "RelayGroupMatrix.Cell_Click: groupId=" + clicked.GroupId
+            + " databaseId=" + clicked.DatabaseId + " nowMember=" + nowMember, LogLevel.Trace);
 
         MembershipChanged?.Invoke(this, new MembershipChangedEventArgs
         {
-            GroupId = groupId,
-            CharacterId = characterId,
+            GroupId = clicked.GroupId,
+            CharacterDatabaseId = clicked.DatabaseId,
             Added = nowMember
         });
     }
@@ -379,36 +391,36 @@ public class RelayGroupMatrix : Control
     //
     // characterId:  The character whose column to select, or -1 to clear
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void SelectColumn(int characterId)
+    private void SelectColumn(DatabaseId databaseId)
     {
-        DebugLog.Write(LogChannel.Input, $"RelayGroupMatrix.SelectColumn: characterId={characterId} previousSelection={_selectedCharacterId}.");
+        DebugLog.Write(LogChannel.Input, $"RelayGroupMatrix.SelectColumn: databaseId={databaseId} previousSelection={_selectedDatabaseId}.");
 
         // Clear previous selection
-        if ((_selectedCharacterId != -1) && _cellsByCharacter.TryGetValue(_selectedCharacterId, out List<Border>? previous))
+        if ((_selectedDatabaseId != DatabaseId.None) && _cellsByCharacter.TryGetValue(_selectedDatabaseId, out List<Border>? previous))
         {
             foreach (Border cell in previous)
             {
                 cell.BorderBrush = MemberBorderBrush(cell.Child is TextBlock t && t.Text == "✓");
             }
-            DebugLog.Write(LogChannel.Input, $"RelayGroupMatrix.SelectColumn: cleared previous selection for characterId={_selectedCharacterId}.");
+            DebugLog.Write(LogChannel.Input, $"RelayGroupMatrix.SelectColumn: cleared previous selection for characterId={_selectedDatabaseId}.");
         }
 
-        if (_selectedCharacterId == characterId)
+        if (_selectedDatabaseId == databaseId)
         {
-            _selectedCharacterId = -1;
+            _selectedDatabaseId = DatabaseId.None;
             DebugLog.Write(LogChannel.Input, "RelayGroupMatrix.SelectColumn: deselected.");
             return;
         }
 
-        _selectedCharacterId = characterId;
+        _selectedDatabaseId = databaseId;
 
-        if (_cellsByCharacter.TryGetValue(characterId, out List<Border>? cells))
+        if (_cellsByCharacter.TryGetValue(databaseId, out List<Border>? cells))
         {
             foreach (Border cell in cells)
             {
                 cell.BorderBrush = new SolidColorBrush(Color.FromRgb(0x2A, 0xFF, 0xD7));
             }
-            DebugLog.Write(LogChannel.Input, $"RelayGroupMatrix.SelectColumn: highlighted {cells.Count} cells for characterId={characterId}.");
+            DebugLog.Write(LogChannel.Input, $"RelayGroupMatrix.SelectColumn: highlighted {cells.Count} cells for characterId={databaseId}.");
         }
     }
 

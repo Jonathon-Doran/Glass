@@ -93,51 +93,46 @@ public class KeyboardManager
     // Creates HidKeyInput, starts device readers, creates OSD windows.
     // Sets the start page as active for each device instance.
     //
-    // profileName:  The profile to load
+    // profileId:  The profile to load
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public void LoadProfile(string profileName)
+    public void LoadProfile(ProfileId profileId)
     {
-        DebugLog.Write(LogChannel.Input, $"KeyboardManager.LoadProfile: profileName='{profileName}'.", LogLevel.Info);
-
         UnloadProfile();
 
-        var profileRepo = new ProfileRepository(profileName);
-        int profileId = profileRepo.GetId();
-
-        if (profileId == 0)
+        if (! profileId.Exists)
         {
-            DebugLog.Write(LogChannel.Profiles, $"KeyboardManager.LoadProfile: profile '{profileName}' not found.", LogLevel.Warn);
+            DebugLog.Write(LogChannel.Profiles, $"KeyboardManager.LoadProfile: profile {profileId} not found.", LogLevel.Warn);
             return;
         }
 
-        var profilePageRepo = new ProfilePageGateway();
-        var profilePages = profilePageRepo.GetPagesForProfile(profileId);
+        ProfilePageGateway profilePageGateway = new ProfilePageGateway();
+        List<ProfilePage> profilePages = profilePageGateway.GetPagesForProfile(profileId);
 
         if (profilePages.Count == 0)
         {
-            DebugLog.Write(LogChannel.Profiles, $"KeyboardManager.LoadProfile: no pages assigned to profile '{profileName}'.", LogLevel.Warn);
+            DebugLog.Write(LogChannel.Profiles, $"KeyboardManager.LoadProfile: no pages assigned to profile '{profileId}'.", LogLevel.Warn);
             return;
         }
 
-        var pageRepo = new KeyPageGateway();
-        var bindingRepo = new KeyBindingGateway();
-        var commandRepo = new CommandGateway();
+        KeyPageGateway pageGateway = new KeyPageGateway();
+        KeyBindingGateway bindingGateway = new KeyBindingGateway();
+        CommandGateway commandGateway = new CommandGateway();
 
-        foreach (var command in commandRepo.GetAllCommands())
+        foreach (Command command in commandGateway.GetAllCommands())
         {
             _commandCache[command.Id] = command;
         }
 
-        foreach (var profilePage in profilePages)
+        foreach (ProfilePage profilePage in profilePages)
         {
-            KeyPage? page = pageRepo.GetPage(profilePage.KeyPageId);
+            KeyPage? page = pageGateway.GetPage(profilePage.KeyPageId);
             if (page == null)
             {
                 DebugLog.Write(LogChannel.Profiles, $"KeyboardManager.LoadProfile: page id={profilePage.KeyPageId} not found, skipping.", LogLevel.Warn);
                 continue;
             }
 
-            List<KeyBinding> bindings = bindingRepo.GetBindingsForPage(page.Id);
+            List<KeyBinding> bindings = bindingGateway.GetBindingsForPage(page.Id);
             _bindingCache[page.Id] = bindings;
 
             foreach (HidDeviceInstance instance in _hidManager.GetConnectedInstances())
@@ -244,23 +239,23 @@ public class KeyboardManager
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void PushOsdData(HidDeviceInstance instance, KeyPage page)
     {
-        if (!_osdWindows.TryGetValue(instance, out var osd))
+        if (!_osdWindows.TryGetValue(instance, out KeyboardOsdWindow? osd))
         {
             return;
         }
 
-        if (!_bindingCache.TryGetValue(page.Id, out var bindings))
+        if (!_bindingCache.TryGetValue(page.Id, out List<KeyBinding>? bindings))
         {
             return;
         }
 
-        var keys = new Dictionary<string, KeyDisplay>();
+        Dictionary<string, KeyDisplay> keys = new Dictionary<string, KeyDisplay>();
 
-        foreach (var binding in bindings)
+        foreach (KeyBinding binding in bindings)
         {
             string label = "-";
 
-            if (binding.CommandId.HasValue && _commandCache.TryGetValue(binding.CommandId.Value, out var command))
+            if (binding.CommandId.HasValue && _commandCache.TryGetValue(binding.CommandId.Value, out Command? command))
             {
                 label = !string.IsNullOrWhiteSpace(binding.Label)
                     ? binding.Label

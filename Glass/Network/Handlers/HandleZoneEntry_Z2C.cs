@@ -26,6 +26,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
     private readonly SlotId _nameSlot;
     private readonly SlotId _spawnIdSlot;
     private readonly SlotId _levelSlot;
+    private readonly SlotId _idSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleZoneEntry_Z2C (constructor)
@@ -44,6 +45,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         _nameSlot = _registry.IndexOfField(_collectionHandle, "name");
         _spawnIdSlot = _registry.IndexOfField(_collectionHandle, "spawn_id");
         _levelSlot = _registry.IndexOfField(_collectionHandle, "level");
+        _idSlot = _registry.IndexOfField(_collectionHandle, "character_id");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -138,6 +140,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
 
             FieldNodes.AddLabeledNode(_extractor, _spawnIdSlot, "Spawn: " + spawnName + " (" +
                     spawnId + ", 0x" + spawnId.Value.ToString("X4") + ")", root);
+            FieldNodes.AddUIntNode(_extractor, _idSlot, "Persistent ID", root, "X");
 
             string name = FieldNodes.AddStringNode(_extractor, _nameSlot, "Name", root);
             FieldNodes.AddUIntNode(_extractor, _levelSlot, "Level", root, "D");

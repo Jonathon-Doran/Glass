@@ -8,7 +8,7 @@
 public class ProfilePage
 {
     public int Id { get; set; }
-    public int ProfileId { get; set; }
+    public ProfileId ProfileId { get; set; }
     public int KeyPageId { get; set; }
     public bool IsStartPage { get; set; }
 

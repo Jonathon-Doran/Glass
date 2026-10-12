@@ -47,7 +47,7 @@ public partial class OpcodeTracePresenter
     private readonly Dictionary<uint, uint> _colorByPacketIndex;
 
     private readonly Dictionary<uint, OpcodeTraceRow> _rowByPacketIndex;
-    private readonly Dictionary<int, string> _characterNameCache;
+    private readonly Dictionary<SessionId, string> _characterNameCache;
     private readonly object _characterNameCacheLock;
     private readonly Action<SignalSessionAdded> _sessionAddedHandler;
     private uint _maxHexBytes;
@@ -79,7 +79,7 @@ public partial class OpcodeTracePresenter
         _hiddenOpcodes = new HashSet<OpcodeValue>();
         _colorByOpcode = new Dictionary<OpcodeValue, uint>();
         _colorByPacketIndex = new Dictionary<uint, uint>();
-        _characterNameCache = new Dictionary<int, string>();
+        _characterNameCache = new Dictionary<SessionId, string>();
         _characterNameCacheLock = new object();
         _maxHexBytes = 64;
         _searchQuery = string.Empty;
@@ -322,9 +322,9 @@ public partial class OpcodeTracePresenter
     //
     // sessionId:  Session id from the packet's metadata.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private string ResolveCharacterName(int sessionId)
+    private string ResolveCharacterName(SessionId sessionId)
     {
-        if (sessionId < 0)
+        if (! sessionId.Exists)
         {
             return string.Empty;
         }

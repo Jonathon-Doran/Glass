@@ -522,6 +522,16 @@ public class Database
         {
             ApplyMigration(conn, 70, Migration_070);
         }
+
+        if (version < 71)
+        {
+            ApplyMigration(conn, 71, Migration_071);
+        }
+
+        if (version < 72)
+        {
+            ApplyMigration(conn, 72, Migration_072);
+        }
     }
 
     private int GetSchemaVersion()
@@ -1940,6 +1950,35 @@ public class Database
         CREATE INDEX IF NOT EXISTS idx_spellclasslevels_class ON SpellClassLevels(class, level);
     ";
 
+    private const string Migration_071 = @"
+        ALTER TABLE Characters ADD COLUMN character_id INTEGER;
+    ";
+
+    private const string Migration_072 = @"
+        DROP TABLE IF EXISTS ItemInstances;
+
+        CREATE TABLE ItemInstances (
+            id                  INTEGER PRIMARY KEY,
+            character_id        INTEGER NOT NULL,                       -- server character id
+            parent_id           INTEGER REFERENCES ItemInstances(id),   -- NULL for top level
+            stack_size          INTEGER NOT NULL DEFAULT 0,             -- 2
+            storage             INTEGER NOT NULL,                       -- 3
+            main_position       INTEGER NOT NULL,                       -- 4
+            sub_position        INTEGER NOT NULL,                       -- 5
+            aug_position        INTEGER NOT NULL,                       -- 6
+            remaining_charges   INTEGER NOT NULL DEFAULT 0,             -- 12
+            is_attuned          INTEGER NOT NULL DEFAULT 0,             -- 13
+            is_copied           INTEGER NOT NULL DEFAULT 0,             -- 26
+            item_id             INTEGER NOT NULL REFERENCES ItemRecords(id)  -- 34
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_iteminstances_character ON ItemInstances(character_id);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_iteminstances_position
+            ON ItemInstances(character_id, storage, main_position, sub_position, aug_position);
+
+        CREATE INDEX IF NOT EXISTS idx_iteminstances_parent ON ItemInstances(parent_id);
+    ";
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"

@@ -151,7 +151,7 @@ public class RelayGroupGateway
         {
             members.Add(new Character
             {
-                CharacterId = reader.GetInt32(0),
+                DatabaseId = (DatabaseId) (uint) reader.GetInt32(0),
                 Name = reader.GetString(1),
                 Class = (EQClass)reader.GetInt32(2),
                 AccountId = reader.GetInt32(3),
@@ -195,7 +195,7 @@ public class RelayGroupGateway
         {
             members.Add(new Character
             {
-                CharacterId = reader.GetInt32(0),
+                DatabaseId = (DatabaseId)(uint)reader.GetInt32(0),
                 Name = reader.GetString(1),
                 Class = (EQClass)reader.GetInt32(2),
                 AccountId = reader.GetInt32(3),
@@ -214,9 +214,9 @@ public class RelayGroupGateway
     // Adds a character to a relay group. Raises MembershipChanged on success.
     //
     // groupId:      The group to add to
-    // characterId:  The character to add
+    // characterDatabaseId:  The character to add
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public void AddMember(int groupId, int characterId)
+    public void AddMember(int groupId, DatabaseId characterDatabaseId)
     {
         using var conn = Database.Instance.Connect();
         conn.Open();
@@ -226,10 +226,10 @@ public class RelayGroupGateway
             INSERT OR IGNORE INTO CharacterRelayGroups (relay_group_id, character_id)
             VALUES (@groupId, @characterId)";
         cmd.Parameters.AddWithValue("@groupId", groupId);
-        cmd.Parameters.AddWithValue("@characterId", characterId);
+        cmd.Parameters.AddWithValue("@characterId", characterDatabaseId);
         cmd.ExecuteNonQuery();
 
-        DebugLog.Write(LogChannel.Database, $"RelayGroup.AddMember: added. groupId={groupId} characterId={characterId}.", LogLevel.Trace);
+        DebugLog.Write(LogChannel.Database, $"RelayGroup.AddMember: added. groupId={groupId} databaseId={characterDatabaseId}.", LogLevel.Trace);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -240,7 +240,7 @@ public class RelayGroupGateway
     // groupId:      The group to remove from
     // characterId:  The character to remove
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public void RemoveMember(int groupId, int characterId)
+    public void RemoveMember(int groupId, DatabaseId characterDatabaseId)
     {
         using var conn = Database.Instance.Connect();
         conn.Open();
@@ -250,10 +250,10 @@ public class RelayGroupGateway
             DELETE FROM CharacterRelayGroups
             WHERE relay_group_id = @groupId AND character_id = @characterId";
         cmd.Parameters.AddWithValue("@groupId", groupId);
-        cmd.Parameters.AddWithValue("@characterId", characterId);
+        cmd.Parameters.AddWithValue("@characterId", characterDatabaseId);
         cmd.ExecuteNonQuery();
 
-        DebugLog.Write(LogChannel.Database, $"RelayGroupRepository.RemoveMember: removed. groupId={groupId} characterId={characterId}.", LogLevel.Trace);
+        DebugLog.Write(LogChannel.Database, $"RelayGroupRepository.RemoveMember: removed. groupId={groupId} characterId={characterDatabaseId}.", LogLevel.Trace);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

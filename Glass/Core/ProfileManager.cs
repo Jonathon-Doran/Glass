@@ -65,13 +65,14 @@ public class ProfileManager
             return;
         }
 
-        ProfileRepository profile = new ProfileRepository(profileName);
-        CharacterRepository.Instance.Load(profile.GetCharacterIds());
+        ProfileRepository profile = ProfileRepository.Instance;
+        profile.LoadProfile(profileName);
+        CharacterRepository.Instance.Load(profile.GetDatabaseIds());
         IReadOnlyList<SlotAssignment> slots = profile.GetSlots();
 
         _activeProfile = profile;
         _definedSlots.Clear();
-        GlassContext.KeyboardManager.LoadProfile(profileName);
+        GlassContext.KeyboardManager.LoadProfile(profile.GetId());
 
         DebugLog.Write(LogChannel.ISXGlass, "ProfileManager.LaunchProfile: launching profile '" + profileName
             + "' with " + slots.Count + " characters", LogLevel.Trace);
@@ -92,23 +93,23 @@ public class ProfileManager
         Random rng = new Random();
         foreach (SlotAssignment slot in slots)
         {
-            Character? character = CharacterRepository.Instance.GetById(slot.CharacterId);
+            Character? character = CharacterRepository.Instance.GetByDatabaseId(slot.DatabaseId);
             if (character == null)
             {
                 DebugLog.Write(LogChannel.Profiles, "ProfileManager.LaunchProfile: no character found for id="
-                    + slot.CharacterId + ", skipping", LogLevel.Warn);
+                    + slot.DatabaseId + ", skipping", LogLevel.Warn);
                 continue;
             }
 
             DebugLog.Write(LogChannel.ISXGlass, "ProfileManager.LaunchProfile: launching " + character.Name
                 + " accountId=" + character.AccountId
                 + " server=" + character.Server
-                + " id=" + character.CharacterId, LogLevel.Trace);
+                + " id=" + character.DatabaseId, LogLevel.Trace);
 
             GlassContext.ISXGlassPipe.Send("launch " + character.AccountId
                 + " " + character.Name
                 + " " + character.Server
-                + " " + character.CharacterId);
+                + " " + character.DatabaseId);
 
             int delay = rng.Next(4000, 7000);
             await Task.Delay(delay);
@@ -209,7 +210,7 @@ public class ProfileManager
 
         foreach (SlotAssignment slot in _activeProfile.GetSlots())
         {
-            Character? character = CharacterRepository.Instance.GetById(slot.CharacterId);
+            Character? character = CharacterRepository.Instance.GetByDatabaseId(slot.DatabaseId);
             if (character != null && character.AccountId == accountId)
             {
                 DebugLog.Write(LogChannel.Profiles, "ProfileManager.GetCharacterNameByAccountId: accountId=" + accountId
@@ -239,7 +240,7 @@ public class ProfileManager
         }
 
         SlotAssignment? assignment = _activeProfile.GetSlots()
-            .FirstOrDefault(s => CharacterRepository.Instance.GetById(s.CharacterId)?.Name == characterName);
+            .FirstOrDefault(s => CharacterRepository.Instance.GetByDatabaseId(s.DatabaseId)?.Name == characterName);
 
         if (assignment == null)
         {

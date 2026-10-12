@@ -6,16 +6,35 @@
 // Strongly typed wrapper for a uint identifier. The tag type parameter carries no data; it exists only to
 // make two identifier kinds distinct types to the compiler, so an identifier of one kind cannot be passed
 // where another kind is expected. Value uint.MaxValue is reserved to mean "no identifier"; None exposes
-// that reserved value and Exists tests against it. Conversion to uint is implicit; construction from a
-// uint is explicit.
+// that reserved value and Exists tests against it. An identifier that was never assigned is None.
+// Conversion to uint is implicit; construction from a uint is explicit.
+//
+// The identifier is stored as its value plus one, so that the all-zero contents of an unassigned field
+// are the reserved "no identifier" value.
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-public readonly record struct Id<TTag>(uint Value)
+public readonly record struct Id<TTag>
 {
     public const uint NoneValue = uint.MaxValue;
 
-    public static Id<TTag> None => new Id<TTag>(NoneValue);
+    private readonly uint _stored;
 
-    public bool Exists => Value != NoneValue;
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Id (constructor)
+    //
+    // Creates an identifier holding the given value.  Passing NoneValue creates the "no identifier" value.
+    //
+    // value:  The identifier value.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public Id(uint value)
+    {
+        _stored = unchecked(value + 1);
+    }
+
+    public uint Value => unchecked(_stored - 1);
+
+    public static Id<TTag> None => default;
+
+    public bool Exists => _stored != 0;
 
     public static implicit operator uint(Id<TTag> id) => id.Value;
     public static explicit operator Id<TTag>(uint value) => new Id<TTag>(value);
@@ -23,8 +42,8 @@ public readonly record struct Id<TTag>(uint Value)
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // ToString
     //
-    // Formats the identifier as the tag type name followed by the numeric value, or "None" for the
-    // reserved no-identifier value, for use in log messages.
+    // Formats the identifier as the numeric value, or "None" for the reserved no-identifier value, for
+    // use in log messages.
     //
     // Returns the formatted string.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -42,7 +61,8 @@ public readonly record struct Id<TTag>(uint Value)
 // World domain.
 public readonly struct MobTag { }                  // Glass-assigned mob record identifier, unique per process lifetime.
 public readonly struct ZoneTag { }                 // Zone identifier.
-public readonly struct SpawnTag { }                // Server-assigned spawn identifier, meaningful only within one zone.
+public readonly struct SpawnTag { }                // Server-assigned spawn identifier, meaningful only within one zone
+public readonly struct CharacterTag { }            // Server-assigned persistent character ID
 
 // Protocol domain.
 public readonly struct OpcodeTag { }               // Issued by PatchData at load time; not interchangeable across patch levels.
@@ -58,3 +78,6 @@ public readonly struct MessageIndexTag { }         // Arrival position of a mess
 public readonly struct ItemTag { }                 // Item identifier from the item serialization.
 public readonly struct ItemInstanceTag { }         // Database-assigned item instance identifier.
 public readonly struct AATag { }                   // Alternate advancement ability identifier assigned by the server.
+public readonly struct DatabaseTag { }             // A database ID
+public readonly struct SessionTag { }              // A session ID
+public readonly struct ProfileTag { }              // A profile ID

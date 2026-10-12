@@ -28,12 +28,12 @@ public class SessionRegistry
 
     private int _sessionCount = 0;
     private readonly Dictionary<string, SessionEntry> _sessions = new();
-    private readonly Dictionary<int, int> _characterIdBySession = new();
-    private readonly Dictionary<int, string> _characterNameBySession = new();
+    private readonly Dictionary<SessionId, CharacterId> _characterIdBySession = new();
+    private readonly Dictionary<SessionId, string> _characterNameBySession = new();
     private readonly Dictionary<int, Connection> _connectionsByPort = new();
     private readonly int _arqSeqGiveUp = 512;
     private readonly string? _localIp;
-    private int _nextSessionId = 0;
+    private uint _nextSessionNumber = 0;
     private readonly object _lock = new();
 
     // Represents a single active EverQuest session.
@@ -47,7 +47,7 @@ public class SessionRegistry
         ///////////////////////////////////////////////////////////////////////////////////////////////
         public string SessionName { get; set; } = string.Empty;
 
-        public int SessionId { get; set; } = -1;
+        public SessionId Id { get; set; } = SessionId.None;
 
         ///////////////////////////////////////////////////////////////////////////////////////////////
         // CharacterName
@@ -58,13 +58,13 @@ public class SessionRegistry
         public string CharacterName { get; set; } = string.Empty;
 
         ///////////////////////////////////////////////////////////////////////////////////////////////
-        // CharacterId
+        // DatabaseId
         //
         // The database primary key for this character.
         // Set when the character is identified, either from profile data
         // or from network traffic.  Zero means not yet identified.
         ///////////////////////////////////////////////////////////////////////////////////////////////
-        public int CharacterId { get; set; }
+        public DatabaseId CharacterDatabaseId { get; set; }
 
         ///////////////////////////////////////////////////////////////////////////////////////////////
         // Pid
@@ -169,13 +169,13 @@ public class SessionRegistry
             return;
         }
 
-        if (session.CharacterId < 0)
+        if (session.CharacterDatabaseId < 0)
         {
             DebugLog.Write(LogChannel.Database, $"SessionRegistry.OnSessionDisconnected: session '{sessionName}' has no bound character, nothing to save.");
             return;
         }
 
-        CharacterRepository.Instance.Save(session.CharacterId);
+        CharacterRepository.Instance.Save(session.CharacterDatabaseId);
 
         bool fireAllDisconnected = false;
         lock (_lock)
@@ -233,9 +233,9 @@ public class SessionRegistry
         }
     }
 
-    public Character? CharacterFromSession(int sessionId)
+    public Character? CharacterFromSession(SessionId sessionId)
     {
-        int characterId;
+        CharacterId characterId;
 
         lock (_lock)
         {
@@ -245,7 +245,7 @@ public class SessionRegistry
             }
         }
 
-        return CharacterRepository.Instance.GetById(characterId);
+        return CharacterRepository.Instance.GetByCharacterId(characterId);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -376,7 +376,7 @@ public class SessionRegistry
     {
         // Note:  If the connection does not exist it will be created.  There is no possibility of null.
         Connection c = GetConnection(metadata);
-        if (c.SessionId != -1)
+        if (c.SessionId.Exists)
         {
             return CharacterNameFromSession(c.SessionId);
         }
@@ -448,7 +448,7 @@ public class SessionRegistry
         {
             foreach (KeyValuePair<int, Connection> pair in _connectionsByPort)
             {
-                if (pair.Value.SessionId == session.SessionId)
+                if (pair.Value.SessionId == session.Id)
                 {
                     return pair.Value;
                 }
@@ -464,7 +464,7 @@ public class SessionRegistry
     //
     // sessionId:  The session id to look up.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public string CharacterNameFromSession(int sessionId)
+    public string CharacterNameFromSession(SessionId sessionId)
     {
         lock (_lock)
         {
@@ -511,26 +511,26 @@ public class SessionRegistry
         bool isFromClient = (metadata.SourceIp == _localIp);
         int localPort = isFromClient ? metadata.SourcePort : metadata.DestPort;
         DebugLog.Write(LogChannel.LowNetwork, "IdentifyConnection for " + characterName +
-            " on port " + metadata.DestPort);
+            " on port " + metadata.DestPort, LogLevel.Trace);
         lock (_lock)
         {
             if (!_connectionsByPort.TryGetValue(localPort, out Connection? connection))
             {
                 DebugLog.Write(LogChannel.LowNetwork,
                     "SessionRegistry.IdentifyConnection: no connection for port " + localPort
-                    + ", character=" + characterName);
+                    + ", character=" + characterName, LogLevel.Trace);
                 return false;
             }
 
             DebugLog.Write(LogChannel.LowNetwork, "Connection found on local port "
-                + connection.LocalPort);
+                + connection.LocalPort, LogLevel.Trace);
 
-            if (connection.SessionId >= 0)
+            if (connection.SessionId.Exists)
             {
                 DebugLog.Write(LogChannel.Sessions,
                     "SessionRegistry.IdentifyConnection: port " + localPort
                     + " already identified as connectionId=" + connection.SessionId
-                    + ", character=" + characterName);
+                    + ", character=" + characterName, LogLevel.Trace);
                 return false;
             }
             
@@ -545,11 +545,11 @@ public class SessionRegistry
                         return false;
                     }
 
-                    connection.SessionId = _nextSessionId;
-                    _nextSessionId++;
+                    connection.SessionId = (SessionId) _nextSessionNumber;
+                    _nextSessionNumber++;
                     pair.Value.LocalPort = localPort;
-                    pair.Value.SessionId = connection.SessionId;
-                    pair.Value.CharacterId = character.CharacterId;
+                    pair.Value.Id = connection.SessionId;
+                    pair.Value.CharacterDatabaseId = character.DatabaseId;
                     _characterIdBySession[connection.SessionId] = character.CharacterId;
                     _characterNameBySession[connection.SessionId] = characterName;
                     connection.CharacterId = character.CharacterId;
@@ -589,11 +589,11 @@ public class SessionRegistry
             SessionEntry synthEntry = EnsureSessionEntry(synthName, characterName, 0, IntPtr.Zero);
             _sessionCount++;
 
-            connection.SessionId = _nextSessionId;
-            _nextSessionId++;
+            connection.SessionId = (SessionId) _nextSessionNumber;
+            _nextSessionNumber++;
             synthEntry.LocalPort = localPort;
-            synthEntry.SessionId = connection.SessionId;
-            synthEntry.CharacterId = bootstrapCharacter.CharacterId;
+            synthEntry.Id = connection.SessionId;
+            synthEntry.CharacterDatabaseId = bootstrapCharacter.DatabaseId;
             _characterIdBySession[connection.SessionId] = bootstrapCharacter.CharacterId;
             _characterNameBySession[connection.SessionId] = characterName;
             connection.CharacterId = bootstrapCharacter.CharacterId;

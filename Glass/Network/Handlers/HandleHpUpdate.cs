@@ -75,13 +75,13 @@ public class HandleHpUpdate : OpcodeHandler
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         Character? character = null;
-        uint playerId;
+        CharacterId playerId;
 
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
-            playerId = _extractor.GetUIntAt(_playerIdSlot);
-            character = CharacterRepository.Instance.GetById((int)playerId);
+            playerId = (CharacterId) _extractor.GetUIntAt(_playerIdSlot);
+            character = CharacterRepository.Instance.GetByCharacterId(playerId);
 
             if (character == null)
             {

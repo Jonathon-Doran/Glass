@@ -520,9 +520,6 @@ public class PatchData
             string collectionName = reader.GetString(0);
             CollectionHandle handle = registry.RegisterCollection(this, index);
 
-            DebugLog.Write(LogChannel.Fields, "Collection '" + collectionName + "' has collection handle=" + handle,
-                LogLevel.Trace);
-
             _collectionIndexByCollectionName[collectionName] = index;
             _collectionHandleByIndex[handleIndex] = handle;
             _collections[handleIndex] = new Collection(collectionName, PatchLevel);

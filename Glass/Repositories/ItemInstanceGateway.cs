@@ -56,7 +56,7 @@ public class ItemInstanceGateway
     //
     // Returns the number of rows inserted: this instance plus all descendants.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private uint InsertTree(SqliteConnection conn, SqliteTransaction tx, int characterId, ItemInstance item,
+    private uint InsertTree(SqliteConnection conn, SqliteTransaction tx, CharacterId characterId, ItemInstance item,
         long? parentRowId)
     {
         using SqliteCommand cmd = conn.CreateCommand();
@@ -71,7 +71,7 @@ public class ItemInstanceGateway
             )
             RETURNING id";
 
-        cmd.Parameters.AddWithValue("@character_id", characterId);
+        cmd.Parameters.AddWithValue("@character_id", (uint) characterId);
         cmd.Parameters.AddWithValue("@parent_id", parentRowId.HasValue ? parentRowId.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("@stack_size", item.StackSize);
         cmd.Parameters.AddWithValue("@storage", (uint)item.Location.Storage);
@@ -112,6 +112,13 @@ public class ItemInstanceGateway
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public uint StoreSnapshot(Character character)
     {
+        if (! character.CharacterId.Exists)
+        {
+            DebugLog.Write(LogChannel.Database, "ItemInstanceRepository.StoreSnapshot: " + character.Name +
+                " has no valid characterId", LogLevel.Warn);
+            return 0;
+        }
+
         using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
 
@@ -121,7 +128,7 @@ public class ItemInstanceGateway
             using SqliteCommand deleteCmd = conn.CreateCommand();
             deleteCmd.Transaction = tx;
             deleteCmd.CommandText = "DELETE FROM ItemInstances WHERE character_id = @character_id";
-            deleteCmd.Parameters.AddWithValue("@character_id", character.CharacterId);
+            deleteCmd.Parameters.AddWithValue("@character_id", character.CharacterId.Value);
             int deleted = deleteCmd.ExecuteNonQuery();
             DebugLog.Write(LogChannel.Database, "ItemInstanceRepository.StoreSnapshot: deleted " + deleted +
                 " rows for '" + character.Name + "'.", LogLevel.Trace);

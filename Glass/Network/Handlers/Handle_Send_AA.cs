@@ -125,9 +125,18 @@ public class HandleSend_AA : OpcodeHandler
             uint Current_Rank = _extractor.GetUIntAt(_Current_Rank_Slot);
             int Spell_ID = _extractor.GetIntAt(_Spell_ID_Slot);
             int Upper_Hotkey_SID = _extractor.GetIntAt(_Upper_Hotkey_Slot);
-            string Upper_Hotkey = DbStringGateway.Instance.LookupString(DbStringType.AAName, (uint)Upper_Hotkey_SID);
+            string Upper_Hotkey = "none";
+            if (Upper_Hotkey_SID >= 0)
+            {
+                Upper_Hotkey = DbStringGateway.Instance.LookupString(DbStringType.AAName, (uint)Upper_Hotkey_SID);
+            }
+
             int Lower_Hotkey_SID = _extractor.GetIntAt(_Upper_Hotkey_Slot);
-            string Lower_Hotkey = DbStringGateway.Instance.LookupString(DbStringType.AAName, (uint)Lower_Hotkey_SID);
+            string Lower_Hotkey = "none";
+            if (Lower_Hotkey_SID >= 0)
+            {
+                Lower_Hotkey = DbStringGateway.Instance.LookupString(DbStringType.AAName, (uint)Lower_Hotkey_SID);
+            }
             uint Unknown_5 = _extractor.GetUIntAt(_Unknown_5_Slot);
             uint Unknown_6 = _extractor.GetUIntAt(_Unknown_6_Slot);
 

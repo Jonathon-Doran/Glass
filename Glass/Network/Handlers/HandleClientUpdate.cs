@@ -83,8 +83,8 @@ public class HandleClientUpdate : OpcodeHandler
             GateHandle rootGate = extractor.Extract(_top_level_gate, data);
 
             // look up the character associated with the session receiving the packet
-            int id = GlassContext.SessionRegistry.GetConnection(metadata).CharacterId;
-            Character? character = CharacterRepository.Instance.GetById(id);
+            CharacterId id = GlassContext.SessionRegistry.GetConnection(metadata).CharacterId;
+            Character? character = CharacterRepository.Instance.GetByCharacterId(id);
 
             string characterName = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
 

@@ -296,6 +296,7 @@ public class SoeStream : IDisposable
         metadata.SessionId = dgram.SessionId;
         metadata.Channel = dgram.Channel;
         metadata.WireValue = dgram.WireValue;
+
  
         PatchLevel currentPatch = GlassContext.CurrentPatchLevel;
 

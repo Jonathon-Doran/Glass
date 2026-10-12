@@ -18,19 +18,19 @@ namespace Glass;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 public partial class ProfilePagesDialog : Window
 {
-    private readonly int _characterSetId;
+    private readonly ProfileId _owningProfileId;
     private bool _setStartPageMode = false;
     private ObservableCollection<ProfilePageViewModel> _items = new();
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // ProfilePagesDialog
     //
-    // characterSetId:  The profile to manage pages for
+    // pid:  The ID of the profile to manage
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public ProfilePagesDialog(int characterSetId)
+    public ProfilePagesDialog(ProfileId pid)
     {
         InitializeComponent();
-        _characterSetId = characterSetId;
+        _owningProfileId = pid;
         LoadPages();
     }
 
@@ -41,18 +41,18 @@ public partial class ProfilePagesDialog : Window
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void LoadPages()
     {
-        DebugLog.Write(LogChannel.Database, $"ProfilePagesDialog.LoadPages: characterSetId={_characterSetId}.");
+        DebugLog.Write(LogChannel.Database, $"ProfilePagesDialog.LoadPages: profile ID ={_owningProfileId}.", LogLevel.Trace);
 
-        var pageRepo = new KeyPageGateway();
-        var profilePageRepo = new ProfilePageGateway();
+        KeyPageGateway pageGateway = new KeyPageGateway();
+        ProfilePageGateway profilePageGateway = new ProfilePageGateway();
 
-        var allPages = pageRepo.GetAllPages();
-        var profilePages = profilePageRepo.GetPagesForProfile(_characterSetId)
+        List<KeyPage> allPages = pageGateway.GetAllPages();
+        Dictionary<int, ProfilePage> profilePages = profilePageGateway.GetPagesForProfile(_owningProfileId)
             .ToDictionary(p => p.KeyPageId, p => p);
 
         _items.Clear();
 
-        foreach (var page in allPages)
+        foreach (KeyPage page in allPages)
         {
             bool inProfile = profilePages.ContainsKey(page.Id);
             bool isStartPage = inProfile && profilePages[page.Id].IsStartPage;
@@ -69,7 +69,7 @@ public partial class ProfilePagesDialog : Window
 
         PageListView.ItemsSource = _items;
 
-        DebugLog.Write(LogChannel.Database, $"ProfilePagesDialog.LoadPages: loaded {_items.Count} pages.");
+        DebugLog.Write(LogChannel.Database, $"ProfilePagesDialog.LoadPages: loaded {_items.Count} pages.", LogLevel.Trace);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -85,28 +85,28 @@ public partial class ProfilePagesDialog : Window
             return;
         }
 
-        DebugLog.Write(LogChannel.Input, $"ProfilePagesDialog.PageListView_MouseLeftButtonUp: page='{item.PageName}' device='{item.Device}' setStartPageMode={_setStartPageMode}.");
+        DebugLog.Write(LogChannel.Input, $"ProfilePagesDialog.PageListView_MouseLeftButtonUp: page='{item.PageName}' device='{item.Device}' setStartPageMode={_setStartPageMode}.", LogLevel.Trace);
 
         if (_setStartPageMode)
         {
             if (!item.InProfile)
             {
-                DebugLog.Write(LogChannel.Input, $"ProfilePagesDialog.PageListView_MouseLeftButtonUp: page not in profile, cannot set as start page.");
+                DebugLog.Write(LogChannel.Input, $"ProfilePagesDialog.PageListView_MouseLeftButtonUp: page not in profile, cannot set as start page.", LogLevel.Error);
                 return;
             }
 
             // Demote current start page for this device
-            foreach (var other in _items)
+            foreach (ProfilePageViewModel other in _items)
             {
                 if ((other.Device == item.Device) && other.IsStartPage)
                 {
-                    DebugLog.Write(LogChannel.Input, $"ProfilePagesDialog.PageListView_MouseLeftButtonUp: demoting '{other.PageName}'.");
+                    DebugLog.Write(LogChannel.Input, $"ProfilePagesDialog.PageListView_MouseLeftButtonUp: demoting '{other.PageName}'.", LogLevel.Trace);
                     other.IsStartPage = false;
                 }
             }
 
             item.IsStartPage = true;
-            DebugLog.Write(LogChannel.Input, $"ProfilePagesDialog.PageListView_MouseLeftButtonUp: promoted '{item.PageName}' to start page.");
+            DebugLog.Write(LogChannel.Input, $"ProfilePagesDialog.PageListView_MouseLeftButtonUp: promoted '{item.PageName}' to start page.", LogLevel.Trace);
 
             // Exit Set Start Page mode
             _setStartPageMode = false;
@@ -116,19 +116,19 @@ public partial class ProfilePagesDialog : Window
         {
             if (item.IsStartPage)
             {
-                DebugLog.Write(LogChannel.Input, $"ProfilePagesDialog.PageListView_MouseLeftButtonUp: '{item.PageName}' is start page, cannot remove.");
+                DebugLog.Write(LogChannel.Input, $"ProfilePagesDialog.PageListView_MouseLeftButtonUp: '{item.PageName}' is start page, cannot remove.", LogLevel.Trace);
                 return;
             }
 
             if (item.InProfile)
             {
                 item.InProfile = false;
-                DebugLog.Write(LogChannel.Input, $"ProfilePagesDialog.PageListView_MouseLeftButtonUp: removed '{item.PageName}' from profile.");
+                DebugLog.Write(LogChannel.Input, $"ProfilePagesDialog.PageListView_MouseLeftButtonUp: removed '{item.PageName}' from profile.", LogLevel.Trace);
             }
             else
             {
                 item.InProfile = true;
-                DebugLog.Write(LogChannel.Input, $"ProfilePagesDialog.PageListView_MouseLeftButtonUp: added '{item.PageName}' to profile.");
+                DebugLog.Write(LogChannel.Input, $"ProfilePagesDialog.PageListView_MouseLeftButtonUp: added '{item.PageName}' to profile.", LogLevel.Trace);
             }
         }
     }
@@ -141,7 +141,7 @@ public partial class ProfilePagesDialog : Window
     private void SetStartPageButton_Click(object sender, RoutedEventArgs e)
     {
         _setStartPageMode = SetStartPageButton.IsChecked == true;
-        DebugLog.Write(LogChannel.Input, $"ProfilePagesDialog.SetStartPageButton_Click: setStartPageMode={_setStartPageMode}.");
+        DebugLog.Write(LogChannel.Input, $"ProfilePagesDialog.SetStartPageButton_Click: setStartPageMode={_setStartPageMode}.", LogLevel.Trace);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -151,22 +151,22 @@ public partial class ProfilePagesDialog : Window
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void Save_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.Input, $"ProfilePagesDialog.Save_Click: characterSetId={_characterSetId}.");
+        DebugLog.Write(LogChannel.Input, $"ProfilePagesDialog.Save_Click: profile ID={_owningProfileId}.", LogLevel.Trace);
 
-        var pages = _items
+        List<ProfilePage> pages = _items
             .Where(p => p.InProfile)
             .Select(p => new ProfilePage
             {
-                ProfileId = _characterSetId,
+                ProfileId = _owningProfileId,
                 KeyPageId = p.KeyPageId,
                 IsStartPage = p.IsStartPage
             })
             .ToList();
 
-        var repo = new ProfilePageGateway();
-        repo.SetPagesForProfile(_characterSetId, pages);
+        ProfilePageGateway gateway = new ProfilePageGateway();
+        gateway.SetPagesForProfile(_owningProfileId, pages);
 
-        DebugLog.Write(LogChannel.Input, $"ProfilePagesDialog.Save_Click: saved {pages.Count} pages.");
+        DebugLog.Write(LogChannel.Input, $"ProfilePagesDialog.Save_Click: saved {pages.Count} pages.", LogLevel.Trace);
         DialogResult = true;
     }
 
@@ -177,7 +177,7 @@ public partial class ProfilePagesDialog : Window
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.Input, "ProfilePagesDialog.Cancel_Click: cancelled.");
+        DebugLog.Write(LogChannel.Input, "ProfilePagesDialog.Cancel_Click: cancelled.", LogLevel.Trace);
         DialogResult = false;
     }
 }

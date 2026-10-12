@@ -1,5 +1,4 @@
-﻿using Glass.Core;
-using Glass.Core.Logging;
+﻿using Glass.Core.Logging;
 using Glass.Data.Models;
 using Microsoft.Data.Sqlite;
 
@@ -22,12 +21,12 @@ public class ProfilePageGateway
     //
     // profileId:  The profile to query
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public List<ProfilePage> GetPagesForProfile(int profileId)
+    public List<ProfilePage> GetPagesForProfile(ProfileId profileId)
     {
-        using var conn = Database.Instance.Connect();
+        using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
 
-        using var cmd = conn.CreateCommand();
+        using SqliteCommand cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT pp.id, pp.profile_id, pp.key_page_id, pp.is_start_page,
                    kp.name, kp.device
@@ -35,16 +34,16 @@ public class ProfilePageGateway
             JOIN KeyPages kp ON kp.id = pp.key_page_id
             WHERE pp.profile_id= @characterSetId
             ORDER BY kp.device, kp.name";
-        cmd.Parameters.AddWithValue("@characterSetId", profileId);
+        cmd.Parameters.AddWithValue("@characterSetId", profileId.Value);
 
-        var pages = new List<ProfilePage>();
-        using var reader = cmd.ExecuteReader();
+        List<ProfilePage> pages = new List<ProfilePage>();
+        using SqliteDataReader reader = cmd.ExecuteReader();
         while (reader.Read())
         {
             pages.Add(new ProfilePage
             {
                 Id = reader.GetInt32(0),
-                ProfileId = reader.GetInt32(1),
+                ProfileId = (ProfileId) (uint) reader.GetInt32(1),
                 KeyPageId = reader.GetInt32(2),
                 IsStartPage = reader.GetInt32(3) != 0,
                 PageName = reader.GetString(4),
@@ -52,7 +51,7 @@ public class ProfilePageGateway
             });
         }
 
-        DebugLog.Write(LogChannel.Database, $"ProfilePageRepository.GetPagesForProfile: found {pages.Count} pages.",
+        DebugLog.Write(LogChannel.Database, $"ProfilePageGateway.GetPagesForProfile: found {pages.Count} pages.",
             LogLevel.Trace);
         return pages;
     }
@@ -63,43 +62,43 @@ public class ProfilePageGateway
     // Replaces all page associations for the given profile with the provided list.
     // Runs in a transaction.
     //
-    // characterSetId:  The profile to update
+    // profileId:       The profile to update
     // pages:           The new set of page associations
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public void SetPagesForProfile(int characterSetId, List<ProfilePage> pages)
+    public void SetPagesForProfile(ProfileId profileId, List<ProfilePage> pages)
     {
-        using var conn = Database.Instance.Connect();
+        using SqliteConnection conn = Database.Instance.Connect();
         conn.Open();
 
-        using var tx = conn.BeginTransaction();
+        using SqliteTransaction tx = conn.BeginTransaction();
         try
         {
-            using var delete = conn.CreateCommand();
+            using SqliteCommand delete = conn.CreateCommand();
             delete.Transaction = tx;
             delete.CommandText = "DELETE FROM ProfilePages WHERE profile_id = @characterSetId";
-            delete.Parameters.AddWithValue("@characterSetId", characterSetId);
+            delete.Parameters.AddWithValue("@characterSetId", profileId.Value);
             delete.ExecuteNonQuery();
 
-            foreach (var page in pages)
+            foreach (ProfilePage page in pages)
             {
-                using var insert = conn.CreateCommand();
+                using SqliteCommand insert = conn.CreateCommand();
                 insert.Transaction = tx;
                 insert.CommandText = @"
                     INSERT INTO ProfilePages (profile_id, key_page_id, is_start_page)
                     VALUES (@characterSetId, @keyPageId, @isStartPage)";
-                insert.Parameters.AddWithValue("@characterSetId", characterSetId);
+                insert.Parameters.AddWithValue("@characterSetId", profileId.Value);
                 insert.Parameters.AddWithValue("@keyPageId", page.KeyPageId);
                 insert.Parameters.AddWithValue("@isStartPage", page.IsStartPage ? 1 : 0);
                 insert.ExecuteNonQuery();
             }
 
             tx.Commit();
-            DebugLog.Write(LogChannel.Database, $"ProfilePageRepository.SetPagesForProfile: committed.", LogLevel.Trace);
+            DebugLog.Write(LogChannel.Database, $"ProfilePageGateway.SetPagesForProfile: committed.", LogLevel.Trace);
         }
         catch (Exception ex)
         {
             tx.Rollback();
-            DebugLog.Write(LogChannel.Database, $"ProfilePageRepository.SetPagesForProfile: exception: {ex.Message}, rolling back.",
+            DebugLog.Write(LogChannel.Database, $"ProfilePageGateway.SetPagesForProfile: exception: {ex.Message}, rolling back.",
                 LogLevel.Error);
             throw;
         }
