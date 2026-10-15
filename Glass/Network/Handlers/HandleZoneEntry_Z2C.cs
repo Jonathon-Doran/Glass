@@ -58,7 +58,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public override void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+        Character? character = metadata.Character;
 
         if (character == null)
         {

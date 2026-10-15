@@ -59,13 +59,6 @@ public class HandleTracking_C2Z : OpcodeHandler
     public override void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         return;
-
-        switch (metadata.Channel)
-        {
-            case SoeConstants.StreamId.StreamZoneToClient:
-                HandleZoneToClient(data, metadata);
-                break;
-        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

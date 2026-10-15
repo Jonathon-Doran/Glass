@@ -67,7 +67,7 @@ public class SoeStream : IDisposable
     // ---------------------------------------------------------------------------
     private bool _arqSeqFound;
     private ushort _arqSeqExpected;
-    private readonly int _arqSeqGiveUp;
+    private readonly int _arqSeqGiveUp = 512;
     private readonly Dictionary<ushort, CachedPacket> _arqCache;
     private int _arqCacheHighWater;
 
@@ -107,13 +107,11 @@ public class SoeStream : IDisposable
     // SoeStream (constructor)
     //
     // streamId:       One of SoeConstants.StreamClient2World, etc.
-    // arqSeqGiveUp:   Number of cached out-of-order packets before skipping ahead
     // name:           Human-readable name for logging
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public SoeStream(StreamId streamId, int arqSeqGiveUp, string name)
+    public SoeStream(StreamId streamId, string name)
     {
         _streamId = streamId;
-        _arqSeqGiveUp = arqSeqGiveUp;
         _name = name;
 
         _arqSeqExpected = 0;
@@ -173,17 +171,20 @@ public class SoeStream : IDisposable
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandlePacket
     //
-    // Entry point for incoming packets from the router.  Mirrors Python
-    // handlePacket exactly: construct packet (runs _init_parse), print
-    // diagnostics, call decode, call processPacket, drain cache.
+    // Entry point for a datagram on this stream.  Turns the raw wire bytes into decoded SOE
+    // packets delivered in sequence order.
     //
-    // dgram:  The UDP datagram with headers removed
+    // metadata:  The datagram with its wire payload, addresses, direction, and session filled in
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void HandlePacket(UdpDatagram dgram)
+    public void HandlePacket(PacketMetadata metadata)
     {
-        Span<byte> rawDataBuffer = stackalloc byte[(int) dgram.Payload.Length];
-        dgram.Payload.AsReadOnlySpan().CopyTo(rawDataBuffer);
-        dgram.Payload.Dispose();
+        Span<byte> rawDataBuffer = stackalloc byte[(int)metadata.Payload.Length];
+        metadata.Payload.AsReadOnlySpan().CopyTo(rawDataBuffer);
+
+        // metadata is a struct, so this Dispose clears the lease in this copy only.
+        // The caller's copy of metadata still holds a lease on the released buffer;
+        // the caller must not read or dispose that lease.
+        metadata.Payload.Dispose();
 
         ReadOnlySpan<byte> rawData = rawDataBuffer;
 
@@ -199,46 +200,7 @@ public class SoeStream : IDisposable
 
         SoePacket packet = new SoePacket(rawData, rawData.Length, false);
 
-        dgram.WireValue = (OpcodeValue) packet.NetOpCode;
-
-        DebugLog.Write(LogChannel.LowNetwork,
-            "========================================================================");
-        DebugLog.Write(LogChannel.LowNetwork,
-            "Frame " + dgram.FrameNumber + " Packet #" + packetCount
-            + " on stream " + SoeConstants.StreamNames[_streamId]);
-        DebugLog.Write(LogChannel.LowNetwork,
-            dgram.SourceIp + ":" + dgram.SourcePort + " -> "
-            + dgram.DestIp + ":" + dgram.DestPort + " len=" + rawData.Length + " bytes");
-        DebugLog.Write(LogChannel.LowNetwork, "");
-        DebugLog.WriteMultiline(LogChannel.LowNetwork,
-            SoeHexDump.Format(packet.RawPacket()));
-        DebugLog.Write(LogChannel.LowNetwork,
-             "========================================================================");
-        DebugLog.Write(LogChannel.LowNetwork, "");
-        DebugLog.Write(LogChannel.LowNetwork,
-            "          Stream: " + SoeConstants.StreamNames[_streamId]);
-        DebugLog.Write(LogChannel.LowNetwork,
-            "          Net Opcode: 0x" + packet.NetOpCode.ToString("x4") + " -> "
-            + SoeConstants.GetNetOpcodeName(packet.NetOpCode));
-        DebugLog.Write(LogChannel.LowNetwork,
-            "          Payload Size: " + packet.PayloadLength + " bytes");
-
-        if (packet.HasFlags())
-        {
-            string compStr = (packet.Flags & SoeConstants.FLAG_COMPRESSED) != 0
-                ? "compressed" : "not compressed";
-            DebugLog.Write(LogChannel.LowNetwork,
-                "          Flags: 0x" + packet.Flags.ToString("x2")
-                + " (" + compStr + ")");
-            DebugLog.Write(LogChannel.LowNetwork, "");
-        }
-
-        if (packet.HasArqSeq() && packet.IsDecoded)
-        {
-            DebugLog.Write(LogChannel.LowNetwork,
-                "            Seq: " + packet.ArqSeq.ToString("x4")
-                + " (expecting " + _arqSeqExpected.ToString("x4") + ")");
-        }
+        metadata.WireValue = (OpcodeValue) packet.NetOpCode;
 
         // decode (decompress)
         if (_decompressor == null)
@@ -261,7 +223,7 @@ public class SoeStream : IDisposable
         ReadOnlySpan<byte> payload = packet.Payload();
         bool hasArq = packet.HasArqSeq();
 
-        ProcessPacket((OpcodeValue) packet.NetOpCode, payload, packet.ArqSeq, hasArq, false, dgram);
+        ProcessPacket((OpcodeValue) packet.NetOpCode, payload, packet.ArqSeq, metadata);
 
         if (_arqCache.Count > 0)
         {
@@ -278,84 +240,88 @@ public class SoeStream : IDisposable
     // netOpcode:    The decoded net opcode
     // payload:      The payload after opcode, flags, CRC, and ARQ have been stripped
     // arqSeq:       The ARQ sequence number (valid only if hasArq is true)
-    // hasArq:       True if this packet type carries an ARQ sequence
-    // isSubpacket:  True if this packet was extracted from an OP_Combined container
-    // dgram:        The UDP datagram with headers removed
+    // metadata:     The datagram's context; this method fills in the stream and the Character
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void ProcessPacket(OpcodeValue netOpcode, ReadOnlySpan<byte> payload,
-                                   ushort arqSeq, bool hasArq, bool isSubpacket,
-                                   UdpDatagram dgram)
+                                   ushort arqSeq, PacketMetadata metadata)
     {
-        PacketMetadata metadata = new PacketMetadata();
-        metadata.FrameNumber = dgram.FrameNumber;
-        metadata.Timestamp = dgram.Timestamp;
-        metadata.SourceIp = dgram.SourceIp;
-        metadata.SourcePort = dgram.SourcePort;
-        metadata.DestIp = dgram.DestIp;
-        metadata.DestPort = dgram.DestPort;
-        metadata.SessionId = dgram.SessionId;
-        metadata.Channel = dgram.Channel;
-        metadata.WireValue = dgram.WireValue;
+        metadata.Channel = _streamId;
 
- 
-        PatchLevel currentPatch = GlassContext.CurrentPatchLevel;
-
-        metadata.Opcode = OpcodeDispatch.Instance.ResolvePatchOpcode(netOpcode, payload, metadata);
+        if (metadata.Session != null)
+        {
+            metadata.Character = metadata.Session.Character;
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.LowNetwork, "SoeStream.ProcessPacket: frame " + metadata.FrameNumber
+                + " on stream " + StreamNames[_streamId] + " has no session, Character left null", LogLevel.Warn);
+            metadata.Character = null;
+        }
 
         if (SoeConstants.IsAppOpcode(netOpcode.Value))
         {
             DebugLog.Write(LogChannel.LowNetwork,
-                "          [processPacket] APP opcode on wire: 0x" + netOpcode);
+                "[processPacket] APP opcode on wire: 0x" + netOpcode, LogLevel.Trace);
             DispatchAppPacket(payload, payload.Length, netOpcode, metadata);
             return;
         }
 
-        if (netOpcode == SoeConstants.OP_Combined)
+        metadata.Opcode = OpcodeDispatch.Instance.ResolvePatchOpcode(netOpcode, payload, metadata);
+
+        switch (netOpcode.Value)
         {
-            ProcessCombined(payload, metadata);
-        }
-        else if (netOpcode == SoeConstants.OP_AppCombined)
-        {
-            ProcessAppCombined(payload, metadata);
-        }
-        else if (netOpcode == SoeConstants.OP_Packet)
-        {
-            ProcessSequenced(payload, arqSeq, metadata);
-        }
-        else if (netOpcode == SoeConstants.OP_Oversized)
-        {
-            ProcessOversized(payload, arqSeq, metadata);
-        }
-        else if (netOpcode == SoeConstants.OP_SessionRequest)
-        {
-            ProcessSessionRequest(payload, metadata);
-        }
-        else if (netOpcode == SoeConstants.OP_SessionResponse)
-        {
-            ProcessSessionResponse(payload, metadata);
-        }
-        else if (netOpcode == SoeConstants.OP_SessionDisconnect)
-        {
-            ProcessSessionDisconnect(payload, metadata);
-        }
-        else if (netOpcode == SoeConstants.OP_Ack ||
-                 netOpcode == SoeConstants.OP_AckFuture ||
-                 netOpcode == SoeConstants.OP_AckAfterDisconnect)
-        {
-            // No-op
-        }
-        else if (netOpcode == SoeConstants.OP_KeepAlive ||
-                 netOpcode == SoeConstants.OP_SessionStatRequest ||
-                 netOpcode == SoeConstants.OP_SessionStatResponse)
-        {
-            // No-op
-        }
-        else
-        {
-            DebugLog.Write(LogChannel.LowNetwork,
-                "EQPacket: Unhandled net opcode " + netOpcode
-                + ", stream " + StreamNames[_streamId]
-                + ", size " + payload.Length);
+            case SoeConstants.OP_Combined:
+                {
+                    ProcessCombined(payload, metadata);
+                    break;
+                }
+            case SoeConstants.OP_AppCombined:
+                {
+                    ProcessAppCombined(payload, metadata);
+                    break;
+                }
+            case SoeConstants.OP_Packet:
+                {
+                    ProcessSequenced(payload, arqSeq, metadata);
+                    break;
+                }
+            case SoeConstants.OP_Oversized:
+                {
+                    ProcessOversized(payload, arqSeq, metadata);
+                    break;
+                }
+            case SoeConstants.OP_SessionRequest:
+                {
+                    ProcessSessionRequest(payload, metadata);
+                    break;
+                }
+            case SoeConstants.OP_SessionResponse:
+                {
+                    ProcessSessionResponse(payload, metadata);
+                    break;
+                }
+            case SoeConstants.OP_SessionDisconnect:
+                {
+                    ProcessSessionDisconnect(payload, metadata);
+                    break;
+                }
+            case SoeConstants.OP_Ack:
+            case SoeConstants.OP_AckFuture:
+            case SoeConstants.OP_AckAfterDisconnect:
+            case SoeConstants.OP_KeepAlive:
+            case SoeConstants.OP_SessionStatRequest:
+            case SoeConstants.OP_SessionStatResponse:
+                {
+                    DebugLog.Write(LogChannel.LowNetwork, "SoeStream.ProcessPacket: net opcode " + netOpcode
+                        + " on stream " + StreamNames[_streamId] + " needs no processing", LogLevel.Trace);
+                    break;
+                }
+            default:
+                {
+                    DebugLog.Write(LogChannel.LowNetwork, "SoeStream.ProcessPacket: unhandled net opcode " + netOpcode
+                        + " on stream " + StreamNames[_streamId] + ", size " + payload.Length, LogLevel.Warn);
+                    break;
+                }
         }
     }
 
@@ -904,39 +870,26 @@ public class SoeStream : IDisposable
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ProcessSubpacket
     //
-    // Processes a net-opcode sub-packet extracted from OP_Combined or
-    // a completed fragment.  Constructs a SoePacket with subpacket=true
-    // which means no flags, no CRC, no ARQ per _init_parse.
+    // Processes a net-opcode sub-packet carried inside another packet.  A sub-packet has no
+    // flags, CRC, or ARQ sequence of its own, so it is parsed as a bare opcode and payload and
+    // processed under the context of the packet that carried it.
     //
-    // data:  The complete sub-packet including its 2-byte net opcode
-    // metadata:     Packet metadata (source/dest IP and port, timestamp, framenumber)
+    // data:      The complete sub-packet including its 2-byte net opcode
+    // metadata:  The context of the carrying packet
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void ProcessSubpacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         if (data.Length < 2)
         {
-            DebugLog.Write(LogChannel.LowNetwork,
-                "  Subpacket: too short");
+            DebugLog.Write(LogChannel.LowNetwork, "SoeStream.ProcessSubpacket: frame " + metadata.FrameNumber
+                + " on stream " + StreamNames[_streamId] + " sub-packet of " + data.Length
+                + " bytes is too short for an opcode, dropping", LogLevel.Warn);
             return;
         }
 
         SoePacket spacket = new SoePacket(data, data.Length, true);
 
-        UdpDatagram dgram = new UdpDatagram();
-        dgram.FrameNumber = metadata.FrameNumber;
-        dgram.Timestamp = metadata.Timestamp;
-        dgram.SourceIp = metadata.SourceIp;
-        dgram.SourcePort = metadata.SourcePort;
-        dgram.DestIp = metadata.DestIp;
-        dgram.DestPort = metadata.DestPort;
-        dgram.SessionId = metadata.SessionId;
-        dgram.Channel = metadata.Channel;
-
-        // Payload is deliberately left default.  Nothing downstream will read it as the
-        // datagram is immediately converted back to metadata.
-
-        ProcessPacket((OpcodeValue) spacket.NetOpCode, spacket.Payload(), spacket.ArqSeq,
-                      spacket.HasArqSeq(), true, dgram);
+        ProcessPacket((OpcodeValue)spacket.NetOpCode, spacket.Payload(), spacket.ArqSeq, metadata);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -1226,4 +1179,6 @@ public class SoeStream : IDisposable
     {
         get { return _arqCacheHighWater; }
     }
+
+    
 }

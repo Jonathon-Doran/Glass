@@ -56,7 +56,7 @@ public class InferenceScanner
             return proposals;
         }
 
-        DebugLog.Write(LogChannel.InferenceDebug, "InferenceScanner.Scan: starting", LogLevel.Trace);
+        DebugLog.Write(LogChannel.InferenceDebug, "InferenceScanner.Scan: starting", LogLevel.Info);
 
         for (int handlerIndex = 0; handlerIndex < _handlers.Count; handlerIndex++)
         {
@@ -85,11 +85,11 @@ public class InferenceScanner
             proposals.AddRange(handlerProposals);
             DebugLog.Write(LogChannel.InferenceDebug,
                 "InferenceScanner.Scan: " + handler.Label + " -> "
-                + handlerProposals.Count + " proposals", LogLevel.Trace);
+                + handlerProposals.Count + " proposals", LogLevel.Info);
         }
 
         DebugLog.Write(LogChannel.InferenceDebug,
-            "InferenceScanner.Scan: done, " + proposals.Count + " total proposals", LogLevel.Trace);
+            "InferenceScanner.Scan: done, " + proposals.Count + " total proposals", LogLevel.Info);
         return proposals;
     }
 }

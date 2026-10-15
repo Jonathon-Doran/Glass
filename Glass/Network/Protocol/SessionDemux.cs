@@ -25,68 +25,51 @@ namespace Glass.Network.Protocol;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class SessionDemux
 {
-    private readonly string _localIp;
-    private readonly uint _localIpInt;
-    private readonly int _arqSeqGiveUp;
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // SessionDemux (constructor)
-    //
-    // localIp:            The IP address of the local machine running EQ clients
-    // arqSeqGiveUp:       Passed through to each stream's ARQ cache threshold
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public SessionDemux(string localIp, int arqSeqGiveUp = 512)
-    {
-        _localIp = localIp;
-        _localIpInt = IpToUInt32(localIp);
-        _arqSeqGiveUp = arqSeqGiveUp;
-
-        DebugLog.Write(LogChannel.Input, "SessionDemux: created, localIp=" + localIp);
-    }
-
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // RoutePacket
     //
-    // Entry point from the capture layer.  Determines direction, filters
-    // unwanted traffic, identifies the client by local port, and routes
-    // to the appropriate stream.
+    // Entry point from the capture layer.  Discards chat traffic, finds the session the
+    // datagram belongs to, and hands the datagram to that session's stream for its direction.
     //
-    // dgram:  The UDP datagram with headers removed
+    // metadata:  The datagram with its wire payload, addresses, and direction filled in
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public void RoutePacket(UdpDatagram dgram)
+    public void RoutePacket(PacketMetadata metadata)
     {
-        // Filter chat server traffic
-        if (dgram.DestPort == SoeConstants.ChatServerPort ||
-            dgram.SourcePort == SoeConstants.ChatServerPort)
+        if (metadata.RemotePort == SoeConstants.ChatServerPort ||
+            metadata.RemotePort == SoeConstants.WorldServerChatPort ||
+            metadata.RemotePort == SoeConstants.WorldServerChat2Port)
         {
-            dgram.Payload.Dispose();
+            metadata.Payload.Dispose();
             return;
         }
 
-        // Filter world chat traffic
-        if (dgram.DestPort == SoeConstants.WorldServerChatPort ||
-            dgram.SourcePort == SoeConstants.WorldServerChatPort)
+        Session? session = SessionStore.Instance.Find(metadata.LocalPort, metadata.RemotePort);
+
+        if (session == null)
         {
-            dgram.Payload.Dispose();
-            return;
+            session = SessionStore.Instance.Create(metadata);
+
+            if (session == null)
+            {
+                DebugLog.Write(LogChannel.LowNetwork, "SessionDemux.RoutePacket: frame " + metadata.FrameNumber
+                    + " has no session for " + metadata.LocalPort + "->" + metadata.RemotePort + ", dropping",
+                    LogLevel.Trace);
+                metadata.Payload.Dispose();
+                return;
+            }
         }
 
-        if (dgram.DestPort == SoeConstants.WorldServerChat2Port ||
-            dgram.SourcePort == SoeConstants.WorldServerChat2Port)
+        metadata.Session = session;
+        metadata.SessionId = session.SessionId;
+
+        SoeStream stream = metadata.ToServer ? session.ToServerStream : session.FromServerStream;
+        stream.HandlePacket(metadata);
+
+        if (session.CloseRequested)
         {
-            dgram.Payload.Dispose();
-            return;
+            SessionStore.Instance.Remove(session);
+            session.Dispose();
         }
-
-        dgram.Channel = GlassContext.SessionRegistry.GetChannel(dgram);
-
-        Connection connection = GlassContext.SessionRegistry.GetConnection(dgram);
-        dgram.SessionId = connection.SessionId;
-
-        // Route to the stream
-        SoeStream stream = connection.GetStream(dgram.Channel);
-
-        stream.HandlePacket(dgram);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

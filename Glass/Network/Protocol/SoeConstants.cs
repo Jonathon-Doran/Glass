@@ -1,3 +1,5 @@
+using Glass.Core.Logging;
+
 namespace Glass.Network.Protocol;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -44,6 +46,10 @@ public static class SoeConstants
     // ---------------------------------------------------------------------------
     public const byte FLAG_COMPRESSED = 0x5A;
     public const byte FLAG_UNCOMPRESSED = 0xA5;
+
+    // Daybreak server address ranges, each a /16.  Every capture filter selects only these,
+    // so the address inside one of them is the server end of any datagram.
+    public static readonly string[] ServerNetworks = { "69.174", "64.37", "209.0" };
 
     // ---------------------------------------------------------------------------
     // Stream identifiers
@@ -233,5 +239,67 @@ public static class SoeConstants
                     return $"UNK_{opcode:X4}";
                 }
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // IsServerAddress
+    //
+    // Tests whether a dotted-decimal IPv4 address lies inside one of the Daybreak /16 ranges.
+    //
+    // ip:  The address to test
+    //
+    // Returns true when the first two octets match one of the server networks.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public static bool IsServerAddress(string ip)
+    {
+        int secondDot = ip.IndexOf('.', ip.IndexOf('.') + 1);
+
+        if (secondDot < 0)
+        {
+            DebugLog.Write(LogChannel.LowNetwork, "SoeConstants.IsServerAddress: malformed address '" + ip + "'",
+                LogLevel.Warn);
+            return false;
+        }
+
+        string prefix = ip.Substring(0, secondDot);
+
+        foreach (string network in ServerNetworks)
+        {
+            if (prefix == network)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // CaptureFilter
+    //
+    // Builds the BPF filter that selects UDP traffic to or from the Daybreak server networks.
+    //
+    // Returns the filter string, for example
+    // "udp and (net 69.174.0.0/16 or net 64.37.0.0/16 or net 209.0.0.0/16)".
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public static string CaptureFilter()
+    {
+        string terms = string.Empty;
+
+        foreach (string network in ServerNetworks)
+        {
+            if (terms.Length > 0)
+            {
+                terms += " or ";
+            }
+
+            terms += "net " + network + ".0.0/16";
+        }
+
+        string filter = "udp and (" + terms + ")";
+
+        DebugLog.Write(LogChannel.LowNetwork, "SoeConstants.CaptureFilter: '" + filter + "'", LogLevel.Trace);
+
+        return filter;
     }
 }

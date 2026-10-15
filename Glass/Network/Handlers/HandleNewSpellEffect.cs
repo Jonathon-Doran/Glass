@@ -101,7 +101,7 @@ public class HandleNewSpellEffect : OpcodeHandler
                 return;
             }
 
-            Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+            Character? character = metadata.Character;
             if (character == null)
             {
                 DebugLog.Write(LogChannel.Opcodes, "HandleNewSpellEffect.HandleZoneToClient: connection has no " +

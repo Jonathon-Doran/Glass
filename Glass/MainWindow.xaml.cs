@@ -966,14 +966,7 @@ public partial class MainWindow : Window
 
         string filePath = dialog.FileName;
 
-        string localIp = PacketCapture.GetLocalIP()!;
-        if (localIp == null)
-        {
-            DebugLog.Write(LogChannel.Network, "Pcap_Click: no local IP, aborting", LogLevel.Error);
-            return;
-        }
-
-        SessionDemux router = new SessionDemux(localIp);
+        SessionDemux router = new SessionDemux();
         PcapFileReader reader = new PcapFileReader(router);
 
         Progress<int> progress = new Progress<int>(percent =>
@@ -993,34 +986,6 @@ public partial class MainWindow : Window
         }
 
         DebugLog.Write(LogChannel.Network, "Pcap_Click: " + routed + " packets routed", LogLevel.Info);
-
-        foreach (KeyValuePair<int, Connection> kvp in GlassContext.SessionRegistry.GetAllConnections())
-        {
-            foreach (StreamId streamId in Enum.GetValues<StreamId>())
-            {
-                SoeStream stream = kvp.Value.GetStream(streamId);
-                if (stream.OpcodeCount.Count > 0)
-                {
-                    DebugLog.Write(LogChannel.Network, "Opcode summary for " + SoeConstants.StreamNames[streamId]
-                        + " port " + kvp.Key + ":", LogLevel.Info);
-
-                    List<KeyValuePair<OpcodeValue, int>> sorted =
-                        new List<KeyValuePair<OpcodeValue, int>>(stream.OpcodeCount);
-                    sorted.Sort((a, b) => a.Key.CompareTo(b.Key));
-
-                    foreach (KeyValuePair<OpcodeValue, int> op in sorted)
-                    {
-                        PatchOpcode patchOpcode = new PatchOpcode(patchLevel, op.Key);
-                        string name = GlassContext.PatchRegistry.GetOpcodeName(patchOpcode);
-
-                        DebugLog.Write(LogChannel.Network, "  " + " 0x" + op.Key + " (" + name + ")"
-                            + ": " + op.Value + " times", LogLevel.Info);
-                    }
-                }
-            }
-        }
-
-        DebugLog.Write(LogChannel.General, "Pcap_Click: pcap playback finished", LogLevel.Trace);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

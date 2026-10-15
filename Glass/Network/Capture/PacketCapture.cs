@@ -17,7 +17,7 @@ namespace Glass.Network.Capture;
 // Opens a capture device, applies a BPF filter targeting Daybreak Games
 // IP ranges, and forwards decoded UDP payloads to a PacketRouter.
 //
-// SharpPcap fires OnPacketArrival on a background thread.  This class
+//  This class
 // parses Ethernet + IPv4 + UDP headers to extract source/dest IP and port,
 // then hands the UDP payload directly to the router.
 //
@@ -336,18 +336,31 @@ public class PacketCapture
             return;
         }
 
-        UdpDatagram dgram = new UdpDatagram();
-        dgram.FrameNumber = _frameCount;
-        dgram.Timestamp = rawCapture.Timeval.Date;
-        dgram.SourceIp = sourceIp;
-        dgram.SourcePort = sourcePort;
-        dgram.DestIp = destIp;
-        dgram.DestPort = destPort;
-        dgram.Payload = GlassContext.BufferPool.Rent((uint)udpPayloadLength);
+        PacketMetadata metadata = new PacketMetadata();
+        metadata.FrameNumber = _frameCount;
+        metadata.Timestamp = rawCapture.Timeval.Date;
+        metadata.ToServer = SoeConstants.IsServerAddress(destIp);
 
-        data.AsSpan(udpPayloadOffset, udpPayloadLength).CopyTo(dgram.Payload.AsSpan());
+        if (metadata.ToServer)
+        {
+            metadata.LocalIp = sourceIp;
+            metadata.LocalPort = (ushort)sourcePort;
+            metadata.RemoteIp = destIp;
+            metadata.RemotePort = (ushort)destPort;
+        }
+        else
+        {
+            metadata.LocalIp = destIp;
+            metadata.LocalPort = (ushort)destPort;
+            metadata.RemoteIp = sourceIp;
+            metadata.RemotePort = (ushort)sourcePort;
+        }
 
-        _router.RoutePacket(dgram);
+        metadata.Payload = GlassContext.BufferPool.Rent((uint)udpPayloadLength);
+
+        data.AsSpan(udpPayloadOffset, udpPayloadLength).CopyTo(metadata.Payload.AsSpan());
+
+        _router.RoutePacket(metadata);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

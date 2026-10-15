@@ -540,13 +540,9 @@ public class HandleInventory : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void CaptureInventory(PacketMetadata metadata)
     {
-        string characterName = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
-
-        Character? character = CharacterRepository.Instance.GetByName(characterName);
-        if (character == null)
+        if (metadata.Character == null)
         {
-            DebugLog.Write(LogChannel.Inventory, "CaptureInventory: no Character named '" + characterName +
-                "' in repository; items not stored", LogLevel.Warn);
+            DebugLog.Write(LogChannel.Inventory, "CaptureInventory: no Character for inventory", LogLevel.Warn);
             return;
         }
 
@@ -555,31 +551,31 @@ public class HandleInventory : OpcodeHandler
         if (itemListGate.Exists == false)
         {
             DebugLog.Write(LogChannel.Inventory, "CaptureInventory: no Item List gate; items not stored for '" +
-                characterName + "'", LogLevel.Warn);
+                metadata.CharacterName + "'", LogLevel.Warn);
             return;
         }
 
-        character.ClearItems();
+        metadata.Character.ClearItems();
 
         uint itemCount = _extractor.BagCount(itemListGate);
         uint storedCount = 0;
 
         DebugLog.Write(LogChannel.Inventory, "CaptureInventory: " + itemCount + " top-level items for '" +
-            characterName + "'", LogLevel.Info);
+            metadata.CharacterName + "'", LogLevel.Info);
 
         for (uint itemIndex = 0; itemIndex < itemCount; itemIndex++)
         {
-            storedCount += CaptureItem(itemListGate, itemIndex, character, null);
+            storedCount += CaptureItem(itemListGate, itemIndex, metadata.Character, null);
         }
 
-        ItemInstanceGateway.Instance.StoreSnapshot(character);
-        StatBonuses wornBonuses = character.SumWornBonuses();
-        DebugLog.Write(LogChannel.Inventory, "CaptureInventory: '" + characterName + "' worn HP bonus " +
+        ItemInstanceGateway.Instance.StoreSnapshot(metadata.Character);
+        StatBonuses wornBonuses = metadata.Character.SumWornBonuses();
+        DebugLog.Write(LogChannel.Inventory, "CaptureInventory: '" + metadata.CharacterName + "' worn HP bonus " +
             wornBonuses.HP + ", heroic stamina " + wornBonuses.HeroicStamina, LogLevel.Info);
 
 
         DebugLog.Write(LogChannel.Inventory, "CaptureInventory: stored " + storedCount + " items, including contents " +
-            "and augments, for '" + characterName + "'", LogLevel.Trace);
+            "and augments, for '" + metadata.CharacterName + "'", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -1079,7 +1075,6 @@ public class HandleInventory : OpcodeHandler
             return root;
         }
 
-        string characterName = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
@@ -1112,7 +1107,7 @@ public class HandleInventory : OpcodeHandler
         {
             _extractor.Release();
         }
-        root.Text = "Inventory (" + characterName + ")";
+        root.Text = "Inventory (" + metadata.CharacterName + ")";
         return root;
     }
 

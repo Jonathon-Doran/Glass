@@ -69,7 +69,7 @@ public class HandleSimpleMessage : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+        Character? character = metadata.Character;
 
         if (character == null)
         {
@@ -103,7 +103,7 @@ public class HandleSimpleMessage : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+        Character? character = metadata.Character;
         FieldDisplayNode root = new FieldDisplayNode();
 
         if (character == null)

@@ -72,7 +72,7 @@ public class HandleSpellAction : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+        Character? character = metadata.Character;
 
         if (character == null)
         {
@@ -105,7 +105,7 @@ public class HandleSpellAction : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+        Character? character = metadata.Character;
 
         if (character == null)
         {

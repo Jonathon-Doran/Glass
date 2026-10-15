@@ -1,5 +1,6 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Core.Signals;
 using Glass.Network.Protocol;
 using Inference.Core;
 using Inference.Models;
@@ -60,7 +61,7 @@ public class InferZoneEntry_Z2C : IInferOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////
     public List<InferenceProposal> Infer(PacketCatalog catalog)
     {
-        DebugLog.Write(LogChannel.Inference, "InferZoneEntry_Z2C.Infer: starting", LogLevel.Trace);
+        DebugLog.Write(LogChannel.InferenceDebug, "InferZoneEntry_Z2C.Infer: starting", LogLevel.Trace);
         List<InferenceProposal> proposals = new List<InferenceProposal>();
 
         OpcodeValue anchorWireValue = AcceptedOpcodes.Instance.WireValueFor(AnchorOpcodeName);
@@ -69,6 +70,8 @@ public class InferZoneEntry_Z2C : IInferOpcodes
             DebugLog.Write(LogChannel.Inference,
                 "InferZoneEntry_Z2C.Infer: " + AnchorOpcodeName
                 + " not accepted this session, cannot anchor, no proposals", LogLevel.Warn);
+            GlassContext.SignalBus.Publish(new SignalInferenceStatus(
+                OpcodeNameConstant + " skipped: accept " + AnchorOpcodeName + " first, then run identification again"));
             return proposals;
         }
 
@@ -95,7 +98,7 @@ public class InferZoneEntry_Z2C : IInferOpcodes
                 anchor.Metadata.SourcePort, anchor.Metadata.DestPort);
             if (!vote.Exists)
             {
-                DebugLog.Write(LogChannel.Inference,
+                DebugLog.Write(LogChannel.InferenceDebug,
                     "InferZoneEntry_Z2C.Infer: no vote after profile at index "
                     + anchor.PacketIndex, LogLevel.Warn);
                 continue;
@@ -114,7 +117,7 @@ public class InferZoneEntry_Z2C : IInferOpcodes
 
         if (votes.Count == 0)
         {
-            DebugLog.Write(LogChannel.Inference,
+            DebugLog.Write(LogChannel.InferenceDebug,
                 "InferZoneEntry_Z2C.Infer: " + anchorsFound + " anchors, no votes, no proposals",
                 LogLevel.Warn);
             return proposals;
@@ -134,7 +137,7 @@ public class InferZoneEntry_Z2C : IInferOpcodes
             OpcodeValue wireValue = byVotesDescending[i];
             if (AcceptedOpcodes.Instance.IsAccepted(wireValue))
             {
-                DebugLog.Write(LogChannel.Inference,
+                DebugLog.Write(LogChannel.InferenceDebug,
                     "InferZoneEntry_Z2C.Infer: wireValue=" + wireValue + " already accepted as "
                     + AcceptedOpcodes.Instance.GetName(wireValue) + ", skipping", LogLevel.Info);
                 continue;
@@ -152,13 +155,13 @@ public class InferZoneEntry_Z2C : IInferOpcodes
                 + " | agreement " + confidence.ToString("F3");
             proposals.Add(proposal);
 
-            DebugLog.Write(LogChannel.Inference,
+            DebugLog.Write(LogChannel.InferenceDebug,
                 "InferZoneEntry_Z2C.Infer: wireValue=" + wireValue + " votes="
                 + votes[wireValue] + "/" + totalVotes + " confidence="
-                + confidence.ToString("F3"), LogLevel.Trace);
+                + confidence.ToString("F3"), LogLevel.Info);
         }
 
-        DebugLog.Write(LogChannel.Inference,
+        DebugLog.Write(LogChannel.InferenceDebug,
             "InferZoneEntry_Z2C.Infer: " + anchorsFound + " anchors, "
             + proposals.Count + " proposals", LogLevel.Info);
         return proposals;
@@ -207,7 +210,7 @@ public class InferZoneEntry_Z2C : IInferOpcodes
 
             if (packet.Metadata.WireValue.Value == SoeConstants.OP_SessionDisconnect)
             {
-                DebugLog.Write(LogChannel.Inference,
+                DebugLog.Write(LogChannel.InferenceDebug,
                     "InferZoneEntry_Z2C.FindFirstStringPacketOnPair: disconnect at index "
                     + packet.PacketIndex + ", walk ended", LogLevel.Trace);
                 return OpcodeValue.None;

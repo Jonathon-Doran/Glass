@@ -212,12 +212,11 @@ public class HandlePlayerProfile : OpcodeHandler
                     ", magic " + spellBonuses.SaveMagic, LogLevel.Info);
 
                 // PlayerProfile is the first time we see the character name on the network.
-                if (! metadata.SessionId.Exists)
+                if (metadata.Character == null)
                 {
-                    GlassContext.SessionRegistry.IdentifyConnection(name, metadata);
+                    GlassContext.SessionRegistry.IdentifySession(character, metadata);
                     DebugLog.Write(LogChannel.Inference, "identifying port " + metadata.DestPort + " as " + name,
                         LogLevel.Trace);
-                    GlassContext.SessionRegistry.FindConnectionByCharacter(name);
                 }
             }
         }

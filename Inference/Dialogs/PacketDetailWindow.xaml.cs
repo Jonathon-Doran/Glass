@@ -98,10 +98,10 @@ public partial class PacketDetailWindow : Window
         // note on version:  This usage is ok because we do not need to know the exact version
         // when obtaining the opcode name.  V1's output is identical to all other versions.
 
-        PatchOpcode patchOpcode = new PatchOpcode(GlassContext.CurrentPatchLevel, packet.Opcode);
+        PatchOpcode patchOpcode = packet.Metadata.Opcode;
         string opcodeName = GlassContext.PatchRegistry.GetOpcodeName(patchOpcode);
         string opcodeHex = "0x" + packet.Opcode;
-        string characterName = GlassContext.SessionRegistry.CharacterNameFromMetadata(packet.Metadata);
+        string characterName = packet.Metadata.CharacterName;
 
         Title = "Packet " + packet.PacketIndex + " — " + opcodeName;
 

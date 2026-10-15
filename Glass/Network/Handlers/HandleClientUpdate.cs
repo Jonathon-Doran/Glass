@@ -82,36 +82,38 @@ public class HandleClientUpdate : OpcodeHandler
         {
             GateHandle rootGate = extractor.Extract(_top_level_gate, data);
 
-            // look up the character associated with the session receiving the packet
-            CharacterId id = GlassContext.SessionRegistry.GetConnection(metadata).CharacterId;
-            Character? character = CharacterRepository.Instance.GetByCharacterId(id);
+            if (metadata.Character == null)
+            {
+                DebugLog.Write(LogChannel.Opcodes, _opcodeName + ": no Character for recipient", LogLevel.Error);
+                return;
+            }
 
-            string characterName = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
+            string characterName = metadata.Character.Name;
 
             uint bagCount = extractor.BagCount(rootGate);
 
-            if (character == null)
-            {
-                DebugLog.Write(LogChannel.Opcodes, _opcodeName + ": no Character with id '" + id + "' in repository; fields not stored.", LogLevel.Error);
-                return;
-            }
+
             for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
             {
                 extractor.EnterGate(rootGate, bagIndex);
-                character.XPos = extractor.GetFloatAt(_xPosSlot);
-                character.YPos = extractor.GetFloatAt(_yPosSlot);
-                character.ZPos = extractor.GetFloatAt(_zPosSlot);
+                metadata.Character.XPos = extractor.GetFloatAt(_xPosSlot);
+                metadata.Character.YPos = extractor.GetFloatAt(_yPosSlot);
+                metadata.Character.ZPos = extractor.GetFloatAt(_zPosSlot);
 
                 uint sequence = extractor.GetUIntAt(_sequenceSlot);
                 uint playerId = extractor.GetUIntAt(_playerIdSlot);
 
                 // Note on heading:  measured as 160-degrees per second to within 0.2%.  One degree is 6.25ms of keypress.  
-                character.Heading = extractor.GetUIntAt(_headingSlot) / 8192.0f * 360.0f;
+                metadata.Character.Heading = extractor.GetUIntAt(_headingSlot) / 8192.0f * 360.0f;
             
                 DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName);
-                DebugLog.Write(LogChannel.Opcodes, "Player " + playerId + " (" + characterName + ", 0x" + playerId.ToString("x4") + ") sequence " + sequence);
-                DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + " ID: " + playerId.ToString("x4") + " Position:  (" + character.XPos + "," + character.YPos + "," + character.ZPos + ")");
-                DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + " Heading is " + character.Heading.ToString() + " degrees");
+                DebugLog.Write(LogChannel.Opcodes, "Player " + playerId + " (" + characterName + 
+                    ", 0x" + playerId.ToString("x4") + ") sequence " + sequence);
+                DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + 
+                    " ID: " + playerId.ToString("x4") + " Position:  (" + metadata.Character.XPos + 
+                    "," + metadata.Character.YPos + "," + metadata.Character.ZPos + ")");
+                DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + 
+                    " Heading is " + metadata.Character.Heading.ToString() + " degrees");
             }
         }
         finally

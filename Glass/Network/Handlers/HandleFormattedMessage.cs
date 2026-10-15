@@ -102,7 +102,6 @@ public class HandleFormattedMessage : OpcodeHandler
     public override FieldDisplayNode Describe(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
         FieldDisplayNode root = new FieldDisplayNode();
-        string characterName = GlassContext.SessionRegistry.CharacterNameFromMetadata(metadata);
 
         try
         {
@@ -124,7 +123,7 @@ public class HandleFormattedMessage : OpcodeHandler
             _extractor.Release();
         }
 
-        root.Text = "Formatted Message (to " + characterName + ")";
+        root.Text = "Formatted Message (to " + metadata.CharacterName + ")";
         return root;
     }
 }

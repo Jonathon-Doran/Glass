@@ -67,7 +67,7 @@ public class HandleTargetRequest : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleClientToZone(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+        Character? character = metadata.Character;
 
         if (character == null)
         {

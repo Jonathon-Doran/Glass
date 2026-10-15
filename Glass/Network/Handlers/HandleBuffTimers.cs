@@ -102,7 +102,7 @@ public class HandleBuffTimers : OpcodeHandler
                 return;
             }
 
-            Character? character = GlassContext.SessionRegistry.GetConnection(metadata).Character;
+            Character? character = metadata.Character;
             if (character == null)
             {
                 DebugLog.Write(LogChannel.Opcodes, "HandleBuffTimers.HandleZoneToClient: connection has no " +

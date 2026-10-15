@@ -2,9 +2,7 @@
 using Glass.Core.Signals;
 using Glass.Data.Models;
 using Glass.Data.Repositories;
-using Glass.Network.Capture;
 using Glass.Network.Client;
-using Glass.Network.Protocol;
 using System.Runtime.InteropServices;
 using static Glass.Network.Protocol.SoeConstants;
 
@@ -28,12 +26,6 @@ public class SessionRegistry
 
     private int _sessionCount = 0;
     private readonly Dictionary<string, SessionEntry> _sessions = new();
-    private readonly Dictionary<SessionId, CharacterId> _characterIdBySession = new();
-    private readonly Dictionary<SessionId, string> _characterNameBySession = new();
-    private readonly Dictionary<int, Connection> _connectionsByPort = new();
-    private readonly int _arqSeqGiveUp = 512;
-    private readonly string? _localIp;
-    private uint _nextSessionNumber = 0;
     private readonly object _lock = new();
 
     // Represents a single active EverQuest session.
@@ -103,7 +95,6 @@ public class SessionRegistry
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public SessionRegistry()
     {
-        _localIp = PacketCapture.GetLocalIP();
         GlassContext.FocusTracker.SessionActivated += OnSessionActivated;
     }
 
@@ -131,11 +122,12 @@ public class SessionRegistry
     // hwnd:           The main window handle of the EQ client
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    public void OnSessionConnected(string sessionName, string characterName, uint pid, IntPtr hwnd)
+    public SessionEntry OnSessionConnected(string sessionName, string characterName, uint pid, IntPtr hwnd)
     {
-       lock (_lock)
+        SessionEntry? entry;
+        lock (_lock)
         {
-            if (!_sessions.TryGetValue(sessionName, out SessionEntry? entry))
+            if (!_sessions.TryGetValue(sessionName, out entry))
             {
                 entry = new SessionEntry { SessionName = sessionName };
                 _sessions[sessionName] = entry;
@@ -147,8 +139,9 @@ public class SessionRegistry
         }
 
 
-        DebugLog.Write(LogChannel.Input, $"SessionRegistry.OnSessionConnected: session={sessionName} count={_sessionCount} character={characterName} pid={pid} hwnd={hwnd}");
+        DebugLog.Write(LogChannel.Sessions, $"SessionRegistry.OnSessionConnected: session={sessionName} count={_sessionCount} character={characterName} pid={pid} hwnd={hwnd}", LogLevel.Info);
 
+        return entry;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -160,18 +153,18 @@ public class SessionRegistry
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void OnSessionDisconnected(string sessionName)
     {
-        DebugLog.Write(LogChannel.Sessions, $"SessionRegistry.OnSessionDisconnected: session={sessionName} count will be={_sessionCount - 1}.");
+        DebugLog.Write(LogChannel.Sessions, $"SessionRegistry.OnSessionDisconnected: session={sessionName} count will be={_sessionCount - 1}.", LogLevel.Info);
 
         SessionEntry? session = GetSession(sessionName);
         if (session == null)
         {
-            DebugLog.Write(LogChannel.Database, $"SessionRegistry.OnSessionDisconnected: session '{sessionName}' not found, nothing to save.");
+            DebugLog.Write(LogChannel.Database, $"SessionRegistry.OnSessionDisconnected: session '{sessionName}' not found, nothing to save.", LogLevel.Error);
             return;
         }
 
         if (session.CharacterDatabaseId < 0)
         {
-            DebugLog.Write(LogChannel.Database, $"SessionRegistry.OnSessionDisconnected: session '{sessionName}' has no bound character, nothing to save.");
+            DebugLog.Write(LogChannel.Database, $"SessionRegistry.OnSessionDisconnected: session '{sessionName}' has no bound character, nothing to save.", LogLevel.Error);
             return;
         }
 
@@ -233,157 +226,6 @@ public class SessionRegistry
         }
     }
 
-    public Character? CharacterFromSession(SessionId sessionId)
-    {
-        CharacterId characterId;
-
-        lock (_lock)
-        {
-            if (!_characterIdBySession.TryGetValue(sessionId, out characterId))
-            {
-                return null;
-            }
-        }
-
-        return CharacterRepository.Instance.GetByCharacterId(characterId);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GetAllClients
-    //
-    // Returns a read-only view of all active clients.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public IReadOnlyDictionary<int, Connection> GetAllConnections()
-    {
-        Dictionary<int, Connection> snapshot;
-        lock (_lock)
-        {
-            snapshot = new Dictionary<int, Connection>(_connectionsByPort);
-        }
-        return snapshot;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GetChannel
-    //
-    // Classifies a packet into a stream type based on port ranges and direction.
-    //
-    // dgram:  The UDP datagram with headers removed
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public SoeConstants.StreamId GetChannel(UdpDatagram dgram)
-    {
-        bool isFromClient = (dgram.SourceIp == _localIp);
-
-        int remotePort = isFromClient ? dgram.DestPort : dgram.SourcePort;
-
-        if (remotePort >= SoeConstants.LoginServerMinPort &&
-            remotePort <= SoeConstants.LoginServerMaxPort)
-        {
-            return isFromClient
-                ? SoeConstants.StreamId.StreamClientToLogin
-                : SoeConstants.StreamId.StreamLoginToClient;
-        }
-
-        if (remotePort == SoeConstants.WorldServerChatPort ||
-            remotePort == SoeConstants.WorldServerChat2Port)
-        {
-            return isFromClient
-                ? SoeConstants.StreamId.StreamClientToWorldChat
-                : SoeConstants.StreamId.StreamWorldChatToClient;
-        }
-
-        if (remotePort >= SoeConstants.WorldServerGeneralMinPort &&
-            remotePort <= SoeConstants.WorldServerGeneralMaxPort)
-        {
-            return isFromClient
-                ? SoeConstants.StreamId.StreamClientToWorld
-                : SoeConstants.StreamId.StreamWorldToClient;
-        }
-
-        return isFromClient
-            ? SoeConstants.StreamId.StreamClientToZone
-            : SoeConstants.StreamId.StreamZoneToClient;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GetConnection
-    //
-    // Returns the Connection for the given packet metadata.  Determines the
-    // channel, looks up or creates the Connection.  Thread-safe
-    //
-    // metadata:  The packet metadata containing source/dest IP, ports, etc.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-
-    public Connection GetConnection(PacketMetadata metadata)
-    {
-        bool isFromClient = (metadata.SourceIp == _localIp);
-        int localPort = isFromClient ? metadata.SourcePort : metadata.DestPort;
-
-        lock (_lock)
-        {
-            if (!_connectionsByPort.TryGetValue(localPort, out Connection? connection))
-            {
-                connection = new Connection(localPort, _arqSeqGiveUp);
-                _connectionsByPort[localPort] = connection;
-
-                DebugLog.Write(LogChannel.Sessions,
-                    "SessionRegistry.GetConnection: new connection on port " + localPort
-                    + ", connections=" + _connectionsByPort.Count, LogLevel.Info);
-            }
-
-            return connection;
-        }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GetConnection
-    //
-    // Returns the Connection for the given packet metadata.  Determines the
-    // channel, looks up or creates the Connection.  Thread-safe
-    //
-    // dgram:  The UDP datagram with headers removed
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public Connection GetConnection(UdpDatagram dgram)
-    {
-        bool isFromClient = (dgram.SourceIp == _localIp);
-        int localPort = isFromClient ? dgram.SourcePort : dgram.DestPort;
-
-        lock (_lock)
-        {
-            if (!_connectionsByPort.TryGetValue(localPort, out Connection? connection))
-            {
-                connection = new Connection(localPort, _arqSeqGiveUp);
-                _connectionsByPort[localPort] = connection;
-
-                DebugLog.Write(LogChannel.Sessions,
-                    "SessionRegistry.GetConnection: new connection on port " + localPort
-                    + ", connections=" + _connectionsByPort.Count, LogLevel.Info);
-            }
-
-            return connection;
-        }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // CharacterNameFromMetadata
-    //
-    // Finds the connection associated with metadata, then extracts the name from session
-    // associated with the connection.
-    //
-    // metadata:  Packet metadata from a received packet
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public string CharacterNameFromMetadata(PacketMetadata metadata)
-    {
-        // Note:  If the connection does not exist it will be created.  There is no possibility of null.
-        Connection c = GetConnection(metadata);
-        if (c.SessionId.Exists)
-        {
-            return CharacterNameFromSession(c.SessionId);
-        }
-
-        return ("unknown");
-    }
-
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ZoneFromMetadata
     //
@@ -395,7 +237,7 @@ public class SessionRegistry
     public ZoneId ZoneFromMetadata(PacketMetadata metadata)
     {
         // Note:  If the connection does not exist it will be created.  There is no possibility of null.
-        Character? character = GetConnection(metadata).Character;
+        Character? character = metadata.Character;
 
         if (character == null)
         {
@@ -413,231 +255,46 @@ public class SessionRegistry
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // FindSessionByCharacter
+    // IdentifySession
     //
-    // Searches all session entries for one matching the given character name.
-    // Returns the SessionEntry if found, null otherwise.  For diagnostic use.
+    // Attaches the Character named by a player profile to the network session the profile
+    // arrived on, and fills in the ISXGlass session entry registered under that character's
+    // name so the two sides are linked.
     //
-    // characterName:  The character name to search for
+    // character:    The character named in the player profile
+    // metadata:     The profile packet's context, carrying the network session
+    //
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public SessionEntry? FindSessionByCharacter(string characterName)
+    public void IdentifySession(Character character, PacketMetadata metadata)
     {
+        metadata.Session.SetCharacter(character);
+
         lock (_lock)
         {
             foreach (KeyValuePair<string, SessionEntry> pair in _sessions)
             {
-                if (pair.Value.CharacterName == characterName)
+                if (pair.Value.CharacterName != character.Name)
                 {
-                    return pair.Value;
+                    continue;
                 }
+
+                pair.Value.LocalPort = metadata.LocalPort;
+                pair.Value.Id = metadata.Session.SessionId;
+                pair.Value.CharacterDatabaseId = character.DatabaseId;
+
+                DebugLog.Write(LogChannel.LowNetwork, "SessionRegistry.IdentifySession: session "
+                    + metadata.Session.SessionId + " on port " + metadata.LocalPort + " is character "
+                    + character.Name + ", ISXGlass session " + pair.Value.SessionName, LogLevel.Trace);
+
+                GlassContext.SignalBus.Publish(new SignalSessionAdded(metadata.Session.SessionId, character.Name));
+
+                DebugLog.Write(LogChannel.SignalBus, "SessionRegistry.IdentifySession: published SignalSessionAdded "
+                    + metadata.Session.SessionId + " for " + character.Name, LogLevel.Trace);
             }
         }
 
-        return null;
-    }
-
-    public Connection? FindConnectionByCharacter(string characterName)
-    {
-        SessionEntry? session = FindSessionByCharacter(characterName);
-        if (session == null)
-        {
-            return null;
-        }
-
-        lock (_lock)
-        {
-            foreach (KeyValuePair<int, Connection> pair in _connectionsByPort)
-            {
-                if (pair.Value.SessionId == session.Id)
-                {
-                    return pair.Value;
-                }
-            }
-        }
-        return null;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // CharacterNameFromSession
-    //
-    // Returns the character name cached for a session id, or empty string when none is cached.
-    //
-    // sessionId:  The session id to look up.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public string CharacterNameFromSession(SessionId sessionId)
-    {
-        lock (_lock)
-        {
-            if (_characterNameBySession.TryGetValue(sessionId, out string? name))
-            {
-                return name;
-            }
-        }
-
-        return string.Empty;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GetStream
-    //
-    // Returns the SoeStream for the given packet metadata.  Determines the
-    // channel, looks up or creates the Connection, and returns the
-    // appropriate stream.  Thread-safe.
-    //
-    // metadata:  The packet metadata containing source/dest IP, ports, etc.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public SoeStream GetStream(PacketMetadata metadata)
-    {
-        // Note that the connection will never be null.  It is auto-created if it does not already exist
-        Connection connection = GetConnection(metadata);
-        return connection.GetStream(metadata.Channel);
-    }
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // IdentifyConnection
-    //
-    // Associates a network connection with a known character.  Called by packet
-    // handlers when they decode a character name from network traffic.
-    // Finds the connection by local port (from metadata) and searches existing
-    // SessionEntries for a matching character name.  If found, links the
-    // connection's port to the SessionEntry and assigns the next connection ID.
-    //
-    // characterName:  The character name decoded from packet data.
-    // metadata:       The packet metadata identifying the connection.
-    //
-    // Returns:  True if the session is identified, False otherwise
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public bool IdentifyConnection(string characterName, PacketMetadata metadata)
-    {
-        bool isFromClient = (metadata.SourceIp == _localIp);
-        int localPort = isFromClient ? metadata.SourcePort : metadata.DestPort;
-        DebugLog.Write(LogChannel.LowNetwork, "IdentifyConnection for " + characterName +
-            " on port " + metadata.DestPort, LogLevel.Trace);
-        lock (_lock)
-        {
-            if (!_connectionsByPort.TryGetValue(localPort, out Connection? connection))
-            {
-                DebugLog.Write(LogChannel.LowNetwork,
-                    "SessionRegistry.IdentifyConnection: no connection for port " + localPort
-                    + ", character=" + characterName, LogLevel.Trace);
-                return false;
-            }
-
-            DebugLog.Write(LogChannel.LowNetwork, "Connection found on local port "
-                + connection.LocalPort, LogLevel.Trace);
-
-            if (connection.SessionId.Exists)
-            {
-                DebugLog.Write(LogChannel.Sessions,
-                    "SessionRegistry.IdentifyConnection: port " + localPort
-                    + " already identified as connectionId=" + connection.SessionId
-                    + ", character=" + characterName, LogLevel.Trace);
-                return false;
-            }
-            
-            foreach (KeyValuePair<string, SessionEntry> pair in _sessions)
-            {
-                if (pair.Value.CharacterName == characterName)
-                {
-                    Character? character = CharacterRepository.Instance.GetByName(characterName);
-                    if (character == null)
-                    {
-                        DebugLog.Write(LogChannel.LowNetwork, "No Character named " + characterName + " found in the CharacterRepository", LogLevel.Error);
-                        return false;
-                    }
-
-                    connection.SessionId = (SessionId) _nextSessionNumber;
-                    _nextSessionNumber++;
-                    pair.Value.LocalPort = localPort;
-                    pair.Value.Id = connection.SessionId;
-                    pair.Value.CharacterDatabaseId = character.DatabaseId;
-                    _characterIdBySession[connection.SessionId] = character.CharacterId;
-                    _characterNameBySession[connection.SessionId] = characterName;
-                    connection.CharacterId = character.CharacterId;
-                    connection.Character = character;
-
-                    DebugLog.Write(LogChannel.LowNetwork,
-                        "SessionRegistry.IdentifyConnection: port " + localPort
-                        + " identified as character=" + characterName
-                        + " session=" + pair.Value.SessionName
-                        + " connectionId=" + connection.SessionId, LogLevel.Info);
-
-                    GlassContext.SignalBus.Publish(
-                        new SignalSessionAdded(connection.SessionId, characterName));
-
-                    DebugLog.Write(LogChannel.SignalBus,
-                        "SessionRegistry.IdentifyConnection: published SignalSessionAdded sessionId="
-                        + connection.SessionId + " character=" + characterName, LogLevel.Info);
-                    return true;
-                }
-            }
-
-            DebugLog.Write(LogChannel.LowNetwork,
-                "SessionRegistry.IdentifyConnection: no SessionEntry for character="
-                + characterName + " on port " + localPort
-                + ", bootstrapping synthetic session", LogLevel.Info);
-
-            Character? bootstrapCharacter = CharacterRepository.Instance.GetByName(characterName);
-            if (bootstrapCharacter == null)
-            {
-                DebugLog.Write(LogChannel.LowNetwork,
-                    "SessionRegistry.IdentifyConnection: no Character named " + characterName
-                    + " in CharacterRepository, cannot bootstrap", LogLevel.Error);
-                return false;
-            }
-
-            string synthName = "pcap-" + _sessionCount;
-            SessionEntry synthEntry = EnsureSessionEntry(synthName, characterName, 0, IntPtr.Zero);
-            _sessionCount++;
-
-            connection.SessionId = (SessionId) _nextSessionNumber;
-            _nextSessionNumber++;
-            synthEntry.LocalPort = localPort;
-            synthEntry.Id = connection.SessionId;
-            synthEntry.CharacterDatabaseId = bootstrapCharacter.DatabaseId;
-            _characterIdBySession[connection.SessionId] = bootstrapCharacter.CharacterId;
-            _characterNameBySession[connection.SessionId] = characterName;
-            connection.CharacterId = bootstrapCharacter.CharacterId;
-            connection.Character = bootstrapCharacter;
-
-            DebugLog.Write(LogChannel.LowNetwork,
-                "SessionRegistry.IdentifyConnection: port " + localPort
-                + " identified as character=" + characterName
-                + " synth session=" + synthName
-                + " connectionId=" + connection.SessionId);
-
-            GlassContext.SignalBus.Publish(
-                new SignalSessionAdded(connection.SessionId, characterName));
-
-            DebugLog.Write(LogChannel.SignalBus,
-                "SessionRegistry.IdentifyConnection: published SignalSessionAdded sessionId="
-                + connection.SessionId + " character=" + characterName);
-
-            return true;
-        }
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // EnsureSessionEntry
-    //
-    // Looks up or creates a SessionEntry by sessionName.  Assigns the
-    // character name, pid, and hwnd to the entry.  Caller must hold _lock.
-    //
-    // sessionName:    The session name key.
-    // characterName:  The character logged in to this session.
-    // pid:            The process ID of the EQ client, or 0 if not known.
-    // hwnd:           The main window handle of the EQ client, or IntPtr.Zero
-    //                 if not known.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private SessionEntry EnsureSessionEntry(string sessionName, string characterName, uint pid, IntPtr hwnd)
-    {
-        if (!_sessions.TryGetValue(sessionName, out SessionEntry? entry))
-        {
-            entry = new SessionEntry { SessionName = sessionName };
-            _sessions[sessionName] = entry;
-        }
-        entry.CharacterName = characterName;
-        entry.Pid = pid;
-        entry.Hwnd = hwnd;
-        return entry;
+        DebugLog.Write(LogChannel.LowNetwork, "SessionRegistry.IdentifySession: session " + metadata.Session.SessionId
+            + " is character " + character.Name + " but no ISXGlass session entry is registered for that character",
+            LogLevel.Warn);
     }
 }

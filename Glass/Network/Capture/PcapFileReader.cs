@@ -225,20 +225,36 @@ public class PcapFileReader
             return;
         }
 
-        UdpDatagram dgram = new UdpDatagram();
-        dgram.FrameNumber = _frameCount;
-        dgram.Timestamp = rawCapture.Timeval.Date;
-        dgram.SourceIp = ipPacket.SourceAddress.ToString();
-        dgram.SourcePort = udpPacket.SourcePort;
-        dgram.DestIp = ipPacket.DestinationAddress.ToString();
-        dgram.DestPort = udpPacket.DestinationPort;
-        dgram.Payload = GlassContext.BufferPool.Rent((uint) payloadBytes.Length);
+        string sourceIp = ipPacket.SourceAddress.ToString();
+        string destIp = ipPacket.DestinationAddress.ToString();
+
+        PacketMetadata metadata = new PacketMetadata();
+        metadata.FrameNumber = _frameCount;
+        metadata.Timestamp = rawCapture.Timeval.Date;
+        metadata.ToServer = SoeConstants.IsServerAddress(destIp);
+
+        if (metadata.ToServer)
+        {
+            metadata.LocalIp = sourceIp;
+            metadata.LocalPort = udpPacket.SourcePort;
+            metadata.RemoteIp = destIp;
+            metadata.RemotePort = udpPacket.DestinationPort;
+        }
+        else
+        {
+            metadata.LocalIp = destIp;
+            metadata.LocalPort = udpPacket.DestinationPort;
+            metadata.RemoteIp = sourceIp;
+            metadata.RemotePort = udpPacket.SourcePort;
+        }
+
+        metadata.Payload = GlassContext.BufferPool.Rent((uint)payloadBytes.Length);
 
         // We do not have the wire opcode yet, that comes in SoeStream when the SoePacket is made
 
-        payloadBytes.AsSpan(0, payloadBytes.Length).CopyTo(dgram.Payload.AsSpan());
+        payloadBytes.AsSpan(0, payloadBytes.Length).CopyTo(metadata.Payload.AsSpan());
 
-        _router.RoutePacket(dgram);
+        _router.RoutePacket(metadata);
 
         _routedCount++;
     }

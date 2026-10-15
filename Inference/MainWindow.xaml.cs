@@ -76,7 +76,7 @@ public partial class MainWindow : Window
     private int? _analysisFilterSessionId;
     private int _analysisMaxPackets = 20;
     private int _analysisMaxHexBytes = 256;
-
+    private readonly Action<SignalInferenceStatus> _inferenceStatusHandler;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // MainWindow
@@ -101,6 +101,9 @@ public partial class MainWindow : Window
 
         GlassContext.SignalBus = new SignalBus();
         GlassContext.PacketBus = new PacketBus();
+
+        _inferenceStatusHandler = OnInferenceStatus;
+        GlassContext.SignalBus.Subscribe(_inferenceStatusHandler);
 
         OpenDatabase();
         ProtocolStackBootstrap.Initialize();
@@ -174,6 +177,11 @@ public partial class MainWindow : Window
         DebugLog.AddHandler(LogSink.Aux3LogFile, aux3LogHandler);
         // DebugLog.Route(LogChannel.Inventory, LogSink.Aux3LogFile);
         DebugLog.Route(LogChannel.Fields, LogSink.Aux3LogFile);
+
+        GlassDebugLogHandler aux4Handler = new GlassDebugLogHandler("inference.log");
+        DebugLog.AddHandler(LogSink.Aux4LogFile, aux4Handler);
+        DebugLog.Route(LogChannel.InferenceDebug, LogSink.Aux4LogFile);
+
 
         // The inference tab, just inference messages
         GlassConsoleLogHandler inferenceTabHandler = new GlassConsoleLogHandler(InferenceLogOutput, InferenceLogScroller);
@@ -882,15 +890,7 @@ public partial class MainWindow : Window
         DebugLog.Write(LogChannel.InferenceDebug,
             "MenuItem_OpenPcap_Click: patch level set, OpcodeDispatch rebuilt", LogLevel.Trace);
 
-        string localIp = PacketCapture.GetLocalIP()!;
-        if (localIp == null)
-        {
-            DebugLog.Write(LogChannel.Network,
-                "MenuItem_OpenPcap_Click: no local IP, aborting", LogLevel.Error);
-            return;
-        }
-
-        SessionDemux router = new SessionDemux(localIp);
+        SessionDemux router = new SessionDemux();
         PcapFileReader reader = new PcapFileReader(router);
 
         // disable the menu item while the capture file is processed
@@ -978,15 +978,7 @@ public partial class MainWindow : Window
 
         UIReset();
 
-        string localIp = PacketCapture.GetLocalIP()!;
-        if (localIp == null)
-        {
-            DebugLog.Write(LogChannel.Network,
-                "MenuItem_OpenPcap_Click: no local IP, aborting", LogLevel.Error);
-            return;
-        }
-
-        SessionDemux router = new SessionDemux(localIp);
+        SessionDemux router = new SessionDemux();
         PcapFileReader reader = new PcapFileReader(router);
 
         // disable the menu item while the capture file is processed
@@ -1084,20 +1076,10 @@ public partial class MainWindow : Window
         DebugLog.Write(LogChannel.InferenceDebug,
             "MenuItem_LaunchProfile_Click: profile selected: " + dialog.SelectedProfileName, LogLevel.Info);
 
-        string? localIp = PacketCapture.GetLocalIP();
-        if (localIp == null)
-        {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "MenuItem_LaunchProfile_Click: no capture device found", LogLevel.Error);
-            MessageBox.Show("No suitable capture device found. Is Npcap installed?",
-                "Capture Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-
-        _sessionDemux = new SessionDemux(localIp);
+        _sessionDemux = new SessionDemux();
         GlassContext.PacketCapture = new PacketCapture(_sessionDemux);
 
-        string bpfFilter = "udp and (net 69.174.0.0/16 or net 64.37.0.0/16 or net 209.0.0.0/16)";
+        string bpfFilter = SoeConstants.CaptureFilter();
         if (!GlassContext.PacketCapture.Start(bpfFilter))
         {
             DebugLog.Write(LogChannel.InferenceDebug,
@@ -1937,6 +1919,26 @@ public partial class MainWindow : Window
         DebugLog.Write(LogChannel.Sessions, "MainWindow.OnAllSessionsDisconnected: all sessions disconnected, clearing active profile.", LogLevel.Info);
         ProtocolStackBootstrap.Teardown();
         UpdateToolsMenuState();
+    }
+
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // OnInferenceStatus
+    //
+    // Shows an identification routine's status line in the secondary status bar text.
+    // Arrives on the scan thread, so the update is marshaled to the UI thread.
+    //
+    // signal:  The status carrying the line to display
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void OnInferenceStatus(SignalInferenceStatus signal)
+    {
+        DebugLog.Write(LogChannel.Inference, "MainWindow.OnInferenceStatus: '" + signal.Text + "'",
+            LogLevel.Trace);
+
+        Dispatcher.Invoke(() =>
+        {
+            StatusBarSecondaryText.Text = signal.Text;
+        });
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -2882,7 +2884,7 @@ public partial class MainWindow : Window
         {
             ProposalRow row = new ProposalRow();
             row.Label = proposal.Label;
-            row.OpcodeHex = "0x" + proposal.Opcode.Value;
+            row.OpcodeHex = proposal.Opcode.ToString();
             row.Confidence = proposal.Confidence.ToString("F2");
             row.Count = _packetCatalog.CountFor(proposal.Opcode.Value);
             row.WireValue = proposal.Opcode.Value;
@@ -3129,14 +3131,7 @@ public partial class MainWindow : Window
             CatalogedPacket packet = packets[packetIndex];
             ReadOnlySpan<byte> payload = packet.Payload.AsReadOnlySpan();
             int payloadLength = payload.Length;
-            string name = "(unknown)";
-
-            if (packet.Metadata.SessionId >= 0)
-            {
-                name = "(" + GlassContext.SessionRegistry.CharacterNameFromSession(packet.Metadata.SessionId) + ")";
-            }
-            DebugLog.Write(LogChannel.Fields, "session " + packet.Metadata.SessionId + " is [" +
-                name + "] and using metadata we get " + GlassContext.SessionRegistry.CharacterNameFromMetadata(packet.Metadata), LogLevel.Trace);
+            string name = packet.Metadata.CharacterName;
 
             int displayLength = Math.Min(payloadLength, _analysisMaxHexBytes);
             bool truncated = payloadLength > _analysisMaxHexBytes;
