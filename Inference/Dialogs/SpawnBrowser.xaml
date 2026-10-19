@@ -1,0 +1,36 @@
+﻿<Window x:Class="Inference.Dialogs.SpawnBrowser"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.modernwpf.com/2019"
+        ui:WindowHelper.UseModernWindowStyle="True"
+        Title="Spawn Browser" Height="600" Width="1000">
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4">
+            <TextBlock Text="Zone:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+            <ComboBox x:Name="ZoneList" MinWidth="200" Margin="0,0,12,0"
+                      SelectionChanged="ZoneList_SelectionChanged"/>
+            <TextBlock Text="Filter:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+            <TextBox x:Name="FilterText" Width="160" Margin="0,0,12,0"
+                     ToolTip="Name substring, or spawn id in decimal or 0x hex."
+                     KeyDown="FilterText_KeyDown"/>
+            <Button x:Name="ButtonRefresh" Content="Refresh"
+                    Click="Button_Refresh_Click" Padding="8,4"/>
+        </StackPanel>
+        <TextBlock x:Name="ResultCount" DockPanel.Dock="Top" Margin="4,0,4,4"
+                   Text="No zone selected"/>
+        <DataGrid x:Name="ResultGrid"
+                  AutoGenerateColumns="False"
+                  IsReadOnly="True"
+                  SelectionMode="Single"
+                  HeadersVisibility="Column"
+                  VirtualizingStackPanel.IsVirtualizing="True">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Spawn Id" Width="90" Binding="{Binding SpawnIdDecimal}"/>
+                <DataGridTextColumn Header="Hex" Width="70" Binding="{Binding SpawnIdHex}"/>
+                <DataGridTextColumn Header="Name" Width="*" Binding="{Binding Name}"/>
+                <DataGridTextColumn Header="Level" Width="60" Binding="{Binding Level}"/>
+                <DataGridTextColumn Header="Last Seen" Width="150" Binding="{Binding LastSeen}"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</Window>

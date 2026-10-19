@@ -80,6 +80,40 @@ public class PacketBus
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // SubscribeFirst
+    //
+    // Adds a handler at the front of the subscriber list so it is delivered to before every
+    // handler already subscribed.  Idempotent: a handler already in the list is left where it
+    // is and not added again.
+    //
+    // handler:  The delegate to invoke for each published packet.  Must not be null.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void SubscribeFirst(Handler handler)
+    {
+        if (handler == null)
+        {
+            DebugLog.Write(LogChannel.LowNetwork, "PacketBus.SubscribeFirst: null handler, ignoring", LogLevel.Warn);
+            return;
+        }
+
+        lock (_lock)
+        {
+            if (_subscribers.Contains(handler))
+            {
+                DebugLog.Write(LogChannel.LowNetwork,
+                    "PacketBus.SubscribeFirst: handler already subscribed, ignoring", LogLevel.Warn);
+                return;
+            }
+
+            _subscribers.Insert(0, handler);
+
+            DebugLog.Write(LogChannel.LowNetwork,
+                "PacketBus.SubscribeFirst: inserted handler at front, subscriber count is now "
+                + _subscribers.Count, LogLevel.Trace);
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // Unsubscribe
     //
     // Removes a handler from the subscriber list.  No-op if the handler was

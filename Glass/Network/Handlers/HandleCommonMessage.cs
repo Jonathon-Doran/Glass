@@ -22,10 +22,11 @@ public class HandleCommonMessage : OpcodeHandler
     private readonly SlotId _channelIdSlot;
     private readonly SlotId _messageIdSlot;
 
-    private static readonly byte ChannelShout = 0x03;
-    private static readonly byte ChannelOoc = 0x05;
-    private static readonly byte ChannelSay = 0x08;
-    private static readonly byte ChannelCustomBase = 0x10;
+    private const uint ChannelGuild = 0x00;
+    private const uint ChannelShout = 0x03;
+    private const uint ChannelOoc = 0x05;
+    private const uint ChannelSay = 0x08;
+    private const uint ChannelCustomBase = 0x10;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleCommonMessage (constructor)
@@ -39,6 +40,12 @@ public class HandleCommonMessage : OpcodeHandler
         :base(patchLevel, "OP_CommonMessage")
     {
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
+        if (_opcodeHandled == PatchOpcode.None)
+        {
+            // happens when replaying captures before the opcode was added
+            return;
+        }
+
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_CommonMessage");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
@@ -119,17 +126,11 @@ public class HandleCommonMessage : OpcodeHandler
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            string sender = _extractor.GetStringAt(_senderIdSlot);
             uint channel = _extractor.GetUIntAt(_channelIdSlot);
             string message = _extractor.GetStringAt(_messageIdSlot);
 
-            FieldDisplayNode senderNode = new FieldDisplayNode("sender = " + sender);
-            senderNode.AddByteRange(_extractor.GetByteRangeFor(_senderIdSlot));
-            root.AddChild(senderNode);
-
-            FieldDisplayNode channelNode = new FieldDisplayNode("channel = " + channel);
-            channelNode.AddByteRange(_extractor.GetByteRangeFor(_channelIdSlot));
-            root.AddChild(channelNode);
+            FieldNodes.AddStringNode(_extractor, _senderIdSlot, "Sender", root);
+            FieldNodes.AddLabeledNode(_extractor, _channelIdSlot, "Channel: " + GetChannelName(channel), root);
 
             FieldDisplayNode messageNode = new FieldDisplayNode("message = " + message);
             messageNode.AddByteRange(_extractor.GetByteRangeFor(_messageIdSlot));
@@ -155,24 +156,25 @@ public class HandleCommonMessage : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private string GetChannelName(uint channelId)
     {
-        if (channelId == ChannelShout)
-        {
-            return "/shout";
-        }
-        if (channelId == ChannelOoc)
-        {
-            return "/ooc";
-        }
-        if (channelId == ChannelSay)
-        {
-            return "/say";
-        }
-        if (channelId >= ChannelCustomBase)
+        if (channelId > ChannelCustomBase)
         {
             uint customNumber = channelId - ChannelCustomBase;
             return "/" + customNumber;
         }
-        return "unknown(" + channelId.ToString("x2") + ")";
+
+        switch (channelId)
+        {
+            case ChannelGuild:
+                return "/guild";
+            case ChannelSay:
+                return "/say";
+            case ChannelOoc:
+                return "/ooc";
+            case ChannelShout:
+                return "/shout";
+            default:
+                return "unknown(" + channelId.ToString("x2") + ")";
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

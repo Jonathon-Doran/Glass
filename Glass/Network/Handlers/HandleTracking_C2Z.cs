@@ -33,6 +33,12 @@ public class HandleTracking_C2Z : OpcodeHandler
         : base (patchLevel, "OP_Tracking_C2Z")
     {
         PatchOpcode baseOpcode = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
+        if (_opcodeHandled == PatchOpcode.None)
+        {
+            // happens when replaying captures before the opcode was added
+            return;
+        }
+
         _opcodeHandled = baseOpcode with { Version = 1 };
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "Tracking_Entries");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);

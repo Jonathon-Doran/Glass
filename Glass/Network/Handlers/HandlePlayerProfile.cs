@@ -72,9 +72,20 @@ public class HandlePlayerProfile : OpcodeHandler
         : base(patchLevel, "OP_PlayerProfile")
     {
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_PlayerProfile");
+		if (_opcodeHandled == PatchOpcode.None)
+		{
+			// happens when replaying captures before the opcode was added
+			return;
+		}
+
+		_collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_PlayerProfile");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
         CollectionHandle characterBuffs = _registry.GetCollectionHandle(_patchLevel, "Character_Buffs");
+
+        if (!characterBuffs.Exists)
+        {
+            return;
+        }
 
         _nameSlot = _registry.IndexOfField(_collectionHandle, "name");
         _characterIdSlot = _registry.IndexOfField(_collectionHandle, "persistent_id");
@@ -186,8 +197,7 @@ public class HandlePlayerProfile : OpcodeHandler
                 character.Silver = _extractor.GetUInt64At(_silverCarriedSlot);
                 character.Copper = _extractor.GetUInt64At(_copperCarriedSlot);
 
-                character.CurrentZone = _extractor.GetUIntAt(_zoneIdSlot);
-
+                character.CurrentZone = (ZoneId) _extractor.GetUIntAt(_zoneIdSlot);
 
                 ReadOnlySpan<uint> spellbook = _extractor.GetUIntSpanAt(_spellbookSlot);
                 ReadOnlySpan<uint> spellgems = _extractor.GetUIntSpanAt(_spellgemSlot);
@@ -218,7 +228,7 @@ public class HandlePlayerProfile : OpcodeHandler
                     DebugLog.Write(LogChannel.Inference, "identifying port " + metadata.DestPort + " as " + name,
                         LogLevel.Trace);
                 }
-            }
+			}
         }
         finally
         {

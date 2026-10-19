@@ -334,7 +334,7 @@ public class PatchRegistry
         {
             string failure = "PatchRegistry.GetOpcodeGateDefinition: PatchOpcode.None passed";
             DebugLog.Write(LogChannel.Fields, failure + Environment.NewLine + Environment.StackTrace, LogLevel.Error);
-            Environment.FailFast(failure);
+       //     Environment.FailFast(failure);
         }
 
         PatchData patchData = FindPatchData(patchOpcode.Level);

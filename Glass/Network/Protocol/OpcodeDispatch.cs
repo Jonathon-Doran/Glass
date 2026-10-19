@@ -108,7 +108,7 @@ public class OpcodeDispatch
 
         _handlers = builder.ToFrozenDictionary();
 
-        GlassContext.PacketBus.Subscribe(HandlePacket);
+        GlassContext.PacketBus.SubscribeFirst(HandlePacket);
         DebugLog.Write(LogChannel.Opcodes, "OpcodeDispatch: scan complete, "
             + _handlers.Count + " handlers registered", LogLevel.Trace);
     }
@@ -284,7 +284,7 @@ public class OpcodeDispatch
             }
             else
             {
-                GlassContext.PacketBus.Subscribe(_instance!.HandlePacket);
+                GlassContext.PacketBus.SubscribeFirst(_instance!.HandlePacket);
                 DebugLog.Write(LogChannel.Opcodes,
                     "OpcodeDispatch.SetBusState: resubscribed live instance, dispatch on",
                     LogLevel.Info);

@@ -38,7 +38,15 @@ public class HandleTracking_Z2C : OpcodeHandler
         : base (patchLevel, "OP_Tracking_Z2C")
     {
         PatchOpcode baseOpcode = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
+
         _opcodeHandled = baseOpcode with { Version = 2 };
+        if (_opcodeHandled == PatchOpcode.None)
+        {
+            // happens when replaying captures before the opcode was added
+            return;
+        }
+
+
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "Tracking_V2");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 

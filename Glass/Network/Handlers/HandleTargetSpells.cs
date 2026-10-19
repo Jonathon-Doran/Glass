@@ -39,6 +39,12 @@ public class HandleTargetSpells: OpcodeHandler
         : base(patchLevel, "OP_TargetSpells")
     {
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
+        if (_opcodeHandled == PatchOpcode.None)
+        {
+            // happens when replaying captures before the opcode was added
+            return;
+        }
+
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "Buff Timers Header");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 

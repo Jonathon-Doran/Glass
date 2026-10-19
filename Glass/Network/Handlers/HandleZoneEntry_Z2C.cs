@@ -39,6 +39,13 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         : base(patchLevel, "OP_ZoneEntry_Z2C")
     {
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
+        if (_opcodeHandled == PatchOpcode.None)
+        {
+            // happens when replaying captures before the opcode was added
+            return;
+        }
+
+
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_ZoneEntryV1");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
@@ -123,7 +130,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         FieldDisplayNode root = new FieldDisplayNode();
 
         // I would think that zone-id would be in the data...
-        ZoneId zoneId = GlassContext.SessionRegistry.ZoneFromMetadata(metadata);
+        ZoneId zoneId = metadata.Character.CurrentZone;
         string zoneName = ZoneRepository.Instance.GetZoneName(zoneId);
 
         try

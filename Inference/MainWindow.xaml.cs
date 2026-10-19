@@ -102,6 +102,7 @@ public partial class MainWindow : Window
         GlassContext.SignalBus = new SignalBus();
         GlassContext.PacketBus = new PacketBus();
 
+
         _inferenceStatusHandler = OnInferenceStatus;
         GlassContext.SignalBus.Subscribe(_inferenceStatusHandler);
 
@@ -122,11 +123,11 @@ public partial class MainWindow : Window
         _packetCatalog = new PacketCatalog(_retainedBufferPool);
         _opcodeRowPresenter = new OpcodeRowPresenter(_packetCatalog);
         OpcodeGrid.ItemsSource = _opcodeRowPresenter.Rows;
-        GlassContext.PacketBus.Subscribe(HandleAppPacket);
 
         _opcodeTracePresenter = new OpcodeTracePresenter(_packetCatalog, OpcodeTraceList);
         OpcodeTraceList.ItemsSource = _opcodeTracePresenter.Rows;
         ArmColorPatch(ColorPatchYellow);
+        GlassContext.PacketBus.Subscribe(HandleAppPacket);
 
         GlassContext.BufferPool = new BufferPool(
             new uint[] { 16,   64,    256,   512,  640,  768,  1024, 2048, 16384, 65536, 262144, 524288 },
@@ -887,6 +888,8 @@ public partial class MainWindow : Window
         GlassContext.PatchRegistry.LoadPatchLevel(_currentPatchLevel.Value);
         GlassContext.CurrentPatchLevel = _currentPatchLevel.Value;
         OpcodeDispatch.RebuildForCurrentPatchLevel();
+
+
         DebugLog.Write(LogChannel.InferenceDebug,
             "MenuItem_OpenPcap_Click: patch level set, OpcodeDispatch rebuilt", LogLevel.Trace);
 
@@ -1061,7 +1064,6 @@ public partial class MainWindow : Window
         string serverType = _currentPatchLevel.Value.ServerType;
         GlassContext.PatchRegistry.LoadPatchLevel(_currentPatchLevel.Value);
         OpcodeDispatch.RebuildForCurrentPatchLevel();
-
         DebugLog.Write(LogChannel.Inference,
             "MenuItem_LaunchProfile_Click: patch level set for serverType=" + serverType, LogLevel.Trace);
 
@@ -2834,6 +2836,23 @@ public partial class MainWindow : Window
             + SpellCatalog.Instance.Count, LogLevel.Trace);
     }
 
+        ///////////////////////////////////////////////////////////////////////////////////////////
+    // MenuItem_SpawnBrowser_Click
+    //
+    // Opens a modeless spawn browser window owned by this window.
+    //
+    // sender:  The menu item.
+    // e:       The routed event args.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void MenuItem_SpawnBrowser_Click(object sender, RoutedEventArgs e)
+    {
+        SpawnBrowser browser = new SpawnBrowser();
+        browser.Owner = this;
+        browser.Show();
+
+        DebugLog.Write(LogChannel.InferenceDebug, "MainWindow.MenuItem_SpawnBrowser_Click: spawn browser opened",
+            LogLevel.Trace);
+    }
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Button_RunIdentification_Click
     //

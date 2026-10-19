@@ -204,7 +204,7 @@ public class CharacterRepository
             Silver = reader.IsDBNull(19) ? null : (ulong?)reader.GetInt64(19),
             Copper = reader.IsDBNull(20) ? null : (ulong?)reader.GetInt64(20),
 
-            CurrentZone = reader.IsDBNull(21) ? null : (uint?)reader.GetInt32(21),
+            CurrentZone = reader.IsDBNull(21) ? ZoneId.None : (ZoneId) (uint)reader.GetInt32(21),
             CharacterId = reader.IsDBNull(22) ? CharacterId.None : (CharacterId)(uint)reader.GetInt64(22)
         };
 
@@ -316,7 +316,7 @@ public void Save(DatabaseId databaseId)
     cmd.Parameters.AddWithValue("@gold",     character.Gold.HasValue     ? character.Gold.Value     : DBNull.Value);
     cmd.Parameters.AddWithValue("@silver",   character.Silver.HasValue   ? character.Silver.Value   : DBNull.Value);
     cmd.Parameters.AddWithValue("@copper",   character.Copper.HasValue   ? character.Copper.Value   : DBNull.Value);
-    cmd.Parameters.AddWithValue("@currentZone", character.CurrentZone.HasValue ? character.CurrentZone.Value : DBNull.Value);
+    cmd.Parameters.AddWithValue("@currentZone", character.CurrentZone.Exists ? character.CurrentZone.Value : DBNull.Value);
     cmd.Parameters.AddWithValue("@characterId", character.CharacterId.Exists ? character.CharacterId.Value : DBNull.Value);
     cmd.Parameters.AddWithValue("@id", character.DatabaseId.Value);
 

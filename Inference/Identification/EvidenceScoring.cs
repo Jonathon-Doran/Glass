@@ -1339,6 +1339,221 @@ public static class EvidenceScoring
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // SizeRangeLogLR
+    //
+    // Log likelihood ratio from whether the candidate's observed lengths fall inside a
+    // fixed range, for a hypothesis that the opcode is a fixed block plus bounded
+    // variable-length content, so every payload length lies between lowBound and
+    // highBound inclusive.
+    //
+    // The unit of observation is the distinct length, not the message.  Message counts
+    // within one length arrive in correlated bursts and overstate the independent
+    // evidence; each distinct length is one honest draw from the length distribution.
+    //
+    //   per distinct length inside the range:
+    //     P(inside | IS)  ~ 1
+    //     P(inside | NOT) = q     smoothed fraction of other opcodes' distinct lengths
+    //                             that land inside the range by chance
+    //     log LR increment = -log(q)
+    //
+    //   per distinct length outside the range:
+    //     P(outside | IS)  = leakProbability, falling further the farther outside it lies
+    //     P(outside | NOT) = 1 - q
+    //     log LR increment = log(leakProbability) - log(1 - q) - distance * distancePenalty
+    //
+    // where distance is how many bytes the length lies below lowBound or above highBound.
+    // q is estimated from the pooled histogram with the candidate's own contribution
+    // removed: a length is counted only if some other opcode also produced it, so a
+    // high-volume candidate cannot dilute its own background.  q is Laplace-smoothed so
+    // neither it nor its complement is ever zero.  The total is clamped to +/- maxAbsLogLR.
+    //
+    // observedHistogram:  Message count per length for the candidate, from OpcodeStats.
+    // lowBound:           Smallest length the hypothesis allows, inclusive.
+    // highBound:          Largest length the hypothesis allows, inclusive.  At least lowBound.
+    // pooledHistogram:    Message count per length across all opcodes including the
+    //                     candidate, from the catalog.  The candidate's own counts are
+    //                     subtracted here.
+    // leakProbability:    Per-distinct-length probability the hypothesis allows outside the
+    //                     range.  Small and nonzero.
+    // distancePenalty:    Additional log-LR charge per byte a length lies outside the range.
+    // maxAbsLogLR:        Clamp magnitude for the returned value.
+    //
+    // Returns:  Natural-log likelihood ratio from range conformance, clamped.  Zero when
+    //           observedHistogram is null or empty, or the bounds are inverted.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public static double SizeRangeLogLR(Dictionary<int, int>? observedHistogram, int lowBound,
+        int highBound, Dictionary<int, int>? pooledHistogram, double leakProbability,
+        double distancePenalty, double maxAbsLogLR)
+    {
+        if (observedHistogram == null || observedHistogram.Count == 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.SizeRangeLogLR: missing observed histogram, returning 0",
+                LogLevel.Warn);
+            return 0.0;
+        }
+        if (highBound < lowBound)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.SizeRangeLogLR: highBound " + highBound + " below lowBound "
+                + lowBound + ", returning 0", LogLevel.Error);
+            return 0.0;
+        }
+
+        int insideLengths = 0;
+        int outsideLengths = 0;
+        long totalDistance = 0;
+        foreach (KeyValuePair<int, int> entry in observedHistogram)
+        {
+            int length = entry.Key;
+            if (length >= lowBound && length <= highBound)
+            {
+                insideLengths++;
+            }
+            else
+            {
+                outsideLengths++;
+                if (length < lowBound)
+                {
+                    totalDistance += lowBound - length;
+                }
+                else
+                {
+                    totalDistance += length - highBound;
+                }
+            }
+        }
+
+        int insideOthers = 0;
+        int totalOthers = 0;
+        if (pooledHistogram != null)
+        {
+            foreach (KeyValuePair<int, int> entry in pooledHistogram)
+            {
+                int observedCount;
+                observedHistogram.TryGetValue(entry.Key, out observedCount);
+                if ((entry.Value - observedCount) <= 0)
+                {
+                    // the candidate is this length's only source; it is not background
+                    continue;
+                }
+                totalOthers++;
+                if (entry.Key >= lowBound && entry.Key <= highBound)
+                {
+                    insideOthers++;
+                }
+            }
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.SizeRangeLogLR: missing pooled histogram, using uninformative background",
+                LogLevel.Warn);
+        }
+        double q = (insideOthers + 1.0) / (totalOthers + 2.0);
+
+        double logLR = (insideLengths * -Math.Log(q))
+            + (outsideLengths * (Math.Log(leakProbability) - Math.Log(1.0 - q)))
+            - (totalDistance * distancePenalty);
+
+        if (logLR > maxAbsLogLR)
+        {
+            logLR = maxAbsLogLR;
+        }
+        if (logLR < -maxAbsLogLR)
+        {
+            logLR = -maxAbsLogLR;
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "EvidenceScoring.SizeRangeLogLR: range=" + lowBound + ".." + highBound
+            + " inside=" + insideLengths + " outside=" + outsideLengths
+            + " distance=" + totalDistance + " q=" + q.ToString("F3")
+            + " logLR=" + logLR.ToString("F3"), LogLevel.Trace);
+        return logLR;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // PayloadPredicateLogLR
+    //
+    // Log likelihood ratio from how many of a candidate's payloads satisfy a structural
+    // predicate (a test on payload bytes, evaluated by the caller), for a hypothesis that
+    // every payload of the opcode satisfies it.
+    //
+    // Like direction, this is one observation per opcode, not one per payload: whether a
+    // message shape satisfies a predicate is a property of the opcode, so payload counts add
+    // no independent support.  The collection is scored as a single categorical observation
+    // against an opcode-level background:
+    //
+    //   consistent (every payload satisfies):
+    //     P(consistent | IS)  ~ 1
+    //     P(consistent | NOT) = q     smoothed fraction of other opcodes all of whose
+    //                                 payloads satisfy the predicate
+    //     log LR = -log(q)
+    //
+    //   inconsistent (some payloads fail):
+    //     P(failures | IS)  = leakProbability per failing payload
+    //     P(failures | NOT) = 1 - q
+    //     log LR = failingCount * log(leakProbability) - log(1 - q)
+    //
+    // q is Laplace-smoothed so neither it nor its complement is ever zero.  Consistency can
+    // earn at most a few decibans when the predicate is common and more when it is rare;
+    // violation charges per failing payload and goes strongly negative fast, bounded by the
+    // clamp.
+    //
+    // satisfyingCount:     The candidate's payloads that satisfy the predicate.
+    // payloadCount:        The candidate's total payloads.  Must be at least 1.
+    // otherOpcodesAllSatisfying:  Number of other observed opcodes all of whose payloads
+    //                      satisfy the predicate.
+    // otherOpcodeCount:    Number of other observed opcodes (the candidate excluded).
+    // leakProbability:     Per-payload probability the hypothesis allows a failure.  Small
+    //                      and nonzero.
+    // maxAbsLogLR:         Clamp magnitude for the returned value.
+    //
+    // Returns:  Natural-log likelihood ratio from predicate agreement, clamped.  Zero when
+    //           payloadCount is less than 1.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public static double PayloadPredicateLogLR(int satisfyingCount, int payloadCount,
+        int otherOpcodesAllSatisfying, int otherOpcodeCount, double leakProbability,
+        double maxAbsLogLR)
+    {
+        if (payloadCount < 1)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.PayloadPredicateLogLR: no payloads, returning 0", LogLevel.Warn);
+            return 0.0;
+        }
+
+        int failingCount = payloadCount - satisfyingCount;
+        double q = (otherOpcodesAllSatisfying + 1.0) / (otherOpcodeCount + 2.0);
+        double logLR;
+
+        if (failingCount == 0)
+        {
+            logLR = -Math.Log(q);
+        }
+        else
+        {
+            logLR = failingCount * Math.Log(leakProbability) - Math.Log(1.0 - q);
+        }
+
+        if (logLR > maxAbsLogLR)
+        {
+            logLR = maxAbsLogLR;
+        }
+        if (logLR < -maxAbsLogLR)
+        {
+            logLR = -maxAbsLogLR;
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "EvidenceScoring.PayloadPredicateLogLR: satisfying=" + satisfyingCount + "/" + payloadCount
+            + " othersAll=" + otherOpcodesAllSatisfying + "/" + otherOpcodeCount
+            + " q=" + q.ToString("F3") + " logLR=" + logLR.ToString("F3"), LogLevel.Trace);
+        return logLR;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // AgreementRateAt
     //
     // Computes the fraction of positions at which a class sequence agrees with itself at

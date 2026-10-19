@@ -746,7 +746,7 @@ public partial class MainWindow : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // MenuItem_Launch_Click
+    // MenuItem_Settings_Click
     //
     // Placeholder for settings dialog.
     //

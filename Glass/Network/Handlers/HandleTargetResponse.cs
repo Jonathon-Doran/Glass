@@ -34,6 +34,12 @@ public class HandleTargetResponse : OpcodeHandler
         : base(patchLevel, "OP_TargetResponse")
     {
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
+        if (_opcodeHandled == PatchOpcode.None)
+        {
+            // happens when replaying captures before the opcode was added
+            return;
+        }
+
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "Target_Response");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 

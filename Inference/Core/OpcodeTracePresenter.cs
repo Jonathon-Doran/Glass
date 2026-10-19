@@ -445,8 +445,8 @@ public partial class OpcodeTracePresenter
     // PopulateRowDetail
     //
     // Formats the row's payload as a hex dump into HexDumpText, capped at the presenter's
-    // current _maxHexBytes, then asks OpcodeDispatch for the field tree the packet's handler
-    // builds and stores its root on the row.  Rows whose opcode has no registered handler
+    // current _maxHexBytes, then attaches the FDN stored within the cataloged packet to
+    // the row.  Rows whose opcode has no registered handler
     // receive a null field tree but still receive a hex dump.
     //
     // row:  The row to populate.
@@ -473,17 +473,21 @@ public partial class OpcodeTracePresenter
             return;
         }
 
-        PacketMetadata metadata = packet.Value.Metadata;
-
-        // get the field FDN
-        FieldDisplayNode? root = OpcodeDispatch.Instance.Describe(payload, metadata);
+        // use the field tree built when the packet was cataloged
+        FieldDisplayNode? root = packet.Value.FieldTree;
         row.FieldTree = root;
 
         if (root != null)
-        { 
+        {
             DebugLog.Write(LogChannel.Opcodes,
-                "OpcodeTracePresenter.PopulateRowDetail: built field tree for " + metadata.Opcode +
-                ", packetindex: " + row.PacketIndex, LogLevel.Trace);
+                "OpcodeTracePresenter.PopulateRowDetail: attached cataloged field tree for "
+                + packet.Value.Metadata.Opcode + ", packetindex: " + row.PacketIndex, LogLevel.Trace);
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTracePresenter.PopulateRowDetail: no cataloged field tree for "
+                + packet.Value.Metadata.Opcode + ", packetindex: " + row.PacketIndex, LogLevel.Trace);
         }
     }
 

@@ -137,6 +137,7 @@
                 <MenuItem Header="_Gate Editor" Click="MenuItem_GateEditor_Click"/>
                 <Separator/>
                 <MenuItem Header="_Spell Browser" Click="MenuItem_SpellBrowser_Click"/>
+                <MenuItem Header="Spa_wn Browser" Click="MenuItem_SpawnBrowser_Click"/>
                 <Separator/>
                 <MenuItem Header="_Import Client Files" Click="MenuItem_ImportClientFiles_Click"/>
             </MenuItem>
@@ -379,6 +380,7 @@
                               FontFamily="Consolas"
                               FontSize="14"
                               SelectionMode="Extended"
+                              ui:ScrollViewerHelper.AutoHideScrollBars="False"
                               KeyDown="OpcodeTraceList_KeyDown"
                               ContextMenuOpening="OpcodeTraceList_ContextMenuOpening"
                               SelectionChanged="OpcodeTraceList_SelectionChanged">

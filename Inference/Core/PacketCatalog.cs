@@ -2,6 +2,7 @@
 using Glass.Core.Logging;
 using Glass.Core.Memory;
 using Glass.Network.Protocol;
+using Glass.Network.Protocol.Fields;
 using Inference.Models;
 using System;
 using System.Collections.Generic;
@@ -211,13 +212,13 @@ public class PacketCatalog
 
             List<int> lengths = new List<int>(stats.SizeHistogram.Keys);
             lengths.Sort();
-            DebugLog.Write(LogChannel.Opcodes,
+            DebugLog.Write(LogChannel.InferenceDebug,
                 "PacketCatalog.LogSizeHistogram: opcode 0x" + opcode + ", "
                 + lengths.Count + " lengths, " + stats.Count + " messages total", LogLevel.Info);
             for (int lengthIndex = 0; lengthIndex < lengths.Count; lengthIndex++)
             {
                 int length = lengths[lengthIndex];
-                DebugLog.Write(LogChannel.Opcodes,
+                DebugLog.Write(LogChannel.InferenceDebug,
                     "    { " + length + ", " + stats.SizeHistogram[length] + " },", LogLevel.Info);
             }
         }

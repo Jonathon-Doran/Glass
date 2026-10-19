@@ -32,6 +32,11 @@ public class HandleHP_Percent: OpcodeHandler
         : base(patchLevel, "OP_HP_Percent")
     {
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
+        if (_opcodeHandled == PatchOpcode.None)
+        {
+            // happens when replaying captures before the opcode was added
+            return;
+        }
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "HP_Percent");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 

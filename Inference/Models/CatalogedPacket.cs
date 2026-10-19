@@ -1,5 +1,7 @@
-﻿using Glass.Core.Memory;
+﻿using Glass.Core.Logging;
+using Glass.Core.Memory;
 using Glass.Network.Protocol;
+using Glass.Network.Protocol.Fields;
 
 namespace Inference.Models;
 
@@ -25,15 +27,15 @@ public readonly struct CatalogedPacket
     public PacketMetadata Metadata { get; }
     public OpcodeValue Opcode { get; }
     public RetainedBuffer Payload { get; }
+    public FieldDisplayNode? FieldTree { get; }
     public uint PacketIndex { get; init; }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // CatalogedPacket (constructor)
     //
-    // Constructed by PacketCatalog.HandleAppPacket after the payload has been
-    // retained.  The arrival index is set separately via the init-only
-    // property so the caller assigns it from the catalog's count at the
-    // moment of insertion.
+    // Stores the metadata, wire opcode and retained payload, and builds the decoded field
+    // tree from the payload at this moment so the tree reflects the state in force when the
+    // packet arrived.  The arrival index is set separately via the init-only property.
     //
     // metadata:  Source/dest IP and port, timestamp, frame number, session,
     //            and channel.
@@ -45,5 +47,19 @@ public readonly struct CatalogedPacket
         Metadata = metadata;
         Opcode = opcode;
         Payload = payload;
+        FieldTree = OpcodeDispatch.Instance.Describe(payload.AsReadOnlySpan(), metadata);
+
+        if (FieldTree == null)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "CatalogedPacket: no field tree for opcode 0x" + opcode
+                + " frame " + metadata.FrameNumber, LogLevel.Trace);
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "CatalogedPacket: built field tree for opcode 0x" + opcode
+                + " frame " + metadata.FrameNumber, LogLevel.Trace);
+        }
     }
 }

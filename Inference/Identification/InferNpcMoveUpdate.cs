@@ -26,7 +26,7 @@ public class InferNpcMoveUpdate : IInferOpcodes
     private const int ExpectedFloor = 12;                  // smallest physically possible payload
     private const double FloorShortfallPenalty = 2.0;      // SizeFloorLogLR: log-LR per byte below floor
     private const int EffectiveSampleCap = 100;            // fit: largest message count credited as independent
-    private const double ReportThreshold = 0.1;            // minimum posterior to emit a proposal
+    private const double ReportThreshold = 0.4;            // minimum posterior to emit a proposal
 
     // Measured length-to-count table, merged from five captures (May-July 2026), 58364
     // messages.  No singleton lengths: the Good-Turing escape mass floors at EscapeFloor,
@@ -94,7 +94,7 @@ public class InferNpcMoveUpdate : IInferOpcodes
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "InferNpcMoveUpdate.Infer: wireValue=" + wireValue + " already accepted as "
-                    + AcceptedOpcodes.Instance.GetName(wireValue) + ", skipping", LogLevel.Trace);
+                    + AcceptedOpcodes.Instance.GetName(wireValue) + ", skipping", LogLevel.Info);
                 continue;
             }
             OpcodeStats? statsOrNull = catalog.StatsFor(wireValue);
@@ -116,7 +116,7 @@ public class InferNpcMoveUpdate : IInferOpcodes
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "InferNpcMoveUpdate.Infer: capture below adequacy bar ("
-                    + totalCount + " messages), rank feature abstains", LogLevel.Trace);
+                    + totalCount + " messages), rank feature abstains", LogLevel.Info);
                 rankLogLR = 0.0;
             }
             double histogramLogLR = EvidenceScoring.SizeFitLogLR(stats.SizeHistogram,
@@ -131,7 +131,7 @@ public class InferNpcMoveUpdate : IInferOpcodes
                 + "db rank=" + EvidenceScoring.ToDecibans(rankLogLR).ToString("F1")
                 + "db hist=" + EvidenceScoring.ToDecibans(histogramLogLR).ToString("F1")
                 + "db floor=" + EvidenceScoring.ToDecibans(floorLogLR).ToString("F1")
-                + "db posterior=" + posterior.ToString("F3"), LogLevel.Trace);
+                + "db posterior=" + posterior.ToString("F3"), LogLevel.Info);
             if (posterior < ReportThreshold)
             {
                 continue;
@@ -143,13 +143,12 @@ public class InferNpcMoveUpdate : IInferOpcodes
             proposal.Evidence =
                 stats.Count + "/" + totalCount + " messages, "
                 + stats.DistinctSizeCount + " sizes, min " + stats.MinSize
-                + " | dir " + EvidenceScoring.ToDecibans(directionLogLR).ToString("F1")
-                + " db, rank " + EvidenceScoring.ToDecibans(rankLogLR).ToString("F1")
-                + " db, hist " + EvidenceScoring.ToDecibans(histogramLogLR).ToString("F1")
-                + " db, floor " + EvidenceScoring.ToDecibans(floorLogLR).ToString("F1")
-                + " db | total " + EvidenceScoring.ToDecibans(totalLogLR).ToString("F1")
-                + " db, prior 1/" + opcodeCount
-                + ", posterior " + posterior.ToString("F3");
+                + " | dir " + EvidenceScoring.ToDecibans(directionLogLR).ToString("F1") + " db,"
+                + " rank " + EvidenceScoring.ToDecibans(rankLogLR).ToString("F1") + " db,"
+                + " hist " + EvidenceScoring.ToDecibans(histogramLogLR).ToString("F1") + " db,"
+                + " floor " + EvidenceScoring.ToDecibans(floorLogLR).ToString("F1") + " db,"
+                + " | total " + EvidenceScoring.ToDecibans(totalLogLR).ToString("F1") + " db,"
+                + " prior 1/" + opcodeCount + ", posterior " + posterior.ToString("F3");
             proposals.Add(proposal);
         }
         DebugLog.Write(LogChannel.InferenceDebug,

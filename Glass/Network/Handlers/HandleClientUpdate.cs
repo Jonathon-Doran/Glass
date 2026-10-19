@@ -35,6 +35,12 @@ public class HandleClientUpdate : OpcodeHandler
         : base(patchLevel, "OP_ClientUpdate")
     {
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
+        if (_opcodeHandled == PatchOpcode.None)
+        {
+            // happens when replaying captures before the opcode was added
+            return;
+        }
+
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         // handles of collections that we expect

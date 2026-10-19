@@ -245,13 +245,7 @@ public class SessionRegistry
                 + "mapped to a character.", LogLevel.Warn);
             return ZoneId.None;
         }
-        if (character.CurrentZone == null)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "ZoneFromMetadata: no current zone "
-                + "for character.", LogLevel.Warn);
-            return ZoneId.None;
-        }
-        return (ZoneId) character.CurrentZone.Value;
+        return character.CurrentZone;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

@@ -28,6 +28,7 @@ public class InferenceScanner
         _handlers.Add(new InferMovementHistory());
         _handlers.Add(new InferPlayerProfile());
         _handlers.Add(new InferZoneEntry_Z2C());
+        _handlers.Add(new InferNewZone());
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferenceScanner.ctor: " + _handlers.Count + " handlers", LogLevel.Trace);

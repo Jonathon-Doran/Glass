@@ -22,7 +22,6 @@ namespace Inference.Core;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class OpcodeRowPresenter
 {
-    private readonly PacketCatalog _catalog;
     private readonly ObservableCollection<OpcodeEntry> _rows;
     private readonly Dictionary<OpcodeValue, OpcodeEntry> _rowByOpcode;
     public ObservableCollection<OpcodeEntry> Rows => _rows;
@@ -40,7 +39,6 @@ public class OpcodeRowPresenter
     ///////////////////////////////////////////////////////////////////////////////////////////
     public OpcodeRowPresenter(PacketCatalog catalog)
     {
-        _catalog = catalog;
         _rows = new ObservableCollection<OpcodeEntry>();
         _rowByOpcode = new Dictionary<OpcodeValue, OpcodeEntry>();
     }

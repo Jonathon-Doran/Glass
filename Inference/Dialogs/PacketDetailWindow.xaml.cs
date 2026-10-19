@@ -117,7 +117,7 @@ public partial class PacketDetailWindow : Window
             + " opcode=" + opcodeHex + " (" + opcodeName + ")"
             + " length=" + payloadLength, LogLevel.Trace);
 
-        FieldDisplayNode? fieldRoot = BuildFieldTree(packet.Metadata, payload);
+        FieldDisplayNode? fieldRoot = packet.FieldTree;
         if (fieldRoot != null)
         {
             FieldTree.ItemsSource = new FieldDisplayNode[] { fieldRoot };

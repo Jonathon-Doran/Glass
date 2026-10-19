@@ -92,6 +92,54 @@ public class MobRepository
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // GetSpawnsInZone
+    //
+    // Returns the Spawn records indexed under the given zone id, in ascending spawn id order.  The returned
+    // list is a new copy on every call; the records themselves are the live objects.  A zone id that is None
+    // or has no index yields an empty list.
+    //
+    // zoneId:  Zone whose records are returned.
+    //
+    // Returns a List<Spawn> of the zone's records; empty when none exist.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public List<Spawn> GetSpawnsInZone(ZoneId zoneId)
+    {
+        List<Spawn> spawns = new List<Spawn>();
+
+        if (!zoneId.Exists)
+        {
+            DebugLog.Write(LogChannel.Database, "MobRepository.GetSpawnsInZone: zoneId is None.", LogLevel.Trace);
+            return spawns;
+        }
+
+        if (!_spawnIndex.TryGetValue(zoneId, out Dictionary<SpawnId, MobId>? zoneIndex))
+        {
+            DebugLog.Write(LogChannel.Database, "MobRepository.GetSpawnsInZone: zoneId=" + zoneId
+                + " has no index.", LogLevel.Trace);
+            return spawns;
+        }
+
+        foreach (KeyValuePair<SpawnId, MobId> entry in zoneIndex)
+        {
+            if (!_mobsById.TryGetValue(entry.Value, out Spawn? spawn))
+            {
+                DebugLog.Write(LogChannel.Database, "MobRepository.GetSpawnsInZone: index maps zoneId=" + zoneId
+                    + " spawnId=" + entry.Key + " to id=" + entry.Value + " but no record exists.", LogLevel.Error);
+                continue;
+            }
+
+            spawns.Add(spawn);
+        }
+
+        spawns.Sort((Spawn left, Spawn right) => left.SpawnId.Value.CompareTo(right.SpawnId.Value));
+
+        DebugLog.Write(LogChannel.Database, "MobRepository.GetSpawnsInZone: zoneId=" + zoneId
+            + " returning " + spawns.Count + " records.", LogLevel.Trace);
+
+        return spawns;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // TryGetByMobId
     //
     // Looks up the Spawn record with the given identifier.

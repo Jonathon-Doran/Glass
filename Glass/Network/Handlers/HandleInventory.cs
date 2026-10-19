@@ -241,8 +241,13 @@ public class HandleInventory : OpcodeHandler
         :base(patchLevel, "OP_Inventory")
     {
         _opcodeHandled = _registry.GetBaseOpcode(_patchLevel, _opcodeName);
-        _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
+        if (_opcodeHandled == PatchOpcode.None)
+        {
+            // happens when replaying captures before the opcode was added
+            return;
+        }
 
+        _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
         // handles of collections that we expect
         CollectionHandle itemCollection = _registry.GetCollectionHandle(_patchLevel, "Inventory Item");
@@ -251,6 +256,10 @@ public class HandleInventory : OpcodeHandler
         CollectionHandle effectsCollection = _registry.GetCollectionHandle(_patchLevel, "Item_Effects");
         CollectionHandle optional4sCollection = _registry.GetCollectionHandle(_patchLevel, "Inventory_Optional_4s");
 
+        if (!itemCollection.Exists || !evolvingCollection.Exists || !augmentCollection.Exists || !optional4sCollection.Exists)
+        {
+            return;
+        }
         _Item_Name_Slot = _registry.IndexOfField(itemCollection, "ItemName");
         _Item_Lore_Slot = _registry.IndexOfField(itemCollection, "ItemLore");
 
