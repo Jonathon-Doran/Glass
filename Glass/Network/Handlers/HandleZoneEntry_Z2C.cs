@@ -23,10 +23,21 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
     private readonly CollectionHandle _collectionHandle;
     private readonly GateDefinitionHandle _top_level_gate;
 
-    private readonly SlotId _nameSlot;
-    private readonly SlotId _spawnIdSlot;
-    private readonly SlotId _levelSlot;
-    private readonly SlotId _idSlot;
+    private readonly SlotId _name_Slot;
+    private readonly SlotId _spawnId_Slot;
+    private readonly SlotId _level_Slot;
+    private readonly SlotId _id_Slot;
+
+    private readonly SlotId _isPlayer_Slot;
+    private readonly SlotId _unknown_1_Slot;
+    private readonly SlotId _unknown_2_Slot;
+    private readonly SlotId _C_Slot;
+    private readonly SlotId _quadsGate_Slot;
+    private readonly SlotId _A_Slot;
+    private readonly SlotId _lastname_Slot;
+    private readonly SlotId _ownerId_Slot;
+
+    private readonly SlotId _quad_Unknown_Slot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleZoneEntry_Z2C (constructor)
@@ -48,11 +59,24 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
 
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_ZoneEntryV1");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
+        _quadsGate_Slot = _registry.IndexOfField(_collectionHandle, "Quads_Gate");
 
-        _nameSlot = _registry.IndexOfField(_collectionHandle, "name");
-        _spawnIdSlot = _registry.IndexOfField(_collectionHandle, "spawn_id");
-        _levelSlot = _registry.IndexOfField(_collectionHandle, "level");
-        _idSlot = _registry.IndexOfField(_collectionHandle, "character_id");
+        CollectionHandle quadCollection = _registry.GetCollectionHandle(_patchLevel, "ZoneEntry_Quads");
+
+        _name_Slot = _registry.IndexOfField(_collectionHandle, "name");
+        _spawnId_Slot = _registry.IndexOfField(_collectionHandle, "spawn_id");
+        _level_Slot = _registry.IndexOfField(_collectionHandle, "level");
+        _id_Slot = _registry.IndexOfField(_collectionHandle, "character_id");
+        _isPlayer_Slot = _registry.IndexOfField(_collectionHandle, "is_player");
+        _unknown_1_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_1");
+        _unknown_2_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_2");
+        _C_Slot = _registry.IndexOfField(_collectionHandle, "C");
+        _A_Slot = _registry.IndexOfField(_collectionHandle, "A");
+        _lastname_Slot = _registry.IndexOfField(_collectionHandle, "LastName");
+        _ownerId_Slot = _registry.IndexOfField(_collectionHandle, "owner_id");
+
+        // Quads slots
+        _quad_Unknown_Slot = _registry.IndexOfField(quadCollection, "Unknown");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -90,9 +114,9 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            name = _extractor.GetStringAt(_nameSlot);
-            spawnId = _extractor.GetUIntAt(_spawnIdSlot);
-            level = _extractor.GetUIntAt(_levelSlot);
+            name = _extractor.GetStringAt(_name_Slot);
+            spawnId = _extractor.GetUIntAt(_spawnId_Slot);
+            level = _extractor.GetUIntAt(_level_Slot);
         }
         finally
         {
@@ -139,18 +163,53 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             if (!rootGate.Exists)
             {
                 DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry:  No RootGate", LogLevel.Error);
+                root.Text = "ZoneEntry";
                 return root;
             }
 
-            SpawnId spawnId = (SpawnId) _extractor.GetUIntAt(_spawnIdSlot);
+            if (_extractor.IsPresent(_quadsGate_Slot) == false)
+            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "HandleZoneEntry: no quads gate present", LogLevel.Warn);
+                root.Text = "ZoneEntry";
+                return root;
+            }
+            GateHandle quadsGate = _extractor.GetGateAt(_quadsGate_Slot);
+            if (! quadsGate.Exists)
+            {
+                DebugLog.Write(LogChannel.Opcodes,
+                    "HandleZoneEntry: quads gate slot present but not gate", LogLevel.Warn);
+                root.Text = "ZoneEntry";
+                return root;
+            }
+
+            SpawnId spawnId = (SpawnId) _extractor.GetUIntAt(_spawnId_Slot);
             String spawnName = MobRepository.Instance.LookupSpawnName(zoneId, spawnId);
 
-            FieldNodes.AddLabeledNode(_extractor, _spawnIdSlot, "Spawn: " + spawnName + " (" +
+            FieldNodes.AddLabeledNode(_extractor, _spawnId_Slot, "Spawn: " + spawnName + " (" +
                     spawnId + ", 0x" + spawnId.Value.ToString("X4") + ")", root);
-            FieldNodes.AddUIntNode(_extractor, _idSlot, "Persistent ID", root, "X");
+            FieldNodes.AddUIntNode(_extractor, _id_Slot, "Persistent ID", root, "X");
 
-            string name = FieldNodes.AddStringNode(_extractor, _nameSlot, "Name", root);
-            FieldNodes.AddUIntNode(_extractor, _levelSlot, "Level", root, "D");
+            string name = FieldNodes.AddStringNode(_extractor, _name_Slot, "Name", root);
+            FieldNodes.AddUIntNode(_extractor, _level_Slot, "Level", root, "D");
+            FieldNodes.AddUIntNode(_extractor, _isPlayer_Slot, "Player", root, "D");
+            FieldNodes.AddFloatNode(_extractor, _unknown_1_Slot, "Unknown 1", root, "F2");
+            FieldNodes.AddUIntNode(_extractor, _unknown_2_Slot, "Unknown 2", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _C_Slot, "C", root, "D");
+
+            uint bagCount = _extractor.BagCount(quadsGate);
+            for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
+            {
+                _extractor.EnterGate(quadsGate, bagIndex);
+                FieldDisplayNode quadNode = new FieldDisplayNode("Quad " + (bagIndex + 1));
+                root.AddChild(quadNode);
+
+                FieldNodes.AddUIntNode(_extractor, _quad_Unknown_Slot, "Unknown", quadNode, "?");
+            }
+            _extractor.EnterGate(rootGate, 0);
+            FieldNodes.AddUIntNode(_extractor, _A_Slot, "A", root, "D");
+            FieldNodes.AddStringNode(_extractor, _lastname_Slot, "Lastname", root);
+            FieldNodes.AddUIntNode(_extractor, _ownerId_Slot, "Owner Spawn ID", root);
         }
         finally
         {

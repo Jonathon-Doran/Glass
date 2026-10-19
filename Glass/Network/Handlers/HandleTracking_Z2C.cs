@@ -25,6 +25,7 @@ public class HandleTracking_Z2C : OpcodeHandler
     private readonly SlotId _levelSlot;
     private readonly SlotId _nameSlot;
 
+
     private readonly uint TRACKING_MAGIC_NUMBER = 0x4f348bff;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
