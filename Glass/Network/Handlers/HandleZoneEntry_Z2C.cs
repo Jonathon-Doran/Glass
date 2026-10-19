@@ -100,12 +100,14 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         string name;
         uint spawnId;
         uint level;
+        uint persistentId;
+        uint recordCount;
         uint? zoneId = character.CurrentZone;
 
         // Cannot store data if we do not know what zone we are in yet
-        if (! zoneId.HasValue)
+        if (!zoneId.HasValue)
         {
-            DebugLog.Write(LogChannel.Opcodes, "HandleSpawn: character '" + character.Name
+            DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: character '" + character.Name
                 + "' has no zone id; spawn data discarded.", LogLevel.Warn);
             return;
         }
@@ -117,10 +119,28 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             name = _extractor.GetStringAt(_name_Slot);
             spawnId = _extractor.GetUIntAt(_spawnId_Slot);
             level = _extractor.GetUIntAt(_level_Slot);
+            persistentId = _extractor.GetUIntAt(_id_Slot);
+            recordCount = _extractor.GetUIntAt(_C_Slot);
         }
         finally
         {
             _extractor.Release();
+        }
+
+        // Only NPCs are stored.  A nonzero persistent id is a player; a record count above one is a
+        // pet, familiar, warder, mount or mercenary.
+        if (persistentId != 0)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: '" + name + "' spawnId=0x"
+                + spawnId.ToString("X4") + " is a player; not stored.", LogLevel.Trace);
+            return;
+        }
+
+        if (recordCount != 1)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: '" + name + "' spawnId=0x"
+                + spawnId.ToString("X4") + " has record count " + recordCount + "; not stored.", LogLevel.Trace);
+            return;
         }
 
         if (!MobRepository.Instance.TryGetBySpawnId((ZoneId)zoneId.Value, (SpawnId) spawnId, out Spawn? spawn))
