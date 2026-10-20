@@ -19,4 +19,5 @@ public class Spawn
     public int CurrentHp;
     public int Race;
     public DateTime LastSeen;
+    public uint A;
 }

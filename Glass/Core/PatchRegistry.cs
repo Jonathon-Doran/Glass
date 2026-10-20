@@ -574,7 +574,8 @@ public class PatchRegistry
     {
         if (collectionHandle.Exists == false || collectionHandle.Value >= _collectionEntries.Count)
         {
-            throw new InvalidOperationException("PatchRegistry.GetCollectionName: invalid collection handle " + collectionHandle);
+            DebugLog.Write(LogChannel.Fields, "Invalid collection handle " + collectionHandle, LogLevel.Error);
+        //    throw new InvalidOperationException("PatchRegistry.GetCollectionName: invalid collection handle " + collectionHandle);
 
         }
 

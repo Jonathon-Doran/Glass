@@ -30,20 +30,35 @@ public partial class SpawnBrowser : Window
         InitializeComponent();
 
         List<ZoneId> zoneIds = ZoneRepository.Instance.GetZoneIds();
+        List<KeyValuePair<string, ZoneId>> populated = new List<KeyValuePair<string, ZoneId>>();
 
         foreach (ZoneId zoneId in zoneIds)
         {
             int spawnCount = MobRepository.Instance.GetSpawnsInZone(zoneId).Count;
 
+            if (spawnCount == 0)
+            {
+                continue;
+            }
+
+            string label = ZoneRepository.Instance.GetZoneName(zoneId) + "  [" + zoneId.Value + "]  "
+                + spawnCount + " spawns";
+            populated.Add(new KeyValuePair<string, ZoneId>(label, zoneId));
+        }
+
+        populated.Sort((KeyValuePair<string, ZoneId> left, KeyValuePair<string, ZoneId> right) =>
+            string.Compare(left.Key, right.Key, StringComparison.OrdinalIgnoreCase));
+
+        foreach (KeyValuePair<string, ZoneId> entry in populated)
+        {
             ComboBoxItem item = new ComboBoxItem();
-            item.Content = ZoneRepository.Instance.GetZoneName(zoneId) + "  [" + zoneId.Value + "]  "
-                + (spawnCount == 0 ? "no spawns" : spawnCount + " spawns");
-            item.Tag = zoneId;
+            item.Content = entry.Key;
+            item.Tag = entry.Value;
             ZoneList.Items.Add(item);
         }
 
-        DebugLog.Write(LogChannel.InferenceDebug, "SpawnBrowser: opened with "
-            + zoneIds.Count + " zone(s) in the list", LogLevel.Trace);
+        DebugLog.Write(LogChannel.InferenceDebug, "SpawnBrowser: opened with " + populated.Count
+            + " populated zone(s) in the list out of " + zoneIds.Count + " known", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -193,6 +208,7 @@ public class SpawnBrowserRow
     public string Name { get; }
     public ushort Level { get; }
     public string LastSeen { get; }
+    public uint A { get; }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // SpawnBrowserRow  (constructor)
@@ -208,6 +224,7 @@ public class SpawnBrowserRow
         SpawnIdHex = "0x" + spawn.SpawnId.Value.ToString("X4");
         Name = spawn.Name ?? "<null>";
         Level = spawn.Level;
+        A = spawn.A;
 
         if (spawn.LastSeen == default)
         {

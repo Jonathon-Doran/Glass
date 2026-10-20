@@ -103,6 +103,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         uint persistentId;
         uint recordCount;
         uint? zoneId = character.CurrentZone;
+        uint a;
 
         // Cannot store data if we do not know what zone we are in yet
         if (!zoneId.HasValue)
@@ -121,6 +122,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             level = _extractor.GetUIntAt(_level_Slot);
             persistentId = _extractor.GetUIntAt(_id_Slot);
             recordCount = _extractor.GetUIntAt(_C_Slot);
+            a = _extractor.GetUIntAt(_A_Slot);
         }
         finally
         {
@@ -149,6 +151,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             spawn.Name = name;
             spawn.ZoneId = (ZoneId)zoneId.Value;
             spawn.SpawnId = (SpawnId)spawnId;
+            spawn.A = a;
             MobRepository.Instance.Add(spawn);
             DebugLog.Write(LogChannel.Opcodes, "SpawnHandler: created new record for " + name + ", zoneId=" + zoneId
                 + " spawnId=" + spawnId.ToString("X4") + ".", LogLevel.Trace);
