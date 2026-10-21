@@ -1,5 +1,24 @@
 ﻿namespace Glass.Data.Models;
 
+public enum EQClass
+{
+    Warrior = 1,
+    Cleric = 2,
+    Paladin = 3,
+    Ranger = 4,
+    Shadowknight = 5,
+    Druid = 6,
+    Monk = 7,
+    Bard = 8,
+    Rogue = 9,
+    Shaman = 10,            // a
+    Necromancer = 11,       // b
+    Wizard = 12,            // c
+    Magician = 13,          // d
+    Enchanter = 14,         // e
+    Beastlord = 15,         // f
+    Berserker = 16          // 10
+}
 public static class EQClassExtensions
 {
     public static EQClass ToEQClass(this string className)

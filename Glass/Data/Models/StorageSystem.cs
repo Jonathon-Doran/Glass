@@ -1,4 +1,7 @@
-﻿namespace Glass.Data.Models;
+﻿using Glass.Core.Logging;
+using System.Collections.Generic;
+
+namespace Glass.Data.Models;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // StorageSystem
@@ -49,4 +52,80 @@ public enum StorageSystem : byte
     DragonsHoard = 38,
     TradeskillDepot = 39,
     GuildTradeskillDepot = 40
+}
+
+public static class StorageSystemExtensions
+{
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // StorageSystemNames
+    //
+    // Printable names for the storage systems of the item serialization header,
+    // keyed by storage system.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public static readonly Dictionary<StorageSystem, string> StorageSystemNames = new Dictionary<StorageSystem, string>()
+    {
+        { StorageSystem.Carried,                     "Carried" },
+        { StorageSystem.Bank,                        "Bank" },
+        { StorageSystem.SharedBank,                  "Shared Bank" },
+        { StorageSystem.Trade,                       "Trade" },
+        { StorageSystem.WorldContainer,              "World Container" },
+        { StorageSystem.Limbo,                       "Limbo" },
+        { StorageSystem.Tribute,                     "Tribute" },
+        { StorageSystem.TrophyTribute,               "Trophy Tribute" },
+        { StorageSystem.GuildTribute,                "Guild Tribute" },
+        { StorageSystem.Merchant,                    "Merchant" },
+        { StorageSystem.Deleted,                     "Deleted" },
+        { StorageSystem.Corpse,                      "Corpse" },
+        { StorageSystem.Bazaar,                      "Bazaar" },
+        { StorageSystem.Inspect,                     "Inspect" },
+        { StorageSystem.RealEstate,                  "Real Estate" },
+        { StorageSystem.ViewModPC,                   "ViewMod PC" },
+        { StorageSystem.ViewModBank,                 "ViewMod Bank" },
+        { StorageSystem.ViewModSharedBank,           "ViewMod Shared Bank" },
+        { StorageSystem.ViewModLimbo,                "ViewMod Limbo" },
+        { StorageSystem.AltStorage,                  "Alt Storage" },
+        { StorageSystem.Archived,                    "Archived" },
+        { StorageSystem.Mail,                        "Mail" },
+        { StorageSystem.GuildTrophyTribute,          "Guild Trophy Tribute" },
+        { StorageSystem.Krono,                       "Krono" },
+        { StorageSystem.Other,                       "Other" },
+        { StorageSystem.MercenaryItems,              "Mercenary Items" },
+        { StorageSystem.ViewModMercenaryItems,       "ViewMod Mercenary Items" },
+        { StorageSystem.MountKeyRing,                "Mount Key Ring" },
+        { StorageSystem.ViewModMountKeyRing,         "ViewMod Mount Key Ring" },
+        { StorageSystem.IllusionKeyRing,             "Illusion Key Ring" },
+        { StorageSystem.ViewModIllusionKeyRing,      "ViewMod Illusion Key Ring" },
+        { StorageSystem.FamiliarKeyRing,             "Familiar Key Ring" },
+        { StorageSystem.ViewModFamiliarKeyRing,      "ViewMod Familiar Key Ring" },
+        { StorageSystem.HerosForgeKeyRing,           "Hero's Forge Key Ring" },
+        { StorageSystem.ViewModHerosForgeKeyRing,    "ViewMod Hero's Forge Key Ring" },
+        { StorageSystem.TeleportationKeyRing,        "Teleportation Key Ring" },
+        { StorageSystem.ViewModTeleportationKeyRing, "ViewMod Teleportation Key Ring" },
+        { StorageSystem.Overflow,                    "Overflow" },
+        { StorageSystem.DragonsHoard,                "Dragon's Hoard" },
+        { StorageSystem.TradeskillDepot,             "Tradeskill Depot" },
+        { StorageSystem.GuildTradeskillDepot,        "Guild Tradeskill Depot" }
+    };
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ToDisplayString
+    //
+    // Looks up the printable name of a storage system.  Returns a descriptive placeholder for
+    // unknown values rather than throwing.
+    //
+    // storageSystem:  The storage system to query.
+    //
+    // Returns the storage system name, or "Unknown(n)" when the value is not in the table.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public static string ToDisplayString(this StorageSystem storageSystem)
+    {
+        if (StorageSystemNames.TryGetValue(storageSystem, out string? name))
+        {
+            return name;
+        }
+
+        DebugLog.Write(LogChannel.Fields, "StorageSystemExtensions.ToDisplayString: storage system " +
+            (uint)storageSystem + " not in table, returning 'Unknown'.", LogLevel.Warn);
+        return "Unknown(" + (uint)storageSystem + ")";
+    }
 }

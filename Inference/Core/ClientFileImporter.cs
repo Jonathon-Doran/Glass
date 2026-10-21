@@ -21,8 +21,9 @@ public class ClientFileImporter
     ///////////////////////////////////////////////////////////////////////////////////////////
     // ImportDbStringFile
     //
-    // Parses the database string file and stores its AA names, AA descriptions, and spell
-    // category names in the database.  An exception raised while storing is not caught here.
+    // Parses the database string file and stores every retained string type in the
+    // DbStrings table.  Spell category strings are also stored as spell categories.  An
+    // exception raised while storing is not caught here.
     //
     // Returns:  True when the file was parsed and stored, false when the EverQuestFolder
     //           setting is empty or the file does not exist.
@@ -47,13 +48,37 @@ public class ClientFileImporter
             return false;
         }
 
-        DbStringGateway.Instance.StoreStrings(DbStringType.AAName, file.AANames);
-        DbStringGateway.Instance.StoreStrings(DbStringType.AADescription, file.AADescriptions);
-        SpellGateway.Instance.StoreCategories(file.SpellCategories);
+        uint stored = 0;
 
-        DebugLog.Write(LogChannel.Reference, "ClientFileImporter.ImportDbStringFile: stored " +
-            file.AANames.Count + " AA names, " + file.AADescriptions.Count + " AA descriptions, " +
-            file.SpellCategories.Count + " spell categories from " + filePath + ".", LogLevel.Trace);
+        foreach (KeyValuePair<DbStringType, Dictionary<uint, string>> entry in file.Strings)
+        {
+            DbStringGateway.Instance.StoreStrings(entry.Key, entry.Value);
+            stored += (uint)entry.Value.Count;
+            DebugLog.Write(LogChannel.Reference, "ClientFileImporter.ImportDbStringFile: stored " +
+                entry.Value.Count + " strings of type " + entry.Key + ".", LogLevel.Trace);
+        }
+
+        Dictionary<uint, string>? categoryStrings = null;
+        if (file.Strings.TryGetValue(DbStringType.SpellCategory, out categoryStrings) == true)
+        {
+            Dictionary<SpellCategoryId, string> categories = new Dictionary<SpellCategoryId, string>();
+            foreach (KeyValuePair<uint, string> category in categoryStrings)
+            {
+                categories[(SpellCategoryId)category.Key] = category.Value;
+            }
+
+            SpellGateway.Instance.StoreCategories(categories);
+            DebugLog.Write(LogChannel.Reference, "ClientFileImporter.ImportDbStringFile: stored " +
+                categories.Count + " spell categories.", LogLevel.Trace);
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.Reference, "ClientFileImporter.ImportDbStringFile: no spell category " +
+                "strings in " + filePath + ".", LogLevel.Warn);
+        }
+
+        DebugLog.Write(LogChannel.Reference, "ClientFileImporter.ImportDbStringFile: stored " + stored +
+            " strings of " + file.Strings.Count + " types from " + filePath + ".", LogLevel.Trace);
         return true;
     }
 

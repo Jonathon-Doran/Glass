@@ -13,7 +13,9 @@ public enum DbStringType : uint
 {
     None = 0,
     AAName = 1,
-    AADescription = 4
+    AADescription = 4,
+    SpellCategory = 5,
+    ModelName = 11
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

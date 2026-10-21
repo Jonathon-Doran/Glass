@@ -34,6 +34,8 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
     private readonly SlotId _C_Slot;
     private readonly SlotId _quadsGate_Slot;
     private readonly SlotId _A_Slot;
+    private readonly SlotId _model_Slot;
+    private readonly SlotId _class_Slot;
     private readonly SlotId _lastname_Slot;
     private readonly SlotId _ownerId_Slot;
 
@@ -72,6 +74,9 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         _unknown_2_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_2");
         _C_Slot = _registry.IndexOfField(_collectionHandle, "C");
         _A_Slot = _registry.IndexOfField(_collectionHandle, "A");
+        _model_Slot = _registry.IndexOfField(_collectionHandle, "Model");
+        _class_Slot = _registry.IndexOfField(_collectionHandle, "Class");
+
         _lastname_Slot = _registry.IndexOfField(_collectionHandle, "LastName");
         _ownerId_Slot = _registry.IndexOfField(_collectionHandle, "owner_id");
 
@@ -215,6 +220,12 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
 
             string name = FieldNodes.AddStringNode(_extractor, _name_Slot, "Name", root);
             FieldNodes.AddUIntNode(_extractor, _level_Slot, "Level", root, "D");
+
+            uint modelId = _extractor.GetUIntAt(_model_Slot);
+            string ModelName = DbStringGateway.Instance.LookupString(DbStringType.ModelName, modelId);
+            FieldNodes.AddLabeledNode(_extractor, _model_Slot, "Model: " + ModelName + " (" + modelId + ")", root);
+
+            FieldNodes.AddUIntNode(_extractor, _class_Slot, "Class", root, "D");
             FieldNodes.AddUIntNode(_extractor, _isPlayer_Slot, "Player", root, "D");
             FieldNodes.AddFloatNode(_extractor, _unknown_1_Slot, "Unknown 1", root, "F2");
             FieldNodes.AddUIntNode(_extractor, _unknown_2_Slot, "Unknown 2", root, "?");

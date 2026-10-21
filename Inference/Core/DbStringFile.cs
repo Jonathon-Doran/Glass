@@ -1,4 +1,5 @@
 ﻿using Glass.Core.Logging;
+using Glass.Data.Repositories;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -8,59 +9,33 @@ namespace Inference.Core;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // DbStringFile
 //
-// The contents of the client's database string file that Glass uses: AA name text, AA
-// description text, and spell category names.  Each line of the file is a caret-delimited
-// string id, string type, and text.  Lines of other string types are not retained.
+// The contents of the client's database string file, kept for every string type that is a
+// member of DbStringType.  Each line of the file is a caret-delimited string id, string type,
+// and text.  Lines of other string types are not retained.
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class DbStringFile
 {
-    // String type numbers in the database string file.
-    private const uint StringTypeAAName = 1;
-    private const uint StringTypeAADescription = 4;
-    private const uint StringTypeSpellCategory = 5;
-
-    private readonly Dictionary<uint, string> _aaNames = new Dictionary<uint, string>();
-    private readonly Dictionary<uint, string> _aaDescriptions = new Dictionary<uint, string>();
-    private readonly Dictionary<SpellCategoryId, string> _spellCategories =
-        new Dictionary<SpellCategoryId, string>();
+    private readonly Dictionary<DbStringType, Dictionary<uint, string>> _strings =
+        new Dictionary<DbStringType, Dictionary<uint, string>>();
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // AANames
+    // Strings
     //
-    // AA name text keyed by string id.  Empty until a file has been parsed.
+    // Retained text keyed by string type, then by string id.  A type with no lines in the file
+    // has no entry.  Empty until a file has been parsed.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public IReadOnlyDictionary<uint, string> AANames
+    public IReadOnlyDictionary<DbStringType, Dictionary<uint, string>> Strings
     {
-        get { return _aaNames; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // AADescriptions
-    //
-    // AA description text keyed by string id.  Empty until a file has been parsed.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public IReadOnlyDictionary<uint, string> AADescriptions
-    {
-        get { return _aaDescriptions; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // SpellCategories
-    //
-    // Spell category names keyed by category id.  Empty until a file has been parsed.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public IReadOnlyDictionary<SpellCategoryId, string> SpellCategories
-    {
-        get { return _spellCategories; }
+        get { return _strings; }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // ParseFile
     //
-    // Reads the given database string file and fills the three tables, replacing any earlier
+    // Reads the given database string file and fills the table, replacing any earlier
     // contents.  A line with fewer than three columns, an unparseable string type, or a
-    // string type that is not retained is skipped.  A line of a retained type with an
-    // unparseable string id is logged at Warn and skipped.
+    // string type that is not a DbStringType member (or is None) is skipped.  A line of a
+    // retained type with an unparseable string id is logged at Warn and skipped.
     //
     // filePath:  Full path to the database string file (dbstr_us.txt).
     //
@@ -75,11 +50,10 @@ public class DbStringFile
             return false;
         }
 
-        _aaNames.Clear();
-        _aaDescriptions.Clear();
-        _spellCategories.Clear();
+        _strings.Clear();
 
         uint lineNumber = 0;
+        uint retained = 0;
 
         foreach (string line in File.ReadLines(filePath))
         {
@@ -91,18 +65,19 @@ public class DbStringFile
                 continue;
             }
 
-            uint stringType = 0;
-            if (uint.TryParse(columns[1], out stringType) == false)
+            uint stringTypeNumber = 0;
+            if (uint.TryParse(columns[1], out stringTypeNumber) == false)
             {
                 continue;
             }
 
-            if ((stringType != StringTypeAAName) &&
-                (stringType != StringTypeAADescription) &&
-                (stringType != StringTypeSpellCategory))
+            if ((stringTypeNumber == (uint)DbStringType.None) ||
+                (Enum.IsDefined(typeof(DbStringType), stringTypeNumber) == false))
             {
                 continue;
             }
+
+            DbStringType stringType = (DbStringType)stringTypeNumber;
 
             uint stringId = 0;
             if (uint.TryParse(columns[0], out stringId) == false)
@@ -112,29 +87,21 @@ public class DbStringFile
                 continue;
             }
 
-            switch (stringType)
+            Dictionary<uint, string>? table = null;
+            if (_strings.TryGetValue(stringType, out table) == false)
             {
-                case StringTypeAAName:
-                    {
-                        _aaNames[stringId] = columns[2];
-                        break;
-                    }
-                case StringTypeAADescription:
-                    {
-                        _aaDescriptions[stringId] = columns[2];
-                        break;
-                    }
-                case StringTypeSpellCategory:
-                    {
-                        _spellCategories[(SpellCategoryId)stringId] = columns[2];
-                        break;
-                    }
+                table = new Dictionary<uint, string>();
+                _strings[stringType] = table;
+                DebugLog.Write(LogChannel.Reference, "DbStringFile.ParseFile: first line of type " + stringType +
+                    " at line " + lineNumber + ".", LogLevel.Trace);
             }
+
+            table[stringId] = columns[2];
+            retained++;
         }
 
         DebugLog.Write(LogChannel.Reference, "DbStringFile.ParseFile: read " + lineNumber + " lines from " +
-            filePath + ": " + _aaNames.Count + " AA names, " + _aaDescriptions.Count + " AA descriptions, " +
-            _spellCategories.Count + " spell categories.", LogLevel.Trace);
+            filePath + ", retained " + retained + " strings of " + _strings.Count + " types.", LogLevel.Trace);
         return true;
     }
 }

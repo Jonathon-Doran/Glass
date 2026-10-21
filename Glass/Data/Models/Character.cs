@@ -439,56 +439,7 @@ public class Character
         _activeSpells[spell.Position] = spell;
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // StorageSystemNames
-    //
-    // Printable names for the storage systems of the item serialization header,
-    // keyed by storage system.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private static readonly Dictionary<StorageSystem, string> StorageSystemNames = new Dictionary<StorageSystem, string>()
-    {
-        { StorageSystem.Carried,                     "Carried" },
-        { StorageSystem.Bank,                        "Bank" },
-        { StorageSystem.SharedBank,                  "Shared Bank" },
-        { StorageSystem.Trade,                       "Trade" },
-        { StorageSystem.WorldContainer,              "World Container" },
-        { StorageSystem.Limbo,                       "Limbo" },
-        { StorageSystem.Tribute,                     "Tribute" },
-        { StorageSystem.TrophyTribute,               "Trophy Tribute" },
-        { StorageSystem.GuildTribute,                "Guild Tribute" },
-        { StorageSystem.Merchant,                    "Merchant" },
-        { StorageSystem.Deleted,                     "Deleted" },
-        { StorageSystem.Corpse,                      "Corpse" },
-        { StorageSystem.Bazaar,                      "Bazaar" },
-        { StorageSystem.Inspect,                     "Inspect" },
-        { StorageSystem.RealEstate,                  "Real Estate" },
-        { StorageSystem.ViewModPC,                   "ViewMod PC" },
-        { StorageSystem.ViewModBank,                 "ViewMod Bank" },
-        { StorageSystem.ViewModSharedBank,           "ViewMod Shared Bank" },
-        { StorageSystem.ViewModLimbo,                "ViewMod Limbo" },
-        { StorageSystem.AltStorage,                  "Alt Storage" },
-        { StorageSystem.Archived,                    "Archived" },
-        { StorageSystem.Mail,                        "Mail" },
-        { StorageSystem.GuildTrophyTribute,          "Guild Trophy Tribute" },
-        { StorageSystem.Krono,                       "Krono" },
-        { StorageSystem.Other,                       "Other" },
-        { StorageSystem.MercenaryItems,              "Mercenary Items" },
-        { StorageSystem.ViewModMercenaryItems,       "ViewMod Mercenary Items" },
-        { StorageSystem.MountKeyRing,                "Mount Key Ring" },
-        { StorageSystem.ViewModMountKeyRing,         "ViewMod Mount Key Ring" },
-        { StorageSystem.IllusionKeyRing,             "Illusion Key Ring" },
-        { StorageSystem.ViewModIllusionKeyRing,      "ViewMod Illusion Key Ring" },
-        { StorageSystem.FamiliarKeyRing,             "Familiar Key Ring" },
-        { StorageSystem.ViewModFamiliarKeyRing,      "ViewMod Familiar Key Ring" },
-        { StorageSystem.HerosForgeKeyRing,           "Hero's Forge Key Ring" },
-        { StorageSystem.ViewModHerosForgeKeyRing,    "ViewMod Hero's Forge Key Ring" },
-        { StorageSystem.TeleportationKeyRing,        "Teleportation Key Ring" },
-        { StorageSystem.ViewModTeleportationKeyRing, "ViewMod Teleportation Key Ring" },
-        { StorageSystem.Overflow,                    "Overflow" },
-        { StorageSystem.DragonsHoard,                "Dragon's Hoard" },
-        { StorageSystem.TradeskillDepot,             "Tradeskill Depot" },
-        { StorageSystem.GuildTradeskillDepot,        "Guild Tradeskill Depot" }
-    };
+ 
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // DescribeStorageLocation
@@ -503,7 +454,7 @@ public class Character
     {
         string description;
 
-        if (StorageSystemNames.TryGetValue(storageSystem, out string? storageName))
+        if (StorageSystemExtensions.StorageSystemNames.TryGetValue(storageSystem, out string? storageName))
         {
             description = storageName;
         }
@@ -593,7 +544,7 @@ public class Character
         }
         else
         {
-            if (StorageSystemNames.TryGetValue(storageSystem, out string? storageName))
+            if (StorageSystemExtensions.StorageSystemNames.TryGetValue(storageSystem, out string? storageName))
             {
                 location = storageName + " " + mainPosition;
             }
@@ -616,23 +567,4 @@ public class Character
 
         return location;
     }
-}
-public enum EQClass
-{
-    Warrior = 1,
-    Cleric,
-    Paladin,
-    Ranger,
-    Shadowknight,
-    Druid,
-    Monk,
-    Bard,
-    Rogue,
-    Shaman,
-    Necromancer,
-    Wizard,
-    Magician,
-    Enchanter,
-    Beastlord,
-    Berserker
 }
