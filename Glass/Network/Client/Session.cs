@@ -23,8 +23,9 @@ public enum ServerType
 // One SOE session between an EQ client and one server, identified by its local and remote
 // port pair.  Owns the streams carrying that session's traffic, one per direction,
 // both created with the session.  Holds the session key once a session response supplies it,
-// and the Character once a player profile identifies it.  Lives from the first packet seen
-// on the port pair until the session disconnect for that pair has been processed.
+// the Character once a player profile identifies it, and the zone once that profile supplies it.
+// Lives from the first packet seen on the port pair until the session disconnect for that pair
+// has been processed.
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class Session : IDisposable
 {
@@ -37,6 +38,7 @@ public class Session : IDisposable
 
     private uint _sessionKey = 0;
     private Character? _character = null;
+    private ZoneId _zoneId = ZoneId.None;
     private bool _closeRequested = false;
     private readonly SoeStream _toServer;
     private readonly SoeStream _fromServer;
@@ -111,6 +113,10 @@ public class Session : IDisposable
     public SessionId SessionId
     {
         get { return _sessionId; }
+    }
+    public ZoneId ZoneId
+    {
+        get { return _zoneId; }
     }
 
     public ushort LocalPort
@@ -188,6 +194,36 @@ public class Session : IDisposable
 
         DebugLog.Write(LogChannel.LowNetwork, "Session.SetCharacter: " + Describe()
             + " identified as " + character.Name, LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // SetZone
+    //
+    // Records the zone this session is connected to.  Only a Zone session carries a zone;
+    // any other server type is rejected and logged at Error.  Logs at Warn when a different
+    // zone was already recorded.
+    //
+    // zoneId:  The zone the session is connected to
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public void SetZone(ZoneId zoneId)
+    {
+        if (_serverType != ServerType.Zone)
+        {
+            DebugLog.Write(LogChannel.LowNetwork, "Session.SetZone: " + Describe()
+                + " is not a zone session, ignoring zoneId=" + zoneId, LogLevel.Error);
+            return;
+        }
+
+        if (_zoneId.Exists && _zoneId != zoneId)
+        {
+            DebugLog.Write(LogChannel.LowNetwork, "Session.SetZone: " + Describe()
+                + " already had zoneId=" + _zoneId + ", replacing with " + zoneId, LogLevel.Warn);
+        }
+
+        _zoneId = zoneId;
+
+        DebugLog.Write(LogChannel.LowNetwork, "Session.SetZone: " + Describe()
+            + " zoneId=" + zoneId, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

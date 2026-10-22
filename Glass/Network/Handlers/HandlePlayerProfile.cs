@@ -198,6 +198,8 @@ public class HandlePlayerProfile : OpcodeHandler
                 character.Copper = _extractor.GetUInt64At(_copperCarriedSlot);
 
                 character.CurrentZone = (ZoneId) _extractor.GetUIntAt(_zoneIdSlot);
+                metadata.Session.SetZone(character.CurrentZone);
+                ZoneRepository.Instance.SessionEntered(character.CurrentZone);
 
                 ReadOnlySpan<uint> spellbook = _extractor.GetUIntSpanAt(_spellbookSlot);
                 ReadOnlySpan<uint> spellgems = _extractor.GetUIntSpanAt(_spellgemSlot);

@@ -66,6 +66,10 @@ public class HandleSessionDisconnect_V1 : OpcodeHandler
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
             sessionId = _extractor.GetUIntAt(_sessionIdSlot);
+            if (metadata.Session.ServerType == Client.ServerType.Zone)
+            {
+                GlassContext.SessionRegistry.ZoneSessionClosing(metadata.Session);
+            }
         }
         finally
         {

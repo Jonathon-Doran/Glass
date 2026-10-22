@@ -226,13 +226,13 @@ public class SpawnBrowserRow
         Level = spawn.Level;
         A = spawn.A;
 
-        if (spawn.LastSeen == default)
+        if (spawn.Observed == default)
         {
             LastSeen = string.Empty;
         }
         else
         {
-            LastSeen = spawn.LastSeen.ToString("HH:mm:ss.fff");
+            LastSeen = spawn.Observed.ToString("HH:mm:ss.fff");
         }
     }
 }

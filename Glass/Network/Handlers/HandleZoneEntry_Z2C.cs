@@ -4,6 +4,7 @@ using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
+using Glass.World;
 using System;
 using System.Buffers.Binary;
 using System.Security.Policy;
@@ -109,6 +110,8 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         uint recordCount;
         uint? zoneId = character.CurrentZone;
         uint a;
+        uint model;
+        uint mobClass;
 
         // Cannot store data if we do not know what zone we are in yet
         if (!zoneId.HasValue)
@@ -128,6 +131,8 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             persistentId = _extractor.GetUIntAt(_id_Slot);
             recordCount = _extractor.GetUIntAt(_C_Slot);
             a = _extractor.GetUIntAt(_A_Slot);
+            model = _extractor.GetUIntAt(_model_Slot);
+            mobClass = _extractor.GetUIntAt(_class_Slot);
         }
         finally
         {
@@ -150,16 +155,49 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             return;
         }
 
-        if (!MobRepository.Instance.TryGetBySpawnId((ZoneId)zoneId.Value, (SpawnId) spawnId, out Spawn? spawn))
+        string baseName = BaseNameOf(name);
+        if (!MobRepository.Instance.TryGetTypeByName((ZoneId)zoneId.Value, baseName, out MobType? mobType))
+        {
+            mobType = new MobType();
+            mobType.BaseName = baseName;
+            mobType.ZoneId = (ZoneId)zoneId.Value;
+            mobType.LevelMin = (ushort)level;
+            mobType.LevelMax = (ushort)level;
+            mobType.FirstSeen = metadata.Timestamp;
+            mobType.Model = model;
+            mobType.Class = mobClass;
+            mobType.BodyType = a;
+            if (level < mobType.LevelMin)
+            {
+                mobType.LevelMin = (ushort)level;
+            }
+            if (level > mobType.LevelMax)
+            {
+                mobType.LevelMax = (ushort)level;
+            }
+            mobType.LastSeen = metadata.Timestamp;
+            mobType.Sightings++;
+
+            if (MobRepository.Instance.Create(mobType).Exists == false)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: could not create type for '" + baseName
+                    + "'; spawn '" + name + "' not stored.", LogLevel.Error);
+                return;
+            }
+        }
+
+        if (!MobRepository.Instance.TryGetBySpawnId((ZoneId)zoneId.Value, (SpawnId)spawnId, out Spawn? spawn))
         {
             spawn = new Spawn();
             spawn.Name = name;
             spawn.ZoneId = (ZoneId)zoneId.Value;
             spawn.SpawnId = (SpawnId)spawnId;
+            spawn.MobId = mobType.Id;
             spawn.A = a;
-            MobRepository.Instance.Add(spawn);
+            spawn.Observed = metadata.Timestamp;
+            MobRepository.Instance.AddSpawn(spawn);
             DebugLog.Write(LogChannel.Opcodes, "SpawnHandler: created new record for " + name + ", zoneId=" + zoneId
-                + " spawnId=" + spawnId.ToString("X4") + ".", LogLevel.Trace);
+                + " spawnId=" + spawnId.ToString("X4") + " mobId=" + mobType.Id + ".", LogLevel.Trace);
         }
 
         spawn.Name = name;
@@ -182,7 +220,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         FieldDisplayNode root = new FieldDisplayNode();
 
         // I would think that zone-id would be in the data...
-        ZoneId zoneId = metadata.Character.CurrentZone;
+        ZoneId zoneId = metadata.Character!.CurrentZone;
         string zoneName = ZoneRepository.Instance.GetZoneName(zoneId);
 
         try
@@ -252,6 +290,34 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
 
         root.Text = "ZoneEntry to " + zoneName;
         return root;
+    }
+    
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // BaseNameOf
+    //
+    // Strips the trailing instance digits from a spawn name, so every instance of one mob type
+    // yields the same string.  A name with no trailing digits is returned unchanged.
+    //
+    // name:  The spawn name as sent in the packet.
+    //
+    // Returns:   The name without its trailing digits.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private static string BaseNameOf(string name)
+    {
+        int end = name.Length;
+        while ((end > 0) && char.IsDigit(name[end - 1]))
+        {
+            end--;
+        }
+
+        if (end == name.Length)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C.BaseNameOf: '" + name
+                + "' has no trailing digits.", LogLevel.Trace);
+            return name;
+        }
+
+        return name.Substring(0, end);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

@@ -62,9 +62,14 @@ public class HandleSessionRequest : OpcodeHandler
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
-
             sessionId = _extractor.GetUIntAt(_sessionIdSlot);
             maxLength = _extractor.GetUIntAt(_maxLengthSlot);
+
+            if (metadata.Session.ServerType == Client.ServerType.Zone)
+            {
+                DebugLog.Write(LogChannel.General, "new zone connection with session id: " +
+                    sessionId.ToString("X"), LogLevel.Info);
+            }
         }
         finally
         {

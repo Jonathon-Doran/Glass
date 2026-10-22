@@ -14,6 +14,7 @@ public class ZoneRepository
     private static ZoneRepository? _instance = null;
 
     private readonly Dictionary<ZoneId, string> _zoneNames;
+    private readonly Dictionary<ZoneId, uint> _sessionCounts;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Instance
@@ -39,6 +40,8 @@ public class ZoneRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private ZoneRepository()
     {
+        _sessionCounts = new Dictionary<ZoneId, uint>();
+
         _zoneNames = new Dictionary<ZoneId, string>()
         {
             { (ZoneId) 1, "South Qeynos" },
@@ -280,4 +283,76 @@ public class ZoneRepository
             + " not in map, returning 'Unknown'.", LogLevel.Warn);
         return "Unknown(0x" + zoneId.Value.ToString("X2") + ")";
     }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // SessionEntered
+    //
+    // Records one more live zone session connected to the given zone.  A zone id that is None is rejected
+    // and the count is unchanged.
+    //
+    // zoneId:  The zone the session connected to.
+    //
+    // Returns the number of live sessions connected to the zone after this one.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public uint SessionEntered(ZoneId zoneId)
+    {
+        if (!zoneId.Exists)
+        {
+            DebugLog.Write(LogChannel.Sessions, "ZoneRepository.SessionEntered: zoneId is None, count unchanged.",
+                LogLevel.Error);
+            return 0;
+        }
+
+        uint count = 0;
+        _sessionCounts.TryGetValue(zoneId, out count);
+        count++;
+        _sessionCounts[zoneId] = count;
+
+        DebugLog.Write(LogChannel.Sessions, "ZoneRepository.SessionEntered: zoneId=" + zoneId + " now " + count
+            + " sessions.", LogLevel.Trace);
+        return count;
+    }
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // SessionLeft
+    //
+    // Records one fewer live zone session connected to the given zone.  A zone id that is None, or a
+    // zone with no recorded sessions, is rejected and the count is unchanged.  When the count reaches
+    // zero the zone's entry is removed.
+    //
+    // zoneId:  The zone the session disconnected from.
+    //
+    // Returns the number of live sessions still connected to the zone; zero when this was the last.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public uint SessionLeft(ZoneId zoneId)
+    {
+        if (!zoneId.Exists)
+        {
+            DebugLog.Write(LogChannel.Sessions, "ZoneRepository.SessionLeft: zoneId is None, count unchanged.",
+                LogLevel.Error);
+            return 0;
+        }
+
+        uint count = 0;
+        if (!_sessionCounts.TryGetValue(zoneId, out count) || (count == 0))
+        {
+            DebugLog.Write(LogChannel.Sessions, "ZoneRepository.SessionLeft: zoneId=" + zoneId
+                + " has no recorded sessions, count unchanged.", LogLevel.Error);
+            return 0;
+        }
+
+        count--;
+        if (count == 0)
+        {
+            _sessionCounts.Remove(zoneId);
+        }
+        else
+        {
+            _sessionCounts[zoneId] = count;
+        }
+
+        DebugLog.Write(LogChannel.Database, "ZoneRepository.SessionLeft: zoneId=" + zoneId + " now " + count
+            + " sessions.", LogLevel.Trace);
+        return count;
+    }
+
 }

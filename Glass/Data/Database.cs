@@ -532,6 +532,10 @@ public class Database
         {
             ApplyMigration(conn, 72, Migration_072);
         }
+        if (version < 73)
+        {
+            ApplyMigration(conn, 73, Migration_073);
+        }
     }
 
     private int GetSchemaVersion()
@@ -1978,6 +1982,51 @@ public class Database
             ON ItemInstances(character_id, storage, main_position, sub_position, aug_position);
 
         CREATE INDEX IF NOT EXISTS idx_iteminstances_parent ON ItemInstances(parent_id);
+    ";
+
+    private const string Migration_073 = @"
+        CREATE TABLE IF NOT EXISTS MobTypes (
+            id                     INTEGER PRIMARY KEY,
+            zone_id                INTEGER NOT NULL,
+            base_name              TEXT    NOT NULL,
+            model                  INTEGER NOT NULL DEFAULT 0,
+            class                  INTEGER NOT NULL DEFAULT 0,
+            body_type              INTEGER NOT NULL DEFAULT 0,
+            size                   REAL    NOT NULL DEFAULT 0,
+            walk_speed             REAL    NOT NULL DEFAULT 0,
+            run_speed              REAL    NOT NULL DEFAULT 0,
+            level_min              INTEGER NOT NULL DEFAULT 0,
+            level_max              INTEGER NOT NULL DEFAULT 0,
+            first_seen             TEXT    NOT NULL,
+            last_seen              TEXT    NOT NULL,
+            sightings              INTEGER NOT NULL DEFAULT 0,
+            hits_observed          INTEGER NOT NULL DEFAULT 0,
+            damage_total           INTEGER NOT NULL DEFAULT 0,
+            damage_max             INTEGER NOT NULL DEFAULT 0,
+            attack_interval_sum_ms INTEGER NOT NULL DEFAULT 0,
+            attack_interval_count  INTEGER NOT NULL DEFAULT 0,
+            spells_cast            INTEGER NOT NULL DEFAULT 0,
+            mana_pool              INTEGER NOT NULL DEFAULT 0,
+            max_hp                 INTEGER NOT NULL DEFAULT 0,
+            kills                  INTEGER NOT NULL DEFAULT 0,
+            deaths                 INTEGER NOT NULL DEFAULT 0,
+            UNIQUE (zone_id, base_name)
+        );
+
+        CREATE TABLE IF NOT EXISTS MobSightings (
+            id         INTEGER PRIMARY KEY,
+            mob_id     INTEGER NOT NULL REFERENCES MobTypes(id),
+            zone_id    INTEGER NOT NULL,
+            spawn_id   INTEGER NOT NULL,
+            x          REAL    NOT NULL DEFAULT 0,
+            y          REAL    NOT NULL DEFAULT 0,
+            z          REAL    NOT NULL DEFAULT 0,
+            level      INTEGER NOT NULL DEFAULT 0,
+            observed   TEXT    NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_MobSightings_mob_id  ON MobSightings(mob_id);
+        CREATE INDEX IF NOT EXISTS idx_MobSightings_zone_id ON MobSightings(zone_id);
     ";
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

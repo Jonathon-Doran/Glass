@@ -18,6 +18,6 @@ public class Spawn
     public ushort Level;
     public int CurrentHp;
     public int Race;
-    public DateTime LastSeen;
+    public DateTime Observed;
     public uint A;
 }

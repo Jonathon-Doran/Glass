@@ -30,7 +30,7 @@
                 <DataGridTextColumn Header="Name" Width="*" Binding="{Binding Name}"/>
                 <DataGridTextColumn Header="Level" Width="60" Binding="{Binding Level}"/>
                 <DataGridTextColumn Header="A" Width="50" Binding="{Binding A}"/>
-                <DataGridTextColumn Header="Last Seen" Width="150" Binding="{Binding LastSeen}"/>
+                <DataGridTextColumn Header="Observed" Width="150" Binding="{Binding Observed}"/>
             </DataGrid.Columns>
         </DataGrid>
     </DockPanel>

@@ -291,4 +291,43 @@ public class SessionRegistry
             + " is character " + character.Name + " but no ISXGlass session entry is registered for that character",
             LogLevel.Warn);
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ZoneSessionClosing
+    //
+    // Records that a session is disconnecting and, for a zone session with a known zone, releases
+    // its hold on that zone.  When it was the last live session in the zone, the zone's mob data
+    // is saved.  A session that is not a zone session, or has no zone recorded, is logged and
+    // nothing is released.
+    //
+    // session:  The session whose disconnect is being processed
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public void ZoneSessionClosing(Session session)
+    {
+        if (session.ServerType != ServerType.Zone)
+        {
+            DebugLog.Write(LogChannel.Sessions, "SessionRegistry.ZoneSessionClosing: session " + session.SessionId
+                + " is a " + session.ServerType + " session, nothing to release.", LogLevel.Info);
+            return;
+        }
+
+        if (!session.ZoneId.Exists)
+        {
+            DebugLog.Write(LogChannel.Sessions, "SessionRegistry.ZoneSessionClosing: zone session " + session.SessionId
+                + " never recorded a zone, nothing to release.", LogLevel.Warn);
+            return;
+        }
+
+        uint remaining = ZoneRepository.Instance.SessionLeft(session.ZoneId);
+        if (remaining > 0)
+        {
+            DebugLog.Write(LogChannel.Sessions, "SessionRegistry.ZoneSessionClosing: session " + session.SessionId
+                + " left zoneId=" + session.ZoneId + ", " + remaining + " sessions remain.", LogLevel.Info);
+            return;
+        }
+
+        DebugLog.Write(LogChannel.Sessions, "SessionRegistry.ZoneSessionClosing: session " + session.SessionId
+            + " was the last in zoneId=" + session.ZoneId + ", saving zone.", LogLevel.Info);
+        MobRepository.Instance.SaveZone(session.ZoneId);
+    }
 }
