@@ -25,12 +25,26 @@
                   HeadersVisibility="Column"
                   VirtualizingStackPanel.IsVirtualizing="True">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Spawn Id" Width="90" Binding="{Binding SpawnIdDecimal}"/>
-                <DataGridTextColumn Header="Hex" Width="70" Binding="{Binding SpawnIdHex}"/>
-                <DataGridTextColumn Header="Name" Width="*" Binding="{Binding Name}"/>
-                <DataGridTextColumn Header="Level" Width="60" Binding="{Binding Level}"/>
-                <DataGridTextColumn Header="A" Width="50" Binding="{Binding A}"/>
-                <DataGridTextColumn Header="Observed" Width="150" Binding="{Binding Observed}"/>
+                <DataGridTextColumn Header="Spawn Id" Width="Auto" Binding="{Binding SpawnIdHex}"/>
+                <DataGridTextColumn Header="Name" Width="Auto" Binding="{Binding Name}"/>
+                <DataGridTextColumn Header="Level" Width="Auto" Binding="{Binding Level}"/>
+                <DataGridTextColumn Header="Mob Id" Width="Auto" Binding="{Binding MobId}"/>
+                <DataGridTextColumn Header="Persistent Id" Width="Auto" Binding="{Binding PersistentId}"/>
+                <DataGridTextColumn Header="Player" Width="Auto" Binding="{Binding IsPlayer}"/>
+                <DataGridTextColumn Header="Type" Width="Auto" Binding="{Binding Type}"/>
+                <DataGridTextColumn Header="Model" Width="Auto" Binding="{Binding Model}"/>
+                <DataGridTextColumn Header="Class" Width="Auto" Binding="{Binding Class}"/>
+                <DataGridTextColumn Header="A" Width="Auto" Binding="{Binding A}"/>
+                <DataGridTextColumn Header="C" Width="Auto" Binding="{Binding C}"/>
+                <DataGridTextColumn Header="Unknown 1" Width="Auto" Binding="{Binding Unknown1}"/>
+                <DataGridTextColumn Header="Unknown 2" Width="Auto" Binding="{Binding Unknown2}"/>
+                <DataGridTextColumn Header="Unknown 3" Width="Auto" Binding="{Binding Unknown3}"/>
+                <DataGridTextColumn Header="Lastname" Width="Auto" Binding="{Binding LastName}"/>
+                <DataGridTextColumn Header="Owner Spawn Id" Width="Auto" Binding="{Binding OwnerId}"/>
+                <DataGridTextColumn Header="X" Width="Auto" Binding="{Binding X, StringFormat=F1}"/>
+                <DataGridTextColumn Header="Y" Width="Auto" Binding="{Binding Y, StringFormat=F1}"/>
+                <DataGridTextColumn Header="Z" Width="Auto" Binding="{Binding Z, StringFormat=F1}"/>
+                <DataGridTextColumn Header="Observed" Width="Auto" Binding="{Binding Observed}"/>
             </DataGrid.Columns>
         </DataGrid>
     </DockPanel>

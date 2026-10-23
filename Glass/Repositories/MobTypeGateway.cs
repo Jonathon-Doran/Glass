@@ -225,6 +225,53 @@ public class MobTypeGateway
         return mobTypes;
     }
 
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // LoadByZone
+    //
+    // Reads every MobTypes row for the given zone into new MobType records.  A zone id that is None yields
+    // an empty list.
+    //
+    // zoneId:  The zone whose types are read.
+    //
+    // Returns the records in ascending id order; empty when there are none.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public List<MobType> LoadByZone(ZoneId zoneId)
+    {
+        List<MobType> mobTypes = new List<MobType>();
+
+        if (zoneId.Exists == false)
+        {
+            DebugLog.Write(LogChannel.Database, "MobTypeGateway.LoadByZone: zoneId is None.", LogLevel.Warn);
+            return mobTypes;
+        }
+
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT id, zone_id, base_name, model, class, body_type, size, walk_speed, run_speed,
+                   level_min, level_max, first_seen, last_seen, sightings,
+                   hits_observed, damage_total, damage_max, attack_interval_sum_ms,
+                   attack_interval_count, spells_cast, mana_pool, max_hp, kills, deaths
+            FROM MobTypes
+            WHERE zone_id = @zone_id
+            ORDER BY id";
+        cmd.Parameters.AddWithValue("@zone_id", zoneId.Value);
+
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            mobTypes.Add(ReadRecord(reader));
+        }
+
+        DebugLog.Write(LogChannel.Database, "MobTypeGateway.LoadByZone: zoneId=" + zoneId + " read "
+            + mobTypes.Count + " mob types.", LogLevel.Trace);
+        return mobTypes;
+    }
+
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // TryLoadByName
     //

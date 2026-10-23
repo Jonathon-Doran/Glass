@@ -71,11 +71,10 @@ public class MobSightingGateway
             using SqliteCommand cmd = conn.CreateCommand();
             cmd.Transaction = tx;
             cmd.CommandText = @"
-                INSERT INTO MobSightings (mob_id, zone_id, spawn_id, x, y, z, level, observed)
-                VALUES (@mob_id, @zone_id, @spawn_id, @x, @y, @z, @level, @observed)";
+                INSERT INTO MobSightings (mob_id, zone_id, x, y, z, level, observed)
+                VALUES (@mob_id, @zone_id, @x, @y, @z, @level, @observed)";
             SqliteParameter mobIdParam = cmd.Parameters.Add("@mob_id", SqliteType.Integer);
             SqliteParameter zoneIdParam = cmd.Parameters.Add("@zone_id", SqliteType.Integer);
-            SqliteParameter spawnIdParam = cmd.Parameters.Add("@spawn_id", SqliteType.Integer);
             SqliteParameter xParam = cmd.Parameters.Add("@x", SqliteType.Real);
             SqliteParameter yParam = cmd.Parameters.Add("@y", SqliteType.Real);
             SqliteParameter zParam = cmd.Parameters.Add("@z", SqliteType.Real);
@@ -97,7 +96,6 @@ public class MobSightingGateway
 
                 mobIdParam.Value = spawn.MobId.Value;
                 zoneIdParam.Value = spawn.ZoneId.Value;
-                spawnIdParam.Value = spawn.SpawnId.Value;
                 xParam.Value = spawn.X;
                 yParam.Value = spawn.Y;
                 zParam.Value = spawn.Z;
@@ -145,7 +143,7 @@ public class MobSightingGateway
 
         using SqliteCommand cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT mob_id, zone_id, spawn_id, x, y, z, level, observed
+            SELECT mob_id, zone_id, x, y, z, level, observed
             FROM MobSightings
             WHERE zone_id = @zone_id
             ORDER BY observed";
@@ -221,22 +219,54 @@ public class MobSightingGateway
         Spawn spawn = new Spawn();
         spawn.MobId = new MobId((uint)reader.GetInt64(0));
         spawn.ZoneId = new ZoneId((uint)reader.GetInt64(1));
-        spawn.SpawnId = new SpawnId((uint)reader.GetInt64(2));
-        spawn.X = (float)reader.GetDouble(3);
-        spawn.Y = (float)reader.GetDouble(4);
-        spawn.Z = (float)reader.GetDouble(5);
-        spawn.Level = (ushort)reader.GetInt64(6);
+        spawn.X = (float)reader.GetDouble(2);
+        spawn.Y = (float)reader.GetDouble(3);
+        spawn.Z = (float)reader.GetDouble(4);
+        spawn.Level = (ushort)reader.GetInt64(5);
 
-        string observedText = reader.GetString(7);
+        string observedText = reader.GetString(6);
         if (DateTime.TryParse(observedText, null, System.Globalization.DateTimeStyles.RoundtripKind,
             out spawn.Observed) == false)
         {
-            DebugLog.Write(LogChannel.Database, "MobSightingGateway.ReadRecord: zoneId=" + spawn.ZoneId + " spawnId="
-                + spawn.SpawnId + " first_seen='" + observedText + "' does not parse, using MinValue.", LogLevel.Warn);
+            DebugLog.Write(LogChannel.Database, "MobSightingGateway.ReadRecord: zoneId=" + spawn.ZoneId + " mobId="
+                + spawn.MobId + " observed='" + observedText + "' does not parse, using MinValue.", LogLevel.Warn);
             spawn.Observed = DateTime.MinValue;
         }
 
         return spawn;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // CountByZone
+    //
+    // Counts the MobSightings rows of every zone that has at least one, in a single query.
+    //
+    // Returns a dictionary keyed by zone id whose values are the row counts; empty when the table has no rows.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public Dictionary<ZoneId, uint> CountByZone()
+    {
+        Dictionary<ZoneId, uint> counts = new Dictionary<ZoneId, uint>();
+
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT zone_id, COUNT(*)
+            FROM MobSightings
+            GROUP BY zone_id";
+
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            ZoneId zoneId = new ZoneId((uint)reader.GetInt64(0));
+            uint count = (uint)reader.GetInt64(1);
+            counts[zoneId] = count;
+        }
+
+        DebugLog.Write(LogChannel.Database, "MobSightingGateway.CountByZone: " + counts.Count
+            + " zone(s) have sightings.", LogLevel.Trace);
+        return counts;
     }
 
 }

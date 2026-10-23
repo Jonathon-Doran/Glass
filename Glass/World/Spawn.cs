@@ -6,6 +6,8 @@
 // is only meaningful within the zone identified by ZoneId. Position, level, hp, and race reflect the most
 // recently decoded values. LastSeen is the time of the most recent packet that referenced this instance.
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+using Glass.Network.Protocol;
+
 public class Spawn
 {
     public MobId MobId;
@@ -20,4 +22,15 @@ public class Spawn
     public int Race;
     public DateTime Observed;
     public uint A;
+    public uint PersistentId;
+    public uint IsPlayer;
+    public uint Type;
+    public float Unknown1;
+    public uint Unknown2;
+    public uint Unknown3;
+    public uint C;
+    public uint Model;
+    public uint Class;
+    public string? LastName;
+    public uint OwnerId;
 }

@@ -7,6 +7,7 @@ using Glass.Network.Protocol.Fields;
 using Glass.World;
 using System;
 using System.Reflection;
+using System.Security.Policy;
 
 namespace Glass.Network.Handlers;
 
@@ -199,7 +200,13 @@ public class HandlePlayerProfile : OpcodeHandler
 
                 character.CurrentZone = (ZoneId) _extractor.GetUIntAt(_zoneIdSlot);
                 metadata.Session.SetZone(character.CurrentZone);
-                ZoneRepository.Instance.SessionEntered(character.CurrentZone);
+                uint zoneSessions = ZoneRepository.Instance.SessionEntered(character.CurrentZone);
+                if (zoneSessions == 1)
+                {
+                    DebugLog.Write(LogChannel.Sessions, "HandlePlayerProfile: first session in zoneId=" + character.CurrentZone
+                        + ", clearing cached mobs.", LogLevel.Trace);
+                    MobRepository.Instance.ClearZoneMobs(character.CurrentZone);
+                }
 
                 ReadOnlySpan<uint> spellbook = _extractor.GetUIntSpanAt(_spellbookSlot);
                 ReadOnlySpan<uint> spellgems = _extractor.GetUIntSpanAt(_spellgemSlot);

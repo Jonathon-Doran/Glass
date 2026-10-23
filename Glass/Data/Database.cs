@@ -2017,7 +2017,6 @@ public class Database
             id         INTEGER PRIMARY KEY,
             mob_id     INTEGER NOT NULL REFERENCES MobTypes(id),
             zone_id    INTEGER NOT NULL,
-            spawn_id   INTEGER NOT NULL,
             x          REAL    NOT NULL DEFAULT 0,
             y          REAL    NOT NULL DEFAULT 0,
             z          REAL    NOT NULL DEFAULT 0,

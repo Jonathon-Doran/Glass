@@ -290,25 +290,25 @@ public class MobRepository
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // SaveZone
+    // SaveZoneMobs
     //
-    // Persists the given zone and releases it.  Every Spawn held under the zone is written as a sighting,
-    // every cached MobType referenced by those spawns is written back, and the zone's table is then
-    // removed from the cache.  A zone id that is None or has no table does nothing.
+    // Persists mob info for a zone.  Every Spawn held under the zone is written as a sighting,
+    // every cached MobType referenced by those spawns is written back.
+    // A zone id that is None or has no table does nothing.
     //
     // zoneId:  The zone being left.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public void SaveZone(ZoneId zoneId)
+    public void SaveZoneMobs(ZoneId zoneId)
     {
         if (!zoneId.Exists)
         {
-            DebugLog.Write(LogChannel.Database, "MobRepository.SaveZone: zoneId is None.", LogLevel.Warn);
+            DebugLog.Write(LogChannel.Database, "MobRepository.SaveZoneMobs: zoneId is None.", LogLevel.Warn);
             return;
         }
 
         if (!_spawnsByZone.TryGetValue(zoneId, out Dictionary<SpawnId, Spawn>? zoneSpawns))
         {
-            DebugLog.Write(LogChannel.Database, "MobRepository.SaveZone: zoneId=" + zoneId + " has no table.", LogLevel.Trace);
+            DebugLog.Write(LogChannel.Database, "MobRepository.SaveZoneMobs: zoneId=" + zoneId + " has no table.", LogLevel.Trace);
             return;
         }
 
@@ -329,7 +329,7 @@ public class MobRepository
         {
             if (!_typesById.TryGetValue(mobId, out MobType? mobType))
             {
-                DebugLog.Write(LogChannel.Database, "MobRepository.SaveZone: zoneId=" + zoneId + " references mobId="
+                DebugLog.Write(LogChannel.Database, "MobRepository.SaveZoneMobs: zoneId=" + zoneId + " references mobId="
                     + mobId + " which is not cached.", LogLevel.Error);
                 continue;
             }
@@ -340,9 +340,36 @@ public class MobRepository
             }
         }
 
+        DebugLog.Write(LogChannel.Database, "MobRepository.SaveZoneMobs: zoneId=" + zoneId + " wrote " + sightings
+            + " sightings, updated " + updated + " of " + touched.Count + " types.", LogLevel.Trace);
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // ClearZoneMobs
+    //
+    // Removes the given zone's spawn table from the cache, discarding every Spawn record held under it.
+    // Nothing is written.  A zone id that is None or has no table does nothing.
+    //
+    // zoneId:  The zone whose spawn table is removed.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void ClearZoneMobs(ZoneId zoneId)
+    {
+        if (!zoneId.Exists)
+        {
+            DebugLog.Write(LogChannel.Database, "MobRepository.ClearZoneMobs: zoneId is None.", LogLevel.Warn);
+            return;
+        }
+
+        if (!_spawnsByZone.TryGetValue(zoneId, out Dictionary<SpawnId, Spawn>? zoneSpawns))
+        {
+            DebugLog.Write(LogChannel.Database, "MobRepository.ClearZoneMobs: zoneId=" + zoneId + " has no table.", LogLevel.Trace);
+            return;
+        }
+
+        uint discarded = (uint)zoneSpawns.Count;
         _spawnsByZone.Remove(zoneId);
 
-        DebugLog.Write(LogChannel.Database, "MobRepository.SaveZone: zoneId=" + zoneId + " wrote " + sightings
-            + " sightings, updated " + updated + " of " + touched.Count + " types, table released.", LogLevel.Trace);
+        DebugLog.Write(LogChannel.Database, "MobRepository.ClearZoneMobs: zoneId=" + zoneId + " discarded " + discarded
+            + " records, table removed.", LogLevel.Trace);
     }
 }

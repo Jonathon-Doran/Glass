@@ -328,6 +328,6 @@ public class SessionRegistry
 
         DebugLog.Write(LogChannel.Sessions, "SessionRegistry.ZoneSessionClosing: session " + session.SessionId
             + " was the last in zoneId=" + session.ZoneId + ", saving zone.", LogLevel.Info);
-        MobRepository.Instance.SaveZone(session.ZoneId);
+        MobRepository.Instance.SaveZoneMobs(session.ZoneId);
     }
 }

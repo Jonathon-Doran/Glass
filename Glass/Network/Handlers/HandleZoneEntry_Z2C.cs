@@ -27,9 +27,11 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
     private readonly SlotId _name_Slot;
     private readonly SlotId _spawnId_Slot;
     private readonly SlotId _level_Slot;
+    private readonly SlotId _unknown_3_Slot;
     private readonly SlotId _id_Slot;
 
     private readonly SlotId _isPlayer_Slot;
+    private readonly SlotId _type_Slot;
     private readonly SlotId _unknown_1_Slot;
     private readonly SlotId _unknown_2_Slot;
     private readonly SlotId _C_Slot;
@@ -69,8 +71,10 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         _name_Slot = _registry.IndexOfField(_collectionHandle, "name");
         _spawnId_Slot = _registry.IndexOfField(_collectionHandle, "spawn_id");
         _level_Slot = _registry.IndexOfField(_collectionHandle, "level");
+        _unknown_3_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_3");
         _id_Slot = _registry.IndexOfField(_collectionHandle, "character_id");
         _isPlayer_Slot = _registry.IndexOfField(_collectionHandle, "is_player");
+        _type_Slot = _registry.IndexOfField(_collectionHandle, "Type");
         _unknown_1_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_1");
         _unknown_2_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_2");
         _C_Slot = _registry.IndexOfField(_collectionHandle, "C");
@@ -88,7 +92,10 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandlePacket
     //
-    // Processes zone-to-client OP_ZoneEntry.
+    // Processes zone-to-client OP_ZoneEntry.  Players are not stored.  Every other spawn is
+    // recorded under the receiving character's zone: its mob type is looked up or created by
+    // zone and base name, and the spawn record is created on first sight and refreshed with the
+    // decoded field values on every sight.
     //
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
@@ -99,19 +106,27 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
 
         if (character == null)
         {
-            DebugLog.Write(LogChannel.Opcodes, "ZoneEntry: metadata cannot be "
+            DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: metadata cannot be "
                 + "mapped to a character.  Dropping mob data.", LogLevel.Warn);
             return;
         }
+
         string name;
         uint spawnId;
         uint level;
         uint persistentId;
-        uint recordCount;
         uint? zoneId = character.CurrentZone;
-        uint a;
+        uint A;
         uint model;
         uint mobClass;
+        uint isPlayer;
+        uint type;
+        float unknown1;
+        uint unknown2;
+        uint unknown3;
+        uint C;
+        string lastName;
+        uint ownerId;
 
         // Cannot store data if we do not know what zone we are in yet
         if (!zoneId.HasValue)
@@ -129,29 +144,28 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             spawnId = _extractor.GetUIntAt(_spawnId_Slot);
             level = _extractor.GetUIntAt(_level_Slot);
             persistentId = _extractor.GetUIntAt(_id_Slot);
-            recordCount = _extractor.GetUIntAt(_C_Slot);
-            a = _extractor.GetUIntAt(_A_Slot);
+            A = _extractor.GetUIntAt(_A_Slot);
             model = _extractor.GetUIntAt(_model_Slot);
             mobClass = _extractor.GetUIntAt(_class_Slot);
+            isPlayer = _extractor.GetUIntAt(_isPlayer_Slot);
+            type = _extractor.GetUIntAt(_type_Slot);
+            unknown1 = _extractor.GetFloatAt(_unknown_1_Slot);
+            unknown2 = _extractor.GetUIntAt(_unknown_2_Slot);
+            unknown3 = _extractor.GetUIntAt(_unknown_3_Slot);
+            C = _extractor.GetUIntAt(_C_Slot);
+            lastName = _extractor.GetStringAt(_lastname_Slot);
+            ownerId = _extractor.GetUIntAt(_ownerId_Slot);
         }
         finally
         {
             _extractor.Release();
         }
 
-        // Only NPCs are stored.  A nonzero persistent id is a player; a record count above one is a
-        // pet, familiar, warder, mount or mercenary.
+        // Only NPCs are stored.  A nonzero persistent id is a player.
         if (persistentId != 0)
         {
             DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: '" + name + "' spawnId=0x"
                 + spawnId.ToString("X4") + " is a player; not stored.", LogLevel.Trace);
-            return;
-        }
-
-        if (recordCount != 1)
-        {
-            DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: '" + name + "' spawnId=0x"
-                + spawnId.ToString("X4") + " has record count " + recordCount + "; not stored.", LogLevel.Trace);
             return;
         }
 
@@ -164,9 +178,20 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             mobType.LevelMin = (ushort)level;
             mobType.LevelMax = (ushort)level;
             mobType.FirstSeen = metadata.Timestamp;
+            mobType.LastSeen = metadata.Timestamp;
             mobType.Model = model;
             mobType.Class = mobClass;
-            mobType.BodyType = a;
+            mobType.Sightings = 1;
+
+            if (MobRepository.Instance.Create(mobType).Exists == false)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: could not create type for '" + baseName
+                    + "'; spawn '" + name + "' not stored.", LogLevel.Error);
+                return;
+            }
+        }
+        else
+        {
             if (level < mobType.LevelMin)
             {
                 mobType.LevelMin = (ushort)level;
@@ -177,31 +202,34 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             }
             mobType.LastSeen = metadata.Timestamp;
             mobType.Sightings++;
-
-            if (MobRepository.Instance.Create(mobType).Exists == false)
-            {
-                DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: could not create type for '" + baseName
-                    + "'; spawn '" + name + "' not stored.", LogLevel.Error);
-                return;
-            }
         }
 
         if (!MobRepository.Instance.TryGetBySpawnId((ZoneId)zoneId.Value, (SpawnId)spawnId, out Spawn? spawn))
         {
             spawn = new Spawn();
-            spawn.Name = name;
             spawn.ZoneId = (ZoneId)zoneId.Value;
             spawn.SpawnId = (SpawnId)spawnId;
             spawn.MobId = mobType.Id;
-            spawn.A = a;
             spawn.Observed = metadata.Timestamp;
             MobRepository.Instance.AddSpawn(spawn);
-            DebugLog.Write(LogChannel.Opcodes, "SpawnHandler: created new record for " + name + ", zoneId=" + zoneId
-                + " spawnId=" + spawnId.ToString("X4") + " mobId=" + mobType.Id + ".", LogLevel.Trace);
+            DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: created new record for " + name + ", zoneId=" + zoneId
+                + " spawnId=0x" + spawnId.ToString("X4") + " mobId=" + mobType.Id + ".", LogLevel.Trace);
         }
 
         spawn.Name = name;
-        spawn.Level = (ushort) level;
+        spawn.Level = (ushort)level;
+        spawn.A = A;
+        spawn.PersistentId = persistentId;
+        spawn.IsPlayer = isPlayer;
+        spawn.Type = type;
+        spawn.Unknown1 = unknown1;
+        spawn.Unknown2 = unknown2;
+        spawn.Unknown3 = unknown3;
+        spawn.C = C;
+        spawn.Model = model;
+        spawn.Class = mobClass;
+        spawn.LastName = lastName;
+        spawn.OwnerId = ownerId;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

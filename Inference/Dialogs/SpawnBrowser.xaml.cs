@@ -1,5 +1,6 @@
 ﻿using Glass.Core.Logging;
 using Glass.Data.Repositories;
+using Glass.World;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -22,28 +23,22 @@ public partial class SpawnBrowser : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     // SpawnBrowser  (constructor)
     //
-    // Fills the zone combo with every known zone, displayed as "name (id)" and carrying the
-    // boxed ZoneId in the item Tag.  No zone is selected initially, so the grid starts empty.
+    // Fills the zone combo with every zone that has at least one sighting row in the database,
+    // displayed as "name  [id]  N sightings" and carrying the boxed ZoneId in the item Tag.
+    // No zone is selected initially, so the grid starts empty.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public SpawnBrowser()
     {
         InitializeComponent();
 
-        List<ZoneId> zoneIds = ZoneRepository.Instance.GetZoneIds();
+        Dictionary<ZoneId, uint> counts = MobSightingGateway.Instance.CountByZone();
         List<KeyValuePair<string, ZoneId>> populated = new List<KeyValuePair<string, ZoneId>>();
 
-        foreach (ZoneId zoneId in zoneIds)
+        foreach (KeyValuePair<ZoneId, uint> entry in counts)
         {
-            int spawnCount = MobRepository.Instance.GetSpawnsInZone(zoneId).Count;
-
-            if (spawnCount == 0)
-            {
-                continue;
-            }
-
-            string label = ZoneRepository.Instance.GetZoneName(zoneId) + "  [" + zoneId.Value + "]  "
-                + spawnCount + " spawns";
-            populated.Add(new KeyValuePair<string, ZoneId>(label, zoneId));
+            string label = ZoneRepository.Instance.GetZoneName(entry.Key) + "  [" + entry.Key.Value + "]  "
+                + entry.Value + " sightings";
+            populated.Add(new KeyValuePair<string, ZoneId>(label, entry.Key));
         }
 
         populated.Sort((KeyValuePair<string, ZoneId> left, KeyValuePair<string, ZoneId> right) =>
@@ -58,7 +53,7 @@ public partial class SpawnBrowser : Window
         }
 
         DebugLog.Write(LogChannel.InferenceDebug, "SpawnBrowser: opened with " + populated.Count
-            + " populated zone(s) in the list out of " + zoneIds.Count + " known", LogLevel.Trace);
+            + " zone(s) that have sightings", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -106,10 +101,11 @@ public partial class SpawnBrowser : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     // RefreshRows
     //
-    // Reads the selected zone's spawn records from the mob repository, keeps those that
-    // pass the filter text, and fills the grid in the repository's order.  With no zone
-    // selected the grid is emptied and the count line says so.  The count line reports
-    // rows shown against rows read.
+    // Reads the selected zone's sightings and mob types from the database, fills each
+    // record's Name from its mob type, keeps the records that pass the filter text, and
+    // fills the grid in observed order.  A record whose mob type has no row is named
+    // "<no type>".  With no zone selected the grid is emptied and the count line says so.
+    // The count line reports rows shown against rows read.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void RefreshRows()
     {
@@ -125,8 +121,48 @@ public partial class SpawnBrowser : Window
         }
 
         ZoneId zoneId = (ZoneId)zoneItem.Tag;
-        List<Spawn> spawns = MobRepository.Instance.GetSpawnsInZone(zoneId);
         string filterText = FilterText.Text.Trim();
+        string source;
+
+        List<Spawn> spawns = MobRepository.Instance.GetSpawnsInZone(zoneId);
+
+        if (spawns.Count > 0)
+        {
+            source = "cache";
+        }
+        else
+        {
+            source = "database";
+            spawns = MobSightingGateway.Instance.LoadByZone(zoneId);
+            List<MobType> mobTypes = MobTypeGateway.Instance.LoadByZone(zoneId);
+            Dictionary<MobId, string> namesByMobId = new Dictionary<MobId, string>(mobTypes.Count);
+
+            foreach (MobType mobType in mobTypes)
+            {
+                namesByMobId[mobType.Id] = mobType.BaseName;
+            }
+
+            uint unnamed = 0;
+
+            foreach (Spawn spawn in spawns)
+            {
+                if (namesByMobId.TryGetValue(spawn.MobId, out string? baseName))
+                {
+                    spawn.Name = baseName;
+                }
+                else
+                {
+                    spawn.Name = "<no type>";
+                    unnamed++;
+                }
+            }
+
+            if (unnamed > 0)
+            {
+                DebugLog.Write(LogChannel.InferenceDebug, "SpawnBrowser.RefreshRows: zoneId=" + zoneId + " "
+                    + unnamed + " sighting(s) reference a mob id with no MobTypes row", LogLevel.Warn);
+            }
+        }
 
         List<SpawnBrowserRow> rows = new List<SpawnBrowserRow>(spawns.Count);
 
@@ -139,11 +175,11 @@ public partial class SpawnBrowser : Window
         }
 
         ResultGrid.ItemsSource = rows;
-        ResultCount.Text = rows.Count + " of " + spawns.Count + " spawns";
+        ResultCount.Text = rows.Count + " of " + spawns.Count + " spawns (" + source + ")";
 
-        DebugLog.Write(LogChannel.InferenceDebug, "SpawnBrowser.RefreshRows: zoneId=" + zoneId
-            + " read " + spawns.Count + " record(s), showing " + rows.Count
-            + " with filter '" + filterText + "'", LogLevel.Trace);
+        DebugLog.Write(LogChannel.InferenceDebug, "SpawnBrowser.RefreshRows: zoneId=" + zoneId + " source=" + source
+            + " read " + spawns.Count + " record(s), showing " + rows.Count + " with filter '" + filterText + "'",
+            LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -199,40 +235,78 @@ public partial class SpawnBrowser : Window
 // SpawnBrowserRow
 //
 // One row of the spawn browser grid: the display projections of a Spawn record, taken at
-// the time the row was built.
+// the time the row was built.  ZoneEntry fields are shown under their slot names; ids in
+// hex, the rest decimal.  A spawn id that does not exist shows as an empty string.
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class SpawnBrowserRow
 {
-    public uint SpawnIdDecimal { get; }
     public string SpawnIdHex { get; }
     public string Name { get; }
     public ushort Level { get; }
-    public string LastSeen { get; }
+    public uint MobId { get; }
+    public float X { get; }
+    public float Y { get; }
+    public float Z { get; }
+    public string Observed { get; }
     public uint A { get; }
+    public string PersistentId { get; }
+    public uint IsPlayer { get; }
+    public uint Type { get; }
+    public string Unknown1 { get; }
+    public string Unknown2 { get; }
+    public uint Unknown3 { get; }
+    public uint C { get; }
+    public uint Model { get; }
+    public uint Class { get; }
+    public string LastName { get; }
+    public string OwnerId { get; }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // SpawnBrowserRow  (constructor)
     //
     // Builds the display projections from the given record.  A null name shows as
-    // "<null>"; a default LastSeen shows as an empty string.
+    // "<null>"; a default Observed shows as an empty string.
     //
     // spawn:  The record to present.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public SpawnBrowserRow(Spawn spawn)
     {
-        SpawnIdDecimal = spawn.SpawnId.Value;
-        SpawnIdHex = "0x" + spawn.SpawnId.Value.ToString("X4");
-        Name = spawn.Name ?? "<null>";
-        Level = spawn.Level;
-        A = spawn.A;
-
-        if (spawn.Observed == default)
+        if (spawn.SpawnId.Exists)
         {
-            LastSeen = string.Empty;
+            SpawnIdHex = "0x" + spawn.SpawnId.Value.ToString("X4");
         }
         else
         {
-            LastSeen = spawn.Observed.ToString("HH:mm:ss.fff");
+            SpawnIdHex = string.Empty;
         }
+
+        Name = spawn.Name ?? "<null>";
+        Level = spawn.Level;
+        MobId = spawn.MobId.Value;
+        X = spawn.X;
+        Y = spawn.Y;
+        Z = spawn.Z;
+
+        if (spawn.Observed == default)
+        {
+            Observed = string.Empty;
+        }
+        else
+        {
+            Observed = spawn.Observed.ToString("yyyy-MM-dd HH:mm:ss.fff");
+        }
+
+        A = spawn.A;
+        PersistentId = "0x" + spawn.PersistentId.ToString("X");
+        IsPlayer = spawn.IsPlayer;
+        Type = spawn.Type;
+        Unknown1 = spawn.Unknown1.ToString("F2");
+        Unknown2 = "0x" + spawn.Unknown2.ToString("X8");
+        Unknown3 = spawn.Unknown3;
+        C = spawn.C;
+        Model = spawn.Model;
+        Class = spawn.Class;
+        LastName = spawn.LastName ?? string.Empty;
+        OwnerId = "0x" + spawn.OwnerId.ToString("X4");
     }
 }
