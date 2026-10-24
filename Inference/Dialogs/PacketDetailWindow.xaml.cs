@@ -100,7 +100,7 @@ public partial class PacketDetailWindow : Window
 
         PatchOpcode patchOpcode = packet.Metadata.Opcode;
         string opcodeName = GlassContext.PatchRegistry.GetOpcodeName(patchOpcode);
-        string opcodeHex = "0x" + packet.Opcode;
+        string opcodeHex = packet.Opcode.ToString();
         string characterName = packet.Metadata.CharacterName;
 
         Title = "Packet " + packet.PacketIndex + " — " + opcodeName;

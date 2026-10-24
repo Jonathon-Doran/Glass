@@ -161,9 +161,11 @@ public class HandleClientUpdate : OpcodeHandler
             float ZPos = _extractor.GetFloatAt(_zPosSlot);
             uint sequence = _extractor.GetUIntAt(_sequenceSlot);
             SpawnId playerId = (SpawnId) _extractor.GetUIntAt(_playerIdSlot);
+            uint width = _extractor.GetBitLengthOf(_headingSlot);
+            float divisor = (1 << (int) width);
             // Note on heading:  measured as 160-degrees per second to within 0.2%.  One degree is 6.25ms of keypress.  
-            float Heading = _extractor.GetUIntAt(_headingSlot) / 8192.0f * 360.0f;
-            characterName = MobRepository.Instance.LookupSpawnName(zoneId, playerId);
+            float Heading = ((float) _extractor.GetUIntAt(_headingSlot) / divisor) * 360.0f;
+            characterName = ZoneRepository.Instance.LookupSpawnName(zoneId, playerId);
 
             FieldNodes.AddLabeledNode(_extractor, _playerIdSlot, "Character: " + characterName + " (" +
                  playerId + ", 0x" + playerId.Value.ToString("X4") + ")", root);

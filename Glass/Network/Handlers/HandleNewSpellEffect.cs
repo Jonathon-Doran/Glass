@@ -171,7 +171,7 @@ public class HandleNewSpellEffect : OpcodeHandler
             FieldNodes.AddLabeledNode(_extractor, _spellID_Slot, "Spell: " + spellName + " (" +
                 spellId + ", 0x" + spellId.Value.ToString("X4") + ")", root);
 
-            targetName = MobRepository.Instance.LookupSpawnName(zoneId, targetId);
+            targetName = ZoneRepository.Instance.LookupSpawnName(zoneId, targetId);
 
             FieldNodes.AddLabeledNode(_extractor, _targetID_Slot, "Target: " + targetName + " (" +
                     targetId + ", 0x" + targetId.Value.ToString("X4") + ")", root);

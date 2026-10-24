@@ -123,7 +123,7 @@ public class HandleTargetRequest : OpcodeHandler
 
             SpawnId spawnId = (SpawnId) _extractor.GetUIntAt(_spawnIdSlot);
 
-            targetName = MobRepository.Instance.LookupSpawnName(zoneId, spawnId);
+            targetName = ZoneRepository.Instance.LookupSpawnName(zoneId, spawnId);
 
             FieldNodes.AddLabeledNode(_extractor, _spawnIdSlot, "Spawn: " + targetName + " (" +
                     spawnId + ", 0x" + spawnId.Value.ToString("X4") + ")", root);

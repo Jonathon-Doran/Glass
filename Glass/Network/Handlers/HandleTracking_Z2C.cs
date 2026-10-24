@@ -192,7 +192,7 @@ public class HandleTracking_Z2C : OpcodeHandler
 
                 SpawnId spawnId = (SpawnId)_extractor.GetUIntAt(_spawnIdSlot);
 
-                String spawnName = MobRepository.Instance.LookupSpawnName(zoneId, spawnId);
+                String spawnName = ZoneRepository.Instance.LookupSpawnName(zoneId, spawnId);
 
                 FieldNodes.AddStringNode(_extractor, _nameSlot, "Name", entryNode);
 

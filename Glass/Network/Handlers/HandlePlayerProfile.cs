@@ -198,14 +198,17 @@ public class HandlePlayerProfile : OpcodeHandler
                 character.Silver = _extractor.GetUInt64At(_silverCarriedSlot);
                 character.Copper = _extractor.GetUInt64At(_copperCarriedSlot);
 
-                character.CurrentZone = (ZoneId) _extractor.GetUIntAt(_zoneIdSlot);
-                metadata.Session.SetZone(character.CurrentZone);
-                uint zoneSessions = ZoneRepository.Instance.SessionEntered(character.CurrentZone);
+                ZoneId zoneId = (ZoneId)_extractor.GetUIntAt(_zoneIdSlot);
+                metadata.Session.SetZone(zoneId);
+                uint zoneSessions = ZoneRepository.Instance.SessionEntered(zoneId);
+
+                // If this is the first session in the zone, then clear out ephemeral data
                 if (zoneSessions == 1)
                 {
-                    DebugLog.Write(LogChannel.Sessions, "HandlePlayerProfile: first session in zoneId=" + character.CurrentZone
-                        + ", clearing cached mobs.", LogLevel.Trace);
-                    MobRepository.Instance.ClearZoneMobs(character.CurrentZone);
+                    DebugLog.Write(LogChannel.Sessions, "HandlePlayerProfile: first session in zoneId=" + zoneId +
+                        ", clearing cached mobs.", LogLevel.Trace);
+
+                    MobRepository.Instance.ClearZoneMobs(zoneId); 
                 }
 
                 ReadOnlySpan<uint> spellbook = _extractor.GetUIntSpanAt(_spellbookSlot);

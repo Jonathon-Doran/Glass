@@ -128,7 +128,7 @@ public class HandleCastBegin : OpcodeHandler
             SpellId spellID = (SpellId) _extractor.GetUIntAt(_spellIdSlot);
             SpawnId casterID = (SpawnId) _extractor.GetUIntAt(_casterIdSlot);
             spellName = SpellCatalog.Instance.LookupSpell(spellID);
-            casterName = MobRepository.Instance.LookupSpawnName(zoneId, casterID);
+            casterName = ZoneRepository.Instance.LookupSpawnName(zoneId, casterID);
 
             FieldNodes.AddLabeledNode(_extractor, _spellIdSlot, "Spell: " + spellName + " (" +
                 spellID + ", 0x" + spellID.Value.ToString("X8") + ")", root);

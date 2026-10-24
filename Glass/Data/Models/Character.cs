@@ -53,7 +53,7 @@ public class Character
     public float? ZPos { get; set; }
     public float? Heading { get; set; }         // in degrees
 
-    public uint? SpawnId { get; set; }
+    public SpawnId SpawnId { get; set; }
     public SpellId[] SpellBook { get; set; } = Array.Empty<SpellId>();
     public SpellId[] SpellGems { get; set; } = Array.Empty<SpellId>();
 

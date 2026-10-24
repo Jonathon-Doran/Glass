@@ -25,6 +25,7 @@ public class CharacterRepository
     private readonly List<Character> _characters;
     private readonly Dictionary<DatabaseId, Character> _charactersByDatabaseId;
     private readonly Dictionary<CharacterId, Character> _charactersByCharacterId;
+    private readonly Dictionary<ZoneId, Dictionary<SpawnId, Character>> _charactersByZoneSpawn;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Instance
@@ -56,6 +57,7 @@ public class CharacterRepository
         _characters = new List<Character>();
         _charactersByCharacterId = new Dictionary<CharacterId, Character>();
         _charactersByDatabaseId = new Dictionary<DatabaseId, Character>();
+        _charactersByZoneSpawn = new Dictionary<ZoneId, Dictionary<SpawnId, Character>>();
         DebugLog.Write(LogChannel.Database, "CharacterRepository: singleton instance created with empty caches.", LogLevel.Trace);
     }
 
@@ -243,7 +245,7 @@ public class CharacterRepository
             + " accountId=" + character.AccountId, LogLevel.Trace);
     }
 
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Save
 //
 // Persists the cached character's full row to the database. The cache is the source of truth;
@@ -369,6 +371,86 @@ public void Save(DatabaseId databaseId)
 
         DebugLog.Write(LogChannel.Database, "CharacterRepository.GetByCharacterId: no cached character for characterId="
             + characterId, LogLevel.Trace);
+        return null;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // SetZoneSpawn
+    //
+    // Places a character in a zone under a spawn id.  The character's previous placement, read from its
+    // current zone and spawn id, is removed from the index first; the new zone and spawn id are then
+    // assigned to the character and indexed.  A zone id or spawn id that is None is rejected and nothing
+    // changes.
+    //
+    // character:  The cached character.
+    // zoneId:     The zone the character has entered.
+    // spawnId:    The server assigned spawn id within that zone.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void SetZoneSpawn(Character character, ZoneId zoneId, SpawnId spawnId)
+    {
+        if (zoneId.Exists == false || spawnId.Exists == false)
+        {
+            DebugLog.Write(LogChannel.Database, "CharacterRepository.SetZoneSpawn: '" + character.Name + "' zoneId="
+                + zoneId + " spawnId=" + spawnId + " is not a valid placement, nothing changed.", LogLevel.Error);
+            return;
+        }
+
+        if (character.CurrentZone.Exists && character.SpawnId.Exists)
+        {
+            SpawnId oldSpawnId = character.SpawnId;
+            ZoneId oldZoneId = character.CurrentZone;
+
+            if (_charactersByZoneSpawn.TryGetValue(character.CurrentZone, out Dictionary<SpawnId, Character>? oldTable)
+                && oldTable.TryGetValue(oldSpawnId, out Character? indexed)
+                && ReferenceEquals(indexed, character))
+            {
+                // Remove the character from the cache, delete the Zone cache if it is now empty
+                oldTable.Remove(oldSpawnId);
+                if (oldTable.Count == 0)
+                {
+                    _charactersByZoneSpawn.Remove(oldZoneId);
+                }
+
+                DebugLog.Write(LogChannel.Database, "CharacterRepository.SetZoneSpawn: removed '" + character.Name
+                    + "' from zoneId=" + oldZoneId + " spawnId=" + oldSpawnId, LogLevel.Trace);
+            }
+        }
+
+        // Update character values and then put them in the cache
+        character.CurrentZone = zoneId;
+        character.SpawnId = spawnId;
+
+        if (!_charactersByZoneSpawn.TryGetValue(zoneId, out Dictionary<SpawnId, Character>? zoneTable))
+        {
+            zoneTable = new Dictionary<SpawnId, Character>();
+            _charactersByZoneSpawn[zoneId] = zoneTable;
+        }
+
+        zoneTable[spawnId] = character;
+        DebugLog.Write(LogChannel.Database, "CharacterRepository.SetZoneSpawn: '" + character.Name + "' placed at zoneId="
+            + zoneId + " spawnId=" + spawnId, LogLevel.Trace);
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // GetBySpawnId
+    //
+    // Returns the cached Character placed in the given zone under the given spawn id.
+    //
+    // zoneId:   The zone the spawn id is valid in.
+    // spawnId:  The server assigned spawn id within that zone.
+    //
+    // Returns:  The cached Character, or null if none is placed there.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public Character? GetBySpawnId(ZoneId zoneId, SpawnId spawnId)
+    {
+        if (_charactersByZoneSpawn.TryGetValue(zoneId, out Dictionary<SpawnId, Character>? zoneTable)
+            && zoneTable.TryGetValue(spawnId, out Character? character))
+        {
+            return character;
+        }
+
+        DebugLog.Write(LogChannel.Database, "CharacterRepository.GetBySpawnId: no character at zoneId=" + zoneId
+            + " spawnId=" + spawnId, LogLevel.Trace);
         return null;
     }
 }

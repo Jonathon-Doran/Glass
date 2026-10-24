@@ -121,7 +121,7 @@ public class HandleHP_Percent: OpcodeHandler
 
             SpawnId spawnId = (SpawnId) _extractor.GetUIntAt(_spawnIDSlot);
 
-            spawnName = MobRepository.Instance.LookupSpawnName(zoneId, spawnId);
+            spawnName = ZoneRepository.Instance.LookupSpawnName(zoneId, spawnId);
 
             FieldNodes.AddLabeledNode(_extractor, _spawnIDSlot, "Spawn: " + spawnName + " (" +
                 spawnId + ", 0x" + spawnId.Value.ToString("X4") + ")", root);

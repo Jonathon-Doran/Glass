@@ -134,8 +134,8 @@ public class HandleDeath : OpcodeHandler
             SpawnId spawnId = (SpawnId)_extractor.GetUIntAt(_spawnIdSlot);
             SpawnId killerId = (SpawnId)_extractor.GetUIntAt(_killerIdSlot);
 
-            targetName = MobRepository.Instance.LookupSpawnName(zoneId, spawnId);
-            killerName = MobRepository.Instance.LookupSpawnName(zoneId, killerId);
+            targetName = ZoneRepository.Instance.LookupSpawnName(zoneId, spawnId);
+            killerName = ZoneRepository.Instance.LookupSpawnName(zoneId, killerId);
 
             FieldNodes.AddLabeledNode(_extractor, _spawnIdSlot, "Target: " + targetName + " (" +
                     spawnId + ", 0x" + spawnId.Value.ToString("X4") + ")", root);

@@ -115,7 +115,6 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         uint spawnId;
         uint level;
         uint persistentId;
-        uint? zoneId = character.CurrentZone;
         uint A;
         uint model;
         uint mobClass;
@@ -128,8 +127,10 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         string lastName;
         uint ownerId;
 
+        ZoneId zoneId = metadata.Session.ZoneId;
+
         // Cannot store data if we do not know what zone we are in yet
-        if (!zoneId.HasValue)
+        if (zoneId.Exists == false)
         {
             DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: character '" + character.Name
                 + "' has no zone id; spawn data discarded.", LogLevel.Warn);
@@ -161,11 +162,22 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             _extractor.Release();
         }
 
-        // Only NPCs are stored.  A nonzero persistent id is a player.
+        // A nonzero persistent id is a player.  One of our own characters is placed in the zone under its
+        // spawn id; other players are not stored.
         if (persistentId != 0)
         {
-            DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: '" + name + "' spawnId=0x"
-                + spawnId.ToString("X4") + " is a player; not stored.", LogLevel.Trace);
+            Character? player = CharacterRepository.Instance.GetByCharacterId((CharacterId)persistentId);
+            if (player != null)
+            {
+                CharacterRepository.Instance.SetZoneSpawn(player, zoneId, (SpawnId)spawnId);
+                DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: placed '" + player.Name + "' in zoneId="
+                    + zoneId + " spawnId=0x" + spawnId.ToString("X4"), LogLevel.Trace);
+            }
+            else
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: '" + name + "' spawnId=0x"
+                    + spawnId.ToString("X4") + " is another player; not stored.", LogLevel.Trace);
+            }
             return;
         }
 
@@ -216,6 +228,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
                 + " spawnId=0x" + spawnId.ToString("X4") + " mobId=" + mobType.Id + ".", LogLevel.Trace);
         }
 
+        // We have the spawn by reference from above, so fill in the data
         spawn.Name = name;
         spawn.Level = (ushort)level;
         spawn.A = A;
@@ -247,8 +260,8 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
     {
         FieldDisplayNode root = new FieldDisplayNode();
 
-        // I would think that zone-id would be in the data...
-        ZoneId zoneId = metadata.Character!.CurrentZone;
+        // ZoneEntry messages do not contain the zone-id
+        ZoneId zoneId = metadata.Session.ZoneId;
         string zoneName = ZoneRepository.Instance.GetZoneName(zoneId);
 
         try
@@ -278,7 +291,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             }
 
             SpawnId spawnId = (SpawnId) _extractor.GetUIntAt(_spawnId_Slot);
-            String spawnName = MobRepository.Instance.LookupSpawnName(zoneId, spawnId);
+            String spawnName = ZoneRepository.Instance.LookupSpawnName(zoneId, spawnId);
 
             FieldNodes.AddLabeledNode(_extractor, _spawnId_Slot, "Spawn: " + spawnName + " (" +
                     spawnId + ", 0x" + spawnId.Value.ToString("X4") + ")", root);

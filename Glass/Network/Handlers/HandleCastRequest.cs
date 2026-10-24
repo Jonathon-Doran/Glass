@@ -137,7 +137,7 @@ public class HandleCastRequest: OpcodeHandler
             SpawnId targetID = (SpawnId) FieldNodes.AddUIntNode(_extractor, _targetIdSlot, "Target ID", root, "X4");
 
             FieldNodes.AddUIntNode(_extractor, _gemSlot, "Spell Gem", root, "D");
-            targetName = MobRepository.Instance.LookupSpawnName(zoneId, targetID);
+            targetName = ZoneRepository.Instance.LookupSpawnName(zoneId, targetID);
 
             FieldNodes.AddLabeledNode(_extractor, _targetIdSlot, "Target: " + targetName + " (" +
                     targetID + ", 0x" + targetID.Value.ToString("X4") + ")", root);

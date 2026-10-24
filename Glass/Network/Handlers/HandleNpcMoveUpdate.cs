@@ -186,7 +186,7 @@ public class HandleNpcMoveUpdate : OpcodeHandler
             float headingDegrees = headingRaw * 360.0f / 2048.0f;
             uint  flags = _extractor.GetUIntAt(_flagsSlot);
 
-            npcName = MobRepository.Instance.LookupSpawnName(zoneId, spawnId);
+            npcName = ZoneRepository.Instance.LookupSpawnName(zoneId, spawnId);
 
             FieldNodes.AddLabeledNode(_extractor, _spawnIdSlot, "Spawn: " + npcName + " (" +
                     spawnId + ", 0x" + spawnId.Value.ToString("X4") + ")", root);

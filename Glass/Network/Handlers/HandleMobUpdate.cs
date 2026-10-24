@@ -139,7 +139,7 @@ public class HandleMobUpdate : OpcodeHandler
             float zPos = _extractor.GetFloatAt(_zPosSlot);
             uint headingRaw = _extractor.GetUIntAt(_headingSlot);
 
-            mobName = MobRepository.Instance.LookupSpawnName(zoneId, spawnId);
+            mobName = ZoneRepository.Instance.LookupSpawnName(zoneId, spawnId);
 
             FieldNodes.AddLabeledNode(_extractor, _spawnIdSlot, "Spawn: " + mobName + " (" +
                  spawnId + ", 0x" + spawnId.Value.ToString("X4") + ")", root);

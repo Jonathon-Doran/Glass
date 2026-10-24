@@ -125,7 +125,7 @@ public class HandleHpUpdate : OpcodeHandler
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
             SpawnId playerId = (SpawnId) _extractor.GetUIntAt(_playerIdSlot);
-            String characterName = MobRepository.Instance.LookupSpawnName(zoneId, playerId);
+            String characterName = ZoneRepository.Instance.LookupSpawnName(zoneId, playerId);
 
             uint currentHP = _extractor.GetUIntAt(_currentHPSlot);
             uint maxHP = _extractor.GetUIntAt(_maxHPSlot);

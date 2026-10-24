@@ -1,4 +1,5 @@
 ﻿using Glass.Core.Logging;
+using Glass.Data.Models;
 using System.Collections.Generic;
 using System.Numerics;
 
@@ -282,6 +283,45 @@ public class ZoneRepository
         DebugLog.Write(LogChannel.Database, "ZoneRepository.GetZoneName: zoneId=0x" + zoneId.Value.ToString("X2")
             + " not in map, returning 'Unknown'.", LogLevel.Warn);
         return "Unknown(0x" + zoneId.Value.ToString("X2") + ")";
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // LookupSpawnName
+    //
+    // Resolves a spawn id within a zone to a display name.  The zone's mob spawns are checked first, then
+    // the characters placed in the zone.  A zone id that is None, or a spawn id matching neither, yields
+    // "<unknown>".
+    //
+    // zoneId:   The zone the spawn id is valid in.
+    // spawnId:  The server assigned spawn id within that zone.
+    //
+    // Returns the spawn's name, or "<unknown>" when the spawn id is not known in that zone.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public string LookupSpawnName(ZoneId zoneId, SpawnId spawnId)
+    {
+        if (zoneId.Exists == false)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "ZoneRepository.LookupSpawnName: zoneId is None for spawnId="
+                + spawnId, LogLevel.Trace);
+            return "<unknown>";
+        }
+
+        // Return the name from the character repo if foiund
+        Character? character = CharacterRepository.Instance.GetBySpawnId(zoneId, spawnId);
+        if (character != null)
+        {
+            return character.Name;
+        }
+
+        // Otherwise search the mob repo
+        if (MobRepository.Instance.TryGetBySpawnId(zoneId, spawnId, out Spawn? spawn))
+        {
+            return spawn.Name ?? "<unnamed>";
+        }
+
+        DebugLog.Write(LogChannel.Opcodes, "ZoneRepository.LookupSpawnName: zoneId=" + zoneId + " spawnId="
+            + spawnId + " is not a known mob or character.", LogLevel.Trace);
+        return "<unknown>";
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -123,7 +123,7 @@ public class HandleManaUpdate : OpcodeHandler
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
             SpawnId playerId = (SpawnId) _extractor.GetUIntAt(_playerIdSlot);
-            characterName = MobRepository.Instance.LookupSpawnName(zoneId, playerId);
+            characterName = ZoneRepository.Instance.LookupSpawnName(zoneId, playerId);
 
             uint currentMana = _extractor.GetUIntAt(_currentManaSlot);
             uint maxMana = _extractor.GetUIntAt(_maxManaSlot);

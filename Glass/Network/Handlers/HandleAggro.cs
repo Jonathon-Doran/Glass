@@ -147,7 +147,7 @@ public class HandleAggro: OpcodeHandler
             if (_extractor.IsPresent(_playerIdSlot))
             {
                 SpawnId playerId = (SpawnId)_extractor.GetUIntAt(_playerIdSlot);
-                string playerName = MobRepository.Instance.LookupSpawnName(zoneId, playerId); ;
+                string playerName = ZoneRepository.Instance.LookupSpawnName(zoneId, playerId); ;
 
 
                 FieldNodes.AddLabeledNode(_extractor, _playerIdSlot, "Secondary: " + playerName + " (" +

@@ -171,7 +171,7 @@ public class HandleTargetSpells: OpcodeHandler
 
             SpawnId playerId = (SpawnId)_extractor.GetUIntAt(_playerIdSlot);
 
-            string playerName = MobRepository.Instance.LookupSpawnName(zoneId, playerId);
+            string playerName = ZoneRepository.Instance.LookupSpawnName(zoneId, playerId);
 
             FieldNodes.AddLabeledNode(_extractor, _playerIdSlot, "Spawn: " + playerName + " (" +
                     playerId + ", 0x" + playerId.Value.ToString("X4") + ")", root);

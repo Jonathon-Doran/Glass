@@ -176,28 +176,4 @@ public class HandleCommonMessage : OpcodeHandler
                 return "unknown(" + channelId.ToString("x2") + ")";
         }
     }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // ResolveVersion
-    //
-    // Returns the opcode version for a packet.
-    //
-    // data:      The application payload.
-    // metadata:  Packet metadata
-    //
-    // Returns:   The resolved version number.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public override uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
-    {
-        switch (metadata.Channel)
-        {
-            case SoeConstants.StreamId.StreamClientToZone:
-                return 1;
-
-            case SoeConstants.StreamId.StreamZoneToClient:
-                return 2;
-        }
-
-        return 0;
-    }
 }
