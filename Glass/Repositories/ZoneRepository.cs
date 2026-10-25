@@ -325,6 +325,32 @@ public class ZoneRepository
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // IsKnownSpawn
+    //
+    // Tests whether a spawn id is currently known in a zone, either as a character placed in the zone or as
+    // one of the zone's mob spawns.  A zone id that is None is never known.
+    //
+    // zoneId:   The zone the spawn id is valid in.
+    // spawnId:  The server assigned spawn id within that zone.
+    //
+    // Returns true when the spawn id is a known character or mob in that zone.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public bool IsKnownSpawn(ZoneId zoneId, SpawnId spawnId)
+    {
+        if (!zoneId.Exists)
+        {
+            return false;
+        }
+
+        if (CharacterRepository.Instance.GetBySpawnId(zoneId, spawnId) != null)
+        {
+            return true;
+        }
+
+        return MobRepository.Instance.TryGetBySpawnId(zoneId, spawnId, out Spawn? spawn);
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // SessionEntered
     //
     // Records one more live zone session connected to the given zone.  A zone id that is None is rejected

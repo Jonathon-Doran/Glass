@@ -37,9 +37,11 @@ public class PacketCatalog
     private readonly Dictionary<OpcodeValue, List<CatalogedPacket>> _byOpcode;
     private readonly Dictionary<OpcodeValue, OpcodeStats> _stats;
     private List<OpcodeValue> _byCountDescending;
+    private List<OpcodeValue> _byMaxSizeDescending;
     private readonly Dictionary<int, int> _pooledSizeHistogram;
     private readonly Dictionary<SoeConstants.StreamId, uint> _pooledChannelCounts;
     private readonly Dictionary<SoeConstants.StreamId, int> _pureChannelOpcodeCounts;
+
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // PacketCatalog (constructor)
@@ -58,6 +60,7 @@ public class PacketCatalog
         _byOpcode = new Dictionary<OpcodeValue, List<CatalogedPacket>>();
         _stats = new Dictionary<OpcodeValue, OpcodeStats>();
         _byCountDescending = new List<OpcodeValue>();
+        _byMaxSizeDescending = new List<OpcodeValue>();
         _pooledSizeHistogram = new Dictionary<int, int>();
         _pooledChannelCounts = new Dictionary<SoeConstants.StreamId, uint>();
         _pureChannelOpcodeCounts = new Dictionary<SoeConstants.StreamId, int>();
@@ -393,6 +396,21 @@ public class PacketCatalog
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodesByMaxSizeDescending
+    //
+    // Returns the wire values ordered by largest observed payload length, largest first, as
+    // computed by the last Prepare call.  Empty until Prepare has run.  The returned list is
+    // a fresh copy; the caller may iterate it without holding the catalog lock.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public List<OpcodeValue> OpcodesByMaxSizeDescending()
+    {
+        lock (_lock)
+        {
+            return new List<OpcodeValue>(_byMaxSizeDescending);
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // StatsFor
     //
     // Returns the per-opcode aggregates (channel, min size, max size) for
@@ -636,7 +654,11 @@ public class PacketCatalog
             }
             _byCountDescending = new List<OpcodeValue>(_byOpcode.Keys);
             _byCountDescending.Sort((a, b) => _byOpcode[b].Count.CompareTo(_byOpcode[a].Count));
+            _byMaxSizeDescending = new List<OpcodeValue>(_byOpcode.Keys);
+            _byMaxSizeDescending.Sort((a, b) => _stats[b].MaxSize.CompareTo(_stats[a].MaxSize));
+
             foreach (KeyValuePair<SoeConstants.StreamId, int> pureEntry in _pureChannelOpcodeCounts)
+
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "PacketCatalog.Prepare: pure channel " + pureEntry.Key
@@ -692,6 +714,7 @@ public class PacketCatalog
             _byOpcode.Clear();
             _stats.Clear();
             _byCountDescending.Clear();
+            _byMaxSizeDescending.Clear();
             _pooledSizeHistogram.Clear();
             _pooledChannelCounts.Clear();
             _pureChannelOpcodeCounts.Clear();

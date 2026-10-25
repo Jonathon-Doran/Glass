@@ -1,5 +1,6 @@
 ﻿using Glass.Core.Logging;
 using Inference.Core;
+using SQLitePCL;
 using System.Collections.Generic;
 
 namespace Inference.Identification;
@@ -23,12 +24,18 @@ public class InferenceScanner
     public InferenceScanner()
     {
         _handlers = new List<IInferOpcodes>();
+        _handlers.Add(new InferPlayerProfile());
         _handlers.Add(new InferNpcMoveUpdate());
         _handlers.Add(new InferMobUpdate());
         _handlers.Add(new InferMovementHistory());
-        _handlers.Add(new InferPlayerProfile());
         _handlers.Add(new InferZoneEntry_Z2C());
         _handlers.Add(new InferNewZone());
+        _handlers.Add(new InferInventory());
+        _handlers.Add(new InferSendAA());
+        _handlers.Add(new InferCommonMessage());
+        _handlers.Add(new InferDeath());
+        _handlers.Add(new InferClientUpdate());
+        _handlers.Add(new InferCastRequest());
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferenceScanner.ctor: " + _handlers.Count + " handlers", LogLevel.Trace);
