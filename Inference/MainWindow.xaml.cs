@@ -2,6 +2,7 @@
 using Glass.Core.Logging;
 using Glass.Core.Memory;
 using Glass.Core.Signals;
+using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Network.Capture;
 using Glass.Network.Client;
@@ -2663,12 +2664,16 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Button_OpcodeTraceRefresh_Click
     //
-    // Refresh button for the Opcode Trace tab.  Asks the presenter to
-    // rebuild the row list from the catalog's current state.
+    // Refresh button for the Opcode Trace tab.  Asks the presenter to rebuild the row list from
+    // the catalog's current state, then rebuilds the character filter combo from the new rows.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void Button_OpcodeTraceRefresh_Click(object sender, RoutedEventArgs e)
     {
         _opcodeTracePresenter.Refresh();
+        DebugLog.Write(LogChannel.Opcodes,
+            "Button_OpcodeTraceRefresh_Click: rows rebuilt, rebuilding character filter", LogLevel.Trace);
+
+        PopulateCharacterFilter();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -3330,6 +3335,94 @@ public partial class MainWindow : Window
         }
         return isConstant;
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // PopulateCharacterFilter
+    //
+    // Rebuilds the Opcode Trace character filter combo: "All" first, then each Character found
+    // on the current trace rows' sessions, sorted by name.  The Character selected before the
+    // rebuild is selected again when it is still in the list; otherwise "All" is selected.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void PopulateCharacterFilter()
+    {
+        const string allEntry = "All";
+
+        Character? previous = OpcodeTraceCharacterFilter.SelectedItem as Character;
+        List<Character> characters = _opcodeTracePresenter.GetTraceCharacters();
+
+        OpcodeTraceCharacterFilter.Items.Clear();
+        OpcodeTraceCharacterFilter.Items.Add(allEntry);
+
+        Character? restored = null;
+        for (int i = 0; i < characters.Count; i++)
+        {
+            Character character = characters[i];
+            OpcodeTraceCharacterFilter.Items.Add(character);
+
+            if (previous != null && ReferenceEquals(character, previous))
+            {
+                restored = character;
+            }
+        }
+
+        if (restored != null)
+        {
+            OpcodeTraceCharacterFilter.SelectedItem = restored;
+            DebugLog.Write(LogChannel.Opcodes,
+                "PopulateCharacterFilter: " + characters.Count + " character(s), restored selection "
+                + restored.Name, LogLevel.Trace);
+            return;
+        }
+
+        if (previous != null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "PopulateCharacterFilter: previous selection " + previous.Name
+                + " is not in the trace, selecting All", LogLevel.Trace);
+        }
+
+        OpcodeTraceCharacterFilter.SelectedItem = allEntry;
+        DebugLog.Write(LogChannel.Opcodes,
+            "PopulateCharacterFilter: " + characters.Count + " character(s), selected All",
+            LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // OpcodeTraceCharacterFilter_SelectionChanged
+    //
+    // Character filter selector on the Opcode Trace toolbar.  Passes the selected Character to
+    // the presenter, which hides every row not carried by that Character's sessions.  The "All"
+    // entry, or no selection, passes null so every row is shown.
+    //
+    // sender:  The ComboBox that raised the event.
+    // e:       Event arguments.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void OpcodeTraceCharacterFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        object? selected = OpcodeTraceCharacterFilter.SelectedItem;
+        Character? character = selected as Character;
+
+        if (character != null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTraceCharacterFilter_SelectionChanged: selected " + character.Name, LogLevel.Trace);
+        }
+        else if (selected == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTraceCharacterFilter_SelectionChanged: no selection, showing every row", LogLevel.Trace);
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTraceCharacterFilter_SelectionChanged: selected All", LogLevel.Trace);
+        }
+
+        _opcodeTracePresenter.ApplyCharacterFilter(character);
+    }
+
+
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // HandleISXGlassMessage
     //

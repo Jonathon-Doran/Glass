@@ -278,6 +278,9 @@
                                 <ComboBoxItem Content="512"/>
                                 <ComboBoxItem Content="Full"/>
                             </ComboBox>
+                            <TextBlock Text="Character:" VerticalAlignment="Center" Margin="12,0,4,0"/>
+                            <ComboBox x:Name="OpcodeTraceCharacterFilter" Width="160"
+                                      SelectionChanged="OpcodeTraceCharacterFilter_SelectionChanged"/>
                         </StackPanel>
                     </DockPanel>
 

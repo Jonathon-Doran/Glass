@@ -1,6 +1,7 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
 using Glass.Core.Signals;
+using Glass.Data.Models;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using Glass.UI;
@@ -1873,6 +1874,145 @@ public partial class OpcodeTracePresenter
             "OpcodeTracePresenter.CenterRowForPacketIndex: scheduled centering for index "
             + packetIndex, LogLevel.Trace);
         return true;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ApplyCharacterFilter
+    //
+    // Walks every row and sets IsHidden from the Character of the session that carried the
+    // row's packet, read from the cataloged packet at the row's PacketIndex.  When a Character
+    // is supplied, rows whose session Character is that Character are shown and all other rows,
+    // including rows from sessions with no Character, are hidden.  When no Character is
+    // supplied, every row is shown.  Rows already at their target state are skipped so the
+    // PropertyChanged event does not fire redundantly.
+    //
+    // Must be called on the UI thread; mutates rows bound to the list view.
+    //
+    // character:  The Character whose sessions pass the filter, or null to show every row.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void ApplyCharacterFilter(Character? character)
+    {
+        if (character == null)
+        {
+            int shown = 0;
+            for (int i = 0; i < _rows.Count; i++)
+            {
+                OpcodeTraceRow row = _rows[i];
+                if (!row.IsHidden)
+                {
+                    continue;
+                }
+                row.IsHidden = false;
+                shown++;
+            }
+
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTracePresenter.ApplyCharacterFilter: no character selected, showed "
+                + shown + " of " + _rows.Count + " row(s)", LogLevel.Trace);
+            return;
+        }
+
+        int hiddenCount = 0;
+        int shownCount = 0;
+        int unchangedCount = 0;
+        int missingCount = 0;
+
+        for (int i = 0; i < _rows.Count; i++)
+        {
+            OpcodeTraceRow row = _rows[i];
+
+            CatalogedPacket? packet = _catalog.PacketAt(row.PacketIndex);
+            if (packet == null)
+            {
+                missingCount++;
+                continue;
+            }
+
+            Character? sessionCharacter = packet.Value.Metadata.Session.Character;
+            bool hide = !ReferenceEquals(sessionCharacter, character);
+
+            if (row.IsHidden == hide)
+            {
+                unchangedCount++;
+                continue;
+            }
+
+            row.IsHidden = hide;
+            if (hide)
+            {
+                hiddenCount++;
+            }
+            else
+            {
+                shownCount++;
+            }
+        }
+
+        if (missingCount > 0)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTracePresenter.ApplyCharacterFilter: " + missingCount
+                + " row(s) had no cataloged packet and were left unchanged", LogLevel.Error);
+        }
+
+        DebugLog.Write(LogChannel.Opcodes,
+            "OpcodeTracePresenter.ApplyCharacterFilter: character=" + character.Name
+            + " hid " + hiddenCount + ", showed " + shownCount + ", " + unchangedCount
+            + " unchanged of " + _rows.Count + " row(s)", LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GetTraceCharacters
+    //
+    // Collects the distinct Characters of the sessions that carried the packets of the current
+    // rows, read from the cataloged packet at each row's PacketIndex.  Sessions with no
+    // Character contribute nothing.  Characters are compared by reference and the result is
+    // sorted by name.
+    //
+    // returns:  A fresh list of the distinct Characters, sorted by name; empty when no row's
+    //           session has a Character.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public List<Character> GetTraceCharacters()
+    {
+        HashSet<Character> seen = new HashSet<Character>(ReferenceEqualityComparer.Instance);
+        List<Character> characters = new List<Character>();
+        int missingCount = 0;
+
+        for (int i = 0; i < _rows.Count; i++)
+        {
+            CatalogedPacket? packet = _catalog.PacketAt(_rows[i].PacketIndex);
+            if (packet == null)
+            {
+                missingCount++;
+                continue;
+            }
+
+            Character? sessionCharacter = packet.Value.Metadata.Session.Character;
+            if (sessionCharacter == null)
+            {
+                continue;
+            }
+
+            if (seen.Add(sessionCharacter))
+            {
+                characters.Add(sessionCharacter);
+            }
+        }
+
+        characters.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.Ordinal));
+
+        if (missingCount > 0)
+        {
+            DebugLog.Write(LogChannel.Opcodes,
+                "OpcodeTracePresenter.GetTraceCharacters: " + missingCount
+                + " row(s) had no cataloged packet", LogLevel.Error);
+        }
+
+        DebugLog.Write(LogChannel.Opcodes,
+            "OpcodeTracePresenter.GetTraceCharacters: found " + characters.Count
+            + " character(s) over " + _rows.Count + " row(s)", LogLevel.Trace);
+
+        return characters;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
