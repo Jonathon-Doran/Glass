@@ -36,6 +36,9 @@ public class InferenceScanner
         _handlers.Add(new InferDeath());
         _handlers.Add(new InferClientUpdate());
         _handlers.Add(new InferCastRequest());
+        _handlers.Add(new InferCastResolution());
+        _handlers.Add(new InferTargetRequest());
+        _handlers.Add(new InferHpUpdate());
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferenceScanner.ctor: " + _handlers.Count + " handlers", LogLevel.Trace);

@@ -86,7 +86,7 @@ public class SessionStore
 
         DebugLog.Write(LogChannel.LowNetwork, "SessionStore.Create: session " + sessionId + " as " + serverType
             + " for " + metadata.LocalIp + ":" + metadata.LocalPort + "->" + 
-            metadata.RemoteIp + ":" + metadata.RemotePort, LogLevel.Info);
+            metadata.RemoteIp + ":" + metadata.RemotePort, LogLevel.Trace);
 
         Session session = new Session(sessionId, metadata.LocalIp, metadata.LocalPort, 
             metadata.RemoteIp, metadata.RemotePort, serverType);
@@ -145,7 +145,7 @@ public class SessionStore
         if (_sessions.TryAdd(key, session))
         {
             DebugLog.Write(LogChannel.LowNetwork, "SessionStore.Add: stored session " + session.SessionId
-                + " for " + key.LocalPort + "->" + key.RemotePort + ", count " + _sessions.Count, LogLevel.Info);
+                + " for " + key.LocalPort + "->" + key.RemotePort + ", count " + _sessions.Count, LogLevel.Trace);
             return true;
         }
 
@@ -186,7 +186,7 @@ public class SessionStore
         _sessions.Remove(key);
 
         DebugLog.Write(LogChannel.LowNetwork, "SessionStore.Remove: removed session " + session.SessionId
-            + " for " + key.LocalPort + "->" + key.RemotePort + ", count " + _sessions.Count, LogLevel.Info);
+            + " for " + key.LocalPort + "->" + key.RemotePort + ", count " + _sessions.Count, LogLevel.Trace);
         return true;
     }
 }

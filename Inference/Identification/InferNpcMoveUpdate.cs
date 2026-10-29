@@ -94,7 +94,7 @@ public class InferNpcMoveUpdate : IInferOpcodes
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "InferNpcMoveUpdate.Infer: wireValue=" + wireValue + " already accepted as "
-                    + AcceptedOpcodes.Instance.GetName(wireValue) + ", skipping", LogLevel.Info);
+                    + AcceptedOpcodes.Instance.GetName(wireValue) + ", skipping", LogLevel.Trace);
                 continue;
             }
             OpcodeStats? statsOrNull = catalog.StatsFor(wireValue);
@@ -116,7 +116,7 @@ public class InferNpcMoveUpdate : IInferOpcodes
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "InferNpcMoveUpdate.Infer: capture below adequacy bar ("
-                    + totalCount + " messages), rank feature abstains", LogLevel.Info);
+                    + totalCount + " messages), rank feature abstains", LogLevel.Trace);
                 rankLogLR = 0.0;
             }
             double histogramLogLR = EvidenceScoring.SizeFitLogLR(stats.SizeHistogram,
@@ -131,7 +131,7 @@ public class InferNpcMoveUpdate : IInferOpcodes
                 + "db rank=" + EvidenceScoring.ToDecibans(rankLogLR).ToString("F1")
                 + "db hist=" + EvidenceScoring.ToDecibans(histogramLogLR).ToString("F1")
                 + "db floor=" + EvidenceScoring.ToDecibans(floorLogLR).ToString("F1")
-                + "db posterior=" + posterior.ToString("F3"), LogLevel.Info);
+                + "db posterior=" + posterior.ToString("F3"), LogLevel.Trace);
             if (posterior < ReportThreshold)
             {
                 continue;

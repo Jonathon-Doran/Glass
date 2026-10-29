@@ -405,7 +405,7 @@ public void Save(DatabaseId databaseId)
                 && ReferenceEquals(indexed, character))
             {
                 // Remove the character from the cache, delete the Zone cache if it is now empty
-                oldTable.Remove(oldSpawnId);
+                //oldTable.Remove(oldSpawnId);
                 if (oldTable.Count == 0)
                 {
                     _charactersByZoneSpawn.Remove(oldZoneId);

@@ -86,6 +86,7 @@ public static class Skills
         { 0x47, "Intimidation" },
         { 0x48, "Berserking" },
         { 0x49, "Taunt" },
+        { 0xe7, "Spells" },
         { 0xFFFFFFFF, "None" }
     };
 

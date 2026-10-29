@@ -70,33 +70,64 @@ public class HandleHpUpdate : OpcodeHandler
         }
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // HandleZoneToClient
     //
-    // Processes zone-to-client traffic
+    // Stores the current and maximum HP from an HP update into the character the update
+    // concerns, found by its spawn id in the session's zone.  When that character is the
+    // session's own character, the update omits the worn HP bonus, so the bonus is added to
+    // both values before storing; otherwise the values are stored as received.
     //
-    // data:      The application payload
-    // metadata:  Packet metadata (timestamp, source/dest)
-    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // data:      The payload of the update.
+    // metadata:  The packet's metadata, carrying its session and receiving character.
+    ///////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        Character? character = null;
-        CharacterId playerId;
-
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
-            playerId = (CharacterId) _extractor.GetUIntAt(_playerIdSlot);
-            character = CharacterRepository.Instance.GetByCharacterId(playerId);
+            SpawnId spawnId = (SpawnId)_extractor.GetUIntAt(_playerIdSlot);
+            uint wireMaxHP = _extractor.GetUIntAt(_maxHPSlot);
+            uint wireCurrentHP = _extractor.GetUIntAt(_currentHPSlot);
 
-            if (character == null)
+            if (metadata.Session == null)
             {
-                DebugLog.Write(LogChannel.Opcodes, _opcodeName + ": no Character with ID '" + playerId + "' in repository; fields not stored.");
+                DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleZoneToClient: no session for spawnId="
+                    + spawnId + "; fields not stored", LogLevel.Warn);
                 return;
             }
 
-            character.MaxHP = _extractor.GetUIntAt(_maxHPSlot);
-            character.CurrentHP = _extractor.GetUIntAt(_currentHPSlot);
+            Character? character = CharacterRepository.Instance.GetBySpawnId(metadata.Session.ZoneId, spawnId);
+            if (character == null)
+            {
+                DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleZoneToClient: no character at zoneId="
+                    + metadata.Session.ZoneId + " spawnId=" + spawnId + "; fields not stored", LogLevel.Warn);
+                return;
+            }
+
+            if (ReferenceEquals(character, metadata.Character) == false)
+            {
+                character.MaxHP = wireMaxHP;
+                character.CurrentHP = wireCurrentHP;
+                DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleZoneToClient: '" + character.Name
+                    + "' reported to another character, stored as received: current " + wireCurrentHP
+                    + ", max " + wireMaxHP, LogLevel.Trace);
+                return;
+            }
+
+            int wornHP = character.SumWornBonuses().HP;
+            if (wornHP < 0)
+            {
+                DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleZoneToClient: '" + character.Name
+                    + "' has negative worn HP bonus " + wornHP + "; fields not stored", LogLevel.Warn);
+                return;
+            }
+
+            character.MaxHP = wireMaxHP + (uint)wornHP;
+            character.CurrentHP = wireCurrentHP + (uint)wornHP;
+            DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleZoneToClient: '" + character.Name
+                + "' reported to itself, worn HP bonus " + wornHP + " added: current " + character.CurrentHP
+                + ", max " + character.MaxHP, LogLevel.Trace);
         }
         finally
         {

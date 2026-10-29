@@ -247,7 +247,10 @@ public partial class OpcodeTracePresenter
         _rows.Clear();
         _rowByPacketIndex.Clear();
         _matches.Clear();
-        _matchCount = 0;
+
+        // the match list is gone, so the cached query and the cursor's match index no longer
+        // describe anything; clearing the query makes the next search rebuild against the new rows
+        SetSearchQuery(null);
 
         for (int packetIndex = 0; packetIndex < filteredPackets.Count; packetIndex++)
         {

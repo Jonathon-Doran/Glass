@@ -4,6 +4,7 @@ using Glass.Core.Memory;
 using Glass.Core.Signals;
 using Glass.Data.Repositories;
 using Glass.Network.Capture;
+using Glass.Network.Client;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using Glass.UI;
@@ -170,9 +171,9 @@ public partial class MainWindow : Window
         DebugLog.AddHandler(LogSink.Aux1LogFile, aux1Handler);
         DebugLog.Route(LogChannel.Database, LogSink.Aux1LogFile);
 
-        GlassDebugLogHandler aux2Handler = new GlassDebugLogHandler("lownetwork.log");
+        GlassDebugLogHandler aux2Handler = new GlassDebugLogHandler("inventory.log");
         DebugLog.AddHandler(LogSink.Aux2LogFile, aux2Handler);
-        DebugLog.Route(LogChannel.LowNetwork, LogSink.Aux2LogFile);
+        DebugLog.Route(LogChannel.Inventory, LogSink.Aux2LogFile);
 
         GlassDebugLogHandler aux3LogHandler = new GlassDebugLogHandler("fields.log");
         DebugLog.AddHandler(LogSink.Aux3LogFile, aux3LogHandler);
@@ -3155,13 +3156,24 @@ public partial class MainWindow : Window
             int displayLength = Math.Min(payloadLength, _analysisMaxHexBytes);
             bool truncated = payloadLength > _analysisMaxHexBytes;
             HexDumpSample dumpSample = new HexDumpSample();
-            dumpSample.Header = "--- Packet " + (packetIndex + 1)
-                + "  " + packet.Metadata.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")
+            dumpSample.Header = "--- Message " + packet.PacketIndex
+                + "  Time: " + packet.Metadata.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")
                 + "  (" + payloadLength + " bytes)"
                 + (truncated ? "  [showing first " + _analysisMaxHexBytes + "]" : "")
-                + " ---" + Environment.NewLine;
-            dumpSample.Header += packet.Metadata.SourceIp + ":" + packet.Metadata.SourcePort + " -> " +
-                packet.Metadata.DestIp + ":" + packet.Metadata.DestPort + Environment.NewLine;
+                + " ---";
+
+            Session? session = packet.Metadata.Session;
+            if (session == null)
+            {
+                DebugLog.Write(LogChannel.InferenceDebug, "MainWindow.AnalyzeOpcode: message "
+                    + packet.PacketIndex + " has no session, ports not shown", LogLevel.Warn);
+                dumpSample.Header += "no session" + Environment.NewLine;
+            }
+            else
+            {
+                dumpSample.Header += session.LocalPort + " <-> " + session.RemotePort + Environment.NewLine;
+            }
+
             dumpSample.Header += "Session " + packet.Metadata.SessionId + " " + name + ", Channel " + StreamAbbrev[packet.Metadata.Channel];
 
             dumpSample.Lines = new List<HexDumpLine>();

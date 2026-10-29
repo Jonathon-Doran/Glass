@@ -271,11 +271,26 @@ public partial class OpcodeTracePresenter
                 return;
             }
 
-            // capture the outgoing match's element before any state changes, for the deferred paint
+            // capture the outgoing match's element before any state changes, for the deferred paint.
+            // an invalidated or out-of-range index means the outgoing match is already gone and
+            // there is no prior cursor span to clear
             FieldDisplayNode? outgoingElement = null;
             if (_state == CursorState.OnMatch)
             {
-                outgoingElement = _owner._matches[(int)_matchIndex].Element;
+                if (_matchIndexValid && _matchIndex < (uint)_owner._matches.Count)
+                {
+                    outgoingElement = _owner._matches[(int)_matchIndex].Element;
+                    DebugLog.Write(LogChannel.Opcodes,
+                        "SearchCursor.MoveToMessage: captured outgoing element at match index "
+                        + _matchIndex, LogLevel.Trace);
+                }
+                else
+                {
+                    DebugLog.Write(LogChannel.Opcodes,
+                        "SearchCursor.MoveToMessage: outgoing match index " + _matchIndex
+                        + " is stale (valid=" + _matchIndexValid + ", count=" + _owner._matches.Count
+                        + "), no prior cursor span to clear", LogLevel.Warn);
+                }
             }
 
             TransitionToRow(row);
