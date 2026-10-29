@@ -761,31 +761,49 @@ public partial class OpcodeTracePresenter
         // StartIndexForRowBackward
         //
         // Resolves the OnRow cursor to the index in the owner's _matches where a backward scan
-        // begins: the last match whose PacketIndex is at or before the named row's PacketIndex.
-        // The match list is in ascending PacketIndex order, so the scan runs from the high end
-        // down and returns the first match it finds at or below the row.  When no match is at or
-        // before the row, found is set false and zero is returned, signaling the backward scan
-        // to leave the cursor unchanged.
+        // begins: the last live match whose PacketIndex is at or before the named row's
+        // PacketIndex.  Matches left from earlier searches, whose Generation is not the owner's
+        // current match generation, are skipped, since they are not in row order with the live
+        // matches.  The scan runs from the high end down and returns the first live match it finds
+        // at or below the row.  When no live match is at or before the row, found is set false and
+        // zero is returned, signaling the backward scan to leave the cursor unchanged.
         //
-        // found:    Set true when a match at or before the row's PacketIndex exists, false when
-        //           none does.
+        // found:    Set true when a live match at or before the row's PacketIndex exists, false
+        //           when none does.
         //
-        // returns:  The subscript into _matches of the last match at or before the row's
+        // returns:  The subscript into _matches of the last live match at or before the row's
         //           PacketIndex when found is true; zero when found is false.
         ///////////////////////////////////////////////////////////////////////////////////////
         private uint StartIndexForRowBackward(out bool found)
         {
             uint count = (uint)_owner._matches.Count;
+            uint skipped = 0u;
+
             for (uint i = count; i > 0u; i = i - 1u)
             {
                 uint candidateIndex = i - 1u;
-                if (_owner._matches[(int)candidateIndex].PacketIndex <= _rowPacketIndex)
+                SearchMatch candidate = _owner._matches[(int)candidateIndex];
+
+                if (candidate.Generation != _owner._matchGeneration)
                 {
+                    skipped = skipped + 1u;
+                    continue;
+                }
+
+                if (candidate.PacketIndex <= _rowPacketIndex)
+                {
+                    DebugLog.Write(LogChannel.Opcodes,
+                        "SearchCursor.StartIndexForRowBackward: row " + _rowPacketIndex + " starts at index "
+                        + candidateIndex + " (packetIndex=" + candidate.PacketIndex + "), skipped " + skipped
+                        + " stale match(es)", LogLevel.Trace);
                     found = true;
                     return candidateIndex;
                 }
             }
 
+            DebugLog.Write(LogChannel.Opcodes,
+                "SearchCursor.StartIndexForRowBackward: no live match at or before row " + _rowPacketIndex
+                + ", skipped " + skipped + " stale match(es)", LogLevel.Trace);
             found = false;
             return 0u;
         }
@@ -794,23 +812,42 @@ public partial class OpcodeTracePresenter
         // StartIndexForRow
         //
         // Resolves the OnRow cursor to the index in the owner's _matches where a forward scan
-        // begins: the first match whose PacketIndex is at or after the named row's PacketIndex.
-        // Returns the match count when no match is at or after the row, so the forward scan sees
-        // a past-the-end start and applies its end-of-list handling.
+        // begins: the first live match whose PacketIndex is at or after the named row's
+        // PacketIndex.  Matches left from earlier searches, whose Generation is not the owner's
+        // current match generation, are skipped, since they are not in row order with the live
+        // matches.  Returns the match count when no live match is at or after the row, so the
+        // forward scan sees a past-the-end start and applies its end-of-list handling.
         //
-        // returns:  The subscript into _matches of the first match at or after the row's
+        // returns:  The subscript into _matches of the first live match at or after the row's
         //           PacketIndex, or the match count when none qualifies.
         ///////////////////////////////////////////////////////////////////////////////////////
         private uint StartIndexForRow()
         {
+            uint skipped = 0u;
+
             for (uint i = 0u; i < (uint)_owner._matches.Count; i = i + 1u)
             {
-                if (_owner._matches[(int)i].PacketIndex >= _rowPacketIndex)
+                SearchMatch candidate = _owner._matches[(int)i];
+
+                if (candidate.Generation != _owner._matchGeneration)
                 {
+                    skipped = skipped + 1u;
+                    continue;
+                }
+
+                if (candidate.PacketIndex >= _rowPacketIndex)
+                {
+                    DebugLog.Write(LogChannel.Opcodes,
+                        "SearchCursor.StartIndexForRow: row " + _rowPacketIndex + " starts at index " + i
+                        + " (packetIndex=" + candidate.PacketIndex + "), skipped " + skipped
+                        + " stale match(es)", LogLevel.Trace);
                     return i;
                 }
             }
 
+            DebugLog.Write(LogChannel.Opcodes,
+                "SearchCursor.StartIndexForRow: no live match at or after row " + _rowPacketIndex
+                + ", skipped " + skipped + " stale match(es)", LogLevel.Trace);
             return (uint)_owner._matches.Count;
         }
 
