@@ -92,7 +92,7 @@ public class HandleManaUpdate : OpcodeHandler
                 return;
             }
 
-            character.MaxMana = _extractor.GetUIntAt(_maxManaSlot);
+            //character.MaxMana = _extractor.GetUIntAt(_maxManaSlot);
             character.CurrentMana = _extractor.GetUIntAt(_currentManaSlot);
         }
         finally

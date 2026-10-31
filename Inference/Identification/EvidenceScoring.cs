@@ -1208,44 +1208,37 @@ public static class EvidenceScoring
     ///////////////////////////////////////////////////////////////////////////////////////////
     // SizeFitLogLR
     //
-    // Log likelihood ratio from how well a candidate's length support fits a baseline
-    // length distribution.  This feature can only refute or stand aside; it never
-    // supports.  Only presence and absence of lengths are scored — the proportions of a
-    // length mix are behavior-dependent and deliberately contribute nothing, so a capture
-    // where the mix drifts costs the true opcode nothing as long as the lengths appear.
+    // Log likelihood ratio from how closely a candidate's message lengths sit to the length
+    // range of a baseline distribution.  This feature can only support or stand aside; it
+    // never refutes.  A fixed budget is divided evenly across the candidate's messages, and
+    // each message earns its share scaled by a closeness weight:
     //
-    //   missing length:  a baseline length absent from the candidate.  Under the
-    //                    hypothesis each message had chance p of taking it, so absence in
-    //                    nEff effective messages costs
-    //                        nEff * log(1 - p),  p = (1 - escapeMass) * baseline share
-    //                    A dominant length missing is damning; a rare one, negligible.
+    //   inside the baseline range (smallest to largest baseline length):  weight 1
+    //   outside the range:  weight falls linearly with distance in bytes from the nearest
+    //                       range edge, reaching 0 at falloffBytes and staying 0 beyond
     //
-    //   novel length:    an observed length the baseline never saw costs log(escapeMass)
-    //                    once per distinct length — message counts within a length are
-    //                    burst-correlated and add no independent evidence.
+    // Lengths the baseline holds but the candidate lacks cost nothing.  Because the budget
+    // is fixed, the message count cannot swing the result.  When the candidate's messages
+    // are less than minimumShare of the capture, the feature abstains.
     //
-    //   shared length:   present in both, contributes zero.
+    // observedHistogram:  Message count per length for the candidate.
+    // baselineHistogram:  Message count per length for the opcode at prior patch levels.
+    //                     Only its lengths are used, to set the range.
+    // totalCount:         Total message count in the capture.
+    // minimumShare:       Smallest fraction of the capture the candidate must hold for the
+    //                     feature to score, from 0 to 1.
+    // budgetLogLR:        Natural-log likelihood ratio earned when every message lies
+    //                     inside the baseline range.  Positive.
+    // falloffBytes:       Distance outside the range at which a message's weight reaches 0.
+    //                     At least 1.
     //
-    // escapeMass is estimated from the baseline by Good-Turing (the fraction of baseline
-    // messages whose length appeared exactly once), floored at escapeFloor and capped at
-    // one half.  nEff is the message count capped at effectiveSampleCap, the
-    // effective-sample-size correction for burst correlation.  The result is never
-    // positive and is clamped at -maxAbsLogLR.
-    //
-    // observedHistogram:   Message count per length for the candidate, from OpcodeStats.
-    // baselineHistogram:   Message count per length for the opcode at prior patch levels.
-    // escapeFloor:         Minimum escape mass.  Small and nonzero.
-    // effectiveSampleCap:  Largest message count credited as independent evidence.  At
-    //                      least 1.
-    // maxAbsLogLR:         Clamp magnitude for the returned value.
-    //
-    // Returns:  Natural-log likelihood ratio from length support fit, at most zero,
-    //           clamped.  Zero when either histogram is null or empty or arguments are
-    //           invalid.
+    // Returns:  Natural-log likelihood ratio from 0 to budgetLogLR.  Zero when either
+    //           histogram is null or empty, an argument is invalid, or the candidate is
+    //           below minimumShare.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public static double SizeFitLogLR(Dictionary<int, int>? observedHistogram,
-        Dictionary<int, int>? baselineHistogram, double escapeFloor, int effectiveSampleCap,
-        double maxAbsLogLR)
+        Dictionary<int, int>? baselineHistogram, ulong totalCount, double minimumShare,
+        double budgetLogLR, int falloffBytes)
     {
         if (observedHistogram == null || observedHistogram.Count == 0
             || baselineHistogram == null || baselineHistogram.Count == 0)
@@ -1255,85 +1248,98 @@ public static class EvidenceScoring
                 LogLevel.Trace);
             return 0.0;
         }
-        if (effectiveSampleCap < 1)
+        if (falloffBytes < 1)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "EvidenceScoring.SizeFitLogLR: effectiveSampleCap " + effectiveSampleCap
+                "EvidenceScoring.SizeFitLogLR: falloffBytes " + falloffBytes
                 + " below 1, returning 0", LogLevel.Error);
             return 0.0;
         }
-
-        double baselineTotal = 0.0;
-        int singletonCount = 0;
-        foreach (KeyValuePair<int, int> baselineEntry in baselineHistogram)
-        {
-            baselineTotal += baselineEntry.Value;
-            if (baselineEntry.Value == 1)
-            {
-                singletonCount++;
-            }
-        }
-        double escapeMass = singletonCount / baselineTotal;
-        if (escapeMass < escapeFloor)
-        {
-            escapeMass = escapeFloor;
-        }
-        if (escapeMass > 0.5)
+        if (budgetLogLR <= 0.0)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "EvidenceScoring.SizeFitLogLR: escape mass " + escapeMass.ToString("F3")
-                + " capped at 0.5, baseline is mostly singletons", LogLevel.Warn);
-            escapeMass = 0.5;
+                "EvidenceScoring.SizeFitLogLR: budgetLogLR " + budgetLogLR.ToString("F3")
+                + " not positive, returning 0", LogLevel.Error);
+            return 0.0;
+        }
+        if (totalCount == 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.SizeFitLogLR: capture has no messages, returning 0",
+                LogLevel.Warn);
+            return 0.0;
         }
 
-        double observedTotal = 0.0;
-        foreach (KeyValuePair<int, int> entry in observedHistogram)
-        {
-            observedTotal += entry.Value;
-        }
-        double effectiveSamples = observedTotal;
-        if (effectiveSamples > effectiveSampleCap)
-        {
-            effectiveSamples = effectiveSampleCap;
-        }
-
-        double logLR = 0.0;
-        int missingLengths = 0;
+        int rangeLow = int.MaxValue;
+        int rangeHigh = int.MinValue;
         foreach (KeyValuePair<int, int> baselineEntry in baselineHistogram)
         {
-            if (observedHistogram.ContainsKey(baselineEntry.Key))
+            if (baselineEntry.Key < rangeLow)
             {
-                continue;
+                rangeLow = baselineEntry.Key;
             }
-            missingLengths++;
-            double presenceChance = (1.0 - escapeMass) * (baselineEntry.Value / baselineTotal);
-            logLR += effectiveSamples * Math.Log(1.0 - presenceChance);
+            if (baselineEntry.Key > rangeHigh)
+            {
+                rangeHigh = baselineEntry.Key;
+            }
         }
 
-        int novelLengths = 0;
+        ulong observedTotal = 0;
         foreach (KeyValuePair<int, int> entry in observedHistogram)
         {
-            if (baselineHistogram.ContainsKey(entry.Key))
-            {
-                continue;
-            }
-            novelLengths++;
-            logLR += Math.Log(escapeMass);
+            observedTotal += (ulong)entry.Value;
+        }
+        if (observedTotal == 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.SizeFitLogLR: candidate histogram holds no messages, returning 0",
+                LogLevel.Warn);
+            return 0.0;
         }
 
-        if (logLR > 0.0)
+        double share = (double)observedTotal / totalCount;
+        if (share < minimumShare)
         {
-            logLR = 0.0;
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.SizeFitLogLR: share " + share.ToString("F3")
+                + " below minimum " + minimumShare.ToString("F3") + ", abstaining",
+                LogLevel.Trace);
+            return 0.0;
         }
-        if (logLR < -maxAbsLogLR)
+
+        double weightedCount = 0.0;
+        foreach (KeyValuePair<int, int> entry in observedHistogram)
         {
-            logLR = -maxAbsLogLR;
+            int distance = 0;
+            if (entry.Key < rangeLow)
+            {
+                distance = rangeLow - entry.Key;
+            }
+            else if (entry.Key > rangeHigh)
+            {
+                distance = entry.Key - rangeHigh;
+            }
+
+            double weight = 1.0 - ((double)distance / falloffBytes);
+            if (weight < 0.0)
+            {
+                weight = 0.0;
+            }
+            weightedCount += weight * entry.Value;
+
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.SizeFitLogLR: length " + entry.Key + " count " + entry.Value
+                + " distance " + distance + " weight " + weight.ToString("F3"),
+                LogLevel.Trace);
         }
+
+        double closeFraction = weightedCount / observedTotal;
+        double logLR = budgetLogLR * closeFraction;
 
         DebugLog.Write(LogChannel.InferenceDebug,
-            "EvidenceScoring.SizeFitLogLR: messages=" + observedTotal
-            + " nEff=" + effectiveSamples + " escape=" + escapeMass.ToString("F4")
-            + " missing=" + missingLengths + " novel=" + novelLengths
+            "EvidenceScoring.SizeFitLogLR: range " + rangeLow + "-" + rangeHigh
+            + " messages=" + observedTotal + " share=" + share.ToString("F3")
+            + " closeFraction=" + closeFraction.ToString("F3")
             + " logLR=" + logLR.ToString("F3"), LogLevel.Trace);
         return logLR;
     }
@@ -1551,6 +1557,57 @@ public static class EvidenceScoring
             + " othersAll=" + otherOpcodesAllSatisfying + "/" + otherOpcodeCount
             + " q=" + q.ToString("F3") + " logLR=" + logLR.ToString("F3"), LogLevel.Trace);
         return logLR;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ShareThresholdLogLR
+    //
+    // Log likelihood ratio from whether a candidate's share of the capture's messages
+    // reaches a minimum.  This feature can only support or stand aside; it never refutes.
+    // A candidate at or above minimumShare earns the full budget; one below it earns 0.
+    // The message count beyond the threshold does not change the result.
+    //
+    // count:         The candidate's message count.
+    // totalCount:    Total message count in the capture.
+    // minimumShare:  Fraction of the capture the candidate must hold, from 0 to 1.
+    // budgetLogLR:   Natural-log likelihood ratio earned at or above minimumShare.  Positive.
+    //
+    // Returns:  budgetLogLR when the share reaches minimumShare, otherwise 0.  Zero when
+    //           totalCount is zero or budgetLogLR is not positive.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public static double ShareThresholdLogLR(ulong count, ulong totalCount, double minimumShare,
+        double budgetLogLR)
+    {
+        if (totalCount == 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.ShareThresholdLogLR: capture has no messages, returning 0",
+                LogLevel.Warn);
+            return 0.0;
+        }
+        if (budgetLogLR <= 0.0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.ShareThresholdLogLR: budgetLogLR " + budgetLogLR.ToString("F3")
+                + " not positive, returning 0", LogLevel.Error);
+            return 0.0;
+        }
+
+        double share = (double)count / totalCount;
+        if (share < minimumShare)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "EvidenceScoring.ShareThresholdLogLR: count=" + count + " total=" + totalCount
+                + " share " + share.ToString("F3") + " below " + minimumShare.ToString("F3")
+                + ", returning 0", LogLevel.Trace);
+            return 0.0;
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "EvidenceScoring.ShareThresholdLogLR: count=" + count + " total=" + totalCount
+            + " share " + share.ToString("F3") + " meets " + minimumShare.ToString("F3")
+            + ", logLR " + budgetLogLR.ToString("F3"), LogLevel.Trace);
+        return budgetLogLR;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

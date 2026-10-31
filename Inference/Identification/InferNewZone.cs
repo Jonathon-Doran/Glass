@@ -22,8 +22,8 @@ public class InferNewZone : IInferOpcodes
     private const double LeakProbability = 0.001;          // per-item allowance for a failed predicate
     private const double MaxAbsLogLR = 12.0;               // clamp per feature, roughly +/- 52 decibans
     private const int RangeLow = 310;                      // SizeRangeLogLR: smallest NewZone length seen across captures
-    private const int RangeHigh = 346;                     // SizeRangeLogLR: largest NewZone length seen across captures
-    private const double RangeDistancePenalty = 0.5;       // SizeRangeLogLR: log-LR per byte outside the range
+    private const int RangeHigh = 370;                     // SizeRangeLogLR: largest NewZone length seen across captures
+    private const double RangeDistancePenalty = 0.05;       // SizeRangeLogLR: log-LR per byte outside the range
     private const double ReportThreshold = 0.40;            // minimum posterior to emit a proposal
     private static readonly Dictionary<int, int> BaselineSizeHistogram = new Dictionary<int, int>
     {

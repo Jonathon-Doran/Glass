@@ -39,6 +39,7 @@ public class InferenceScanner
         _handlers.Add(new InferCastResolution());
         _handlers.Add(new InferTargetRequest());
         _handlers.Add(new InferHpUpdate());
+        _handlers.Add(new InferManaUpdate());
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferenceScanner.ctor: " + _handlers.Count + " handlers", LogLevel.Trace);
@@ -48,8 +49,9 @@ public class InferenceScanner
     // Scan
     //
     // Runs each handler against the catalog in order and concatenates their proposals.
-    // A handler that throws or returns null is logged and skipped; the scan continues
-    // with the remaining handlers.
+    // A handler whose opcode already has an accepted wire value is skipped.  A handler that
+    // throws or returns null is logged and skipped; the scan continues with the remaining
+    // handlers.
     //
     // catalog:  The session's cataloged packets.
     //
@@ -72,6 +74,11 @@ public class InferenceScanner
         for (int handlerIndex = 0; handlerIndex < _handlers.Count; handlerIndex++)
         {
             IInferOpcodes handler = _handlers[handlerIndex];
+
+            if (AcceptedOpcodes.Instance.WireValueFor(handler.OpcodeName).Exists)
+            {
+                continue;
+            }
 
             List<InferenceProposal> handlerProposals;
             try

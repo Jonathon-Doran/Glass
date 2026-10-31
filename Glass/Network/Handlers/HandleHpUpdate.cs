@@ -107,8 +107,8 @@ public class HandleHpUpdate : OpcodeHandler
 
             if (ReferenceEquals(character, metadata.Character) == false)
             {
-                character.MaxHP = wireMaxHP;
-                character.CurrentHP = wireCurrentHP;
+               // character.MaxHP = wireMaxHP;
+                // character.CurrentHP = wireCurrentHP;
                 DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleZoneToClient: '" + character.Name
                     + "' reported to another character, stored as received: current " + wireCurrentHP
                     + ", max " + wireMaxHP, LogLevel.Trace);
@@ -123,8 +123,8 @@ public class HandleHpUpdate : OpcodeHandler
                 return;
             }
 
-            character.MaxHP = wireMaxHP + (uint)wornHP;
-            character.CurrentHP = wireCurrentHP + (uint)wornHP;
+        //    character.MaxHP = wireMaxHP + (uint)wornHP;
+          //  character.CurrentHP = wireCurrentHP + (uint)wornHP;
             DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleZoneToClient: '" + character.Name
                 + "' reported to itself, worn HP bonus " + wornHP + " added: current " + character.CurrentHP
                 + ", max " + character.MaxHP, LogLevel.Trace);

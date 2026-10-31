@@ -2960,9 +2960,9 @@ public partial class MainWindow : Window
         selected.Status = "Accepted";
         ProposalGrid.Items.Refresh();
         AcceptedOpcodes.Instance.Accept(selected.WireValue, selected.Label);
-
+        String opcodeName = AcceptedOpcodes.Instance.GetName(selected.WireValue);
         DebugLog.Write(LogChannel.InferenceDebug,
-            "Button_AcceptProposal_Click: accepted " + selected.OpcodeHex, LogLevel.Trace);
+            "Button_AcceptProposal_Click: accepted " + selected.OpcodeHex + " as " + opcodeName, LogLevel.Info);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
