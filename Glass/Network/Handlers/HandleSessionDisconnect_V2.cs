@@ -106,33 +106,4 @@ public class HandleSessionDisconnect_V2 : OpcodeHandler
         root.Text = "Session Disconnect";
         return root;
     }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // ResolveVersion
-    //
-    // Returns the opcode version for a packet.
-    //
-    // data:      The application payload.
-    // metadata:  Packet metadata
-    //
-    // Returns:   The resolved version number.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public override uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
-    {
-        // We have seen packets with a flags byte.  Since these are not application packets, the header info is not
-        // completely removed.
-
-        switch (data.Length)
-        {
-            case 8:
-                return 1;
-
-            case 9:
-                return 2;
-        }
-
-        return 0;
-    }
 }
-
-

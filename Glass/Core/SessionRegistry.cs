@@ -24,9 +24,18 @@ public class SessionRegistry
 
     public event Action? AllSessionsDisconnected;
 
-    private int _sessionCount = 0;
+
     private readonly Dictionary<string, SessionEntry> _sessions = new();
     private readonly object _lock = new();
+
+    // This is a count of ISX sessions, not wire sessions
+    private int _isxSessionCount = 0;
+
+    // Identified zone sessions that have not yet closed
+    private uint _liveZoneSessions = 0;
+
+    // Set when every ISX session has disconnected and teardown is waiting on the zone sessions
+    private bool _teardownPending = false;
 
     // Represents a single active EverQuest session.
     public class SessionEntry
@@ -135,11 +144,11 @@ public class SessionRegistry
             entry.CharacterName = characterName;
             entry.Pid = pid;
             entry.Hwnd = hwnd;
-            _sessionCount++;
+            _isxSessionCount++;
         }
 
 
-        DebugLog.Write(LogChannel.Sessions, $"SessionRegistry.OnSessionConnected: session={sessionName} count={_sessionCount} character={characterName} pid={pid} hwnd={hwnd}", LogLevel.Info);
+        DebugLog.Write(LogChannel.Sessions, $"SessionRegistry.OnSessionConnected: session={sessionName} count={_isxSessionCount} character={characterName} pid={pid} hwnd={hwnd}", LogLevel.Info);
 
         return entry;
     }
@@ -153,7 +162,9 @@ public class SessionRegistry
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void OnSessionDisconnected(string sessionName)
     {
-        DebugLog.Write(LogChannel.Sessions, $"SessionRegistry.OnSessionDisconnected: session={sessionName} count will be={_sessionCount - 1}.", LogLevel.Info);
+        bool allIsxDisconnected = false;
+
+        DebugLog.Write(LogChannel.Sessions, $"SessionRegistry.OnSessionDisconnected: session={sessionName} count will be={_isxSessionCount - 1}.", LogLevel.Info);
 
         SessionEntry? session = GetSession(sessionName);
         if (session == null)
@@ -162,6 +173,7 @@ public class SessionRegistry
             return;
         }
 
+        // Check for a valid character associated with the ISX session
         if (session.CharacterDatabaseId < 0)
         {
             DebugLog.Write(LogChannel.Database, $"SessionRegistry.OnSessionDisconnected: session '{sessionName}' has no bound character, nothing to save.", LogLevel.Error);
@@ -170,22 +182,23 @@ public class SessionRegistry
 
         CharacterRepository.Instance.Save(session.CharacterDatabaseId);
 
-        bool fireAllDisconnected = false;
         lock (_lock)
         {
             _sessions.Remove(sessionName);
-            _sessionCount--;
-            if (_sessionCount <= 0)
+            _isxSessionCount--;
+            if (_isxSessionCount <= 0)
             {
-                _sessionCount = 0;
-                fireAllDisconnected = true;
+                _isxSessionCount = 0;
+                _teardownPending = true;
+                allIsxDisconnected = true;
             }
         }
 
-        if (fireAllDisconnected)
+        if (allIsxDisconnected)
         {
-            DebugLog.Write(LogChannel.Sessions, "SessionRegistry.OnSessionDisconnected: all sessions disconnected.");
-            AllSessionsDisconnected?.Invoke();
+            DebugLog.Write(LogChannel.Sessions, "SessionRegistry.OnSessionDisconnected: all ISX sessions disconnected, "
+                + "teardown pending.", LogLevel.Trace);
+            RaiseAllSessionsDisconnectedIfComplete();
         }
     }
 
@@ -261,6 +274,8 @@ public class SessionRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void IdentifySession(Character character, PacketMetadata metadata)
     {
+        _liveZoneSessions++;
+
         metadata.Session.SetCharacter(character);
 
         lock (_lock)
@@ -284,12 +299,47 @@ public class SessionRegistry
 
                 DebugLog.Write(LogChannel.SignalBus, "SessionRegistry.IdentifySession: published SignalSessionAdded "
                     + metadata.Session.SessionId + " for " + character.Name, LogLevel.Trace);
+
+                return;
             }
         }
 
         DebugLog.Write(LogChannel.LowNetwork, "SessionRegistry.IdentifySession: session " + metadata.Session.SessionId
             + " is character " + character.Name + " but no ISXGlass session entry is registered for that character",
             LogLevel.Warn);
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // RaiseAllSessionsDisconnectedIfComplete
+    //
+    // Raises AllSessionsDisconnected when every ISX session has disconnected and no identified zone session
+    // remains open.  The pending flag is cleared when the event is raised, so it is raised once per profile.
+    // When either side is still open, nothing is raised.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void RaiseAllSessionsDisconnectedIfComplete()
+    {
+        lock (_lock)
+        {
+            if (!_teardownPending)
+            {
+                DebugLog.Write(LogChannel.Sessions, "SessionRegistry.RaiseAllSessionsDisconnectedIfComplete: "
+                    + "ISX sessions still connected, not raising.", LogLevel.Trace);
+                return;
+            }
+
+            if (_liveZoneSessions > 0)
+            {
+                DebugLog.Write(LogChannel.Sessions, "SessionRegistry.RaiseAllSessionsDisconnectedIfComplete: "
+                    + _liveZoneSessions + " zone sessions still open, not raising.", LogLevel.Trace);
+                return;
+            }
+
+            _teardownPending = false;
+        }
+
+        DebugLog.Write(LogChannel.Sessions, "SessionRegistry.RaiseAllSessionsDisconnectedIfComplete: ISX and zone "
+            + "sessions all closed, raising AllSessionsDisconnected.", LogLevel.Trace);
+        AllSessionsDisconnected?.Invoke();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -304,6 +354,7 @@ public class SessionRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void ZoneSessionClosing(Session session)
     {
+        // We only handle Zone sessions here
         if (session.ServerType != ServerType.Zone)
         {
             DebugLog.Write(LogChannel.Sessions, "SessionRegistry.ZoneSessionClosing: session " + session.SessionId
@@ -311,11 +362,20 @@ public class SessionRegistry
             return;
         }
 
+        // And we must know what the zone is...
         if (!session.ZoneId.Exists)
         {
             DebugLog.Write(LogChannel.Sessions, "SessionRegistry.ZoneSessionClosing: zone session " + session.SessionId
                 + " never recorded a zone, nothing to release.", LogLevel.Warn);
             return;
+        }
+
+        lock (_lock)
+        {
+            _liveZoneSessions--;
+
+            DebugLog.Write(LogChannel.Sessions, "SessionRegistry.ZoneSessionClosing: session " + session.SessionId
+                + " removed from live zone sessions, " + _liveZoneSessions + " live.", LogLevel.Trace);
         }
 
         uint remaining = ZoneRepository.Instance.SessionLeft(session.ZoneId);
@@ -329,5 +389,7 @@ public class SessionRegistry
         DebugLog.Write(LogChannel.Sessions, "SessionRegistry.ZoneSessionClosing: session " + session.SessionId
             + " was the last in zoneId=" + session.ZoneId + ", saving zone.", LogLevel.Info);
         MobRepository.Instance.SaveZoneMobs(session.ZoneId);
+
+        RaiseAllSessionsDisconnectedIfComplete();
     }
 }

@@ -638,18 +638,25 @@ public partial class MainWindow : Window
                 break;
         }
     }
-
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // OnAllSessionsDisconnected
     //
-    // Called when all EQ sessions have disconnected.
-    // Clears the active profile and stops focus tracking.
+    // Called when all EQ sessions have disconnected.  Queues the protocol stack teardown and the
+    // tools menu update to the UI thread, so they run after the current packet has finished
+    // dispatch.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void OnAllSessionsDisconnected()
     {
-        DebugLog.Write(LogChannel.Sessions, "MainWindow.OnAllSessionsDisconnected: all sessions disconnected, clearing active profile.", LogLevel.Trace);
-        ProtocolStackBootstrap.Teardown();
-        UpdateToolsMenuState();
+        DebugLog.Write(LogChannel.Sessions, "MainWindow.OnAllSessionsDisconnected: all sessions disconnected, "
+            + "queueing teardown to the UI thread.", LogLevel.Trace);
+
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            DebugLog.Write(LogChannel.Sessions, "MainWindow.OnAllSessionsDisconnected: clearing active profile.",
+                LogLevel.Trace);
+            ProtocolStackBootstrap.Teardown();
+            UpdateToolsMenuState();
+        }));
     }
 
 

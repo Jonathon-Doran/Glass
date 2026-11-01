@@ -128,6 +128,8 @@ public class HandleSessionDisconnect_V1 : OpcodeHandler
 
             case 9:
                 return 2;
+            case 16:
+                return 3;
         }
 
         return 0;

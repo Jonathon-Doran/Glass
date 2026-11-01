@@ -19,8 +19,9 @@ public class HandleSessionResponse : OpcodeHandler
     private readonly CollectionHandle _collectionHandle;
     private readonly GateDefinitionHandle _top_level_gate;
 
-    private readonly SlotId _sessionIdSlot;
-    private readonly SlotId _maxLengthSlot;
+    private readonly SlotId _sessionId_Slot;
+    private readonly SlotId _maxLength_Slot;
+    private readonly SlotId _sessionKey_Slot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleSessionResponse (constructor)
@@ -48,8 +49,9 @@ public class HandleSessionResponse : OpcodeHandler
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_SessionResponse");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
-        _sessionIdSlot = _registry.IndexOfField(_collectionHandle, "session_id");
-        _maxLengthSlot = _registry.IndexOfField(_collectionHandle, "max_length");
+        _sessionId_Slot = _registry.IndexOfField(_collectionHandle, "session_id");
+        _maxLength_Slot = _registry.IndexOfField(_collectionHandle, "max_length");
+        _sessionKey_Slot = _registry.IndexOfField(_collectionHandle, "session_key");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -64,12 +66,14 @@ public class HandleSessionResponse : OpcodeHandler
     {
         uint sessionId;
         uint maxLength;
+        uint sessionKey;
 
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
-            sessionId = _extractor.GetUIntAt(_sessionIdSlot);
-            maxLength = _extractor.GetUIntAt(_maxLengthSlot);
+            sessionId = _extractor.GetUIntAt(_sessionId_Slot);
+            maxLength = _extractor.GetUIntAt(_maxLength_Slot);
+            sessionKey = _extractor.GetUIntAt(_sessionKey_Slot);
         }
         finally
         {
@@ -95,8 +99,9 @@ public class HandleSessionResponse : OpcodeHandler
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
-            FieldNodes.AddUIntNode(_extractor, _sessionIdSlot, "Session ID", root);
-            FieldNodes.AddUIntNode(_extractor, _maxLengthSlot, "Maximum Length", root);
+            FieldNodes.AddUIntNode(_extractor, _sessionId_Slot, "Session ID", root);
+            FieldNodes.AddUIntNode(_extractor, _maxLength_Slot, "Maximum Length", root);
+            FieldNodes.AddUIntNode(_extractor, _sessionKey_Slot, "Session Key", root, "X4");
         }
         finally
         {
