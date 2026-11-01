@@ -4,6 +4,7 @@ using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
+using Glass.World;
 using System;
 using System.Security.Policy;
 namespace Glass.Network.Handlers;
@@ -151,8 +152,9 @@ public class HandleNpcMoveUpdate : OpcodeHandler
                 spawn.X = x;
                 spawn.Y = y;
                 spawn.Z = z;
+                spawn.UpdatePosition(new Position(x, y, z));
                 spawn.Observed = metadata.Timestamp;
-            }    
+            }
         }
         finally
         {

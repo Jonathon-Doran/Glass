@@ -96,6 +96,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
     // recorded under the receiving character's zone: its mob type is looked up or created by
     // zone and base name, and the spawn record is created on first sight and refreshed with the
     // decoded field values on every sight.
+    // A spawn first seen after the receiving session is established is marked as a spawn point.
     //
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
@@ -229,9 +230,17 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             spawn.SpawnId = (SpawnId)spawnId;
             spawn.MobId = mobType.Id;
             spawn.Observed = metadata.Timestamp;
+            spawn.IsSpawnPoint = metadata.Session.Established;
             MobRepository.Instance.AddSpawn(spawn);
             DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: created new record for " + name + ", zoneId=" + zoneId
                 + " spawnId=0x" + spawnId.ToString("X4") + " mobId=" + mobType.Id + ".", LogLevel.Trace);
+
+            if (spawn.IsSpawnPoint)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: '" + name + "' spawnId=0x"
+                    + spawnId.ToString("X4") + " appeared after session " + metadata.Session.SessionId
+                    + " was established; marked as a spawn point.", LogLevel.Trace);
+            }
         }
 
         // We have the spawn by reference from above, so fill in the data

@@ -47,7 +47,9 @@ public class MobSightingGateway
     // InsertAll
     //
     // Inserts one MobSightings row per given Spawn in a single transaction.  A spawn whose MobId is None
-    // is skipped and logged at Warn.  A failure rolls the transaction back, leaving no rows from this call.
+    // is skipped and logged at Warn.  A spawn point's spawn position is written to the spawn coordinate
+    // columns; a spawn with no spawn position writes NULL there.  A failure rolls the transaction back,
+    // leaving no rows from this call.
     //
     // spawns:  The spawn records to write.
     //
@@ -71,8 +73,10 @@ public class MobSightingGateway
             using SqliteCommand cmd = conn.CreateCommand();
             cmd.Transaction = tx;
             cmd.CommandText = @"
-                INSERT INTO MobSightings (mob_id, zone_id, x, y, z, level, observed)
-                VALUES (@mob_id, @zone_id, @x, @y, @z, @level, @observed)";
+                INSERT INTO MobSightings (mob_id, zone_id, x, y, z, level, observed,
+                                          is_spawn_point, spawn_x, spawn_y, spawn_z)
+                VALUES (@mob_id, @zone_id, @x, @y, @z, @level, @observed,
+                        @is_spawn_point, @spawn_x, @spawn_y, @spawn_z)";
             SqliteParameter mobIdParam = cmd.Parameters.Add("@mob_id", SqliteType.Integer);
             SqliteParameter zoneIdParam = cmd.Parameters.Add("@zone_id", SqliteType.Integer);
             SqliteParameter xParam = cmd.Parameters.Add("@x", SqliteType.Real);
@@ -80,9 +84,14 @@ public class MobSightingGateway
             SqliteParameter zParam = cmd.Parameters.Add("@z", SqliteType.Real);
             SqliteParameter levelParam = cmd.Parameters.Add("@level", SqliteType.Integer);
             SqliteParameter observedParam = cmd.Parameters.Add("@observed", SqliteType.Text);
+            SqliteParameter isSpawnPointParam = cmd.Parameters.Add("@is_spawn_point", SqliteType.Integer);
+            SqliteParameter spawnXParam = cmd.Parameters.Add("@spawn_x", SqliteType.Real);
+            SqliteParameter spawnYParam = cmd.Parameters.Add("@spawn_y", SqliteType.Real);
+            SqliteParameter spawnZParam = cmd.Parameters.Add("@spawn_z", SqliteType.Real);
 
             uint inserted = 0;
             uint skipped = 0;
+            uint spawnPoints = 0;
 
             foreach (Spawn spawn in spawns)
             {
@@ -101,13 +110,40 @@ public class MobSightingGateway
                 zParam.Value = spawn.Z;
                 levelParam.Value = spawn.Level;
                 observedParam.Value = spawn.Observed.ToString("o");
+                isSpawnPointParam.Value = spawn.IsSpawnPoint ? 1 : 0;
+
+                if (spawn.SpawnPosition != null)
+                {
+                    spawnXParam.Value = spawn.SpawnPosition.X;
+                    spawnYParam.Value = spawn.SpawnPosition.Y;
+                    spawnZParam.Value = spawn.SpawnPosition.Z;
+                }
+                else
+                {
+                    spawnXParam.Value = DBNull.Value;
+                    spawnYParam.Value = DBNull.Value;
+                    spawnZParam.Value = DBNull.Value;
+
+                    if (spawn.IsSpawnPoint)
+                    {
+                        DebugLog.Write(LogChannel.Database, "MobSightingGateway.InsertAll: zoneId=" + spawn.ZoneId
+                            + " spawnId=" + spawn.SpawnId + " is a spawn point with no spawn position.",
+                            LogLevel.Trace);
+                    }
+                }
+
+                if (spawn.IsSpawnPoint)
+                {
+                    spawnPoints++;
+                }
+
                 cmd.ExecuteNonQuery();
                 inserted++;
             }
 
             tx.Commit();
-            DebugLog.Write(LogChannel.Database, "MobSightingGateway.InsertAll: committed " + inserted + " rows, "
-                + skipped + " skipped.", LogLevel.Trace);
+            DebugLog.Write(LogChannel.Database, "MobSightingGateway.InsertAll: committed " + inserted + " rows ("
+                + spawnPoints + " spawn points), " + skipped + " skipped.", LogLevel.Trace);
             return inserted;
         }
         catch (Exception ex)
@@ -118,6 +154,7 @@ public class MobSightingGateway
             throw;
         }
     }
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // LoadByZone
     //
@@ -143,7 +180,8 @@ public class MobSightingGateway
 
         using SqliteCommand cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT mob_id, zone_id, x, y, z, level, observed
+            SELECT mob_id, zone_id, x, y, z, level, observed,
+                   is_spawn_point, spawn_x, spawn_y, spawn_z
             FROM MobSightings
             WHERE zone_id = @zone_id
             ORDER BY observed";
@@ -185,7 +223,8 @@ public class MobSightingGateway
 
         using SqliteCommand cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT mob_id, zone_id, spawn_id, x, y, z, level, observed
+            SELECT mob_id, zone_id, x, y, z, level, observed,
+                   is_spawn_point, spawn_x, spawn_y, spawn_z
             FROM MobSightings
             WHERE mob_id = @mob_id
             ORDER BY observed";
@@ -206,9 +245,10 @@ public class MobSightingGateway
     // ReadRecord
     //
     // Builds a Spawn record from the current row of a reader positioned on a MobSightings SELECT whose
-    // columns are, in order: mob_id, zone_id, spawn_id, x, y, z, level, observed.  The
-    // record's Name and CurrentHp are not stored and are left at their defaults.  A timestamp that does
-    // not parse as ISO 8601 text is logged at Warn and left at DateTime.MinValue.
+    // columns are, in order: mob_id, zone_id, x, y, z, level, observed, is_spawn_point, spawn_x, spawn_y,
+    // spawn_z.  The record's Name and CurrentHp are not stored and are left at their defaults.  The spawn
+    // position is read when spawn_x is not NULL and left null otherwise.  A timestamp that does not parse
+    // as ISO 8601 text is logged at Warn and left at DateTime.MinValue.
     //
     // reader:  A reader positioned on the row to read.
     //
@@ -231,6 +271,19 @@ public class MobSightingGateway
             DebugLog.Write(LogChannel.Database, "MobSightingGateway.ReadRecord: zoneId=" + spawn.ZoneId + " mobId="
                 + spawn.MobId + " observed='" + observedText + "' does not parse, using MinValue.", LogLevel.Warn);
             spawn.Observed = DateTime.MinValue;
+        }
+
+        spawn.IsSpawnPoint = reader.GetInt64(7) != 0;
+
+        if (reader.IsDBNull(8) == false)
+        {
+            spawn.SpawnPosition = new Position((float)reader.GetDouble(8), (float)reader.GetDouble(9),
+                (float)reader.GetDouble(10));
+        }
+        else if (spawn.IsSpawnPoint)
+        {
+            DebugLog.Write(LogChannel.Database, "MobSightingGateway.ReadRecord: zoneId=" + spawn.ZoneId + " mobId="
+                + spawn.MobId + " is a spawn point with no spawn position.", LogLevel.Trace);
         }
 
         return spawn;

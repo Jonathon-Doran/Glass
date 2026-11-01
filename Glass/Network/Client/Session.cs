@@ -42,6 +42,7 @@ public class Session : IDisposable
     private bool _closeRequested = false;
     private readonly SoeStream _toServer;
     private readonly SoeStream _fromServer;
+    private bool _established = false;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Session (constructor)
@@ -172,7 +173,10 @@ public class Session : IDisposable
     {
         get { return _fromServer; }
     }
-
+    public bool Established
+    {
+        get { return _established; }
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // SetCharacter
@@ -228,6 +232,35 @@ public class Session : IDisposable
             + " zoneId=" + zoneId, LogLevel.Trace);
         DebugLog.Write(LogChannel.Sessions, "Session.SetZone: " + Describe()
             + " zoneId=" + zoneId, LogLevel.Info);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // MarkEstablished
+    //
+    // Records that this session is established.  Only a Zone session can be established; any
+    // other server type is rejected and logged at Error.  Logs at Warn when the session was
+    // already established.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public void MarkEstablished()
+    {
+        if (_serverType != ServerType.Zone)
+        {
+            DebugLog.Write(LogChannel.LowNetwork, "Session.MarkEstablished: " + Describe()
+                + " is not a zone session, ignoring", LogLevel.Error);
+            return;
+        }
+
+        if (_established)
+        {
+            DebugLog.Write(LogChannel.LowNetwork, "Session.MarkEstablished: " + Describe()
+                + " already established", LogLevel.Warn);
+            return;
+        }
+
+        _established = true;
+
+        DebugLog.Write(LogChannel.Sessions, "Session.MarkEstablished: " + Describe()
+            + " established", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

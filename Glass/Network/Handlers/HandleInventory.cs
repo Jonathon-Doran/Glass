@@ -518,6 +518,9 @@ public class HandleInventory : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
+        // My best guess as to when a session is usable
+        metadata.Session.MarkEstablished();
+
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);

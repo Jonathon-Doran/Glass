@@ -536,6 +536,10 @@ public class Database
         {
             ApplyMigration(conn, 73, Migration_073);
         }
+        if (version < 74)
+        {
+            ApplyMigration(conn, 74, Migration_074);
+        }
     }
 
     private int GetSchemaVersion()
@@ -2027,6 +2031,14 @@ public class Database
         CREATE INDEX IF NOT EXISTS idx_MobSightings_mob_id  ON MobSightings(mob_id);
         CREATE INDEX IF NOT EXISTS idx_MobSightings_zone_id ON MobSightings(zone_id);
     ";
+
+    private const string Migration_074 = @"
+        ALTER TABLE MobSightings ADD COLUMN is_spawn_point INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE MobSightings ADD COLUMN spawn_x REAL;
+        ALTER TABLE MobSightings ADD COLUMN spawn_y REAL;
+        ALTER TABLE MobSightings ADD COLUMN spawn_z REAL;
+    ";
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private const string Schema = @"
