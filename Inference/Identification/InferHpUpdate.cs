@@ -36,9 +36,9 @@ public class InferHpUpdate : IInferOpcodes
     private const double LengthDistancePenalty = 0.5;      // log-LR per byte away from ExpectedLength
     private const double MaxAbsLogLR = 12.0;               // clamp per feature, roughly +/- 52 decibans
     private const double ReportThreshold = 0.40;           // minimum posterior to emit a proposal
-    private const double CharacterLeakProbability = 0.05;  // per-packet allowance for an update naming a non-character spawn
     private const double SelfLeakProbability = 0.05;       // per-session allowance for an eligible session with no self report
     private const string ZoneEntryOpcodeName = "OP_ZoneEntry_Z2C";  // accepted name of the cutoff anchor
+    private const LogLevel defaultLoglevel = LogLevel.Info;
 
     // temp test
     private static bool correctOpcode = false;
@@ -92,10 +92,11 @@ public class InferHpUpdate : IInferOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Infer
     //
-    // Examines every application wire value, totals each test's results across all of
-    // them, then scores each unaccepted wire value.  Sessions with a cutoff are the sessions
-    // eligible for self reports; a wire value covers them when every one received a self
-    // report.
+    // Requires OP_ZoneEntry_Z2C to be accepted this session, and builds each session's cutoff
+    // from it.  Examines every application wire value with packets on zone sessions, builds
+    // the backgrounds for direction, maximum HP matches and self coverage over all of them,
+    // and scores each wire value not already accepted.  The maximum HP background counts the
+    // wire values with at least one matching packet.
     //
     // catalog:  The session's cataloged packets.
     //
@@ -104,7 +105,7 @@ public class InferHpUpdate : IInferOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////
     public List<InferenceProposal> Infer(PacketCatalog catalog)
     {
-        DebugLog.Write(LogChannel.InferenceDebug, "InferHpUpdate.Infer: starting", LogLevel.Trace);
+        DebugLog.Write(LogChannel.InferenceDebug, "InferHpUpdate.Infer: starting", defaultLoglevel);
         List<InferenceProposal> proposals = new List<InferenceProposal>();
 
         OpcodeValue zoneEntryWireValue = AcceptedOpcodes.Instance.WireValueFor(ZoneEntryOpcodeName);
@@ -121,8 +122,6 @@ public class InferHpUpdate : IInferOpcodes
 
         Dictionary<Session, uint> cutoffs = BuildSelfZoneEntryCutoffs(catalog, zoneEntryWireValue);
         int eligibleSessions = cutoffs.Count;
-        Dictionary<Character, long> wornHpByCharacter =
-            new Dictionary<Character, long>(ReferenceEqualityComparer.Instance);
 
         List<WireFacts> facts = new List<WireFacts>();
         OpcodeValue[] known = catalog.KnownOpcodes();
@@ -133,7 +132,7 @@ public class InferHpUpdate : IInferOpcodes
             {
                 continue;
             }
-            WireFacts wire = ExamineWireValue(catalog, known[i], cutoffs, wornHpByCharacter);
+            WireFacts wire = ExamineWireValue(catalog, known[i], cutoffs);
             if (wire.Packets > 0)
             {
                 facts.Add(wire);
@@ -148,8 +147,7 @@ public class InferHpUpdate : IInferOpcodes
         }
 
         int allToClient = 0;
-        int allCharacter = 0;
-        int allMaxHp = 0;
+        int anyMaxHp = 0;
         int allSelf = 0;
         for (int i = 0; i < facts.Count; i++)
         {
@@ -157,13 +155,9 @@ public class InferHpUpdate : IInferOpcodes
             {
                 allToClient++;
             }
-            if (facts[i].CharacterPass == facts[i].Packets)
+            if (facts[i].MaxHpPass > 0)
             {
-                allCharacter++;
-            }
-            if (facts[i].MaxHpTested > 0 && facts[i].MaxHpPass == facts[i].MaxHpTested)
-            {
-                allMaxHp++;
+                anyMaxHp++;
             }
             if (eligibleSessions > 0 && facts[i].SelfSessions.Count == eligibleSessions)
             {
@@ -173,8 +167,8 @@ public class InferHpUpdate : IInferOpcodes
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferHpUpdate.Infer: backgrounds over " + facts.Count + " wire values, all Z2C "
-            + allToClient + ", all character " + allCharacter + ", all max HP " + allMaxHp
-            + ", all " + eligibleSessions + " sessions self " + allSelf, LogLevel.Trace);
+            + allToClient + ", any max HP match " + anyMaxHp + ", all " + eligibleSessions
+            + " sessions self " + allSelf, defaultLoglevel);
 
         Dictionary<int, int> pooledSizes = catalog.PooledSizeHistogram();
         for (int i = 0; i < facts.Count; i++)
@@ -183,8 +177,8 @@ public class InferHpUpdate : IInferOpcodes
             {
                 continue;
             }
-            InferenceProposal? proposal = ScoreCandidate(facts[i], allToClient, allCharacter,
-                allMaxHp, allSelf, eligibleSessions, facts.Count, pooledSizes);
+            InferenceProposal? proposal = ScoreCandidate(facts[i], allToClient, anyMaxHp, allSelf,
+                eligibleSessions, facts.Count, pooledSizes);
             if (proposal != null)
             {
                 proposals.Add(proposal);
@@ -195,7 +189,7 @@ public class InferHpUpdate : IInferOpcodes
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferHpUpdate.Infer: " + facts.Count + " wire values examined, "
-            + proposals.Count + " proposals", LogLevel.Trace);
+            + proposals.Count + " proposals", defaultLoglevel);
         return proposals;
     }
 
@@ -240,31 +234,16 @@ public class InferHpUpdate : IInferOpcodes
     // PassesMaxHp
     //
     // Tests whether any little-endian 32-bit value in the payload equals the character's
-    // stored MaxHP plus its worn HP bonus.  The worn bonus is taken from the supplied
-    // dictionary; when the character has no entry yet, its worn bonus is summed once and
-    // stored there for later packets.
+    // stored MaxHP.
     //
-    // payload:             The bytes to test.
-    // character:           The character the update concerns; its MaxHP must have a value.
-    // wornHpByCharacter:   Worn HP bonus per character, filled as characters are first seen.
+    // payload:    The bytes to test.
+    // character:  The character the update concerns; its MaxHP must have a value.
     //
-    // Returns:  True when a payload value equals MaxHP plus the worn HP bonus.
+    // Returns:  True when a payload value equals the stored MaxHP.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private static bool PassesMaxHp(ReadOnlySpan<byte> payload, Character character,
-        Dictionary<Character, long> wornHpByCharacter)
+    private static bool PassesMaxHp(ReadOnlySpan<byte> payload, Character character)
     {
-        long wornHp;
-        if (!wornHpByCharacter.TryGetValue(character, out wornHp))
-        {
-            wornHp = character.SumWornBonuses().HP;
-            wornHpByCharacter[character] = wornHp;
-
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "InferHpUpdate.PassesMaxHp: character " + character.Name + " worn HP bonus "
-                + wornHp + ", stored MaxHP " + character.MaxHP!.Value, LogLevel.Trace);
-        }
-
-        long expectedMaxHp = character.MaxHP!.Value + wornHp;
+        long expectedMaxHp = character.MaxHP!.Value;
 
         for (int offset = 0; offset + 4 <= payload.Length; offset++)
         {
@@ -284,27 +263,26 @@ public class InferHpUpdate : IInferOpcodes
     // tallies direction, length, and the character and maximum HP tests.  The maximum HP
     // test is applied only to packets whose character resolves and has a MaxHP value.  A
     // zone-to-client packet whose character is the session's own character adds that session
-    // to SelfSessions.
+    // to SelfSessions.  For wire value 0x787D only, each zone-to-client packet that fails the
+    // character test or the maximum HP test is written to the log with its PacketIndex.
     //
     // Packets on a session with a cutoff are skipped entirely when their PacketIndex is at or
     // before that cutoff, and are counted in BeforeCutoff only.
     //
-    // catalog:             The session's cataloged packets.
-    // wireValue:           The wire value.
-    // cutoffs:             The cutoff PacketIndex per session.
-    // wornHpByCharacter:   Worn HP bonus per character, filled as characters are first seen.
+    // catalog:    The session's cataloged packets.
+    // wireValue:  The wire value.
+    // cutoffs:    The cutoff PacketIndex per session.
     //
     // Returns:  The wire value's facts.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private static WireFacts ExamineWireValue(PacketCatalog catalog, OpcodeValue wireValue,
-        Dictionary<Session, uint> cutoffs, Dictionary<Character, long> wornHpByCharacter)
+        Dictionary<Session, uint> cutoffs)
     {
         WireFacts wire = new WireFacts();
         wire.WireValue = wireValue;
 
-        if (wireValue.Value == 0x80ca)
+        if (wireValue.Value == 0x787d)
         {
-            int x = 1;
             correctOpcode = true;
         }
         else
@@ -355,7 +333,16 @@ public class InferHpUpdate : IInferOpcodes
             {
                 if (correctOpcode)
                 {
-                    int x = 1;
+                    string spawnIdText = "none (payload " + payload.Length + " bytes)";
+                    if (payload.Length >= 2)
+                    {
+                        spawnIdText = "0x" + BinaryPrimitives.ReadUInt16LittleEndian(payload).ToString("X4");
+                    }
+
+                    DebugLog.Write(LogChannel.InferenceDebug,
+                        "InferHpUpdate.ExamineWireValue: wireValue=" + wireValue + " packet "
+                        + bucket[i].PacketIndex + " session " + session.SessionId + " zoneId=" + session.ZoneId
+                        + " fails character test, spawn id " + spawnIdText, defaultLoglevel);
                 }
                 continue;
             }
@@ -372,14 +359,20 @@ public class InferHpUpdate : IInferOpcodes
             }
             wire.MaxHpTested++;
 
-            if (correctOpcode)
-            {
-                int x = 1;
-            }
-
-            if (PassesMaxHp(payload, character, wornHpByCharacter))
+            if (PassesMaxHp(payload, character))
             {
                 wire.MaxHpPass++;
+            }
+            else
+            {
+                if (correctOpcode)
+                {
+                    DebugLog.Write(LogChannel.InferenceDebug,
+                        "InferHpUpdate.ExamineWireValue: wireValue=" + wireValue + " packet "
+                        + bucket[i].PacketIndex + " session " + session.SessionId + " character "
+                        + character.Name + " fails max HP test, expected stored " + character.MaxHP.Value,
+                        defaultLoglevel);
+                }
             }
         }
 
@@ -390,7 +383,7 @@ public class InferHpUpdate : IInferOpcodes
                 + " packets, " + wire.BeforeCutoff + " before cutoff, " + wire.ToClient
                 + " Z2C, character " + wire.CharacterPass + ", max HP " + wire.MaxHpPass
                 + " of " + wire.MaxHpTested + ", self sessions " + wire.SelfSessions.Count,
-                LogLevel.Trace);
+                defaultLoglevel);
         }
         return wire;
     }
@@ -490,46 +483,39 @@ public class InferHpUpdate : IInferOpcodes
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "InferHpUpdate.BuildSelfZoneEntryCutoffs: character " + entry.Key.Character!.Name
-                + " zoneId=" + entry.Key.ZoneId + " cutoff at message " + entry.Value, LogLevel.Trace);
+                + " zoneId=" + entry.Key.ZoneId + " cutoff at message " + entry.Value, defaultLoglevel);
         }
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferHpUpdate.BuildSelfZoneEntryCutoffs: " + bucket.Count + " ZoneEntry packets, "
             + selfEntries + " name the session's character, " + noCharacter
             + " on sessions with no character, " + cutoffs.Count + " sessions with a cutoff",
-            LogLevel.Trace);
+            defaultLoglevel);
         return cutoffs;
     }
-
     ///////////////////////////////////////////////////////////////////////////////////////////
     // ScoreCandidate
     //
-    // Scores the direction, character and maximum HP tests once for the wire value: passing
-    // on every packet is compared with how many other examined wire values do the same, and
-    // each failing packet is charged the leak.  The maximum HP test counts only packets whose
-    // character has a MaxHP value, and abstains when there are none.  The self coverage test
-    // counts eligible sessions in place of packets: passing means every eligible session
-    // received a self report, it is compared with how many other examined wire values cover
-    // every eligible session, each uncovered session is charged the self leak, and the test
-    // abstains when there are no eligible sessions.  Length is scored against ExpectedLength.
-    // Sums the log likelihood ratios and converts the total to a posterior with prior odds of
-    // one over the number of examined wire values.  Builds a proposal with an itemized deciban
-    // ledger when the posterior reaches ReportThreshold.
+    // Scores one wire value from direction, length, maximum HP matches and self coverage, and
+    // builds a proposal when the posterior reaches the report threshold.  The maximum HP
+    // feature is computed from matching packets only: a wire value with at least one packet
+    // carrying its character's stored MaxHP is scored against the share of other wire values
+    // with at least one match, and packets that do not match are not charged.  A wire value
+    // with no match abstains on that feature.
     //
-    // candidate:         The candidate's facts.
-    // allToClient:       Examined wire values whose every packet is zone-to-client.
-    // allCharacter:      Examined wire values whose every packet passes the character test.
-    // allMaxHp:          Examined wire values with tested packets that all pass the maximum HP
-    //                    test.
-    // allSelf:           Examined wire values whose self reports cover every eligible session.
+    // candidate:         The wire value's facts.
+    // allToClient:       Number of examined wire values whose packets are all zone-to-client.
+    // anyMaxHp:          Number of examined wire values with at least one maximum HP match.
+    // allSelf:           Number of examined wire values seen as self reports on every
+    //                    eligible session.
     // eligibleSessions:  Number of sessions eligible for self reports.
     // examinedCount:     Number of examined wire values.
     // pooledSizes:       Message count per length across the capture.
     //
     // Returns:  The proposal, or null when the posterior is below threshold.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private InferenceProposal? ScoreCandidate(WireFacts candidate, int allToClient, int allCharacter,
-        int allMaxHp, int allSelf, int eligibleSessions, int examinedCount, Dictionary<int, int> pooledSizes)
+    private InferenceProposal? ScoreCandidate(WireFacts candidate, int allToClient, int anyMaxHp,
+        int allSelf, int eligibleSessions, int examinedCount, Dictionary<int, int> pooledSizes)
     {
         int others = examinedCount - 1;
 
@@ -540,16 +526,18 @@ public class InferHpUpdate : IInferOpcodes
         double lengthLogLR = EvidenceScoring.SizeRangeLogLR(candidate.Lengths, ExpectedLength,
             ExpectedLength, pooledSizes, LengthLeakProbability, LengthDistancePenalty, MaxAbsLogLR);
 
-        int othersCharacter = allCharacter - (candidate.CharacterPass == candidate.Packets ? 1 : 0);
-        double characterLogLR = EvidenceScoring.PayloadPredicateLogLR(candidate.CharacterPass,
-            candidate.Packets, othersCharacter, others, CharacterLeakProbability, MaxAbsLogLR);
-
         double maxHpLogLR = 0.0;
-        if (candidate.MaxHpTested > 0)
+        if (candidate.MaxHpPass > 0)
         {
-            int othersMaxHp = allMaxHp - (candidate.MaxHpPass == candidate.MaxHpTested ? 1 : 0);
+            int othersMaxHp = anyMaxHp - 1;
             maxHpLogLR = EvidenceScoring.PayloadPredicateLogLR(candidate.MaxHpPass,
-                candidate.MaxHpTested, othersMaxHp, others, LeakProbability, MaxAbsLogLR);
+                candidate.MaxHpPass, othersMaxHp, others, LeakProbability, MaxAbsLogLR);
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "InferHpUpdate.ScoreCandidate: wireValue=" + candidate.WireValue
+                + " no max HP matches, max HP abstains", defaultLoglevel);
         }
 
         int selfCount = candidate.SelfSessions.Count;
@@ -564,20 +552,18 @@ public class InferHpUpdate : IInferOpcodes
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "InferHpUpdate.ScoreCandidate: wireValue=" + candidate.WireValue
-                + " no eligible sessions, self coverage abstains", LogLevel.Trace);
+                + " no eligible sessions, self coverage abstains", defaultLoglevel);
         }
 
-        double totalLogLR = directionLogLR + lengthLogLR + characterLogLR + maxHpLogLR + selfLogLR;
+        double totalLogLR = directionLogLR + lengthLogLR + maxHpLogLR + selfLogLR;
         double posterior = EvidenceScoring.CombinePosterior(totalLogLR, 1.0 / examinedCount);
 
         string ledger =
-            candidate.Packets + " packets, " + candidate.ToClient + " Z2C, character "
-            + candidate.CharacterPass + ", max HP " + candidate.MaxHpPass + " of "
-            + candidate.MaxHpTested + ", self " + selfCount + " of " + eligibleSessions
+            candidate.Packets + " packets, " + candidate.ToClient + " Z2C, max HP "
+            + candidate.MaxHpPass + " matches, self " + selfCount + " of " + eligibleSessions
             + " sessions | "
             + "direction " + EvidenceScoring.ToDecibans(directionLogLR).ToString("F1") + " db, "
             + "length " + EvidenceScoring.ToDecibans(lengthLogLR).ToString("F1") + " db, "
-            + "character " + EvidenceScoring.ToDecibans(characterLogLR).ToString("F1") + " db, "
             + "max HP " + EvidenceScoring.ToDecibans(maxHpLogLR).ToString("F1") + " db, "
             + "self " + EvidenceScoring.ToDecibans(selfLogLR).ToString("F1") + " db | "
             + "total " + EvidenceScoring.ToDecibans(totalLogLR).ToString("F1") + " db, "
@@ -587,13 +573,13 @@ public class InferHpUpdate : IInferOpcodes
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "InferHpUpdate.ScoreCandidate: wireValue=" + candidate.WireValue
-                + " below threshold, " + ledger, LogLevel.Trace);
+                + " below threshold, " + ledger, defaultLoglevel);
             return null;
         }
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferHpUpdate.ScoreCandidate: wireValue=" + candidate.WireValue + " " + ledger,
-            LogLevel.Trace);
+            defaultLoglevel);
 
         InferenceProposal proposal = new InferenceProposal();
         proposal.Label = Label;

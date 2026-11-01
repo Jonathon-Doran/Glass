@@ -182,8 +182,8 @@ public class HandlePlayerProfile : OpcodeHandler
                 character.CharacterId = (CharacterId) _extractor.GetUIntAt(_characterIdSlot);
                 character.Level = _extractor.GetUIntAt(_levelSlot);
                 character.PracticePoints = _extractor.GetUIntAt(_practicePointsSlot);
-                character.MaxHP = _extractor.GetUIntAt(_hitpointsSlot);
-                character.MaxMana = _extractor.GetUIntAt(_manaSlot);
+                //character.MaxHP = _extractor.GetUIntAt(_hitpointsSlot);
+                //character.MaxMana = _extractor.GetUIntAt(_manaSlot);
 
                 character.Strength = _extractor.GetUIntAt(_strengthSlot);
                 character.Stamina = _extractor.GetUIntAt(_staminaSlot);

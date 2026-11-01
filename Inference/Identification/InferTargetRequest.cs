@@ -106,7 +106,7 @@ public class InferTargetRequest : IInferOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////
     public List<InferenceProposal> Infer(PacketCatalog catalog)
     {
-        DebugLog.Write(LogChannel.InferenceDebug, "InferTargetRequest.Infer: starting", LogLevel.Info);
+        DebugLog.Write(LogChannel.InferenceDebug, "InferTargetRequest.Infer: starting", LogLevel.Trace);
         List<InferenceProposal> proposals = new List<InferenceProposal>();
 
         List<WireFacts> facts = new List<WireFacts>();
@@ -152,7 +152,7 @@ public class InferTargetRequest : IInferOpcodes
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferTargetRequest.Infer: backgrounds over " + facts.Count + " wire values, all C2Z "
-            + allToServer + ", all spawn " + allSpawn + ", all echo " + allEcho, LogLevel.Info);
+            + allToServer + ", all spawn " + allSpawn + ", all echo " + allEcho, LogLevel.Trace);
 
         Dictionary<int, int> pooledSizes = catalog.PooledSizeHistogram();
         for (int i = 0; i < facts.Count; i++)
@@ -161,7 +161,7 @@ public class InferTargetRequest : IInferOpcodes
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "InferTargetRequest.Infer: wireValue=" + facts[i].WireValue + " already accepted as "
-                    + AcceptedOpcodes.Instance.GetName(facts[i].WireValue) + ", skipping", LogLevel.Info);
+                    + AcceptedOpcodes.Instance.GetName(facts[i].WireValue) + ", skipping", LogLevel.Trace);
                 continue;
             }
             InferenceProposal? proposal = ScoreCandidate(facts[i], allToServer, allSpawn, allEcho,
@@ -176,7 +176,7 @@ public class InferTargetRequest : IInferOpcodes
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferTargetRequest.Infer: " + facts.Count + " wire values examined, "
-            + proposals.Count + " proposals", LogLevel.Info);
+            + proposals.Count + " proposals", LogLevel.Trace);
         return proposals;
     }
 
@@ -354,7 +354,7 @@ public class InferTargetRequest : IInferOpcodes
             DebugLog.Write(LogChannel.InferenceDebug,
                 "InferTargetRequest.ExamineWireValue: wireValue=" + wireValue + " " + wire.Packets
                 + " packets, " + wire.ToServer + " C2Z, spawn " + wire.SpawnPass
-                + ", echo " + wire.EchoPass, LogLevel.Info);
+                + ", echo " + wire.EchoPass, LogLevel.Trace);
         }
 
         if (wire.Packets > 0 && wire.SpawnPass == wire.Packets
@@ -423,7 +423,7 @@ public class InferTargetRequest : IInferOpcodes
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferTargetRequest.ScoreCandidate: wireValue=" + candidate.WireValue + " " + ledger,
-            LogLevel.Info);
+            LogLevel.Trace);
 
         if (posterior < ReportThreshold)
         {

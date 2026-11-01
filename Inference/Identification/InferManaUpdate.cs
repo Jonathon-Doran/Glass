@@ -35,7 +35,7 @@ public class InferManaUpdate : IInferOpcodes
     private const double LengthLeakProbability = 0.01;     // per distinct length other than ExpectedLength
     private const double LengthDistancePenalty = 0.5;      // log-LR per byte away from ExpectedLength
     private const double MaxAbsLogLR = 12.0;               // clamp per feature, roughly +/- 52 decibans
-    private const double ReportThreshold = 0.00;           // minimum posterior to emit a proposal
+    private const double ReportThreshold = 0.40;           // minimum posterior to emit a proposal
     private const double CharacterLeakProbability = 0.05;  // per-packet allowance for a report naming a non-character spawn
     private const double SelfLeakProbability = 0.05;       // per-session allowance for an eligible session with no self report
     private const double RepeatLeakProbability = 0.05;     // per-stream allowance for reports sharing no repeated value
