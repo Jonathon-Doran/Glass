@@ -194,6 +194,8 @@ public class Session : IDisposable
 
         DebugLog.Write(LogChannel.LowNetwork, "Session.SetCharacter: " + Describe()
             + " identified as " + character.Name, LogLevel.Trace);
+        DebugLog.Write(LogChannel.Sessions, "Session.SetCharacter: " + Describe()
+            + " identified as " + character.Name, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -224,6 +226,8 @@ public class Session : IDisposable
 
         DebugLog.Write(LogChannel.LowNetwork, "Session.SetZone: " + Describe()
             + " zoneId=" + zoneId, LogLevel.Trace);
+        DebugLog.Write(LogChannel.Sessions, "Session.SetZone: " + Describe()
+            + " zoneId=" + zoneId, LogLevel.Info);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

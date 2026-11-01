@@ -4,6 +4,7 @@ using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
+using System;
 using System.Security.Policy;
 namespace Glass.Network.Handlers;
 ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -97,21 +98,20 @@ public class HandleNpcMoveUpdate : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        uint spawnId;
-        float x, y, z;
-        float heading, headingDegrees;
-        uint flags;
-
-        // optional fields
-        float pitch, heading_delta, velocity, dx, dy, dz;
-
-        System.Text.StringBuilder optional = new System.Text.StringBuilder();
-
         try
         {
+            float x, y, z;
+            float heading, headingDegrees;
+            uint flags;
+
+            // optional fields
+            float pitch, heading_delta, velocity, dx, dy, dz;
+
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            spawnId = _extractor.GetUIntAt(_spawnIdSlot);
+            uint rawSpawnId = _extractor.GetUIntAt(_spawnIdSlot);
+            SpawnId spawnId = (SpawnId)rawSpawnId;
+
             x = _extractor.GetFloatAt(_xPosSlot);
             y = _extractor.GetFloatAt(_yPosSlot);
             z = _extractor.GetFloatAt(_zPosSlot);
@@ -123,33 +123,36 @@ public class HandleNpcMoveUpdate : OpcodeHandler
             if (_extractor.IsPresent(_pitchSlot))
             {
                 pitch = _extractor.GetFloatAt(_pitchSlot);
-                optional.Append(", pitch=" + pitch);
             }
             if (_extractor.IsPresent(_headingDeltaSlot))
             {
                 heading_delta = _extractor.GetFloatAt(_headingDeltaSlot);
-                optional.Append(", heading delta=" + heading_delta);
             }
             if (_extractor.IsPresent(_velocitySlot))
             {
                 velocity = _extractor.GetFloatAt(_velocitySlot);
-                optional.Append(", velocity=" + velocity);
             }
             if (_extractor.IsPresent(_dxSlot))
             {
                 dx = _extractor.GetFloatAt(_dxSlot);
-                optional.Append(", dx=" + dx);
             }
             if (_extractor.IsPresent(_dySlot))
             {
                 dy = _extractor.GetFloatAt(_dySlot);
-                optional.Append(", dy=" + dy);
             }
             if (_extractor.IsPresent(_dzSlot))
             {
                 dz = _extractor.GetFloatAt(_dzSlot);
-                optional.Append(", dz=" + dz);
             }
+
+            ZoneId wireZone = metadata.Session.ZoneId;
+            if (MobRepository.Instance.TryGetBySpawnId(wireZone, spawnId, out Spawn? spawn))
+            {
+                spawn.X = x;
+                spawn.Y = y;
+                spawn.Z = z;
+                spawn.Observed = metadata.Timestamp;
+            }    
         }
         finally
         {

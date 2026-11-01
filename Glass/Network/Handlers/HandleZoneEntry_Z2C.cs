@@ -162,6 +162,12 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             _extractor.Release();
         }
 
+        // We do not store pets
+        if (ownerId != 0)
+        {
+            return;
+        }
+
         // A nonzero persistent id is a player.  One of our own characters is placed in the zone under its
         // spawn id; other players are not stored.
         if (persistentId != 0)

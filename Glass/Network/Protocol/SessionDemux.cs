@@ -35,6 +35,7 @@ public class SessionDemux
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public void RoutePacket(PacketMetadata metadata)
     {
+        // We do not handle traffic on these other ports.  Just ignore it.
         if (metadata.RemotePort == SoeConstants.ChatServerPort ||
             metadata.RemotePort == SoeConstants.WorldServerChatPort ||
             metadata.RemotePort == SoeConstants.WorldServerChat2Port)
@@ -70,33 +71,5 @@ public class SessionDemux
             SessionStore.Instance.Remove(session);
             session.Dispose();
         }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // IpToUInt32
-    //
-    // Converts a dotted-decimal IP string to a 32-bit unsigned integer.
-    //
-    // ip:  The IP address string
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private static uint IpToUInt32(string ip)
-    {
-        if (ip == null)
-        {
-            return 0;
-        }
-
-        string[] parts = ip.Split('.');
-
-        if (parts.Length != 4)
-        {
-            DebugLog.Write(LogChannel.LowNetwork, "SessionDemux.IpToUInt32: invalid IP '" + ip + "'");
-            return 0;
-        }
-
-        return (uint)((byte.Parse(parts[0]) << 24) |
-                       (byte.Parse(parts[1]) << 16) |
-                       (byte.Parse(parts[2]) << 8) |
-                       byte.Parse(parts[3]));
     }
 }

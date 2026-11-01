@@ -1923,6 +1923,7 @@ public partial class MainWindow : Window
         DebugLog.Write(LogChannel.Sessions, "MainWindow.OnAllSessionsDisconnected: all sessions disconnected, clearing active profile.", LogLevel.Info);
         ProtocolStackBootstrap.Teardown();
         UpdateToolsMenuState();
+        UpdateCaptureStatus();
     }
 
 

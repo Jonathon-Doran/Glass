@@ -4,8 +4,10 @@ using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
+using Glass.World;
 using System;
 using System.Buffers.Binary;
+using System.Security.Policy;
 
 namespace Glass.Network.Handlers;
 
@@ -86,7 +88,7 @@ public class HandleMobUpdate : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        uint spawnId;
+        SpawnId spawnId;
         float xPos;
         float yPos;
         float zPos;
@@ -95,10 +97,22 @@ public class HandleMobUpdate : OpcodeHandler
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
-            spawnId = _extractor.GetUIntAt(_spawnIdSlot);
+            uint rawSpawnId = _extractor.GetUIntAt(_spawnIdSlot);
+            spawnId = (SpawnId)rawSpawnId;
+
             xPos = _extractor.GetFloatAt(_xPosSlot);
             yPos = _extractor.GetFloatAt(_yPosSlot);
             zPos = _extractor.GetFloatAt(_zPosSlot);
+
+            ZoneId wireZone = metadata.Session.ZoneId;
+
+            if (MobRepository.Instance.TryGetBySpawnId(wireZone, spawnId, out Spawn? spawn))
+            {
+                spawn.X = xPos;
+                spawn.Y = yPos;
+                spawn.Z = zPos;
+                spawn.Observed = metadata.Timestamp;
+            }
         }
         finally
         {
