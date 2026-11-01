@@ -16,6 +16,7 @@ public class ZoneRepository
 
     private readonly Dictionary<ZoneId, string> _zoneNames;
     private readonly Dictionary<ZoneId, uint> _sessionCounts;
+    private const uint DynamicZoneThreshold = 1000000;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Instance
@@ -379,7 +380,7 @@ public class ZoneRepository
         return count;
     }
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // SessionLeft
+    // SessionsLeftInZone
     //
     // Records one fewer live zone session connected to the given zone.  A zone id that is None, or a
     // zone with no recorded sessions, is rejected and the count is unchanged.  When the count reaches
@@ -389,11 +390,11 @@ public class ZoneRepository
     //
     // Returns the number of live sessions still connected to the zone; zero when this was the last.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public uint SessionLeft(ZoneId zoneId)
+    public uint SessionsLeftInZone(ZoneId zoneId)
     {
         if (!zoneId.Exists)
         {
-            DebugLog.Write(LogChannel.Sessions, "ZoneRepository.SessionLeft: zoneId is None, count unchanged.",
+            DebugLog.Write(LogChannel.Sessions, "ZoneRepository.SessionsLeft: zoneId is None, count unchanged.",
                 LogLevel.Error);
             return 0;
         }
@@ -401,7 +402,7 @@ public class ZoneRepository
         uint count = 0;
         if (!_sessionCounts.TryGetValue(zoneId, out count) || (count == 0))
         {
-            DebugLog.Write(LogChannel.Sessions, "ZoneRepository.SessionLeft: zoneId=" + zoneId
+            DebugLog.Write(LogChannel.Sessions, "ZoneRepository.SessionsLeft: zoneId=" + zoneId
                 + " has no recorded sessions, count unchanged.", LogLevel.Error);
             return 0;
         }
@@ -416,9 +417,28 @@ public class ZoneRepository
             _sessionCounts[zoneId] = count;
         }
 
-        DebugLog.Write(LogChannel.Database, "ZoneRepository.SessionLeft: zoneId=" + zoneId + " now " + count
+        DebugLog.Write(LogChannel.Database, "ZoneRepository.SessionsLeft: zoneId=" + zoneId + " now " + count
             + " sessions.", LogLevel.Trace);
         return count;
     }
 
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // IsDynamicZone
+    //
+    // Tests whether a zone id belongs to a dynamically created zone, such as a guild hall.  Such ids are
+    // at or above DynamicZoneThreshold.  A zone id that is None is not dynamic.
+    //
+    // zoneId:  The zone id to test.
+    //
+    // Returns true when the zone is dynamic, false otherwise.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public static bool IsDynamicZone(ZoneId zoneId)
+    {
+        if (zoneId.Exists == false)
+        {
+            return false;
+        }
+
+        return zoneId.Value >= DynamicZoneThreshold;
+    }
 }

@@ -102,10 +102,11 @@ public partial class SpawnBrowser : Window
     // RefreshRows
     //
     // Reads the selected zone's sightings and mob types from the database, fills each
-    // record's Name from its mob type, keeps the records that pass the filter text, and
-    // fills the grid in observed order.  A record whose mob type has no row is named
-    // "<no type>".  With no zone selected the grid is emptied and the count line says so.
-    // The count line reports rows shown against rows read.
+    // sighting's Name from its mob type, and adds the zone's cached spawn records.  Keeps the
+    // records that pass the filter text and fills the grid in observed order.  A sighting
+    // whose mob type has no row is named "<no type>".  With no zone selected the grid is
+    // emptied and the count line says so.  The count line reports rows shown against rows
+    // read, with the number read from each source.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void RefreshRows()
     {
@@ -122,47 +123,44 @@ public partial class SpawnBrowser : Window
 
         ZoneId zoneId = (ZoneId)zoneItem.Tag;
         string filterText = FilterText.Text.Trim();
-        string source;
 
-        List<Spawn> spawns = MobRepository.Instance.GetSpawnsInZone(zoneId);
+        List<Spawn> spawns = MobSightingGateway.Instance.LoadByZone(zoneId);
+        uint databaseCount = (uint)spawns.Count;
 
-        if (spawns.Count > 0)
+        List<MobType> mobTypes = MobTypeGateway.Instance.LoadByZone(zoneId);
+        Dictionary<MobId, string> namesByMobId = new Dictionary<MobId, string>(mobTypes.Count);
+
+        foreach (MobType mobType in mobTypes)
         {
-            source = "cache";
+            namesByMobId[mobType.Id] = mobType.BaseName;
         }
-        else
+
+        uint unnamed = 0;
+
+        foreach (Spawn spawn in spawns)
         {
-            source = "database";
-            spawns = MobSightingGateway.Instance.LoadByZone(zoneId);
-            List<MobType> mobTypes = MobTypeGateway.Instance.LoadByZone(zoneId);
-            Dictionary<MobId, string> namesByMobId = new Dictionary<MobId, string>(mobTypes.Count);
-
-            foreach (MobType mobType in mobTypes)
+            if (namesByMobId.TryGetValue(spawn.MobId, out string? baseName))
             {
-                namesByMobId[mobType.Id] = mobType.BaseName;
+                spawn.Name = baseName;
             }
-
-            uint unnamed = 0;
-
-            foreach (Spawn spawn in spawns)
+            else
             {
-                if (namesByMobId.TryGetValue(spawn.MobId, out string? baseName))
-                {
-                    spawn.Name = baseName;
-                }
-                else
-                {
-                    spawn.Name = "<no type>";
-                    unnamed++;
-                }
-            }
-
-            if (unnamed > 0)
-            {
-                DebugLog.Write(LogChannel.InferenceDebug, "SpawnBrowser.RefreshRows: zoneId=" + zoneId + " "
-                    + unnamed + " sighting(s) reference a mob id with no MobTypes row", LogLevel.Warn);
+                spawn.Name = "<no type>";
+                unnamed++;
             }
         }
+
+        if (unnamed > 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug, "SpawnBrowser.RefreshRows: zoneId=" + zoneId + " "
+                + unnamed + " sighting(s) reference a mob id with no MobTypes row", LogLevel.Warn);
+        }
+
+        List<Spawn> cached = MobRepository.Instance.GetSpawnsInZone(zoneId);
+        uint cacheCount = (uint)cached.Count;
+        spawns.AddRange(cached);
+
+        spawns.Sort((Spawn left, Spawn right) => left.Observed.CompareTo(right.Observed));
 
         List<SpawnBrowserRow> rows = new List<SpawnBrowserRow>(spawns.Count);
 
@@ -175,11 +173,12 @@ public partial class SpawnBrowser : Window
         }
 
         ResultGrid.ItemsSource = rows;
-        ResultCount.Text = rows.Count + " of " + spawns.Count + " spawns (" + source + ")";
+        ResultCount.Text = rows.Count + " of " + spawns.Count + " spawns (" + databaseCount + " database, "
+            + cacheCount + " cache)";
 
-        DebugLog.Write(LogChannel.InferenceDebug, "SpawnBrowser.RefreshRows: zoneId=" + zoneId + " source=" + source
-            + " read " + spawns.Count + " record(s), showing " + rows.Count + " with filter '" + filterText + "'",
-            LogLevel.Trace);
+        DebugLog.Write(LogChannel.InferenceDebug, "SpawnBrowser.RefreshRows: zoneId=" + zoneId + " read "
+            + databaseCount + " from database and " + cacheCount + " from cache, showing " + rows.Count
+            + " with filter '" + filterText + "'", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

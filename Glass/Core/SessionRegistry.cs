@@ -378,7 +378,7 @@ public class SessionRegistry
                 + " removed from live zone sessions, " + _liveZoneSessions + " live.", LogLevel.Trace);
         }
 
-        uint remaining = ZoneRepository.Instance.SessionLeft(session.ZoneId);
+        uint remaining = ZoneRepository.Instance.SessionsLeftInZone(session.ZoneId);
         if (remaining > 0)
         {
             DebugLog.Write(LogChannel.Sessions, "SessionRegistry.ZoneSessionClosing: session " + session.SessionId

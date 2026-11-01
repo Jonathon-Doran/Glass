@@ -3,6 +3,7 @@ using Glass.World;
 using Microsoft.Data.Sqlite;
 using System;
 using System.Collections.Generic;
+using System.Windows.Documents;
 
 namespace Glass.Data.Repositories;
 
@@ -50,6 +51,8 @@ public class MobSightingGateway
     // is skipped and logged at Warn.  A spawn point's spawn position is written to the spawn coordinate
     // columns; a spawn with no spawn position writes NULL there.  A failure rolls the transaction back,
     // leaving no rows from this call.
+    //
+    // A spawn in a dynamic zone is not written.
     //
     // spawns:  The spawn records to write.
     //
@@ -100,6 +103,11 @@ public class MobSightingGateway
                     DebugLog.Write(LogChannel.Database, "MobSightingGateway.InsertAll: zoneId=" + spawn.ZoneId
                         + " spawnId=" + spawn.SpawnId + " has no mob id, skipped.", LogLevel.Warn);
                     skipped++;
+                    continue;
+                }
+
+                if (ZoneRepository.IsDynamicZone(spawn.ZoneId))
+                {
                     continue;
                 }
 

@@ -50,6 +50,8 @@ public class MobTypeGateway
     // whose Id already exists, or whose BaseName is empty, is rejected and nothing is written.  A base name
     // that already has a row raises a constraint exception, which is not caught here.
     //
+    // Spawns for dynamicc zones are not written to the database.
+    //
     // mobType:  The record to insert.  Every column is written from the record's current field values.
     //
     // Returns the assigned MobId, or MobId.None when the record was rejected.
@@ -60,6 +62,11 @@ public class MobTypeGateway
         {
             DebugLog.Write(LogChannel.Database, "MobTypeGateway.Insert: record already has id=" + mobType.Id
                 + ", nothing written.", LogLevel.Error);
+            return MobId.None;
+        }
+
+        if (ZoneRepository.IsDynamicZone(mobType.ZoneId))
+        {
             return MobId.None;
         }
 
@@ -114,6 +121,8 @@ public class MobTypeGateway
     // field values.  A record whose Id is None is rejected and nothing is written.  An id with no row is
     // logged at Error.
     //
+    // Updates are not performed for mobs in dynamic zones.
+    //
     // mobType:  The record to write.
     //
     // Returns true if one row was updated, false otherwise.
@@ -124,6 +133,11 @@ public class MobTypeGateway
         {
             DebugLog.Write(LogChannel.Database, "MobTypeGateway.Update: record has no id, nothing written.",
                 LogLevel.Error);
+            return false;
+        }
+
+        if (ZoneRepository.IsDynamicZone(mobType.ZoneId))
+        {
             return false;
         }
 

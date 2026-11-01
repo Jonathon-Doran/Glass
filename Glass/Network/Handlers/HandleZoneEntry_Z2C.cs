@@ -97,6 +97,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
     // zone and base name, and the spawn record is created on first sight and refreshed with the
     // decoded field values on every sight.
     // A spawn first seen after the receiving session is established is marked as a spawn point.
+    // Note that spawns in dynamic zones are not recorded.
     //
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
@@ -185,6 +186,12 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
                 DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: '" + name + "' spawnId=0x"
                     + spawnId.ToString("X4") + " is another player; not stored.", LogLevel.Trace);
             }
+            return;
+        }
+
+        // Dynamic zones are not recorded
+        if (ZoneRepository.IsDynamicZone(zoneId))
+        {
             return;
         }
 
