@@ -38,7 +38,7 @@ public class InferHpUpdate : IInferOpcodes
     private const double ReportThreshold = 0.40;           // minimum posterior to emit a proposal
     private const double SelfLeakProbability = 0.05;       // per-session allowance for an eligible session with no self report
     private const string ZoneEntryOpcodeName = "OP_ZoneEntry_Z2C";  // accepted name of the cutoff anchor
-    private const LogLevel defaultLoglevel = LogLevel.Info;
+    private const LogLevel defaultLoglevel = LogLevel.Trace;
 
     // temp test
     private static bool correctOpcode = false;

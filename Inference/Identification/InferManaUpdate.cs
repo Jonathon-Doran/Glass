@@ -13,14 +13,13 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 
 namespace Inference.Identification;
-
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // InferManaUpdate
 //
 // Identifies OP_ManaUpdate.  Payloads seen so far are 10 bytes, zone-to-client, beginning
 // with the 16-bit spawn id of a player character, and every session receives reports about
-// its own character.  Across the reports one session receives about one character, some
-// nonzero 32-bit value after the spawn id stays the same.
+// its own character.  The payload carries the character's maximum mana as a 32-bit value,
+// equal to the character's stored MaxMana.
 //
 // Only packets on zone sessions after each session's last ZoneEntry naming its own
 // character are examined.  Every application wire value with such packets is examined so
@@ -35,36 +34,23 @@ public class InferManaUpdate : IInferOpcodes
     private const double LengthLeakProbability = 0.01;     // per distinct length other than ExpectedLength
     private const double LengthDistancePenalty = 0.5;      // log-LR per byte away from ExpectedLength
     private const double MaxAbsLogLR = 12.0;               // clamp per feature, roughly +/- 52 decibans
+    private const double MaxManaMissPenalty = 12.0;         // log-LR charged when no tested packet carries max mana, scaled by the fail fraction
     private const double ReportThreshold = 0.40;           // minimum posterior to emit a proposal
-    private const double CharacterLeakProbability = 0.05;  // per-packet allowance for a report naming a non-character spawn
     private const double SelfLeakProbability = 0.05;       // per-session allowance for an eligible session with no self report
-    private const double RepeatLeakProbability = 0.05;     // per-stream allowance for reports sharing no repeated value
-    private const int SpawnIdLength = 2;                   // bytes of the leading spawn id, excluded from the repeated value test
     private const string ZoneEntryOpcodeName = "OP_ZoneEntry_Z2C";  // accepted name of the cutoff anchor
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // StreamFacts
-    //
-    // The reports one session received about one character.  Reports counts them.  Values
-    // holds the nonzero 32-bit values, read after the spawn id, that every report so far has
-    // contained; it is meaningful only once Reports is at least one.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private class StreamFacts
-    {
-        public int Reports = 0;
-        public HashSet<uint> Values = new HashSet<uint>();
-    }
+    private const LogLevel defaultLoglevel = LogLevel.Trace;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // WireFacts
     //
     // One wire value's packets on zone sessions after their cutoff.  Packets counts them and
     // ToClient how many are zone-to-client.  CharacterPass counts how many begin with the
-    // spawn id of a player character in the session's zone.  BeforeCutoff counts packets
-    // skipped because they arrived at or before their session's cutoff.  SelfSessions holds
-    // each session with a cutoff that received at least one zone-to-client packet about its
-    // own character.  Streams holds, per session and per character the packets concern, the
-    // facts of that stream of reports.  Lengths holds the packet count per length.
+    // spawn id of a player character in the session's zone.  MaxManaTested counts the packets
+    // whose character has a nonzero MaxMana, and MaxManaPass how many of those carry it.
+    // BeforeCutoff counts packets skipped because they arrived at or before their session's
+    // cutoff.  SelfSessions holds each session with a cutoff that received at least one
+    // zone-to-client packet about its own character.  Lengths holds the packet count per
+    // length.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private class WireFacts
     {
@@ -72,24 +58,12 @@ public class InferManaUpdate : IInferOpcodes
         public int Packets = 0;
         public int ToClient = 0;
         public int CharacterPass = 0;
+        public int MaxManaTested = 0;
+        public int MaxManaPass = 0;
         public int BeforeCutoff = 0;
         public HashSet<Session> SelfSessions = new HashSet<Session>();
-        public Dictionary<Session, Dictionary<Character, StreamFacts>> Streams =
-            new Dictionary<Session, Dictionary<Character, StreamFacts>>();
 
         public Dictionary<int, int> Lengths = new Dictionary<int, int>();
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // RepeatCounts
-    //
-    // One wire value's results for the repeated value test.  Tested counts the streams with
-    // at least two reports, and Passed how many of those still share a nonzero value.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private class RepeatCounts
-    {
-        public int Tested = 0;
-        public int Passed = 0;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -115,10 +89,11 @@ public class InferManaUpdate : IInferOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Infer
     //
-    // Examines every application wire value, totals each test's results across all of
-    // them, then scores each unaccepted wire value.  Sessions with a cutoff are the sessions
-    // eligible for self reports; a wire value covers them when every one received a self
-    // report.  No wire value is examined when OP_ZoneEntry_Z2C is not accepted.
+    // Requires OP_ZoneEntry_Z2C to be accepted this session, and builds each session's cutoff
+    // from it.  Examines every application wire value with packets on zone sessions, builds
+    // the backgrounds for direction, maximum mana matches and self coverage over all of them,
+    // and scores each wire value not already accepted.  The maximum mana background counts
+    // the wire values with at least one matching packet.
     //
     // catalog:  The session's cataloged packets.
     //
@@ -128,7 +103,7 @@ public class InferManaUpdate : IInferOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////
     public List<InferenceProposal> Infer(PacketCatalog catalog)
     {
-        DebugLog.Write(LogChannel.InferenceDebug, "InferManaUpdate.Infer: starting", LogLevel.Trace);
+        DebugLog.Write(LogChannel.InferenceDebug, "InferManaUpdate.Infer: starting", defaultLoglevel);
         List<InferenceProposal> proposals = new List<InferenceProposal>();
 
         OpcodeValue zoneEntryWireValue = AcceptedOpcodes.Instance.WireValueFor(ZoneEntryOpcodeName);
@@ -144,6 +119,7 @@ public class InferManaUpdate : IInferOpcodes
         }
 
         Dictionary<Session, uint> cutoffs = BuildSelfZoneEntryCutoffs(catalog, zoneEntryWireValue);
+        LogCharacterMana(cutoffs);
         int eligibleSessions = cutoffs.Count;
 
         List<WireFacts> facts = new List<WireFacts>();
@@ -170,35 +146,28 @@ public class InferManaUpdate : IInferOpcodes
         }
 
         int allToClient = 0;
-        int allCharacter = 0;
+        int anyMaxMana = 0;
         int allSelf = 0;
-        int allRepeat = 0;
         for (int i = 0; i < facts.Count; i++)
         {
             if (facts[i].ToClient == facts[i].Packets)
             {
                 allToClient++;
             }
-            if (facts[i].CharacterPass == facts[i].Packets)
+            if (facts[i].MaxManaPass > 0)
             {
-                allCharacter++;
+                anyMaxMana++;
             }
             if (eligibleSessions > 0 && facts[i].SelfSessions.Count == eligibleSessions)
             {
                 allSelf++;
             }
-
-            RepeatCounts repeat = CountRepeatStreams(facts[i]);
-            if (repeat.Tested > 0 && repeat.Passed == repeat.Tested)
-            {
-                allRepeat++;
-            }
         }
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferManaUpdate.Infer: backgrounds over " + facts.Count + " wire values, all Z2C "
-            + allToClient + ", all character " + allCharacter + ", all " + eligibleSessions
-            + " sessions self " + allSelf + ", all streams repeat " + allRepeat, LogLevel.Trace);
+            + allToClient + ", any max mana match " + anyMaxMana + ", all " + eligibleSessions
+            + " sessions self " + allSelf, defaultLoglevel);
 
         Dictionary<int, int> pooledSizes = catalog.PooledSizeHistogram();
         for (int i = 0; i < facts.Count; i++)
@@ -207,8 +176,8 @@ public class InferManaUpdate : IInferOpcodes
             {
                 continue;
             }
-            InferenceProposal? proposal = ScoreCandidate(facts[i], allToClient, allCharacter,
-                allSelf, allRepeat, eligibleSessions, facts.Count, pooledSizes);
+            InferenceProposal? proposal = ScoreCandidate(facts[i], allToClient, anyMaxMana, allSelf,
+                eligibleSessions, facts.Count, pooledSizes);
             if (proposal != null)
             {
                 proposals.Add(proposal);
@@ -219,7 +188,7 @@ public class InferManaUpdate : IInferOpcodes
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferManaUpdate.Infer: " + facts.Count + " wire values examined, "
-            + proposals.Count + " proposals", LogLevel.Trace);
+            + proposals.Count + " proposals", defaultLoglevel);
         return proposals;
     }
 
@@ -290,6 +259,49 @@ public class InferManaUpdate : IInferOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // LogCharacterMana
+    //
+    // Logs, once per character, the character's worn mana bonus and its max mana as loaded
+    // from the database.  Characters are taken from the sessions that have a cutoff.
+    //
+    // cutoffs:  The cutoff PacketIndex per session.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static void LogCharacterMana(Dictionary<Session, uint> cutoffs)
+    {
+        HashSet<Character> logged = new HashSet<Character>(ReferenceEqualityComparer.Instance);
+
+        foreach (Session session in cutoffs.Keys)
+        {
+            Character? character = session.Character;
+            if (character == null)
+            {
+                DebugLog.Write(LogChannel.InferenceDebug, "InferManaUpdate.LogCharacterMana: session "
+                    + session.SessionId + " has no character", LogLevel.Warn);
+                continue;
+            }
+
+            if (logged.Add(character) == false)
+            {
+                continue;
+            }
+
+            StatBonuses wornBonuses = character.SumWornBonuses();
+            string maxManaText;
+            if (character.MaxMana.HasValue)
+            {
+                maxManaText = character.MaxMana.Value.ToString();
+            }
+            else
+            {
+                maxManaText = "null";
+            }
+
+            DebugLog.Write(LogChannel.InferenceDebug, "InferManaUpdate.LogCharacterMana: '" + character.Name
+                + "' worn mana " + wornBonuses.Mana + ", database max mana " + maxManaText, defaultLoglevel);
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // BuildSelfZoneEntryCutoffs
     //
     // Finds, for each zone session, the PacketIndex of the last zone-to-client ZoneEntry whose
@@ -355,99 +367,54 @@ public class InferManaUpdate : IInferOpcodes
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "InferManaUpdate.BuildSelfZoneEntryCutoffs: character " + entry.Key.Character!.Name
-                + " zoneId=" + entry.Key.ZoneId + " cutoff at message " + entry.Value, LogLevel.Trace);
+                + " zoneId=" + entry.Key.ZoneId + " cutoff at message " + entry.Value, defaultLoglevel);
         }
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferManaUpdate.BuildSelfZoneEntryCutoffs: " + bucket.Count + " ZoneEntry packets, "
             + selfEntries + " name the session's character, " + noCharacter
             + " on sessions with no character, " + cutoffs.Count + " sessions with a cutoff",
-            LogLevel.Trace);
+            defaultLoglevel);
         return cutoffs;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // AddStreamReport
+    // PassesMaxMana
     //
-    // Records one report in a stream.  The report's nonzero little-endian 32-bit values are
-    // read at every offset from SpawnIdLength on.  For the stream's first report they become
-    // the stream's Values; for each later report Values keeps only the values this report
-    // also contains.  Once Values is empty, later reports are counted without being read.
+    // Tests whether any little-endian 32-bit value in the payload equals the character's
+    // stored MaxMana.
     //
-    // stream:   The stream the report belongs to.
-    // payload:  The report's bytes.
+    // payload:    The bytes to test.
+    // character:  The character the update concerns; its MaxMana must have a nonzero value.
+    //
+    // Returns:  True when a payload value equals the stored MaxMana.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private static void AddStreamReport(StreamFacts stream, ReadOnlySpan<byte> payload)
+    private static bool PassesMaxMana(ReadOnlySpan<byte> payload, Character character)
     {
-        bool firstReport = stream.Reports == 0;
-        stream.Reports++;
+        long expectedMaxMana = character.MaxMana!.Value;
 
-        if (!firstReport && stream.Values.Count == 0)
+        for (int offset = 0; offset + 4 <= payload.Length; offset++)
         {
-            return;
-        }
-
-        HashSet<uint> reportValues = new HashSet<uint>();
-        for (int offset = SpawnIdLength; offset + 4 <= payload.Length; offset++)
-        {
-            uint value = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(offset));
-            if (value != 0)
+            long value = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(offset));
+            if (value == expectedMaxMana)
             {
-                reportValues.Add(value);
+                return true;
             }
         }
-
-        if (firstReport)
-        {
-            stream.Values = reportValues;
-            return;
-        }
-
-        stream.Values.IntersectWith(reportValues);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // CountRepeatStreams
-    //
-    // Counts one wire value's streams for the repeated value test.  A stream with at least
-    // two reports is tested, and it passes when its Values still holds a nonzero value.
-    //
-    // wire:  The wire value's facts.
-    //
-    // Returns:  The tested and passing stream counts.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private static RepeatCounts CountRepeatStreams(WireFacts wire)
-    {
-        RepeatCounts counts = new RepeatCounts();
-
-        foreach (Dictionary<Character, StreamFacts> sessionStreams in wire.Streams.Values)
-        {
-            foreach (StreamFacts stream in sessionStreams.Values)
-            {
-                if (stream.Reports < 2)
-                {
-                    continue;
-                }
-
-                counts.Tested++;
-                if (stream.Values.Count > 0)
-                {
-                    counts.Passed++;
-                }
-            }
-        }
-
-        return counts;
+        return false;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // ExamineWireValue
     //
     // Walks one wire value's packets once, keeping only packets on zone sessions, and
-    // tallies direction, length and the character test.  A zone-to-client packet whose
-    // character resolves is recorded in the stream of its session and character, and, when
-    // that character is the session's own and the session has a cutoff, adds the session to
-    // SelfSessions.
+    // tallies direction, length, and the character and maximum mana tests.  A packet whose
+    // spawn id is not a character is not tested further.  The maximum mana test is applied
+    // only to packets whose character has a nonzero MaxMana, and each packet that fails it
+    // is logged.  A zone-to-client packet whose character is the session's own character
+    // adds that session to SelfSessions when the session has a cutoff.  For wire value
+    // 0xAC0B only, every packet that leaves the loop without being tested is logged with
+    // the reason.
     //
     // Packets on a session with a cutoff are skipped entirely when their PacketIndex is at or
     // before that cutoff, and are counted in BeforeCutoff only.
@@ -464,11 +431,20 @@ public class InferManaUpdate : IInferOpcodes
         WireFacts wire = new WireFacts();
         wire.WireValue = wireValue;
 
+        // temporary diagnostic for 0xAC0B
+        bool diagnose = wireValue.Value == 0xAC0B;
+
         List<CatalogedPacket> bucket = catalog.PacketsFor(wireValue, null, null, int.MaxValue);
         for (int i = 0; i < bucket.Count; i++)
         {
             if (!IsZonePacket(bucket[i]))
             {
+                if (diagnose)
+                {
+                    DebugLog.Write(LogChannel.InferenceDebug, "InferManaUpdate.ExamineWireValue: wireValue="
+                        + wireValue + " packet " + bucket[i].PacketIndex + " not on a zone session",
+                        defaultLoglevel);
+                }
                 continue;
             }
 
@@ -477,6 +453,12 @@ public class InferManaUpdate : IInferOpcodes
             uint cutoff;
             if (cutoffs.TryGetValue(session, out cutoff) && bucket[i].PacketIndex <= cutoff)
             {
+                if (diagnose)
+                {
+                    DebugLog.Write(LogChannel.InferenceDebug, "InferManaUpdate.ExamineWireValue: wireValue="
+                        + wireValue + " packet " + bucket[i].PacketIndex + " session " + session.SessionId
+                        + " at or before cutoff " + cutoff, defaultLoglevel);
+                }
                 wire.BeforeCutoff++;
                 continue;
             }
@@ -495,15 +477,31 @@ public class InferManaUpdate : IInferOpcodes
                 wire.Lengths[payload.Length] = 1;
             }
 
+            // skip packets that are going the wrong direction
             if (bucket[i].Metadata.ToServer)
             {
+                if (diagnose)
+                {
+                    DebugLog.Write(LogChannel.InferenceDebug, "InferManaUpdate.ExamineWireValue: wireValue="
+                        + wireValue + " packet " + bucket[i].PacketIndex + " session " + session.SessionId
+                        + " is client to zone", defaultLoglevel);
+                }
                 continue;
             }
             wire.ToClient++;
 
+            // mobs and other non-characters are not evidence either way
             Character? character = ResolveCharacter(payload, session.ZoneId);
             if (character == null)
             {
+                if (diagnose)
+                {
+                    DebugLog.Write(LogChannel.InferenceDebug, "InferManaUpdate.ExamineWireValue: wireValue="
+                        + wireValue + " packet " + bucket[i].PacketIndex + " session " + session.SessionId
+                        + " zoneId=" + session.ZoneId + " spawn id 0x"
+                        + BinaryPrimitives.ReadUInt16LittleEndian(payload).ToString("X4")
+                        + " does not resolve to a character", defaultLoglevel);
+                }
                 continue;
             }
             wire.CharacterPass++;
@@ -513,30 +511,43 @@ public class InferManaUpdate : IInferOpcodes
                 wire.SelfSessions.Add(session);
             }
 
-            Dictionary<Character, StreamFacts>? sessionStreams;
-            if (!wire.Streams.TryGetValue(session, out sessionStreams))
+            // a zero max mana is not evidence
+            if ((character.MaxMana.HasValue == false) || (character.MaxMana.Value == 0))
             {
-                sessionStreams = new Dictionary<Character, StreamFacts>(ReferenceEqualityComparer.Instance);
-                wire.Streams[session] = sessionStreams;
+                if (diagnose)
+                {
+                    string maxManaText = character.MaxMana.HasValue ? character.MaxMana.Value.ToString() : "null";
+                    DebugLog.Write(LogChannel.InferenceDebug, "InferManaUpdate.ExamineWireValue: wireValue="
+                        + wireValue + " packet " + bucket[i].PacketIndex + " session " + session.SessionId
+                        + " character " + character.Name + " max mana " + maxManaText + ", not tested",
+                        defaultLoglevel);
+                }
+                continue;
             }
+            wire.MaxManaTested++;
 
-            StreamFacts? stream;
-            if (!sessionStreams.TryGetValue(character, out stream))
+            if (PassesMaxMana(payload, character))
             {
-                stream = new StreamFacts();
-                sessionStreams[character] = stream;
+                wire.MaxManaPass++;
             }
-
-            AddStreamReport(stream, payload);
+            else
+            {
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "InferManaUpdate.ExamineWireValue: wireValue=" + wireValue + " packet "
+                    + bucket[i].PacketIndex + " session " + session.SessionId + " character "
+                    + character.Name + " fails max mana test, expected stored " + character.MaxMana.Value,
+                    defaultLoglevel);
+            }
         }
 
-        if (wire.Packets > 0 && wire.CharacterPass == wire.Packets)
+        if (wire.Packets > 0 && wire.MaxManaTested > 0 && wire.MaxManaPass == wire.MaxManaTested)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "InferManaUpdate.ExamineWireValue: wireValue=" + wireValue + " " + wire.Packets
                 + " packets, " + wire.BeforeCutoff + " before cutoff, " + wire.ToClient
-                + " Z2C, character " + wire.CharacterPass + ", self sessions " + wire.SelfSessions.Count
-                + ", streams on " + wire.Streams.Count + " sessions", LogLevel.Trace);
+                + " Z2C, character " + wire.CharacterPass + ", max mana " + wire.MaxManaPass
+                + " of " + wire.MaxManaTested + ", self sessions " + wire.SelfSessions.Count,
+                defaultLoglevel);
         }
         return wire;
     }
@@ -544,31 +555,26 @@ public class InferManaUpdate : IInferOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////
     // ScoreCandidate
     //
-    // Scores the direction and character tests once for the wire value: passing on every
-    // packet is compared with how many other examined wire values do the same, and each
-    // failing packet is charged the leak.  The self coverage test counts eligible sessions in
-    // place of packets, charges each uncovered session the self leak, and abstains when there
-    // are no eligible sessions.  The repeated value test counts tested streams in place of
-    // packets, charges each failing stream the repeat leak, and abstains when no stream was
-    // tested.  Length is scored against ExpectedLength.  Sums the log likelihood ratios and
-    // converts the total to a posterior with prior odds of one over the number of examined
-    // wire values.  Builds a proposal with an itemized deciban ledger when the posterior
-    // reaches ReportThreshold.
+    // Scores one wire value from direction, length, maximum mana matches and self coverage,
+    // and builds a proposal when the posterior reaches the report threshold.  The maximum
+    // mana feature abstains when no packet was tested.  Otherwise it is the support from
+    // matching packets, scored against the share of other wire values with at least one
+    // match and scaled by the fraction of tested packets that match, less MaxManaMissPenalty
+    // scaled by the fraction of tested packets that do not match.
     //
-    // candidate:         The candidate's facts.
-    // allToClient:       Examined wire values whose every packet is zone-to-client.
-    // allCharacter:      Examined wire values whose every packet passes the character test.
-    // allSelf:           Examined wire values whose self reports cover every eligible session.
-    // allRepeat:         Examined wire values with tested streams that all pass the repeated
-    //                    value test.
+    // candidate:         The wire value's facts.
+    // allToClient:       Number of examined wire values whose packets are all zone-to-client.
+    // anyMaxMana:        Number of examined wire values with at least one maximum mana match.
+    // allSelf:           Number of examined wire values seen as self reports on every
+    //                    eligible session.
     // eligibleSessions:  Number of sessions eligible for self reports.
     // examinedCount:     Number of examined wire values.
     // pooledSizes:       Message count per length across the capture.
     //
     // Returns:  The proposal, or null when the posterior is below threshold.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private InferenceProposal? ScoreCandidate(WireFacts candidate, int allToClient, int allCharacter,
-        int allSelf, int allRepeat, int eligibleSessions, int examinedCount, Dictionary<int, int> pooledSizes)
+    private InferenceProposal? ScoreCandidate(WireFacts candidate, int allToClient, int anyMaxMana,
+        int allSelf, int eligibleSessions, int examinedCount, Dictionary<int, int> pooledSizes)
     {
         int others = examinedCount - 1;
 
@@ -579,9 +585,34 @@ public class InferManaUpdate : IInferOpcodes
         double lengthLogLR = EvidenceScoring.SizeRangeLogLR(candidate.Lengths, ExpectedLength,
             ExpectedLength, pooledSizes, LengthLeakProbability, LengthDistancePenalty, MaxAbsLogLR);
 
-        int othersCharacter = allCharacter - (candidate.CharacterPass == candidate.Packets ? 1 : 0);
-        double characterLogLR = EvidenceScoring.PayloadPredicateLogLR(candidate.CharacterPass,
-            candidate.Packets, othersCharacter, others, CharacterLeakProbability, MaxAbsLogLR);
+        double maxManaLogLR = 0.0;
+        if (candidate.MaxManaTested == 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "InferManaUpdate.ScoreCandidate: wireValue=" + candidate.WireValue
+                + " no packets tested, max mana abstains", defaultLoglevel);
+        }
+        else
+        {
+            double passFraction = (double)candidate.MaxManaPass / candidate.MaxManaTested;
+            double failFraction = 1.0 - passFraction;
+
+            double supportLogLR = 0.0;
+            if (candidate.MaxManaPass > 0)
+            {
+                int othersMaxMana = anyMaxMana - 1;
+                supportLogLR = EvidenceScoring.PayloadPredicateLogLR(candidate.MaxManaPass,
+                    candidate.MaxManaPass, othersMaxMana, others, LeakProbability, MaxAbsLogLR);
+            }
+            else
+            {
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "InferManaUpdate.ScoreCandidate: wireValue=" + candidate.WireValue + " none of "
+                    + candidate.MaxManaTested + " tested packets carry max mana", defaultLoglevel);
+            }
+
+            maxManaLogLR = (passFraction * supportLogLR) - (failFraction * MaxManaMissPenalty);
+        }
 
         int selfCount = candidate.SelfSessions.Count;
         double selfLogLR = 0.0;
@@ -595,36 +626,21 @@ public class InferManaUpdate : IInferOpcodes
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "InferManaUpdate.ScoreCandidate: wireValue=" + candidate.WireValue
-                + " no eligible sessions, self coverage abstains", LogLevel.Trace);
+                + " no eligible sessions, self coverage abstains", defaultLoglevel);
         }
 
-        RepeatCounts repeat = CountRepeatStreams(candidate);
-        double repeatLogLR = 0.0;
-        if (repeat.Tested > 0)
-        {
-            int othersRepeat = allRepeat - (repeat.Passed == repeat.Tested ? 1 : 0);
-            repeatLogLR = EvidenceScoring.PayloadPredicateLogLR(repeat.Passed, repeat.Tested,
-                othersRepeat, others, RepeatLeakProbability, MaxAbsLogLR);
-        }
-        else
-        {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "InferManaUpdate.ScoreCandidate: wireValue=" + candidate.WireValue
-                + " no stream with two reports, repeated value test abstains", LogLevel.Trace);
-        }
-
-        double totalLogLR = directionLogLR + lengthLogLR + characterLogLR + selfLogLR + repeatLogLR;
+        double totalLogLR = directionLogLR + lengthLogLR + maxManaLogLR + selfLogLR;
         double posterior = EvidenceScoring.CombinePosterior(totalLogLR, 1.0 / examinedCount);
 
         string ledger =
             candidate.Packets + " packets, " + candidate.ToClient + " Z2C, character "
-            + candidate.CharacterPass + ", self " + selfCount + " of " + eligibleSessions
-            + " sessions, repeat " + repeat.Passed + " of " + repeat.Tested + " streams | "
+            + candidate.CharacterPass + ", max mana " + candidate.MaxManaPass + " of "
+            + candidate.MaxManaTested + " tested, self " + selfCount + " of " + eligibleSessions
+            + " sessions | "
             + "direction " + EvidenceScoring.ToDecibans(directionLogLR).ToString("F1") + " db, "
             + "length " + EvidenceScoring.ToDecibans(lengthLogLR).ToString("F1") + " db, "
-            + "character " + EvidenceScoring.ToDecibans(characterLogLR).ToString("F1") + " db, "
-            + "self " + EvidenceScoring.ToDecibans(selfLogLR).ToString("F1") + " db, "
-            + "repeat " + EvidenceScoring.ToDecibans(repeatLogLR).ToString("F1") + " db | "
+            + "max mana " + EvidenceScoring.ToDecibans(maxManaLogLR).ToString("F1") + " db, "
+            + "self " + EvidenceScoring.ToDecibans(selfLogLR).ToString("F1") + " db | "
             + "total " + EvidenceScoring.ToDecibans(totalLogLR).ToString("F1") + " db, "
             + "prior 1/" + examinedCount + ", posterior " + posterior.ToString("F3");
 
@@ -632,13 +648,13 @@ public class InferManaUpdate : IInferOpcodes
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "InferManaUpdate.ScoreCandidate: wireValue=" + candidate.WireValue
-                + " below threshold, " + ledger, LogLevel.Trace);
+                + " below threshold, " + ledger, defaultLoglevel);
             return null;
         }
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferManaUpdate.ScoreCandidate: wireValue=" + candidate.WireValue + " " + ledger,
-            LogLevel.Trace);
+            defaultLoglevel);
 
         InferenceProposal proposal = new InferenceProposal();
         proposal.Label = Label;
