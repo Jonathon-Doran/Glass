@@ -207,6 +207,7 @@ public class HandlePlayerProfile : OpcodeHandler
                         ", clearing cached mobs.", LogLevel.Trace);
 
                     MobRepository.Instance.ClearZoneMobs(zoneId); 
+                    CompanionRepository.Instance.ClearZoneCompanions(zoneId);
                 }
 
                 ReadOnlySpan<uint> spellbook = _extractor.GetUIntSpanAt(_spellbookSlot);

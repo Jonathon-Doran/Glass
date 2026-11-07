@@ -1,4 +1,5 @@
 ﻿using Glass.Core.Logging;
+using Glass.Data.Models;
 using Glass.Network.Protocol;
 using System.Collections.Generic;
 
@@ -188,5 +189,38 @@ public class SessionStore
         DebugLog.Write(LogChannel.LowNetwork, "SessionStore.Remove: removed session " + session.SessionId
             + " for " + key.LocalPort + "->" + key.RemotePort + ", count " + _sessions.Count, LogLevel.Trace);
         return true;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // GetSessionCharacters
+    //
+    // Returns each Character that at least one live session has identified, once each, even
+    // when several sessions carry the same Character.  The list is a new copy on every call;
+    // the characters themselves are the live objects.
+    //
+    // Returns the characters; empty when no session has a Character.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public List<Character> GetSessionCharacters()
+    {
+        List<Character> characters = new List<Character>();
+        HashSet<Character> seen = new HashSet<Character>(ReferenceEqualityComparer.Instance);
+
+        foreach (Session session in _sessions.Values)
+        {
+            Character? character = session.Character;
+            if (character == null)
+            {
+                continue;
+            }
+
+            if (seen.Add(character))
+            {
+                characters.Add(character);
+            }
+        }
+
+        DebugLog.Write(LogChannel.LowNetwork, "SessionStore.GetSessionCharacters: " + characters.Count
+            + " characters across " + _sessions.Count + " sessions", LogLevel.Trace);
+        return characters;
     }
 }

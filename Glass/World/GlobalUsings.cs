@@ -8,6 +8,8 @@ global using MobId = Glass.World.Id<Glass.World.MobTag>;
 global using ZoneId = Glass.World.Id<Glass.World.ZoneTag>;
 global using SpawnId = Glass.World.Id<Glass.World.SpawnTag>;
 global using CharacterId = Glass.World.Id<Glass.World.CharacterTag>;
+global using GroupId = Glass.World.Id<Glass.World.GroupTag>;
+global using RaidId = Glass.World.Id<Glass.World.RaidTag>;
 
 global using OpcodeHandle = Glass.World.Id<Glass.World.OpcodeTag>;
 global using CollectionHandle = Glass.World.Id<Glass.World.CollectionTag>;

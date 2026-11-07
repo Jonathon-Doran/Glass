@@ -164,9 +164,39 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             _extractor.Release();
         }
 
-        // We do not store pets
+        // Owned spawns are companions, not mobs
         if (ownerId != 0)
         {
+            SpawnId companionSpawnId = (SpawnId)spawnId;
+            if (CompanionRepository.Instance.TryGetCompanion(zoneId, companionSpawnId, out Companion? companion) == false)
+            {
+                companion = new Companion();
+                companion.ZoneId = zoneId;
+                companion.SpawnId = companionSpawnId;
+                if (CompanionRepository.Instance.AddCompanion(companion) == false)
+                {
+                    DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: companion '" + name + "' spawnId=0x"
+                        + spawnId.ToString("X4") + " not stored.", LogLevel.Error);
+                    return;
+                }
+            }
+
+            companion.Name = name;
+            companion.Level = (ushort)level;
+            companion.Class = mobClass;
+            companion.Model = model;
+            companion.OwnerSpawnId = (SpawnId)ownerId;
+
+            Character? owner = CharacterRepository.Instance.GetBySpawnId(zoneId, companion.OwnerSpawnId);
+            if (owner != null)
+            {
+                companion.Owner = owner;
+                companion.OwnerId = owner.CharacterId;
+            }
+
+            DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: companion '" + name + "' spawnId=0x"
+                + spawnId.ToString("X4") + " owner spawnId=0x" + ownerId.ToString("X4") + " owner "
+                + (owner != null ? owner.Name : "not one of ours") + ".", LogLevel.Trace);
             return;
         }
 

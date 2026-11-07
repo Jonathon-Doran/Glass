@@ -245,13 +245,6 @@ public class InferTargetRequest : IInferOpcodes
     {
         Session session = request.Metadata.Session;
         ReadOnlySpan<byte> requestPayload = request.Payload.AsReadOnlySpan();
-        bool correctRequest = false;
-        bool correctResponse = false;
-
-        if (request.Opcode == 0x720c)
-        {
-            correctRequest = true;
-        }
 
         for (uint index = request.PacketIndex + 1; index < endIndex; index++)
         {
@@ -264,10 +257,6 @@ public class InferTargetRequest : IInferOpcodes
                 return false;
             }
             CatalogedPacket following = found.Value;
-            if (correctRequest && following.Opcode == 0xf71c)
-            {
-                correctResponse = true;
-            }
 
             if (!ReferenceEquals(following.Metadata.Session, session))
             {

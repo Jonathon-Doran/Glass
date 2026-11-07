@@ -43,7 +43,7 @@ public class PacketBus
         _subscribers = new List<Handler>();
         _lock = new object();
 
-        DebugLog.Write(LogChannel.LowNetwork, "PacketBus.ctor: created");
+        DebugLog.Write(LogChannel.LowNetwork, "PacketBus.ctor: created", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -58,7 +58,7 @@ public class PacketBus
     {
         if (handler == null)
         {
-            DebugLog.Write(LogChannel.LowNetwork, "PacketBus.Subscribe: null handler, ignoring");
+            DebugLog.Write(LogChannel.LowNetwork, "PacketBus.Subscribe: null handler, ignoring", LogLevel.Warn);
             return;
         }
 
@@ -67,7 +67,7 @@ public class PacketBus
             if (_subscribers.Contains(handler))
             {
                 DebugLog.Write(LogChannel.LowNetwork,
-                    "PacketBus.Subscribe: handler already subscribed, ignoring");
+                    "PacketBus.Subscribe: handler already subscribed, ignoring", LogLevel.Warn);
                 return;
             }
 
@@ -75,7 +75,7 @@ public class PacketBus
 
             DebugLog.Write(LogChannel.LowNetwork,
                 "PacketBus.Subscribe: added handler, subscriber count is now "
-                + _subscribers.Count);
+                + _subscribers.Count, LogLevel.Trace);
         }
     }
 
@@ -125,7 +125,7 @@ public class PacketBus
     {
         if (handler == null)
         {
-            DebugLog.Write(LogChannel.LowNetwork, "PacketBus.Unsubscribe: null handler, ignoring");
+            DebugLog.Write(LogChannel.LowNetwork, "PacketBus.Unsubscribe: null handler, ignoring", LogLevel.Warn);
             return;
         }
 
@@ -137,12 +137,12 @@ public class PacketBus
             {
                 DebugLog.Write(LogChannel.LowNetwork,
                     "PacketBus.Unsubscribe: removed handler, subscriber count is now "
-                    + _subscribers.Count);
+                    + _subscribers.Count, LogLevel.Trace);
             }
             else
             {
                 DebugLog.Write(LogChannel.LowNetwork,
-                    "PacketBus.Unsubscribe: handler was not subscribed, ignoring");
+                    "PacketBus.Unsubscribe: handler was not subscribed, ignoring", LogLevel.Warn);
             }
         }
     }
@@ -187,9 +187,9 @@ public class PacketBus
                 DebugLog.Write(LogChannel.LowNetwork,
                     "PacketBus.Publish: subscriber " + i
                     + " threw " + ex.GetType().Name
-                    + ": " + ex.Message);
+                    + ": " + ex.Message, LogLevel.Error);
                 DebugLog.Write(LogChannel.LowNetwork,
-                    "PacketBus.Publish: stack: " + ex.StackTrace);
+                    "PacketBus.Publish: stack: " + ex.StackTrace, LogLevel.Error);
             }
         }
     }

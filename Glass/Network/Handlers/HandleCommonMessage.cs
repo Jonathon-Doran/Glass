@@ -23,9 +23,12 @@ public class HandleCommonMessage : OpcodeHandler
     private readonly SlotId _messageIdSlot;
 
     private const uint ChannelGuild = 0x00;
+    private const uint ChannelGroup = 0x02;
     private const uint ChannelShout = 0x03;
     private const uint ChannelOoc = 0x05;
     private const uint ChannelSay = 0x08;
+    private const uint ChannelRaid = 0x0F;
+
     private const uint ChannelCustomBase = 0x10;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -166,12 +169,16 @@ public class HandleCommonMessage : OpcodeHandler
         {
             case ChannelGuild:
                 return "/guild";
+            case ChannelGroup:
+                return "/group";
             case ChannelSay:
                 return "/say";
             case ChannelOoc:
                 return "/ooc";
             case ChannelShout:
                 return "/shout";
+            case ChannelRaid:
+                return "/raidsay";
             default:
                 return "unknown(" + channelId.ToString("x2") + ")";
         }

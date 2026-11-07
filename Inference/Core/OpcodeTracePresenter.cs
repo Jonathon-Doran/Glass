@@ -268,13 +268,22 @@ public partial class OpcodeTracePresenter
             }
             string timestampLocal = packet.Metadata.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff");
             string opcodeName = GlassContext.PatchRegistry.GetOpcodeName(packet.Metadata.Opcode);
-            // string characterName = ResolveCharacterName(packet.Metadata.SessionId);
             string characterName = packet.Metadata.CharacterName;
             int length = packet.Payload.Length;
 
+            string desc;
+            if (packet.FieldTree != null)
+            {
+                desc = packet.FieldTree.Text;
+            }
+            else
+            {
+                desc = opcodeName;
+            }
+
             // create an OTR for the packet.  One OTR for each packet in filteredPackets
             OpcodeTraceRow row = new OpcodeTraceRow(packet.PacketIndex,
-                            timestampLocal, opcodeToDisplay, opcodeName, packet.Metadata.Channel,
+                            timestampLocal, opcodeToDisplay, desc, packet.Metadata.Channel,
                             characterName, length, packet.Payload,
                             (ushort)packet.Metadata.SourcePortX, (ushort)packet.Metadata.DestPortX);
             row.Color = GetPacketColor(packet.PacketIndex, packet.Opcode);

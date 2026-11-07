@@ -67,7 +67,6 @@ public class FieldExtractor
     private const int MaxExpandDepth = 32;         // real nesting is 2-3 levels
     private const int MaxBagsPerExtract = 2000;    // class-4 pool holds 4000 buffers
     private int _expandDepth = 0;                  // current ExpandMultiplicity nesting depth
-    //private int _bagsThisExtract = 0;              // bags created since Extract began
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // FieldExtractor (constructor)

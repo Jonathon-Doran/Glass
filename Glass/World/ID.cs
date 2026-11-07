@@ -63,6 +63,8 @@ public readonly struct MobTag { }                  // Glass-assigned mob record 
 public readonly struct ZoneTag { }                 // Zone identifier.
 public readonly struct SpawnTag { }                // Server-assigned spawn identifier, meaningful only within one zone
 public readonly struct CharacterTag { }            // Server-assigned persistent character ID
+public readonly struct GroupTag { }                // Glass-assigned group identifier, valid for the run only
+public readonly struct RaidTag { }                 // Glass-assigned raid identifier, valid for the run only
 
 // Protocol domain.
 public readonly struct OpcodeTag { }               // Issued by PatchData at load time; not interchangeable across patch levels.
@@ -75,9 +77,11 @@ public readonly struct SlotTag { }                 // Field bag slot identifier.
 public readonly struct SpellTag { }                // Spell identifier from the client's spell data file.
 public readonly struct SpellCategoryTag { }        // Spell category identifier from the database string file.
 public readonly struct MessageIndexTag { }         // Arrival position of a message within a capture.
+public readonly struct SessionTag { }              // A session ID
+public readonly struct ProfileTag { }              // A profile ID
+
+// Knowledge Domain
 public readonly struct ItemTag { }                 // Item identifier from the item serialization.
 public readonly struct ItemInstanceTag { }         // Database-assigned item instance identifier.
 public readonly struct AATag { }                   // Alternate advancement ability identifier assigned by the server.
 public readonly struct DatabaseTag { }             // A database ID
-public readonly struct SessionTag { }              // A session ID
-public readonly struct ProfileTag { }              // A profile ID

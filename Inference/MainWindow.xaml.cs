@@ -2851,7 +2851,7 @@ public partial class MainWindow : Window
             + SpellCatalog.Instance.Count, LogLevel.Trace);
     }
 
-        ///////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // MenuItem_SpawnBrowser_Click
     //
     // Opens a modeless spawn browser window owned by this window.
@@ -2868,6 +2868,24 @@ public partial class MainWindow : Window
         DebugLog.Write(LogChannel.InferenceDebug, "MainWindow.MenuItem_SpawnBrowser_Click: spawn browser opened",
             LogLevel.Trace);
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // MenuItem_GroupBrowser_Click
+    //
+    // Opens a modeless Group Browser owned by this window.
+    //
+    // sender:  The menu item.
+    // e:       The routed event args.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void MenuItem_GroupBrowser_Click(object sender, RoutedEventArgs e)
+    {
+        Glass.GroupBrowser browser = new Glass.GroupBrowser();
+        browser.Owner = this;
+        browser.Show();
+        DebugLog.Write(LogChannel.InferenceDebug, "MainWindow.MenuItem_GroupBrowser_Click: Group Browser opened",
+            LogLevel.Trace);
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Button_RunIdentification_Click
     //
@@ -2971,7 +2989,7 @@ public partial class MainWindow : Window
         AcceptedOpcodes.Instance.Accept(selected.WireValue, selected.Label);
         String opcodeName = AcceptedOpcodes.Instance.GetName(selected.WireValue);
         DebugLog.Write(LogChannel.InferenceDebug,
-            "Button_AcceptProposal_Click: accepted " + selected.OpcodeHex + " as " + opcodeName, LogLevel.Info);
+            "Button_AcceptProposal_Click: accepted " + selected.OpcodeHex + " as " + opcodeName, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

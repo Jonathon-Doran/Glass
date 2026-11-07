@@ -289,9 +289,9 @@ public class ZoneRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // LookupSpawnName
     //
-    // Resolves a spawn id within a zone to a display name.  The zone's mob spawns are checked first, then
-    // the characters placed in the zone.  A zone id that is None, or a spawn id matching neither, yields
-    // "<unknown>".
+    // Resolves a spawn id within a zone to a display name.  The characters placed in the zone are checked
+    // first, then the zone's mob spawns, then the zone's companions.  A zone id that is None, or a spawn id
+    // matching none of them, yields "<unknown>".
     //
     // zoneId:   The zone the spawn id is valid in.
     // spawnId:  The server assigned spawn id within that zone.
@@ -307,7 +307,7 @@ public class ZoneRepository
             return "<unknown>";
         }
 
-        // Return the name from the character repo if foiund
+        // Return the name from the character repo if found
         Character? character = CharacterRepository.Instance.GetBySpawnId(zoneId, spawnId);
         if (character != null)
         {
@@ -320,21 +320,33 @@ public class ZoneRepository
             return spawn.Name ?? "<unnamed>";
         }
 
+        // Otherwise search the companion repo
+        if (CompanionRepository.Instance.TryGetCompanion(zoneId, spawnId, out Companion? companion))
+        {
+            return companion.Name;
+        }
+
+        // A spawn id of 0 refers to nothing, such as a cleared target
+        if (spawnId.Value == 0)
+        {
+            return "None";
+        }
+
         DebugLog.Write(LogChannel.Opcodes, "ZoneRepository.LookupSpawnName: zoneId=" + zoneId + " spawnId="
-            + spawnId + " is not a known mob or character.", LogLevel.Trace);
+            + spawnId + " is not a known character, mob or companion.", LogLevel.Trace);
         return "<unknown>";
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // IsKnownSpawn
     //
-    // Tests whether a spawn id is currently known in a zone, either as a character placed in the zone or as
-    // one of the zone's mob spawns.  A zone id that is None is never known.
+    // Tests whether a spawn id is currently known in a zone, as a character placed in the zone, one of the
+    // zone's mob spawns, or one of the zone's companions.  A zone id that is None is never known.
     //
     // zoneId:   The zone the spawn id is valid in.
     // spawnId:  The server assigned spawn id within that zone.
     //
-    // Returns true when the spawn id is a known character or mob in that zone.
+    // Returns true when the spawn id is a known character, mob or companion in that zone.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public bool IsKnownSpawn(ZoneId zoneId, SpawnId spawnId)
     {
@@ -348,7 +360,12 @@ public class ZoneRepository
             return true;
         }
 
-        return MobRepository.Instance.TryGetBySpawnId(zoneId, spawnId, out Spawn? spawn);
+        if (MobRepository.Instance.TryGetBySpawnId(zoneId, spawnId, out Spawn? spawn))
+        {
+            return true;
+        }
+
+        return CompanionRepository.Instance.TryGetCompanion(zoneId, spawnId, out Companion? companion);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

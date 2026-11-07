@@ -154,8 +154,6 @@ public class HandleClientUpdate : OpcodeHandler
                 return root;
             }
 
-
-
             float XPos = _extractor.GetFloatAt(_xPosSlot);
             float YPos = _extractor.GetFloatAt(_yPosSlot);
             float ZPos = _extractor.GetFloatAt(_zPosSlot);
