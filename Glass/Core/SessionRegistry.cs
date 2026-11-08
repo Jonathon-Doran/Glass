@@ -156,7 +156,8 @@ public class SessionRegistry
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // OnSessionDisconnected
     //
-    // Removes a session from the registry when it disconnects.
+    // Removes a session from the registry when it disconnects.  The session's character is saved when one is bound;
+    // a session with no bound character is still removed and counted as disconnected.
     //
     // sessionName:  The session that disconnected
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -176,11 +177,12 @@ public class SessionRegistry
         // Check for a valid character associated with the ISX session
         if (session.CharacterDatabaseId < 0)
         {
-            DebugLog.Write(LogChannel.Database, $"SessionRegistry.OnSessionDisconnected: session '{sessionName}' has no bound character, nothing to save.", LogLevel.Error);
-            return;
+            DebugLog.Write(LogChannel.Database, $"SessionRegistry.OnSessionDisconnected: session '{sessionName}' has no bound character, nothing to save, removing session.", LogLevel.Error);
         }
-
-        CharacterRepository.Instance.Save(session.CharacterDatabaseId);
+        else
+        {
+            CharacterRepository.Instance.Save(session.CharacterDatabaseId);
+        }
 
         lock (_lock)
         {
@@ -310,6 +312,26 @@ public class SessionRegistry
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // OnPcapReplayFinished
+    //
+    // Marks teardown as pending when a pcap replay has delivered its last packet, then raises AllSessionsDisconnected
+    // if no identified zone session remains open.  A replay has no ISX sessions, so the end of the replay takes the
+    // place of the last ISX disconnect.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void OnPcapReplayFinished()
+    {
+        lock (_lock)
+        {
+            _teardownPending = true;
+        }
+
+        DebugLog.Write(LogChannel.Sessions, "SessionRegistry.OnPcapReplayFinished: replay finished, "
+            + _liveZoneSessions + " zone sessions still open, teardown pending.", LogLevel.Trace);
+
+        RaiseAllSessionsDisconnectedIfComplete();
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // RaiseAllSessionsDisconnectedIfComplete
     //
     // Raises AllSessionsDisconnected when every ISX session has disconnected and no identified zone session
@@ -345,10 +367,12 @@ public class SessionRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ZoneSessionClosing
     //
-    // Records that a session is disconnecting and, for a zone session with a known zone, releases
-    // its hold on that zone.  When it was the last live session in the zone, the zone's mob data
-    // is saved.  A session that is not a zone session, or has no zone recorded, is logged and
-    // nothing is released.
+    // Records that a zone session is disconnecting.  A zone session with a Character was counted
+    // as live when it was identified, so it is removed from the live count here.  For a session
+    // with a known zone, its hold on that zone is released, and when it was the last live session
+    // in the zone, the zone's mob data is saved.  AllSessionsDisconnected is then raised if
+    // teardown is complete.  A session that is not a zone session, or was never identified, is
+    // logged and nothing is released.
     //
     // session:  The session whose disconnect is being processed
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -362,11 +386,11 @@ public class SessionRegistry
             return;
         }
 
-        // And we must know what the zone is...
-        if (!session.ZoneId.Exists)
+        // A zone session is counted as live only once a player profile identifies it
+        if (session.Character == null)
         {
             DebugLog.Write(LogChannel.Sessions, "SessionRegistry.ZoneSessionClosing: zone session " + session.SessionId
-                + " never recorded a zone, nothing to release.", LogLevel.Warn);
+                + " was never identified, not counted as live, nothing to release.", LogLevel.Trace);
             return;
         }
 
@@ -378,17 +402,26 @@ public class SessionRegistry
                 + " removed from live zone sessions, " + _liveZoneSessions + " live.", LogLevel.Trace);
         }
 
-        uint remaining = ZoneRepository.Instance.SessionsLeftInZone(session.ZoneId);
-        if (remaining > 0)
+        if (!session.ZoneId.Exists)
         {
-            DebugLog.Write(LogChannel.Sessions, "SessionRegistry.ZoneSessionClosing: session " + session.SessionId
-                + " left zoneId=" + session.ZoneId + ", " + remaining + " sessions remain.", LogLevel.Info);
-            return;
+            DebugLog.Write(LogChannel.Sessions, "SessionRegistry.ZoneSessionClosing: zone session " + session.SessionId
+                + " never recorded a zone, no zone to release.", LogLevel.Warn);
         }
-
-        DebugLog.Write(LogChannel.Sessions, "SessionRegistry.ZoneSessionClosing: session " + session.SessionId
-            + " was the last in zoneId=" + session.ZoneId + ", saving zone.", LogLevel.Info);
-        MobRepository.Instance.SaveZoneMobs(session.ZoneId);
+        else
+        {
+            uint remaining = ZoneRepository.Instance.SessionsLeftInZone(session.ZoneId);
+            if (remaining > 0)
+            {
+                DebugLog.Write(LogChannel.Sessions, "SessionRegistry.ZoneSessionClosing: session " + session.SessionId
+                    + " left zoneId=" + session.ZoneId + ", " + remaining + " sessions remain.", LogLevel.Info);
+            }
+            else
+            {
+                DebugLog.Write(LogChannel.Sessions, "SessionRegistry.ZoneSessionClosing: session " + session.SessionId
+                    + " was the last in zoneId=" + session.ZoneId + ", saving zone.", LogLevel.Info);
+                MobRepository.Instance.SaveZoneMobs(session.ZoneId);
+            }
+        }
 
         RaiseAllSessionsDisconnectedIfComplete();
     }

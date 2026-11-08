@@ -46,7 +46,9 @@ public class PcapFileReader
     //
     // Opens a pcap file, reads all packets via Capture(), extracts UDP
     // payload and IP/port metadata via PacketDotNet, and routes through
-    // the PacketRouter.  Blocks until all packets are processed.
+    // the PacketRouter.  Blocks until all packets are processed.  When the
+    // whole file has been read, the session registry is told the replay
+    // has finished.
     //
     // filePath:   Path to the pcap file
     // bpfFilter:  Optional BPF filter string.  Pass null to process all packets.
@@ -55,18 +57,19 @@ public class PcapFileReader
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public int ProcessFile(string filePath, string? bpfFilter = null, IProgress<int>? progress = null)
     {
-        DebugLog.Write(LogChannel.LowNetwork, "---------");
-        DebugLog.Write(LogChannel.LowNetwork, "PcapFileReader.ProcessFile: opening '" + filePath + "'");
-        DebugLog.Write(LogChannel.LowNetwork, "---------");
+        DebugLog.Write(LogChannel.LowNetwork, "---------", LogLevel.Trace);
+        DebugLog.Write(LogChannel.LowNetwork, "PcapFileReader.ProcessFile: opening '" + filePath + "'", LogLevel.Trace);
+        DebugLog.Write(LogChannel.LowNetwork, "---------", LogLevel.Trace);
 
         // Lock out other packet sources until we are done
         if (!GlassContext.TryAcquirePacketSource())
         {
             DebugLog.Write(LogChannel.LowNetwork,
-                "PcapFileReader.ProcessFile: packet source claim rejected, aborting load of '" + filePath + "'");
+                "PcapFileReader.ProcessFile: packet source claim rejected, aborting load of '" + filePath + "'",
+                LogLevel.Warn);
             return 0;
         }
-        
+
         _progress = progress;
         _frameCount = 0;
         _routedCount = 0;
@@ -80,20 +83,25 @@ public class PcapFileReader
             if (!string.IsNullOrEmpty(bpfFilter))
             {
                 reader.Filter = bpfFilter;
-                DebugLog.Write(LogChannel.LowNetwork, "PcapFileReader.ProcessFile: filter='" + bpfFilter + "'");
+                DebugLog.Write(LogChannel.LowNetwork, "PcapFileReader.ProcessFile: filter='" + bpfFilter + "'",
+                    LogLevel.Trace);
             }
 
             reader.OnPacketArrival += OnPacketArrival;
 
             reader.Capture();
             reader.Close();
+
+            DebugLog.Write(LogChannel.LowNetwork, "PcapFileReader.ProcessFile: end of '" + filePath
+                + "' reached, notifying session registry that the replay finished.", LogLevel.Trace);
+            GlassContext.SessionRegistry.OnPcapReplayFinished();
         }
         catch (Exception ex)
         {
             DebugLog.Write(LogChannel.LowNetwork, "PcapFileReader.ProcessFile: error reading '"
-                + filePath + "': " + ex.Message);
+                + filePath + "': " + ex.Message, LogLevel.Error);
             DebugLog.Write(LogChannel.LowNetwork, "PcapFileReader.ProcessFile: stack trace: "
-                 + ex.StackTrace);
+                 + ex.StackTrace, LogLevel.Error);
         }
         finally
         {
@@ -103,7 +111,7 @@ public class PcapFileReader
 
         DebugLog.Write(LogChannel.LowNetwork, "PcapFileReader.ProcessFile: finished, "
                     + _frameCount + " packets read of " + _totalPackets + " total, "
-                    + _routedCount + " UDP packets routed");
+                    + _routedCount + " UDP packets routed", LogLevel.Trace);
 
         return _routedCount;
     }
@@ -130,7 +138,7 @@ public class PcapFileReader
     {
         int count = 0;
 
-        DebugLog.Write(LogChannel.LowNetwork, "PcapFileReader.CountPackets: scanning '" + filePath + "'");
+        DebugLog.Write(LogChannel.LowNetwork, "PcapFileReader.CountPackets: scanning '" + filePath + "'", LogLevel.Trace);
 
         try
         {
@@ -160,11 +168,11 @@ public class PcapFileReader
         catch (Exception ex)
         {
             DebugLog.Write(LogChannel.LowNetwork, "PcapFileReader.CountPackets: error scanning '"
-                + filePath + "' at count " + count + ": " + ex.Message);
+                + filePath + "' at count " + count + ": " + ex.Message, LogLevel.Trace);
         }
 
         DebugLog.Write(LogChannel.LowNetwork, "PcapFileReader.CountPackets: counted "
-            + count + " packets in '" + filePath + "'");
+            + count + " packets in '" + filePath + "'", LogLevel.Trace);
 
         return count;
     }
