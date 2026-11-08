@@ -54,7 +54,9 @@ public class GroupRepository
         _groupsByMember = new Dictionary<CharacterId, Group>();
         _groupsByServerId = new Dictionary<ServerGroupId, Group>();
 
+        // register the signal handlers
         GlassContext.SessionRegistry.AllSessionsDisconnected += Clear;
+        GlassContext.SignalBus.Subscribe<SignalSessionRemoved>(OnSessionRemoved);
 
         DebugLog.Write(LogChannel.Database, "GroupRepository: singleton instance created with empty tables.",
             defaultLoglevel);
@@ -246,6 +248,34 @@ public class GroupRepository
         DebugLog.Write(LogChannel.Database, "GroupRepository.GetAllGroups: returning " + groups.Count + " groups.",
             defaultLoglevel);
         return groups;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // OnSessionRemoved
+    //
+    // Removes the character named by the signal from its group, since a character whose session has closed is no
+    // longer present.  A character in no group is left as it is.
+    //
+    // signal:  The signal carrying the persistent character id of the character whose session closed.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void OnSessionRemoved(SignalSessionRemoved signal)
+    {
+        if (_groupsByMember.ContainsKey(signal.CharacterId) == false)
+        {
+            DebugLog.Write(LogChannel.Database, "GroupRepository.OnSessionRemoved: characterId=" + signal.CharacterId
+                + " is in no group, nothing removed.", defaultLoglevel);
+            return;
+        }
+
+        if (RemoveMember(signal.CharacterId) == false)
+        {
+            DebugLog.Write(LogChannel.Database, "GroupRepository.OnSessionRemoved: characterId=" + signal.CharacterId
+                + " could not be removed from its group.", LogLevel.Error);
+            return;
+        }
+
+        DebugLog.Write(LogChannel.Database, "GroupRepository.OnSessionRemoved: removed characterId=" + signal.CharacterId
+            + " from its group, session " + signal.SessionId + " closed.", defaultLoglevel);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

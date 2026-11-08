@@ -922,7 +922,7 @@ public partial class MainWindow : Window
         int routed = await Task.Run(() => reader.ProcessFile(dialog.FileName, null, progress));
 
         Title = "Inference - " + System.IO.Path.GetFileName(dialog.FileName)
-            + " (" + routed + " packets)";
+            + " (" + GlassContext.PacketBus.MessageCount + " messages)";
         DebugLog.Write(LogChannel.Inference,
             "MenuItem_OpenPcap_Click: title set to pcap " + dialog.FileName, LogLevel.Trace);
 
@@ -1012,7 +1012,7 @@ public partial class MainWindow : Window
         OpcodeDispatch.Instance.SetBusState(previousBusState);
 
         Title = "Inference - " + System.IO.Path.GetFileName(dialog.FileName)
-            + " (" + routed + " packets)";
+            + " (" + GlassContext.PacketBus.MessageCount + " messages)";
         DebugLog.Write(LogChannel.Inference,
             "MenuItem_OpenPcap_Click: title set to pcap " + dialog.FileName, LogLevel.Trace);
 

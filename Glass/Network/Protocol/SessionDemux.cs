@@ -52,7 +52,7 @@ public class SessionDemux
 
             if (session == null)
             {
-                DebugLog.Write(LogChannel.LowNetwork, "SessionDemux.RoutePacket: frame " + metadata.FrameNumber
+                DebugLog.Write(LogChannel.LowNetwork, "SessionDemux.RoutePacket: message " + metadata.MessageId
                     + " has no session for " + metadata.LocalPort + "->" + metadata.RemotePort + ", dropping",
                     LogLevel.Trace);
                 metadata.Payload.Dispose();

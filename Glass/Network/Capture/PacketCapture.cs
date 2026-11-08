@@ -53,6 +53,7 @@ public class PacketCapture
         _device = null;
         _capturing = false;
         _frameCount = 0;
+        GlassContext.PacketBus.Reset();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -337,7 +338,6 @@ public class PacketCapture
         }
 
         PacketMetadata metadata = new PacketMetadata();
-        metadata.FrameNumber = _frameCount;
         metadata.Timestamp = rawCapture.Timeval.Date;
         metadata.ToServer = SoeConstants.IsServerAddress(destIp);
 

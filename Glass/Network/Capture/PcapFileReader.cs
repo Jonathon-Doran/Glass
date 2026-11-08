@@ -39,6 +39,8 @@ public class PcapFileReader
         _routedCount = 0;
         _totalPackets = 0;
         _progress = null;
+
+        GlassContext.PacketBus.Reset();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -237,7 +239,6 @@ public class PcapFileReader
         string destIp = ipPacket.DestinationAddress.ToString();
 
         PacketMetadata metadata = new PacketMetadata();
-        metadata.FrameNumber = _frameCount;
         metadata.Timestamp = rawCapture.Timeval.Date;
         metadata.ToServer = SoeConstants.IsServerAddress(destIp);
 

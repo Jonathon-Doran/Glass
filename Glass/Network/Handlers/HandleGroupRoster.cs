@@ -4,6 +4,7 @@ using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
+using Glass.World;
 using System;
 using System.Buffers.Binary;
 using System.Security.Policy;
@@ -32,7 +33,7 @@ public class HandleGroupRoster : OpcodeHandler
 
     private readonly SlotId _entryUnknown1_Slot;
     private readonly SlotId _entryUnknown2_Slot;
-    private readonly SlotId _entryUnknown3_Slot;
+    private readonly SlotId _offline_Slot;
     private readonly SlotId _entryUnknown4_Slot;
     private readonly SlotId _entryUnknown5_Slot;
     private readonly SlotId _entryUnknown6_Slot;
@@ -78,7 +79,7 @@ public class HandleGroupRoster : OpcodeHandler
 
         _entryUnknown1_Slot = _registry.IndexOfField(RosterCollection, "Unknown_1");
         _entryUnknown2_Slot = _registry.IndexOfField(RosterCollection, "Unknown_2");
-        _entryUnknown3_Slot = _registry.IndexOfField(RosterCollection, "Unknown_3");
+        _offline_Slot = _registry.IndexOfField(RosterCollection, "Unknown_3");
         _entryUnknown4_Slot = _registry.IndexOfField(RosterCollection, "Unknown_4");
         _entryUnknown5_Slot = _registry.IndexOfField(RosterCollection, "Unknown_5");
         _entryUnknown6_Slot = _registry.IndexOfField(RosterCollection, "Unknown_6");
@@ -106,7 +107,10 @@ public class HandleGroupRoster : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleZoneToClient
     //
-    // Processes zone-to-client traffic
+    // Processes zone-to-client traffic.  Finds the group with the roster's server group id,
+    // creating it when none is held, and adds each member whose Offline flag is clear.  A member
+    // with the flag set is not present and is not added.  When the roster names a leader who is
+    // in the group afterward, that member is made the leader.
     //
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
@@ -118,13 +122,23 @@ public class HandleGroupRoster : OpcodeHandler
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
             if (!rootGate.Exists)
             {
-                DebugLog.Write(LogChannel.Opcodes, "HandleDeath:  No RootGate", LogLevel.Error);
+                DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.HandleZoneToClient: No RootGate", LogLevel.Error);
                 return;
             }
 
-            uint groupId = _extractor.GetUIntAt(_groupId_Slot);
-            uint memberCount = _extractor.GetUIntAt(_memberCount_Slot);
+            ServerGroupId serverGroupId = (ServerGroupId)_extractor.GetUIntAt(_groupId_Slot);
             string leaderName = _extractor.GetStringAt(_leaderName_Slot);
+
+            if (GroupRepository.Instance.TryGetGroupByServerId(serverGroupId, out Group? group) == false)
+            {
+                group = GroupRepository.Instance.CreateGroup(serverGroupId);
+                if (group == null)
+                {
+                    DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.HandleZoneToClient: no group for server group id 0x"
+                        + serverGroupId.Value.ToString("X") + ", roster not applied.", LogLevel.Error);
+                    return;
+                }
+            }
 
             GateHandle Roster_Entries_Gate = _extractor.GetGateAt(_rosterGate_Slot);
             if (Roster_Entries_Gate.Exists)
@@ -135,25 +149,119 @@ public class HandleGroupRoster : OpcodeHandler
                 {
                     _extractor.EnterGate(Roster_Entries_Gate, bagIndex);
 
-                    uint position = _extractor.GetUIntAt(_entryPosition_Slot);
                     string name = _extractor.GetStringAt(_entryName_Slot);
                     uint level = _extractor.GetUIntAt(_entryLevel_Slot);
-                    uint timestamp = _extractor.GetUIntAt(_entryTimestamp_Slot);
+                    uint unknown_3 = _extractor.GetUIntAt(_offline_Slot);
 
-                    uint unknown_1 = _extractor.GetUIntAt(_entryUnknown1_Slot);
-                    uint unknown_2 = _extractor.GetUIntAt(_entryUnknown2_Slot);
-                    uint unknown_3 = _extractor.GetUIntAt(_entryUnknown3_Slot);
-                    uint unknown_4 = _extractor.GetUIntAt(_entryUnknown4_Slot);
-                    uint unknown_5 = _extractor.GetUIntAt(_entryUnknown5_Slot);
-                    uint unknown_6 = _extractor.GetUIntAt(_entryUnknown6_Slot);
-                    uint unknown_7 = _extractor.GetUIntAt(_entryUnknown7_Slot);
+                    if (unknown_3 != 0)
+                    {
+                        DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.HandleZoneToClient: '" + name
+                            + "' has Unknown 3 set to 0x" + unknown_3.ToString("X") + ", not present, not added to groupId="
+                            + group.Id + ".", LogLevel.Trace);
+                        continue;
+                    }
+
+                    AddRosterMember(group, name, level);
                 }
             }
+            else
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.HandleZoneToClient: roster for groupId=" + group.Id
+                    + " has no member entries.", LogLevel.Warn);
+            }
+
+            if (leaderName.Length == 0)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.HandleZoneToClient: roster for groupId=" + group.Id
+                    + " names no leader, leader not changed.", LogLevel.Trace);
+                return;
+            }
+
+            if (CharacterRepository.Instance.TryGetCharacterIdByName(leaderName, out CharacterId leaderId) == false)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.HandleZoneToClient: leader '" + leaderName
+                    + "' has no character id, leader of groupId=" + group.Id + " not changed.", LogLevel.Trace);
+                return;
+            }
+
+            if (group.HasMember(leaderId) == false)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.HandleZoneToClient: leader '" + leaderName
+                    + "' characterId=" + leaderId + " is not present in groupId=" + group.Id + ", leader not changed.",
+                    LogLevel.Trace);
+                return;
+            }
+
+            group.SetLeader(leaderId);
+
+            DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.HandleZoneToClient: groupId=" + group.Id + " leader is '"
+                + leaderName + "' characterId=" + leaderId + ".", LogLevel.Trace);
         }
         finally
         {
             _extractor.Release();
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // AddRosterMember
+    //
+    // Puts one of the user's characters named in a roster entry into the given group.  The name
+    // is converted to a persistent character id; a name with no character id is not one of the
+    // user's characters and is skipped.  A character already in the group is left as it is.  A
+    // character in a different group is removed from it first, since the roster is the server's
+    // latest statement of membership.
+    //
+    // group:  The group the roster describes.
+    // name:   The member name from the roster entry.
+    // level:  The member level from the roster entry.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void AddRosterMember(Group group, string name, uint level)
+    {
+        if (CharacterRepository.Instance.TryGetCharacterIdByName(name, out CharacterId characterId) == false)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.AddRosterMember: '" + name
+                + "' has no character id, not one of the user's characters, skipped.", LogLevel.Trace);
+            return;
+        }
+
+        if (group.HasMember(characterId))
+        {
+            DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.AddRosterMember: '" + name + "' characterId="
+                + characterId + " is already in groupId=" + group.Id + ", nothing changed.", LogLevel.Trace);
+            return;
+        }
+
+        if (GroupRepository.Instance.TryGetGroupOf(characterId, out Group? oldGroup))
+        {
+            DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.AddRosterMember: '" + name + "' characterId="
+                + characterId + " is in groupId=" + oldGroup.Id + " but the roster places it in groupId=" + group.Id
+                + ", removing from groupId=" + oldGroup.Id + ".", LogLevel.Warn);
+
+            if (GroupRepository.Instance.RemoveMember(characterId) == false)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.AddRosterMember: could not remove '" + name
+                    + "' characterId=" + characterId + " from groupId=" + oldGroup.Id + ", not added to groupId="
+                    + group.Id + ".", LogLevel.Error);
+                return;
+            }
+        }
+
+        GroupMember member = new GroupMember();
+        member.Id = characterId;
+        member.Name = name;
+        member.Level = level;
+        member.Character = CharacterRepository.Instance.GetByCharacterId(characterId);
+
+        if (GroupRepository.Instance.AddMember(group, member) == false)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.AddRosterMember: groupId=" + group.Id
+                + " did not accept '" + name + "' characterId=" + characterId + ".", LogLevel.Warn);
+            return;
+        }
+
+        DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.AddRosterMember: added '" + name + "' characterId="
+            + characterId + " level " + level + " to groupId=" + group.Id + ".", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -215,7 +323,7 @@ public class HandleGroupRoster : OpcodeHandler
                     FieldNodes.AddLabeledNode(_extractor, _entryName_Slot, "Name: " + name, memberNode);
                     FieldNodes.AddUIntNode(_extractor, _entryPosition_Slot, "Position", memberNode, "D");
                     FieldNodes.AddUIntNode(_extractor, _entryLevel_Slot, "Level", memberNode, "D");
-
+                    FieldNodes.AddUIntNode(_extractor, _offline_Slot, "Offline", memberNode, "D");
                     uint timestampValue = _extractor.GetUIntAt(_entryTimestamp_Slot);
                     string timestamp = DateTimeOffset.FromUnixTimeSeconds(timestampValue).LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
 
@@ -228,7 +336,7 @@ public class HandleGroupRoster : OpcodeHandler
 
                     FieldNodes.AddUIntNode(_extractor, _entryUnknown1_Slot, "Unknown 1", memberNode);
                     FieldNodes.AddUIntNode(_extractor, _entryUnknown2_Slot, "Unknown 2", memberNode);
-                    FieldNodes.AddUIntNode(_extractor, _entryUnknown3_Slot, "Unknown 3", memberNode);
+
                     FieldNodes.AddUIntNode(_extractor, _entryUnknown4_Slot, "Unknown 4", memberNode);
                     FieldNodes.AddUIntNode(_extractor, _entryUnknown5_Slot, "Unknown 5", memberNode);
                     FieldNodes.AddUIntNode(_extractor, _entryUnknown6_Slot, "Unknown 6", memberNode);

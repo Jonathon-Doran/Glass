@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Security.Policy;
 using Glass.Core.Logging;
 
 namespace Glass.Network.Protocol;
@@ -33,7 +34,36 @@ public class PacketBus
                                   PacketMetadata metadata);
 
     private readonly List<Handler> _subscribers;
+    private uint _messageCount = 0;
     private readonly object _lock;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // SubscriberCount
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public int SubscriberCount
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _subscribers.Count;
+            }
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // MessageCount
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public uint MessageCount
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _messageCount;
+            }
+        }
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // PacketBus (constructor)
@@ -42,7 +72,7 @@ public class PacketBus
     {
         _subscribers = new List<Handler>();
         _lock = new object();
-
+        _messageCount = 0;
         DebugLog.Write(LogChannel.LowNetwork, "PacketBus.ctor: created", LogLevel.Trace);
     }
 
@@ -172,6 +202,8 @@ public class PacketBus
             }
 
             snapshot = _subscribers.ToArray();
+            _messageCount++;
+            metadata.MessageId = _messageCount;
         }
 
         for (int i = 0; i < snapshot.Length; i++)
@@ -195,17 +227,15 @@ public class PacketBus
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // SubscriberCount
+    // MessageCount
+    //
+    // Reset the packet bus for a new session.
+    //
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public int SubscriberCount
+
+    public void Reset()
     {
-        get
-        {
-            lock (_lock)
-            {
-                return _subscribers.Count;
-            }
-        }
+        _messageCount = 0;
     }
 }
 

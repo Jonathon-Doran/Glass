@@ -402,6 +402,12 @@ public class SessionRegistry
                 + " removed from live zone sessions, " + _liveZoneSessions + " live.", LogLevel.Trace);
         }
 
+        GlassContext.SignalBus.Publish(new SignalSessionRemoved(session.SessionId, session.Character.CharacterId));
+
+        DebugLog.Write(LogChannel.SignalBus, "SessionRegistry.ZoneSessionClosing: published SignalSessionRemoved "
+            + session.SessionId + " for " + session.Character.Name + " characterId=" + session.Character.CharacterId
+            + ".", LogLevel.Trace);
+
         if (!session.ZoneId.Exists)
         {
             DebugLog.Write(LogChannel.Sessions, "SessionRegistry.ZoneSessionClosing: zone session " + session.SessionId

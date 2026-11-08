@@ -150,7 +150,7 @@ public class PacketCatalog
             OpcodeValue opcode = metadata.Opcode.Value;
             cataloged = new CatalogedPacket(metadata, opcode, payload)
             {
-                PacketIndex = (uint)_packets.Count,
+                PacketIndex = metadata.MessageId,
             };
             _packets.Add(cataloged);
 
@@ -503,7 +503,7 @@ public class PacketCatalog
     //
     // Returns the CatalogedPacket recorded at the given arrival index, or
     // null when the index is out of range.  Arrival indices are assigned
-    // in HandleAppPacket as the value of _packets.Count at insertion;
+    // in HandleAppPacket as the value of the message ID in the metadata;
     // nothing ever removes from _packets, so the index is a direct
     // position in the arrival-order list.
     //
@@ -513,14 +513,15 @@ public class PacketCatalog
     {
         lock (_lock)
         {
-            if (packetIndex >= _packets.Count)
+            if ((packetIndex > _packets.Count) || (packetIndex == 0))
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "PacketCatalog.PacketAt: index " + packetIndex
                     + " out of range (count=" + _packets.Count + ")", LogLevel.Error);
                 return null;
             }
-            return _packets[(int)packetIndex];
+
+            return _packets[(int)packetIndex - 1];
         }
     }
 

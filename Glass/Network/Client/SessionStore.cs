@@ -61,7 +61,7 @@ public class SessionStore
 
         if (raw.Length >= 2 && (ushort)(raw[0] | (raw[1] << 8)) == SoeConstants.OP_SessionDisconnect)
         {
-            DebugLog.Write(LogChannel.LowNetwork, "SessionStore.Create: frame " + metadata.FrameNumber
+            DebugLog.Write(LogChannel.LowNetwork, "SessionStore.Create: message " + metadata.MessageId
                 + " is a disconnect on " + metadata.LocalPort + "->" + metadata.RemotePort
                 + " with no session, ignoring", LogLevel.Trace);
             return null;

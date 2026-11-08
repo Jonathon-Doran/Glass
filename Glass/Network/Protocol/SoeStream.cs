@@ -253,7 +253,7 @@ public class SoeStream : IDisposable
         }
         else
         {
-            DebugLog.Write(LogChannel.LowNetwork, "SoeStream.ProcessPacket: frame " + metadata.FrameNumber
+            DebugLog.Write(LogChannel.LowNetwork, "SoeStream.ProcessPacket: message " + metadata.MessageId
                 + " on stream " + StreamNames[_streamId] + " has no session, Character left null", LogLevel.Warn);
             metadata.Character = null;
         }
@@ -881,7 +881,7 @@ public class SoeStream : IDisposable
     {
         if (data.Length < 2)
         {
-            DebugLog.Write(LogChannel.LowNetwork, "SoeStream.ProcessSubpacket: frame " + metadata.FrameNumber
+            DebugLog.Write(LogChannel.LowNetwork, "SoeStream.ProcessSubpacket: message " + metadata.MessageId
                 + " on stream " + StreamNames[_streamId] + " sub-packet of " + data.Length
                 + " bytes is too short for an opcode, dropping", LogLevel.Warn);
             return;

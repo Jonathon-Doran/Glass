@@ -10,7 +10,7 @@ using Glass.Core.Memory;
 // Carries per-packet context from the capture source down to opcode handlers.
 // Fields originate from the pcap packet header and IP/UDP headers.
 //
-// FrameNumber:  Sequential frame counter from the capture source
+// MessageId:    Sequential message counter in the order published
 // Timestamp:    Packet capture timestamp from the pcap header
 // SourceIp:     Source IP address as a string
 // SourcePort:   Source UDP port
@@ -19,7 +19,7 @@ using Glass.Core.Memory;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 public struct PacketMetadata
 {
-    public int FrameNumber;
+    public uint MessageId;
     public PatchOpcode Opcode;
     public OpcodeValue WireValue;         // will be removed in favor of Opcode
     public DateTime Timestamp;

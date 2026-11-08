@@ -53,13 +53,13 @@ public readonly struct CatalogedPacket
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "CatalogedPacket: no field tree for opcode 0x" + opcode
-                + " frame " + metadata.FrameNumber, LogLevel.Trace);
+                + " message " + metadata.MessageId, LogLevel.Trace);
         }
         else
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "CatalogedPacket: built field tree for opcode 0x" + opcode
-                + " frame " + metadata.FrameNumber, LogLevel.Trace);
+                + " message " + metadata.MessageId, LogLevel.Trace);
         }
     }
 }
