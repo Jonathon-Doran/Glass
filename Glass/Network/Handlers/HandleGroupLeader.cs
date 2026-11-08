@@ -73,7 +73,10 @@ public class HandleGroupLeader : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleZoneToClient
     //
-    // Processes zone-to-client traffic
+    // Processes zone-to-client traffic.  Makes the named character the leader of the group with
+    // the packet's server group id.  The leader name is converted to its persistent character id
+    // first; a name with no known character id and a group that is not held each leave
+    // everything unchanged.
     //
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
@@ -89,8 +92,35 @@ public class HandleGroupLeader : OpcodeHandler
                 return;
             }
 
-            uint groupId = _extractor.GetUIntAt(_groupId_Slot);
+            ServerGroupId serverGroupId = (ServerGroupId)_extractor.GetUIntAt(_groupId_Slot);
             string leaderName = _extractor.GetStringAt(_leaderName_Slot);
+
+            if (CharacterRepository.Instance.TryGetCharacterIdByName(leaderName, out CharacterId leaderId) == false)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleGroupLeader.HandleZoneToClient: '" + leaderName
+                    + "' has no known character id, leader of server group id 0x"
+                    + serverGroupId.Value.ToString("X") + " not changed.", LogLevel.Warn);
+                return;
+            }
+
+            if (GroupRepository.Instance.TryGetGroupByServerId(serverGroupId, out Group? group) == false)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleGroupLeader.HandleZoneToClient: server group id 0x"
+                    + serverGroupId.Value.ToString("X") + " is not held, leader '" + leaderName + "' not set.",
+                    LogLevel.Warn);
+                return;
+            }
+
+            if (group.SetLeader(leaderId) == false)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleGroupLeader.HandleZoneToClient: groupId=" + group.Id
+                    + " did not accept '" + leaderName + "' characterId=" + leaderId + " as leader.", LogLevel.Warn);
+                return;
+            }
+
+            DebugLog.Write(LogChannel.Opcodes, "HandleGroupLeader.HandleZoneToClient: '" + leaderName
+                + "' characterId=" + leaderId + " is leader of groupId=" + group.Id + " (server group id 0x"
+                + serverGroupId.Value.ToString("X") + ").", LogLevel.Trace);
         }
         finally
         {

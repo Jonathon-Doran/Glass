@@ -75,7 +75,10 @@ public class HandleGroupLeave : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleZoneToClient
     //
-    // Processes zone-to-client traffic
+    // Processes zone-to-client traffic.  Removes the leaving character from the group with the
+    // packet's server group id.  The character name is converted to its persistent character id
+    // first; a name with no known character id, a group that is not held, and a character not
+    // in that group each leave everything unchanged.
     //
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
@@ -91,8 +94,44 @@ public class HandleGroupLeave : OpcodeHandler
                 return;
             }
 
-            uint groupId = _extractor.GetUIntAt(_groupId_Slot);
+            ServerGroupId serverGroupId = (ServerGroupId)_extractor.GetUIntAt(_groupId_Slot);
             string characterName = _extractor.GetStringAt(_characterName_Slot);
+
+            if (CharacterRepository.Instance.TryGetCharacterIdByName(characterName, out CharacterId characterId) == false)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleGroupLeave.HandleZoneToClient: '" + characterName
+                    + "' has no known character id, not removed from server group id 0x"
+                    + serverGroupId.Value.ToString("X") + ".", LogLevel.Warn);
+                return;
+            }
+
+            if (GroupRepository.Instance.TryGetGroupByServerId(serverGroupId, out Group? group) == false)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleGroupLeave.HandleZoneToClient: server group id 0x"
+                    + serverGroupId.Value.ToString("X") + " is not held, '" + characterName + "' not removed.",
+                    LogLevel.Warn);
+                return;
+            }
+
+            if (group.HasMember(characterId) == false)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleGroupLeave.HandleZoneToClient: '" + characterName
+                    + "' characterId=" + characterId + " is not in groupId=" + group.Id + ", nothing changed.",
+                    LogLevel.Trace);
+                return;
+            }
+
+            if (GroupRepository.Instance.RemoveMember(characterId) == false)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleGroupLeave.HandleZoneToClient: could not remove '"
+                    + characterName + "' characterId=" + characterId + " from groupId=" + group.Id + ".",
+                    LogLevel.Error);
+                return;
+            }
+
+            DebugLog.Write(LogChannel.Opcodes, "HandleGroupLeave.HandleZoneToClient: removed '" + characterName
+                + "' characterId=" + characterId + " from groupId=" + group.Id + " (server group id 0x"
+                + serverGroupId.Value.ToString("X") + ").", LogLevel.Trace);
         }
         finally
         {

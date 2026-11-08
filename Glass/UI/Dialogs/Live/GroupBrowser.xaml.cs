@@ -72,25 +72,41 @@ public partial class GroupBrowser : Window
     // BuildMemberNode
     //
     // Builds the tree node for one group or raid member: name, class, level and persistent
-    // character id, followed by any designations, and marked as one of the user's characters
-    // when it is one.
+    // character id, followed by the roles the member holds in its group (leader, main tank,
+    // main assist).
     //
     // member:  The member to show.
+    // group:   The group the member belongs to, or null for a member in no group.
     //
     // Returns the node.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private static TreeViewItem BuildMemberNode(GroupMember member)
+    private static TreeViewItem BuildMemberNode(GroupMember member, Group? group)
     {
-        string text = member.Name + "  " + member.Class + " " + member.Level + "  [" + member.Id + "]";
-
-        if (member.Designations != GroupDesignation.None)
-        {
-            text += "  " + member.Designations;
-        }
-
+        EQClass memberClass = member.Class;
         if (member.Character != null)
         {
-            text += "  (yours)";
+            memberClass = member.Character.Class;
+        }
+
+        string text = member.Name + "  " + memberClass.ToDisplayString() + " " + member.Level + "  [0x"
+            + member.Id.Value.ToString("X") + "]";
+
+        if (group != null)
+        {
+            if (group.LeaderId == member.Id)
+            {
+                text += "  Leader";
+            }
+
+            if (group.MainTankId == member.Id)
+            {
+                text += "  MainTank";
+            }
+
+            if (group.MainAssistId == member.Id)
+            {
+                text += "  MainAssist";
+            }
         }
 
         TreeViewItem node = new TreeViewItem();
@@ -118,7 +134,7 @@ public partial class GroupBrowser : Window
 
         foreach (GroupMember member in group.Members)
         {
-            node.Items.Add(BuildMemberNode(member));
+            node.Items.Add(BuildMemberNode(member, group));
         }
 
         return node;
@@ -161,7 +177,7 @@ public partial class GroupBrowser : Window
 
             foreach (GroupMember member in raid.Ungrouped)
             {
-                ungroupedNode.Items.Add(BuildMemberNode(member));
+                ungroupedNode.Items.Add(BuildMemberNode(member, null));
             }
 
             node.Items.Add(ungroupedNode);
@@ -217,7 +233,7 @@ public partial class GroupBrowser : Window
             }
 
             TreeViewItem node = new TreeViewItem();
-            node.Header = character.Name + "  [" + character.CharacterId + "]  no group";
+            node.Header = character.Name + "  [0x" + character.CharacterId.Value.ToString("X") + "]  no group";
             MembershipTree.Items.Add(node);
             soloCharacters++;
         }

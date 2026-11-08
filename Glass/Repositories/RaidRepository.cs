@@ -48,6 +48,9 @@ public class RaidRepository
     private RaidRepository()
     {
         _raids = new Dictionary<RaidId, Raid>();
+
+        GlassContext.SessionRegistry.AllSessionsDisconnected += Clear;
+
         DebugLog.Write(LogChannel.Database, "RaidRepository: singleton instance created with an empty table.",
             defaultLoglevel);
     }
@@ -161,5 +164,22 @@ public class RaidRepository
         DebugLog.Write(LogChannel.Database, "RaidRepository.GetAllRaids: returning " + raids.Count + " raids.",
             defaultLoglevel);
         return raids;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Clear
+    //
+    // Removes every raid.  Raid ids already issued are not reused.  A membership change is published so that
+    // views of the raids rebuild.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void Clear()
+    {
+        int raidCount = _raids.Count;
+
+        _raids.Clear();
+        GlassContext.SignalBus.Publish(new SignalMembershipChanged(GroupId.None, RaidId.None));
+
+        DebugLog.Write(LogChannel.Database, "RaidRepository.Clear: removed " + raidCount + " raids.",
+            defaultLoglevel);
     }
 }

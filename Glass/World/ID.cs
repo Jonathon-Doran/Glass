@@ -65,6 +65,8 @@ public readonly struct SpawnTag { }                // Server-assigned spawn iden
 public readonly struct CharacterTag { }            // Server-assigned persistent character ID
 public readonly struct GroupTag { }                // Glass-assigned group identifier, valid for the run only
 public readonly struct RaidTag { }                 // Glass-assigned raid identifier, valid for the run only
+public readonly struct ServerGroupTag { }          // Server-assigned group identifier, as sent in group messages
+public readonly struct ServerRaidTag { }           // Server-assigned raid identifier, as sent in raid messages
 
 // Protocol domain.
 public readonly struct OpcodeTag { }               // Issued by PatchData at load time; not interchangeable across patch levels.

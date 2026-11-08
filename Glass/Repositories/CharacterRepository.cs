@@ -25,6 +25,7 @@ public class CharacterRepository
     private readonly List<Character> _characters;
     private readonly Dictionary<DatabaseId, Character> _charactersByDatabaseId;
     private readonly Dictionary<CharacterId, Character> _charactersByCharacterId;
+    private readonly Dictionary<string, CharacterId> _characterIdsByName;
     private readonly Dictionary<ZoneId, Dictionary<SpawnId, Character>> _charactersByZoneSpawn;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -56,6 +57,7 @@ public class CharacterRepository
     {
         _characters = new List<Character>();
         _charactersByCharacterId = new Dictionary<CharacterId, Character>();
+        _characterIdsByName = new Dictionary<string, CharacterId>();
         _charactersByDatabaseId = new Dictionary<DatabaseId, Character>();
         _charactersByZoneSpawn = new Dictionary<ZoneId, Dictionary<SpawnId, Character>>();
         DebugLog.Write(LogChannel.Database, "CharacterRepository: singleton instance created with empty caches.", LogLevel.Trace);
@@ -154,6 +156,8 @@ public class CharacterRepository
                 }
 
                 _charactersByCharacterId[character.CharacterId] = character;
+                _characterIdsByName[character.Name] = character.CharacterId;
+
                 DebugLog.Write(LogChannel.Database, "CharacterRepository.Load: indexed '" + character.Name
                     + "' by characterId=" + character.CharacterId, LogLevel.Trace);
             }
@@ -452,5 +456,28 @@ public void Save(DatabaseId databaseId)
         DebugLog.Write(LogChannel.Database, "CharacterRepository.GetBySpawnId: no character at zoneId=" + zoneId
             + " spawnId=" + spawnId, LogLevel.Trace);
         return null;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // TryGetCharacterIdByName
+    //
+    // Converts a character name to its persistent character id.
+    //
+    // name:         The character name.
+    // characterId:  Receives the character id if the name is held, None otherwise.
+    //
+    // Returns true if the name converted to a character id, false otherwise.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public bool TryGetCharacterIdByName(string name, out CharacterId characterId)
+    {
+        if (_characterIdsByName.TryGetValue(name, out characterId))
+        {
+            return true;
+        }
+
+        characterId = CharacterId.None;
+        DebugLog.Write(LogChannel.Database, "CharacterRepository.TryGetCharacterIdByName: no character id for '"
+            + name + "'.", LogLevel.Trace);
+        return false;
     }
 }

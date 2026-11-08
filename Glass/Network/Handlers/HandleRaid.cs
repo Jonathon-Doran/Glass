@@ -7,6 +7,7 @@ using Glass.Network.Protocol.Fields;
 using System;
 using System.Buffers.Binary;
 using System.Text;
+using System.Xml.Linq;
 
 namespace Glass.Network.Handlers;
 
@@ -238,6 +239,7 @@ public class HandleRaid : OpcodeHandler
                 case 0x12:  operation = "Request raid unlock"; break;
                 case 0x14:  operation = "Invite character to raid"; break;
                 case 0x16:  operation = "Invite group to raid"; break;
+                case 0x18:  operation = "Return to raid"; break;
                 case 0x1E:  operation = "Raid leadership change"; break;
                 default:    operation = "Unknown 0x" + subtype.ToString("X"); break;
             }
@@ -278,6 +280,7 @@ public class HandleRaid : OpcodeHandler
         SlotId Z2C_12_Slot = _registry.IndexOfField(_top_level_collection, "Gate_Raid_Z2C_12");
         SlotId Z2C_14_Slot = _registry.IndexOfField(_top_level_collection, "Gate_Raid_Z2C_14");
         SlotId Z2C_16_Slot = _registry.IndexOfField(_top_level_collection, "Gate_Raid_Z2C_16");
+        SlotId Z2C_18_Slot = _registry.IndexOfField(_top_level_collection, "Gate_Raid_Z2C_18");
         SlotId Z2C_1E_Slot = _registry.IndexOfField(_top_level_collection, "Gate_Raid_Z2C_1E");
 
         if (_extractor.IsPresent(Z2C_00_Slot))
@@ -322,7 +325,7 @@ public class HandleRaid : OpcodeHandler
             if (z2c_05_Gate.Exists)
             {
                 // uses the same format as Z2C_01
-                if (Describe_Z2C_01(z2c_05_Gate, parent) == true)
+                if (Describe_Z2C_05(z2c_05_Gate, parent) == true)
                 {
                     return;
                 }
@@ -451,6 +454,18 @@ public class HandleRaid : OpcodeHandler
             }
         }
 
+        if (_extractor.IsPresent(Z2C_18_Slot))
+        {
+            GateHandle z2c_18_Gate = _extractor.GetGateAt(Z2C_18_Slot);
+            if (z2c_18_Gate.Exists)
+            {
+                if (Describe_Z2C_18(z2c_18_Gate, parent) == true)
+                {
+                    return;
+                }
+            }
+        }
+
         if (_extractor.IsPresent(Z2C_1E_Slot))
         {
             GateHandle z2c_1E_Gate = _extractor.GetGateAt(Z2C_1E_Slot);
@@ -494,7 +509,7 @@ public class HandleRaid : OpcodeHandler
         SlotId level_Slot = _registry.IndexOfField(Z2C_00_Collection, "Level");
         SlotId isGroupLeader_Slot = _registry.IndexOfField(Z2C_00_Collection, "Is_Group_Leader");
 
-        FieldNodes.AddStringNode(_extractor, name_Slot, "New Member", parent);
+        string name = FieldNodes.AddStringNode(_extractor, name_Slot, "New Member", parent);
         FieldNodes.AddUIntNode(_extractor, characterId_Slot, "Character ID", parent);
         FieldNodes.AddUIntNode(_extractor, position_Slot, "Position", parent);
 
@@ -505,12 +520,13 @@ public class HandleRaid : OpcodeHandler
         FieldNodes.AddUIntNode(_extractor, level_Slot, "Level", parent);
         FieldNodes.AddUIntNode(_extractor, isGroupLeader_Slot, "Is Group Leader", parent);
 
+        parent.Text = OpcodeName + " (Add " + name + " to raid)";
         _extractor.EnterGate(_root_gate, 0);
         return true;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // Describe_Z2C_01 -- describe the optional Z2C 01 subtype fields for OP_Raid_General
+    // Describe_Z2C_01 -- describe the optional Z2C 01 subtype fields for OP_Raid_General (Remove from raid)
     //
     // Creates FieldDisplayNodes for the subtype data
     //
@@ -534,9 +550,9 @@ public class HandleRaid : OpcodeHandler
         CollectionHandle Z2C_01_Collection = _registry.GetCollectionHandle(_patchLevel, "Raid_Z2C_01");
         SlotId name_Slot = _registry.IndexOfField(Z2C_01_Collection, "Name");
 
-        FieldNodes.AddStringNode(_extractor, name_Slot, "Name", parent);
- 
+        string name = FieldNodes.AddStringNode(_extractor, name_Slot, "Name", parent);
 
+        parent.Text = OpcodeName + " (Remove " + name + " from raid)";
         _extractor.EnterGate(_root_gate, 0);
         return true;
     }
@@ -567,9 +583,40 @@ public class HandleRaid : OpcodeHandler
         SlotId name_Slot = _registry.IndexOfField(Z2C_03_Collection, "Name");
         SlotId groupId_Slot = _registry.IndexOfField(Z2C_03_Collection, "GroupId");
 
-        FieldNodes.AddStringNode(_extractor, name_Slot, "Name", parent);
-        FieldNodes.AddUIntNode(_extractor, groupId_Slot, "Group", parent, "X");
+        string name = FieldNodes.AddStringNode(_extractor, name_Slot, "Name", parent);
+        int group = (int) FieldNodes.AddUIntNode(_extractor, groupId_Slot, "Group", parent, "X");
 
+        parent.Text = OpcodeName + " (" + name  + " changes to group " + group + ")";
+        _extractor.EnterGate(_root_gate, 0);
+        return true;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Describe_Z2C_05 -- describe the optional Z2C 01 subtype fields for OP_Raid_General (Disband Raid)
+    //
+    // Creates FieldDisplayNodes for the subtype data
+    //
+    // gate:      A gate to the subtype data
+    // parent:    The parent FDN where data should be displayed
+    //
+    // Returns:   True if a bag is extracted, false if no data exists
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+
+    private bool Describe_Z2C_05(GateHandle gate, FieldDisplayNode parent)
+    {
+        uint bagCount = _extractor.BagCount(gate);
+
+        if (bagCount == 0)
+        {
+            return false;
+        }
+
+        _extractor.EnterGate(gate, 0);
+
+        CollectionHandle Z2C_01_Collection = _registry.GetCollectionHandle(_patchLevel, "Raid_Z2C_01");
+        SlotId name_Slot = _registry.IndexOfField(Z2C_01_Collection, "Name");
+
+        string name = FieldNodes.AddStringNode(_extractor, name_Slot, "Name", parent);
 
         _extractor.EnterGate(_root_gate, 0);
         return true;
@@ -752,9 +799,11 @@ public class HandleRaid : OpcodeHandler
         SlotId unknown1_Slot = _registry.IndexOfField(Z2C_0D_Collection, "Unknown1");
         SlotId group_Slot = _registry.IndexOfField(Z2C_0D_Collection, "Group_Number");
 
-        FieldNodes.AddStringNode(_extractor, name_Slot, "New Group Leader", parent);
-        FieldNodes.AddUIntNode(_extractor, group_Slot, "Group", parent, "D");
+        string name = FieldNodes.AddStringNode(_extractor, name_Slot, "New Group Leader", parent);
+        int group = (int) FieldNodes.AddUIntNode(_extractor, group_Slot, "Group", parent, "D");
         FieldNodes.AddUIntNode(_extractor, unknown1_Slot, "Unknown 1", parent, "X");
+
+        parent.Text = OpcodeName + " (" + name + " is leader of group " + group + ")";
 
         _extractor.EnterGate(_root_gate, 0);
         return true;
@@ -795,12 +844,14 @@ public class HandleRaid : OpcodeHandler
 
         FieldNodes.AddStringNode(_extractor, name_Slot, "Leader", parent);
         FieldNodes.AddUIntNode(_extractor, leaderId_Slot, "Leader ID", parent, "X");
-        FieldNodes.AddStringNode(_extractor, leavingCharName_Slot, "Leaving Character", parent);
+        string name = FieldNodes.AddStringNode(_extractor, leavingCharName_Slot, "Leaving Character", parent);
         FieldNodes.AddUIntNode(_extractor, characterId_Slot, "Chararacter ID", parent, "X");
 
         FieldNodes.AddUIntNode(_extractor, unknown1_Slot, "Unknown 1", parent, "X");
         FieldNodes.AddUIntNode(_extractor, unknown2_Slot, "Unknown 2", parent, "X");
         FieldNodes.AddUIntNode(_extractor, unknown3_Slot, "Unknown 3", parent, "X");
+
+        parent.Text = OpcodeName + " (" + name + " leaves group)";
         _extractor.EnterGate(_root_gate, 0);
         return true;
     }
@@ -832,10 +883,11 @@ public class HandleRaid : OpcodeHandler
         SlotId unknown1_Slot = _registry.IndexOfField(Z2C_10_Collection, "Unknown1");
         SlotId unknown2_Slot = _registry.IndexOfField(Z2C_10_Collection, "Unknown2");
 
-        FieldNodes.AddStringNode(_extractor, name_Slot, "Name", parent);
+        string name = FieldNodes.AddStringNode(_extractor, name_Slot, "Name", parent);
         FieldNodes.AddUIntNode(_extractor, unknown1_Slot, "Unknown 1", parent, "X");
         FieldNodes.AddUIntNode(_extractor, unknown2_Slot, "Unknown 2", parent, "X");
 
+        parent.Text = OpcodeName + " (" + name + " joins group)";
         _extractor.EnterGate(_root_gate, 0);
         return true;
     }
@@ -981,6 +1033,44 @@ public class HandleRaid : OpcodeHandler
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // Describe_Z2C_18 -- describe the optional Z2C 18 subtype fields for OP_Raid_General (Return to Raid)
+    //
+    // Creates FieldDisplayNodes for the subtype data
+    //
+    // gate:      A gate to the subtype data
+    // parent:    The parent FDN where data should be displayed
+    //
+    // Returns:   True if a bag is extracted, false if no data exists
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+
+    private bool Describe_Z2C_18(GateHandle gate, FieldDisplayNode parent)
+    {
+        uint bagCount = _extractor.BagCount(gate);
+
+        if (bagCount == 0)
+        {
+            return false;
+        }
+
+        _extractor.EnterGate(gate, 0);
+
+        CollectionHandle Z2C_18_Collection = _registry.GetCollectionHandle(_patchLevel, "Raid_Z2C_18");
+        SlotId name_Slot = _registry.IndexOfField(Z2C_18_Collection, "Name");
+        SlotId class_Slot = _registry.IndexOfField(Z2C_18_Collection, "Class");
+        SlotId level_Slot = _registry.IndexOfField(Z2C_18_Collection, "Level");
+
+        EQClass classValue = (EQClass) _extractor.GetUIntAt(class_Slot);
+
+        FieldNodes.AddStringNode(_extractor, name_Slot, "Character", parent);
+        FieldNodes.AddLabeledNode(_extractor, class_Slot, "Class: " + classValue.ToDisplayString() + " (0x" +
+            classValue.ToString("X") + ")", parent);
+        FieldNodes.AddUIntNode(_extractor, level_Slot, "Level", parent, "D");
+
+        _extractor.EnterGate(_root_gate, 0);
+        return true;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // Describe_Z2C_1E -- describe the optional Z2C 1E subtype fields for OP_Raid_General (Raid Leadership Change)
     //
     // Creates FieldDisplayNodes for the subtype data
@@ -1006,10 +1096,12 @@ public class HandleRaid : OpcodeHandler
         SlotId name_Slot = _registry.IndexOfField(Z2C_1E_Collection, "New_Leader");
         SlotId unknown1_Slot = _registry.IndexOfField(Z2C_1E_Collection, "Unknown1");
 
-        FieldNodes.AddStringNode(_extractor, name_Slot, "New Leader", parent);
+        string name = FieldNodes.AddStringNode(_extractor, name_Slot, "New Leader", parent);
         FieldNodes.AddUIntNode(_extractor, unknown1_Slot, "Unknown 1", parent, "X");
 
         _extractor.EnterGate(_root_gate, 0);
+
+        parent.Text = OpcodeName + " (" + name + " is new raid leader)";
         return true;
     }
 }

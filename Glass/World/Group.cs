@@ -4,24 +4,9 @@ using Glass.Core.Signals;
 using Glass.Data.Models;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Glass.World;
-
-///////////////////////////////////////////////////////////////////////////////////////////////
-// GroupDesignation
-//
-// Assignments the game makes within one group or raid, such as leader or main tank.  These
-// belong to the membership, not to the character: the same character can hold a designation
-// in one group and none in the next.  A member may hold several at once.
-///////////////////////////////////////////////////////////////////////////////////////////////
-[Flags]
-public enum GroupDesignation : uint
-{
-    None = 0,
-    Leader = 1,
-    MainTank = 2,
-    MainAssist = 4
-}
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // GroupMember
@@ -45,7 +30,6 @@ public class GroupMember
     public string Name = string.Empty;
     public EQClass Class;
     public uint Level;
-    public GroupDesignation Designations = GroupDesignation.None;
     public Character? Character = null;
 }
 
@@ -65,6 +49,11 @@ public class Group
     public GroupId Id;
     public RaidId RaidId = RaidId.None;
     public uint RaidGroupNumber = 0;
+    public ServerGroupId ServerGroupId = ServerGroupId.None;
+
+    public CharacterId LeaderId = CharacterId.None;
+    public CharacterId MainTankId = CharacterId.None;
+    public CharacterId MainAssistId = CharacterId.None;
 
     private readonly List<GroupMember> _members = new List<GroupMember>();
     private const LogLevel defaultLoglevel = LogLevel.Trace;
@@ -125,6 +114,8 @@ public class Group
             if (_members[i].Id == characterId)
             {
                 _members.RemoveAt(i);
+                GlassContext.SignalBus.Publish(new SignalMembershipChanged(Id, RaidId));
+
                 DebugLog.Write(LogChannel.Database, "Group.RemoveMember: removed characterId=" + characterId
                     + " from groupId=" + Id + ", " + _members.Count + " members left.", defaultLoglevel);
                 return true;
@@ -155,5 +146,68 @@ public class Group
             }
         }
         return false;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // TryGetMemberByName
+    //
+    // Looks up the member of this group with the given name.  Names are compared exactly.
+    //
+    // name:    The character name to look for.
+    // member:  Receives the member if found, null otherwise.
+    //
+    // Returns true if the group holds a member with that name, false otherwise.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public bool TryGetMemberByName(string name, [NotNullWhen(true)] out GroupMember? member)
+    {
+        for (int i = 0; i < _members.Count; i++)
+        {
+            if (string.Equals(_members[i].Name, name, StringComparison.Ordinal))
+            {
+                member = _members[i];
+                return true;
+            }
+        }
+
+        member = null;
+        DebugLog.Write(LogChannel.Database, "Group.TryGetMemberByName: groupId=" + Id + " holds no member named '"
+            + name + "'.", defaultLoglevel);
+        return false;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // SetLeader
+    //
+    // Makes the member with the given persistent character id the leader of this group.  A
+    // character not in the group is rejected and nothing changes.  When that member is
+    // already the leader, nothing changes and no signal is published.
+    //
+    // characterId:  The persistent character id of the new leader.
+    //
+    // Returns true if the member is the leader afterward, false if it was not in the group.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public bool SetLeader(CharacterId characterId)
+    {
+        if (HasMember(characterId) == false)
+        {
+            DebugLog.Write(LogChannel.Database, "Group.SetLeader: characterId=" + characterId
+                + " is not in groupId=" + Id + ", leader not changed.", LogLevel.Warn);
+            return false;
+        }
+
+        if (LeaderId == characterId)
+        {
+            DebugLog.Write(LogChannel.Database, "Group.SetLeader: characterId=" + characterId
+                + " is already leader of groupId=" + Id + ", nothing changed.", defaultLoglevel);
+            return true;
+        }
+
+        CharacterId previousLeaderId = LeaderId;
+        LeaderId = characterId;
+        GlassContext.SignalBus.Publish(new SignalMembershipChanged(Id, RaidId));
+
+        DebugLog.Write(LogChannel.Database, "Group.SetLeader: groupId=" + Id + " leader changed from characterId="
+            + previousLeaderId + " to characterId=" + characterId + ".", defaultLoglevel);
+        return true;
     }
 }

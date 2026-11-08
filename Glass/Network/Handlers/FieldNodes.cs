@@ -230,7 +230,11 @@ public static class FieldNodes
         FieldDisplayNode parent)
     {
         string value = extractor.GetStringAt(slotId);
-        FieldDisplayNode newNode = new FieldDisplayNode(label + ": \"" + value + "\"");
+        if (value.Length == 0)
+        {
+            value = "None";
+        }
+        FieldDisplayNode newNode = new FieldDisplayNode(label + ": " + value);
         newNode.AddByteRange(extractor.GetByteRangeFor(slotId));
         parent.AddChild(newNode);
         return value;
@@ -282,7 +286,7 @@ public static class FieldNodes
 
         if (stringId < 0)
         {
-            text = "none";
+            text = "None";
             DebugLog.Write(LogChannel.Opcodes, "FieldNodes.AddDbStringNode: " + label +
                 " carries no string id.", LogLevel.Trace);
         }
