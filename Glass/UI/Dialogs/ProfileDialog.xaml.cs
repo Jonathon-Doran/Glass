@@ -34,13 +34,14 @@ namespace Glass;
 /// </summary>
 public partial class ProfileDialog : Window
 {
-    private readonly string? _profileName;
+    private string? _profileName;
     private ObservableCollection<SlotAssignment> _slotAssignments = new();
     private Point _dragStartPoint;
     public ObservableCollection<LayoutMonitorViewModel> Monitors { get; set; } = new();
     public LayoutManager LayoutSettings { get; set; } = new();
     private int? _selectedLayoutId;
     private bool _initialized = false;
+    private bool _profileSaved = false;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// ProfileDialog
@@ -60,13 +61,13 @@ public partial class ProfileDialog : Window
         _profileName = profileName;
         Title = (profileName == null) ? "New Profile" : $"Edit Profile - {profileName}";
 
+        CharacterRepository.Instance.Load();
+
         if (profileName != null)
         {
             ProfileName.Text = profileName;
             ProfileRepository profileRepo = ProfileRepository.Instance;
             profileRepo.LoadProfile(profileName);
-
-            CharacterRepository.Instance.Load();
 
             // Initialize selected layout ID from existing assignment.
             _selectedLayoutId = profileRepo.GetLayoutId();
@@ -301,75 +302,38 @@ public partial class ProfileDialog : Window
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Save_Click
     //
-    // Click handler for the save button on the profile editor dialog.
-    // Persists the profile name, slot assignments, machine, and layout assignment.
+    // Click handler for the save button on the profile editor dialog.  Saves the profile; the dialog
+    // stays open whether or not the save succeeds.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void Save_Click(object sender, RoutedEventArgs e)
     {
         DebugLog.Write(LogChannel.Profiles, "ProfileDialog.Save_Click: saving.", LogLevel.Trace);
 
-        RebuildSlotAssignments();
-
-        string profileName = ProfileName.Text.Trim();
-        ProfileRepository profileRepo = ProfileRepository.Instance;
-        bool existsInDatabase = profileRepo.ProfileExists(profileName);
-
-        if (existsInDatabase)
+        if (!SaveProfile())
         {
-            MessageBoxResult result = MessageBox.Show($"A profile named '{profileName}' already exists. Overwrite it?",
-                "Profile Exists", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-
-            if (result == MessageBoxResult.No)
-            {
-                DebugLog.Write(LogChannel.Profiles, "ProfileDialog.Save_Click: user declined overwrite, aborting.", LogLevel.Trace);
-                return;
-            }
+            DebugLog.Write(LogChannel.Profiles, "ProfileDialog.Save_Click: profile not saved.", LogLevel.Trace);
+            return;
         }
 
-        if (profileName != _profileName)
-        {
-            DebugLog.Write(LogChannel.Profiles, "ProfileDialog.Save_Click: '" + profileName
-                + "' is not the profile this dialog opened, creating an empty profile.", LogLevel.Trace);
-            profileRepo.CreateProfile(profileName);
-        }
-        profileRepo.SetSlots(_slotAssignments.ToList());
-
-        if (_selectedLayoutId.HasValue)
-        {
-            DebugLog.Write(LogChannel.Profiles, $"ProfileDialog.Save_Click: assigning layoutId={_selectedLayoutId.Value}.", LogLevel.Trace);
-            profileRepo.SetLayoutId(_selectedLayoutId.Value);
-        }
-
-        if (MachineComboBox.SelectedItem is ComboBoxItem machineItem && machineItem.Tag is int machineId)
-        {
-            profileRepo.SetMachineId(machineId);
-        }
-
-        ComboBoxItem? serverTypeItem = ServerTypeComboBox.SelectedItem as ComboBoxItem;
-        if (serverTypeItem != null)
-        {
-            profileRepo.SetServerType(serverTypeItem.Content.ToString() ?? string.Empty);
-        }
-        string? selectedServer = ServerComboBox.SelectedItem as string;
-        if (selectedServer != null)
-        {
-            profileRepo.SetServer(selectedServer);
-        }
-
-        ProfileId profileId = profileRepo.Save(overwrite: existsInDatabase);
-
-        DebugLog.Write(LogChannel.Profiles, $"ProfileDialog.Save_Click: saved profileId={profileId}.", LogLevel.Trace);
-        RecentProfiles.Add(profileName);
-        DialogResult = true;
+        DebugLog.Write(LogChannel.Profiles, "ProfileDialog.Save_Click: profile saved.", LogLevel.Trace);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Cancel_Click
     //
-    // Click handler for the cancel button on the profile editor dialog.
+    // Click handler for the Cancel button, which is labeled Close once the profile has been saved in
+    // this dialog.  Closes the dialog with a true result when a save happened, false otherwise.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {
+        if (_profileSaved)
+        {
+            DebugLog.Write(LogChannel.Profiles, "ProfileDialog.Cancel_Click: closing after save.", LogLevel.Trace);
+            DialogResult = true;
+            return;
+        }
+
+        DebugLog.Write(LogChannel.Profiles, "ProfileDialog.Cancel_Click: cancelled, nothing saved.", LogLevel.Trace);
         DialogResult = false;
     }
 
@@ -418,6 +382,118 @@ public partial class ProfileDialog : Window
         ValidateSave();
     }
 
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // SaveProfile
+    //
+    // Writes the profile held by this dialog to the database: name, slot assignments, layout, machine,
+    // server type and server.  Asks before replacing a different profile that already has the entered
+    // name.  When the entered name is not the profile this dialog is editing, a new profile is created
+    // under that name, and after a successful save the dialog edits that profile and Cancel becomes Close,
+    // since the profile now exists in the database.
+    //
+    // Returns:  True if the profile was saved, false if the user declined to overwrite or the save failed.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private bool SaveProfile()
+    {
+        DebugLog.Write(LogChannel.Profiles, "ProfileDialog.SaveProfile: saving.", LogLevel.Trace);
+
+        RebuildSlotAssignments();
+
+        string profileName = ProfileName.Text.Trim();
+        ProfileRepository profileRepo = ProfileRepository.Instance;
+        bool existsInDatabase = profileRepo.ProfileExists(profileName);
+        bool isEditedProfile = (profileName == _profileName);
+
+        if (existsInDatabase && !isEditedProfile)
+        {
+            MessageBoxResult result = MessageBox.Show($"A profile named '{profileName}' already exists. Overwrite it?",
+                "Profile Exists", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+
+            if (result == MessageBoxResult.No)
+            {
+                DebugLog.Write(LogChannel.Profiles, "ProfileDialog.SaveProfile: user declined overwrite of '"
+                    + profileName + "', not saved.", LogLevel.Trace);
+                return false;
+            }
+
+            DebugLog.Write(LogChannel.Profiles, "ProfileDialog.SaveProfile: user accepted overwrite of '"
+                + profileName + "'.", LogLevel.Trace);
+        }
+
+        if (!isEditedProfile)
+        {
+            DebugLog.Write(LogChannel.Profiles, "ProfileDialog.SaveProfile: '" + profileName
+                + "' is not the profile this dialog is editing, creating an empty profile.", LogLevel.Trace);
+            profileRepo.CreateProfile(profileName);
+        }
+
+        profileRepo.SetSlots(_slotAssignments.ToList());
+
+        if (_selectedLayoutId.HasValue)
+        {
+            DebugLog.Write(LogChannel.Profiles, $"ProfileDialog.SaveProfile: assigning layoutId={_selectedLayoutId.Value}.", LogLevel.Trace);
+            profileRepo.SetLayoutId(_selectedLayoutId.Value);
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.Profiles, "ProfileDialog.SaveProfile: no layout selected.", LogLevel.Trace);
+        }
+
+        if (MachineComboBox.SelectedItem is ComboBoxItem machineItem && machineItem.Tag is int machineId)
+        {
+            DebugLog.Write(LogChannel.Profiles, $"ProfileDialog.SaveProfile: assigning machineId={machineId}.", LogLevel.Trace);
+            profileRepo.SetMachineId(machineId);
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.Profiles, "ProfileDialog.SaveProfile: no machine selected.", LogLevel.Trace);
+        }
+
+        ComboBoxItem? serverTypeItem = ServerTypeComboBox.SelectedItem as ComboBoxItem;
+        if (serverTypeItem != null)
+        {
+            profileRepo.SetServerType(serverTypeItem.Content.ToString() ?? string.Empty);
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.Profiles, "ProfileDialog.SaveProfile: no server type selected.", LogLevel.Trace);
+        }
+
+        string? selectedServer = ServerComboBox.SelectedItem as string;
+        if (selectedServer != null)
+        {
+            profileRepo.SetServer(selectedServer);
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.Profiles, "ProfileDialog.SaveProfile: no server selected.", LogLevel.Trace);
+        }
+
+        ProfileId profileId = profileRepo.Save(overwrite: existsInDatabase);
+
+        if (!profileId.Exists)
+        {
+            DebugLog.Write(LogChannel.Profiles, "ProfileDialog.SaveProfile: save of '" + profileName
+                + "' returned no profile id.", LogLevel.Error);
+            return false;
+        }
+
+        DebugLog.Write(LogChannel.Profiles, $"ProfileDialog.SaveProfile: saved profileId={profileId}.", LogLevel.Trace);
+
+        if (!isEditedProfile)
+        {
+            _profileName = profileName;
+            Title = $"Edit Profile - {profileName}";
+            DebugLog.Write(LogChannel.Profiles, "ProfileDialog.SaveProfile: now editing '" + profileName + "'.", LogLevel.Trace);
+        }
+
+        _profileSaved = true;
+        CancelButton.Content = "Close";
+        DebugLog.Write(LogChannel.Profiles, "ProfileDialog.SaveProfile: profile saved in this dialog, Cancel relabeled Close.", LogLevel.Trace);
+
+        RecentProfiles.Add(profileName);
+        return true;
+    }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // ValidateSave
@@ -435,14 +511,15 @@ public partial class ProfileDialog : Window
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // TabControl_SelectionChanged
     //
-    // Fires when the user switches tabs. Blocks navigation away from Character Selection
-    // if no profile name has been entered. Rebuilds slot assignments when the Slot Assignment
-    // tab is selected. Loads the keyboard layout tab when it is selected.
+    // Fires when the user switches tabs. Blocks navigation away from Character Selection if no
+    // profile name has been entered.  For a new profile, also requires at least one selected
+    // character and saves the profile before navigation away from Character Selection is allowed,
+    // so the remaining tabs work on a profile that exists in the database.  Rebuilds slot assignments
+    // when the Slot Assignment tab is selected. Loads the keyboard layout tab when it is selected.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
     private void TabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (! _initialized)
+        if (!_initialized)
         {
             return;
         }
@@ -458,10 +535,35 @@ public partial class ProfileDialog : Window
         {
             if (string.IsNullOrWhiteSpace(ProfileName.Text))
             {
-                DebugLog.Write(LogChannel.Profiles, "ProfileDialog: profile name required before leaving character selection.", LogLevel.Trace);
+                DebugLog.Write(LogChannel.Profiles, "ProfileDialog.TabControl_SelectionChanged: profile name required before leaving character selection.", LogLevel.Trace);
                 MessageBox.Show("Please enter a profile name before continuing.", "Profile Name Required", MessageBoxButton.OK, MessageBoxImage.Warning);
                 ((TabControl)sender).SelectedItem = e.RemovedItems[0];
                 return;
+            }
+
+            if (_profileName == null)
+            {
+                bool anySelected = (CharactersListView.ItemsSource is IEnumerable<CharacterSelection> items) &&
+                    items.Any(c => c.IsSelected);
+
+                if (!anySelected)
+                {
+                    DebugLog.Write(LogChannel.Profiles, "ProfileDialog.TabControl_SelectionChanged: new profile has no characters selected, staying on character selection.", LogLevel.Trace);
+                    MessageBox.Show("Please select at least one character before continuing.", "Characters Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    ((TabControl)sender).SelectedItem = e.RemovedItems[0];
+                    return;
+                }
+
+                DebugLog.Write(LogChannel.Profiles, "ProfileDialog.TabControl_SelectionChanged: saving new profile before leaving character selection.", LogLevel.Trace);
+
+                if (!SaveProfile())
+                {
+                    DebugLog.Write(LogChannel.Profiles, "ProfileDialog.TabControl_SelectionChanged: new profile not saved, staying on character selection.", LogLevel.Trace);
+                    ((TabControl)sender).SelectedItem = e.RemovedItems[0];
+                    return;
+                }
+
+                DebugLog.Write(LogChannel.Profiles, "ProfileDialog.TabControl_SelectionChanged: new profile saved as '" + _profileName + "'.", LogLevel.Trace);
             }
         }
 
