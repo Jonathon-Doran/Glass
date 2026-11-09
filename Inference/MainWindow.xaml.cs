@@ -1073,7 +1073,7 @@ public partial class MainWindow : Window
         ProfileLaunchDialog dialog = new ProfileLaunchDialog(serverType);
         dialog.Owner = this;
 
-        if (dialog.ShowDialog() != true)
+        if ((dialog.ShowDialog() != true) || (dialog.SelectedProfileName == null))
         {
             return;
         }

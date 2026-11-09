@@ -17,6 +17,8 @@ namespace Glass;
 public partial class ProfileLaunchDialog : Window
 {
     private readonly string? _serverType;
+    private List<ProfileSummary> _profiles = new List<ProfileSummary>();
+    private const string AllServers = "All servers";
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // SelectedProfileName
@@ -46,9 +48,11 @@ public partial class ProfileLaunchDialog : Window
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // LoadProfiles
     //
-    // Fills the list with summaries of live profiles.  With no server type filter every live profile
-    // is listed.  A filter of "Test" lists profiles whose server type is Test; any other filter lists
-    // profiles whose server type is not Test.
+    // Reads summaries of live profiles, limited by the server type filter when one was given, and fills
+    // the server combo box with "All servers" followed by each server those profiles use.  With no
+    // server type filter every live profile is kept.  A filter of "Test" keeps profiles whose server
+    // type is Test; any other filter keeps profiles whose server type is not Test.  Selecting "All
+    // servers" fills the list.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void LoadProfiles()
     {
@@ -60,10 +64,49 @@ public partial class ProfileLaunchDialog : Window
             summaries = summaries.Where(s => (s.ServerType == "Test") == wantTest).ToList();
         }
 
-        ProfileList.ItemsSource = summaries;
+        _profiles = summaries;
 
-        DebugLog.Write(LogChannel.Profiles, "ProfileLaunchDialog.LoadProfiles: listed " + summaries.Count
-            + " profiles, serverType filter='" + (_serverType ?? "none") + "'.", LogLevel.Trace);
+        List<string> servers = _profiles
+            .Select(s => s.Server)
+            .Where(server => !string.IsNullOrEmpty(server))
+            .Distinct()
+            .OrderBy(server => server)
+            .ToList();
+
+        ServerComboBox.Items.Clear();
+        ServerComboBox.Items.Add(AllServers);
+        foreach (string server in servers)
+        {
+            ServerComboBox.Items.Add(server);
+        }
+
+        DebugLog.Write(LogChannel.Profiles, "ProfileLaunchDialog.LoadProfiles: " + _profiles.Count
+            + " profiles on " + servers.Count + " servers, serverType filter='" + (_serverType ?? "none") + "'.", LogLevel.Trace);
+
+        ServerComboBox.SelectedIndex = 0;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // ApplyServerFilter
+    //
+    // Fills the list with the loaded profiles on the server chosen in the server combo box, or with all
+    // loaded profiles when "All servers" is chosen.  Clears the selection, which disables Launch.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void ApplyServerFilter()
+    {
+        string? server = ServerComboBox.SelectedItem as string;
+
+        List<ProfileSummary> shown = ((server == null) || (server == AllServers))
+            ? _profiles
+            : _profiles.Where(s => s.Server == server).ToList();
+
+        ProfileList.ItemsSource = shown;
+        ProfileList.SelectedItem = null;
+        SelectedProfileName = null;
+        LaunchButton.IsEnabled = false;
+
+        DebugLog.Write(LogChannel.Profiles, "ProfileLaunchDialog.ApplyServerFilter: server='" + (server ?? "none")
+            + "' showing " + shown.Count + " of " + _profiles.Count + " profiles.", LogLevel.Trace);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -82,6 +125,21 @@ public partial class ProfileLaunchDialog : Window
 
         DebugLog.Write(LogChannel.Profiles, "ProfileLaunchDialog.ProfileList_SelectionChanged: selected='"
             + (SelectedProfileName ?? "none") + "'.", LogLevel.Trace);
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // ServerComboBox_SelectionChanged
+    //
+    // Refilters the profile list when a different server is chosen.
+    //
+    // sender:  The server combo box.
+    // e:       Event arguments.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void ServerComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        DebugLog.Write(LogChannel.Profiles, "ProfileLaunchDialog.ServerComboBox_SelectionChanged: server='"
+            + ((ServerComboBox.SelectedItem as string) ?? "none") + "'.", LogLevel.Trace);
+        ApplyServerFilter();
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
