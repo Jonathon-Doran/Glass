@@ -1,4 +1,5 @@
-﻿using Glass.Core;
+﻿using Glass;
+using Glass.Core;
 using Glass.Core.Logging;
 using Glass.Core.Memory;
 using Glass.Core.Signals;
@@ -1069,7 +1070,7 @@ public partial class MainWindow : Window
         DebugLog.Write(LogChannel.Inference,
             "MenuItem_LaunchProfile_Click: patch level set for serverType=" + serverType, LogLevel.Trace);
 
-        LaunchProfileDialog dialog = new LaunchProfileDialog(serverType);
+        ProfileLaunchDialog dialog = new ProfileLaunchDialog(serverType);
         dialog.Owner = this;
 
         if (dialog.ShowDialog() != true)

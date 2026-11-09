@@ -663,8 +663,9 @@ public class ProfileRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // GetSummaries
     //
-    // Returns a summary of each live profile, or of each deleted profile, ordered alphabetically by
-    // name.  The character count is the number of slot assignments the profile has.
+    // Returns a summary of each live profile, or of each deleted profile, including its server and
+    // server type, ordered alphabetically by name  The character count is the number of slot
+    // assignments the profile has.
     //
     // deleted:  True to summarize deleted profiles, false to summarize live profiles.
     //
@@ -679,7 +680,7 @@ public class ProfileRepository
 
         using SqliteCommand cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT p.name, p.description, p.Server, COUNT(ps.id)
+            SELECT p.name, p.description, p.Server, p.ServerType, COUNT(ps.id)
             FROM Profiles p
             LEFT JOIN ProfileSlots ps ON ps.profile_id = p.id
             WHERE " + deletedFilter + @"
@@ -695,7 +696,8 @@ public class ProfileRepository
                 Name = reader.GetString(0),
                 Description = reader.GetString(1),
                 Server = reader.GetString(2),
-                CharacterCount = (uint)reader.GetInt64(3)
+                ServerType = reader.GetString(3),
+                CharacterCount = (uint)reader.GetInt64(4)
             });
         }
 
@@ -786,34 +788,6 @@ public class ProfileRepository
 
         DebugLog.Write(LogChannel.Database, "ProfileRepository.GetDeletedNames: " + names.Count + " deleted profiles.", LogLevel.Trace);
         return names;
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // GetServerTypeForProfile
-    //
-    // Returns the ServerType column for the named profile, or null if the profile does not exist.
-    // Static helper for filtering profile lists by server type without instantiating a full
-    // ProfileRepository per profile.
-    //
-    // profileName:  The name of the profile to query.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public static string? GetServerTypeForProfile(string profileName)
-    {
-        using SqliteConnection conn = Database.Instance.Connect();
-        conn.Open();
-
-        using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT ServerType FROM Profiles WHERE name = @name";
-        cmd.Parameters.AddWithValue("@name", profileName);
-
-        object? result = cmd.ExecuteScalar();
-        if (result == null || result == DBNull.Value)
-        {
-            DebugLog.Write(LogChannel.Database, $"ProfileRepository.GetServerTypeForProfile: '{profileName}' not found.", LogLevel.Error);
-            return null;
-        }
-
-        return (string)result;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

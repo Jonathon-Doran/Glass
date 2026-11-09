@@ -11,5 +11,6 @@ public class ProfileSummary
     public string Name { get; init; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string Server { get; init; } = string.Empty;
+    public string ServerType { get; init; } = string.Empty;
     public uint CharacterCount { get; init; }
 }

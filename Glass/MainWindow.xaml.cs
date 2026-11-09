@@ -762,13 +762,13 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     private void MenuItem_Settings_Click(object sender, RoutedEventArgs e) 
-    { 
+    {
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // MenuItem_Launch_Click
     //
-    // Opens the select profile dialog and launches the chosen profile.
+    // Opens the profile launch dialog and launches the selected profile.
     // Sets the current patch level from the profile's server type before
     // launching.
     //
@@ -777,7 +777,7 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private async void MenuItem_Launch_Click(object sender, RoutedEventArgs e)
     {
-        SelectProfileDialog select = new SelectProfileDialog { Owner = this };
+        ProfileLaunchDialog select = new ProfileLaunchDialog { Owner = this };
         if ((select.ShowDialog() != true) || (select.SelectedProfileName == null))
         {
             return;
