@@ -540,6 +540,14 @@ public class Database
         {
             ApplyMigration(conn, 74, Migration_074);
         }
+        if (version < 75)
+        {
+            ApplyMigration(conn, 75, Migration_075);
+        }
+        if (version < 76)
+        {
+            ApplyMigration(conn, 76, Migration_076);
+        }
     }
 
     private int GetSchemaVersion()
@@ -2037,6 +2045,14 @@ public class Database
         ALTER TABLE MobSightings ADD COLUMN spawn_x REAL;
         ALTER TABLE MobSightings ADD COLUMN spawn_y REAL;
         ALTER TABLE MobSightings ADD COLUMN spawn_z REAL;
+    ";
+
+    private const string Migration_075 = @"
+        ALTER TABLE Profiles ADD COLUMN deleted_at TEXT;
+    ";
+
+    private const string Migration_076 = @"
+        ALTER TABLE Profiles ADD COLUMN description TEXT NOT NULL DEFAULT '';
     ";
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

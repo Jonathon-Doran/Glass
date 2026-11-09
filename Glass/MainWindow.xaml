@@ -24,7 +24,7 @@
             <MenuItem x:Name="MenuEdit" Header="_Edit" IsEnabled="False">
                 <MenuItem Header="_Settings" Click="MenuItem_Settings_Click"/>
                 <MenuItem Header="_New Profile" Click="MenuItem_NewProfile_Click"/>
-                <MenuItem Header="_Edit Profile..." Click="MenuItem_EditProfile_Click"/>
+                <MenuItem Header="_Manage Profile..." Click="MenuItem_ManageProfile_Click"/>
                 <Separator/>
 
             </MenuItem>

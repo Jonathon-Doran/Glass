@@ -45,7 +45,7 @@ public class ProfileRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // LoadProfile
     //
-    // Loads the named profile from the database, including its slot assignments, and makes it the
+    // Loads the named live profile from the database, including its slot assignments, and makes it the
     // profile held by this repository.  If that profile is already the one held, nothing is read.
     // If no profile with that name exists, an empty profile with that name is held, ready for saving.
     //
@@ -70,7 +70,7 @@ public class ProfileRepository
         conn.Open();
 
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT id, name, machine_id, layout_id, ServerType, Server FROM Profiles WHERE name = @name";
+        cmd.CommandText = "SELECT id, name, machine_id, layout_id, ServerType, Server FROM Profiles WHERE name = @name AND deleted_at IS NULL";
         cmd.Parameters.AddWithValue("@name", profileName);
 
         using SqliteDataReader reader = cmd.ExecuteReader();
@@ -143,10 +143,212 @@ public class ProfileRepository
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // DeleteProfile
+    //
+    // Marks the named profile as deleted by recording the deletion time.  The profile and the rows it
+    // owns stay in the database so it can be restored.  If the named profile is the one held by this
+    // repository, the held profile is discarded.
+    //
+    // profileName:  The name of the profile to delete.
+    //
+    // Returns:  True if a live profile with that name was marked deleted, false if none was found.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public bool DeleteProfile(string profileName)
+    {
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE Profiles SET deleted_at = datetime('now') WHERE name = @name AND deleted_at IS NULL";
+        cmd.Parameters.AddWithValue("@name", profileName);
+        int rowCount = cmd.ExecuteNonQuery();
+
+        if (rowCount == 0)
+        {
+            DebugLog.Write(LogChannel.Database, "ProfileRepository.DeleteProfile: no live profile named '"
+                + profileName + "', nothing deleted.", LogLevel.Warn);
+            return false;
+        }
+
+        DebugLog.Write(LogChannel.Database, "ProfileRepository.DeleteProfile: marked '" + profileName
+            + "' deleted.", LogLevel.Trace);
+
+        if ((_profile != null) && (_profile.Name == profileName))
+        {
+            DebugLog.Write(LogChannel.Database, "ProfileRepository.DeleteProfile: discarding the held profile '"
+                + profileName + "'.", LogLevel.Trace);
+            _profile = null;
+        }
+
+        return true;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // RenameProfile
+    //
+    // Renames a live profile.  The new name must not be blank and must not be held by any profile,
+    // live or deleted.  If the renamed profile is the one held by this repository, the held profile
+    // takes the new name.
+    //
+    // oldName:  The current name of the live profile.
+    // newName:  The name to give it.
+    //
+    // Returns:  True if the profile was renamed, false if the new name was blank or taken, or no live
+    //           profile had the old name.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public bool RenameProfile(string oldName, string newName)
+    {
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            DebugLog.Write(LogChannel.Database, "ProfileRepository.RenameProfile: new name for '" + oldName
+                + "' is blank, not renamed.", LogLevel.Warn);
+            return false;
+        }
+
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        using SqliteCommand checkCmd = conn.CreateCommand();
+        checkCmd.CommandText = "SELECT COUNT(*) FROM Profiles WHERE name = @newName";
+        checkCmd.Parameters.AddWithValue("@newName", newName);
+        long takenCount = (long)checkCmd.ExecuteScalar()!;
+
+        if (takenCount > 0)
+        {
+            DebugLog.Write(LogChannel.Database, "ProfileRepository.RenameProfile: '" + newName
+                + "' is already held by a profile, '" + oldName + "' not renamed.", LogLevel.Warn);
+            return false;
+        }
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE Profiles SET name = @newName WHERE name = @oldName AND deleted_at IS NULL";
+        cmd.Parameters.AddWithValue("@newName", newName);
+        cmd.Parameters.AddWithValue("@oldName", oldName);
+        int rowCount = cmd.ExecuteNonQuery();
+
+        if (rowCount == 0)
+        {
+            DebugLog.Write(LogChannel.Database, "ProfileRepository.RenameProfile: no live profile named '"
+                + oldName + "', nothing renamed.", LogLevel.Warn);
+            return false;
+        }
+
+        DebugLog.Write(LogChannel.Database, "ProfileRepository.RenameProfile: renamed '" + oldName
+            + "' to '" + newName + "'.", LogLevel.Trace);
+
+        if ((_profile != null) && (_profile.Name == oldName))
+        {
+            _profile.Name = newName;
+            DebugLog.Write(LogChannel.Database, "ProfileRepository.RenameProfile: held profile now named '"
+                + newName + "'.", LogLevel.Trace);
+        }
+
+        return true;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // RestoreProfile
+    //
+    // Clears the deletion time of the named deleted profile, making it a live profile again with
+    // everything it owned before it was deleted.
+    //
+    // profileName:  The name of the deleted profile to restore.
+    //
+    // Returns:  True if a deleted profile with that name was restored, false if none was found.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public bool RestoreProfile(string profileName)
+    {
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE Profiles SET deleted_at = NULL WHERE name = @name AND deleted_at IS NOT NULL";
+        cmd.Parameters.AddWithValue("@name", profileName);
+        int rowCount = cmd.ExecuteNonQuery();
+
+        if (rowCount == 0)
+        {
+            DebugLog.Write(LogChannel.Database, "ProfileRepository.RestoreProfile: no deleted profile named '"
+                + profileName + "', nothing restored.", LogLevel.Warn);
+            return false;
+        }
+
+        DebugLog.Write(LogChannel.Database, "ProfileRepository.RestoreProfile: restored '" + profileName + "'.", LogLevel.Trace);
+        return true;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // PurgeProfile
+    //
+    // Permanently removes the named deleted profile: its slot assignments, page associations and member
+    // rows, then the profile row, in one transaction.  A live profile is never removed.
+    //
+    // profileName:  The name of the deleted profile to remove.
+    //
+    // Returns:  True if a deleted profile with that name was removed, false if none was found.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public bool PurgeProfile(string profileName)
+    {
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+        using SqliteTransaction tx = conn.BeginTransaction();
+
+        try
+        {
+            using SqliteCommand idCmd = conn.CreateCommand();
+            idCmd.Transaction = tx;
+            idCmd.CommandText = "SELECT id FROM Profiles WHERE name = @name AND deleted_at IS NOT NULL";
+            idCmd.Parameters.AddWithValue("@name", profileName);
+            object? idValue = idCmd.ExecuteScalar();
+
+            if (idValue == null)
+            {
+                DebugLog.Write(LogChannel.Database, "ProfileRepository.PurgeProfile: no deleted profile named '"
+                    + profileName + "', nothing removed.", LogLevel.Warn);
+                tx.Rollback();
+                return false;
+            }
+
+            uint profileId = Convert.ToUInt32(idValue);
+            DebugLog.Write(LogChannel.Database, "ProfileRepository.PurgeProfile: removing '" + profileName
+                + "' profileId=" + profileId + ".", LogLevel.Trace);
+
+            string[] ownedTables = { "ProfileSlots", "ProfilePages", "ProfileMembers" };
+            foreach (string table in ownedTables)
+            {
+                using SqliteCommand deleteCmd = conn.CreateCommand();
+                deleteCmd.Transaction = tx;
+                deleteCmd.CommandText = "DELETE FROM " + table + " WHERE profile_id = @id";
+                deleteCmd.Parameters.AddWithValue("@id", profileId);
+                int rowCount = deleteCmd.ExecuteNonQuery();
+                DebugLog.Write(LogChannel.Database, "ProfileRepository.PurgeProfile: removed " + rowCount
+                    + " rows from " + table + ".", LogLevel.Trace);
+            }
+
+            using SqliteCommand profileCmd = conn.CreateCommand();
+            profileCmd.Transaction = tx;
+            profileCmd.CommandText = "DELETE FROM Profiles WHERE id = @id";
+            profileCmd.Parameters.AddWithValue("@id", profileId);
+            profileCmd.ExecuteNonQuery();
+
+            tx.Commit();
+            DebugLog.Write(LogChannel.Database, "ProfileRepository.PurgeProfile: removed '" + profileName + "'.", LogLevel.Trace);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Write(LogChannel.Database, "ProfileRepository.PurgeProfile: exception removing '" + profileName
+                + "': " + ex.Message + ", rolling back.", LogLevel.Error);
+            tx.Rollback();
+            throw;
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // ProfileExists
     //
-    // Reports whether the Profiles table has a row with the given name.  Does not change the
-    // profile held by this repository.
+    // Reports whether a live profile has the given name; deleted profiles are not counted.
+    // Does not change the  Does not change the profile held by this repository.
     //
     // profileName:  The profile name to look for.
     //
@@ -158,7 +360,7 @@ public class ProfileRepository
         conn.Open();
 
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(*) FROM Profiles WHERE name = @name";
+        cmd.CommandText = "SELECT COUNT(*) FROM Profiles WHERE name = @name AND deleted_at IS NULL";
         cmd.Parameters.AddWithValue("@name", profileName);
 
         long rowCount = (long)cmd.ExecuteScalar()!;
@@ -166,6 +368,33 @@ public class ProfileRepository
 
         DebugLog.Write(LogChannel.Database, "ProfileRepository.ProfileExists: '" + profileName + "' "
             + (exists ? "exists" : "does not exist"), LogLevel.Trace);
+        return exists;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // DeletedProfileExists
+    //
+    // Reports whether a deleted profile holds the given name.  Does not change the profile held by
+    // this repository.
+    //
+    // profileName:  The profile name to look for.
+    //
+    // Returns:  True if a deleted profile has that name, false otherwise.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public bool DeletedProfileExists(string profileName)
+    {
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM Profiles WHERE name = @name AND deleted_at IS NOT NULL";
+        cmd.Parameters.AddWithValue("@name", profileName);
+
+        long rowCount = (long)cmd.ExecuteScalar()!;
+        bool exists = rowCount > 0;
+
+        DebugLog.Write(LogChannel.Database, "ProfileRepository.DeletedProfileExists: '" + profileName + "' "
+            + (exists ? "is held by a deleted profile" : "is not held by a deleted profile"), LogLevel.Trace);
         return exists;
     }
 
@@ -385,6 +614,8 @@ public class ProfileRepository
         }
     }
 
+
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GetServerType
     //
@@ -430,10 +661,89 @@ public class ProfileRepository
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // GetSummaries
+    //
+    // Returns a summary of each live profile, or of each deleted profile, ordered alphabetically by
+    // name.  The character count is the number of slot assignments the profile has.
+    //
+    // deleted:  True to summarize deleted profiles, false to summarize live profiles.
+    //
+    // Returns:  One summary per matching profile.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public static List<ProfileSummary> GetSummaries(bool deleted)
+    {
+        string deletedFilter = deleted ? "p.deleted_at IS NOT NULL" : "p.deleted_at IS NULL";
+
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT p.name, p.description, p.Server, COUNT(ps.id)
+            FROM Profiles p
+            LEFT JOIN ProfileSlots ps ON ps.profile_id = p.id
+            WHERE " + deletedFilter + @"
+            GROUP BY p.id
+            ORDER BY p.name";
+
+        List<ProfileSummary> summaries = new List<ProfileSummary>();
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            summaries.Add(new ProfileSummary
+            {
+                Name = reader.GetString(0),
+                Description = reader.GetString(1),
+                Server = reader.GetString(2),
+                CharacterCount = (uint)reader.GetInt64(3)
+            });
+        }
+
+        DebugLog.Write(LogChannel.Database, "ProfileRepository.GetSummaries: deleted=" + deleted
+            + " count=" + summaries.Count + ".", LogLevel.Trace);
+        return summaries;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // SetDescription
+    //
+    // Stores a new description for the named profile, live or deleted.
+    //
+    // profileName:  The name of the profile to describe.
+    // description:  The description text; leading and trailing white space is removed.
+    //
+    // Returns:  True if a profile with that name was updated, false if none was found.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public bool SetDescription(string profileName, string description)
+    {
+        string trimmed = description.Trim();
+
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE Profiles SET description = @description WHERE name = @name";
+        cmd.Parameters.AddWithValue("@description", trimmed);
+        cmd.Parameters.AddWithValue("@name", profileName);
+        int rowCount = cmd.ExecuteNonQuery();
+
+        if (rowCount == 0)
+        {
+            DebugLog.Write(LogChannel.Database, "ProfileRepository.SetDescription: no profile named '"
+                + profileName + "', description not stored.", LogLevel.Warn);
+            return false;
+        }
+
+        DebugLog.Write(LogChannel.Database, "ProfileRepository.SetDescription: '" + profileName
+            + "' description set, length=" + trimmed.Length + ".", LogLevel.Trace);
+        return true;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // GetAllNames
     //
-    // Returns the names of all profiles in the database, ordered alphabetically.
-    // Use this to populate profile list UI before constructing a full repository.
+    // Returns the names of all live profiles in the database, ordered alphabetically.  Deleted
+    // profiles are not included.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public static List<string> GetAllNames()
     {
@@ -441,7 +751,7 @@ public class ProfileRepository
         conn.Open();
 
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT name FROM Profiles ORDER BY name";
+        cmd.CommandText = "SELECT name FROM Profiles WHERE deleted_at IS NULL ORDER BY name";
 
         List<string> names = new List<string>();
         using SqliteDataReader reader = cmd.ExecuteReader();
@@ -450,6 +760,31 @@ public class ProfileRepository
             names.Add(reader.GetString(0));
         }
 
+        DebugLog.Write(LogChannel.Database, "ProfileRepository.GetAllNames: " + names.Count + " live profiles.", LogLevel.Trace);
+        return names;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // GetDeletedNames
+    //
+    // Returns the names of all deleted profiles in the database, ordered alphabetically.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public static List<string> GetDeletedNames()
+    {
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT name FROM Profiles WHERE deleted_at IS NOT NULL ORDER BY name";
+
+        List<string> names = new List<string>();
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            names.Add(reader.GetString(0));
+        }
+
+        DebugLog.Write(LogChannel.Database, "ProfileRepository.GetDeletedNames: " + names.Count + " deleted profiles.", LogLevel.Trace);
         return names;
     }
 

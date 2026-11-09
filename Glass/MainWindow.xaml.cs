@@ -732,14 +732,14 @@ public partial class MainWindow : Window
 
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // MenuItem_EditProfile_Click
+    // MenuItem_ManageProfile_Click
     //
     // Opens the select profile dialog and launches the chosen profile for editing.
     //
     // sender:  The menu item that raised the event.
     // e:       Standard event args; not inspected.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void MenuItem_EditProfile_Click(object sender, RoutedEventArgs e)
+    private void MenuItem_ManageProfile_Click(object sender, RoutedEventArgs e)
     {
         var select = new SelectProfileDialog { Owner = this };
         if ((select.ShowDialog() == true) && (select.SelectedProfileName != null))
