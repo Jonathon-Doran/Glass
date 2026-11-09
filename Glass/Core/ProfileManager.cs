@@ -50,10 +50,12 @@ public class ProfileManager
     ///////////////////////////////////////////////////////////////////////////////////////////
     // LaunchProfile
     //
-    // Launches all characters in the specified profile through ISXGlass.
-    // Sends the layout to GlassVideo, then launches characters with small
-    // random delays between them to avoid overwhelming the login server.  Also loads
-    // keyboard pages and bindings.
+    // Launches all characters in the specified profile through ISXGlass.  When no profile is
+    // active, loads the profile, its characters and its keyboard pages and bindings, and sends
+    // the layout to GlassVideo before launching.  When the specified profile is already the
+    // active one, only the launch commands are sent again; ISXGlass skips sessions that are
+    // already running, so only missing sessions start.  A different profile is refused while
+    // one is active.
     //
     // profileName:  The name of the profile to launch.
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -61,7 +63,17 @@ public class ProfileManager
     {
         if (_activeProfile != null)
         {
-            DebugLog.Write(LogChannel.Profiles, "ProfileManager.LaunchProfile: a profile is already active, refusing launch.", LogLevel.Trace);
+            if (_activeProfile.GetLoadedProfileName() == profileName)
+            {
+                DebugLog.Write(LogChannel.Profiles, "ProfileManager.LaunchProfile: '" + profileName
+                    + "' is already active, relaunching missing sessions.", LogLevel.Trace);
+                await LaunchCharacters(_activeProfile.GetSlots());
+                return;
+            }
+
+            DebugLog.Write(LogChannel.Profiles, "ProfileManager.LaunchProfile: profile '"
+                + _activeProfile.GetLoadedProfileName() + "' is active, refusing launch of '" + profileName + "'.",
+                LogLevel.Warn);
             return;
         }
 
@@ -90,18 +102,34 @@ public class ProfileManager
             DebugLog.Write(LogChannel.Profiles, "ProfileManager.LaunchProfile: no layout assigned to profile, skipping GlassVideo layout.", LogLevel.Warn);
         }
 
+        await LaunchCharacters(slots);
+
+        DebugLog.Write(LogChannel.Profiles, "ProfileManager.LaunchProfile: all characters launched", LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // LaunchCharacters
+    //
+    // Sends a launch command to ISXGlass for each character in the given slot assignments,
+    // with a small random delay between them to avoid overwhelming the login server.  A slot
+    // whose character is not cached is skipped.
+    //
+    // slots:  The slot assignments whose characters are launched.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private async Task LaunchCharacters(IReadOnlyList<SlotAssignment> slots)
+    {
         Random rng = new Random();
         foreach (SlotAssignment slot in slots)
         {
             Character? character = CharacterRepository.Instance.GetByDatabaseId(slot.DatabaseId);
             if (character == null)
             {
-                DebugLog.Write(LogChannel.Profiles, "ProfileManager.LaunchProfile: no character found for id="
+                DebugLog.Write(LogChannel.Profiles, "ProfileManager.LaunchCharacters: no character found for id="
                     + slot.DatabaseId + ", skipping", LogLevel.Warn);
                 continue;
             }
 
-            DebugLog.Write(LogChannel.ISXGlass, "ProfileManager.LaunchProfile: launching " + character.Name
+            DebugLog.Write(LogChannel.ISXGlass, "ProfileManager.LaunchCharacters: launching " + character.Name
                 + " accountId=" + character.AccountId
                 + " server=" + character.Server
                 + " id=" + character.DatabaseId, LogLevel.Trace);
@@ -115,7 +143,8 @@ public class ProfileManager
             await Task.Delay(delay);
         }
 
-        DebugLog.Write(LogChannel.Profiles, "ProfileManager.LaunchProfile: all characters launched", LogLevel.Trace);
+        DebugLog.Write(LogChannel.Profiles, "ProfileManager.LaunchCharacters: sent launch for "
+            + slots.Count + " slots", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

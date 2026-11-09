@@ -1,4 +1,5 @@
-﻿using Glass.Core.Logging;
+﻿using Glass.Core;
+using Glass.Core.Logging;
 using Glass.Data.Models;
 using Microsoft.Data.Sqlite;
 
@@ -34,6 +35,27 @@ public class ProfileRepository
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // LoadedProfile
+    //
+    // The profile held by this repository.  Throws InvalidOperationException when no profile has
+    // been loaded, because using a profile before loading one is a programming error.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private Profile LoadedProfile
+    {
+        get
+        {
+            if (_profile == null)
+            {
+                DebugLog.Write(LogChannel.Database, "ProfileRepository.LoadedProfile: a profile was used before one was loaded",
+                    LogLevel.Error);
+                Environment.FailFast("ProfileRepository: a profile was used before one was loaded.");
+            }
+
+            return _profile;
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // ProfileRepository (constructor)
     //
     // Creates the repository holding an empty, unnamed profile.  No database access.
@@ -53,6 +75,13 @@ public class ProfileRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void LoadProfile(string profileName)
     {
+        if (GlassContext.ProfileManager.HasActiveProfile)
+        {
+            DebugLog.Write(LogChannel.Database, "ProfileRepository.LoadProfile: a profile is running, '"
+                + profileName + "' not loaded and the held profile kept.", LogLevel.Warn);
+            return;
+        }
+
         if ((_profile != null) && (_profile.Name == profileName))
         {
             DebugLog.Write(LogChannel.Database, "ProfileRepository.LoadProfile: '" + profileName
@@ -398,26 +427,7 @@ public class ProfileRepository
         return exists;
     }
 
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // LoadedProfile
-    //
-    // The profile held by this repository.  Throws InvalidOperationException when no profile has
-    // been loaded, because using a profile before loading one is a programming error.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private Profile LoadedProfile
-    {
-        get
-        {
-            if (_profile == null)
-            {
-                DebugLog.Write(LogChannel.Database, "ProfileRepository.LoadedProfile: a profile was used before one was loaded",
-                    LogLevel.Error);
-                Environment.FailFast("ProfileRepository: a profile was used before one was loaded.");
-            }
 
-            return _profile;
-        }
-    }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // GetId
@@ -801,5 +811,15 @@ public class ProfileRepository
     {
         List<DatabaseId> databaseIds = LoadedProfile.Slots.Select(slot => slot.DatabaseId).ToList();
         return databaseIds;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // GetLoadedProfileName
+    //
+    // Returns the name of the loaded profile.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public string GetLoadedProfileName()
+    {
+        return LoadedProfile.Name;
     }
 }

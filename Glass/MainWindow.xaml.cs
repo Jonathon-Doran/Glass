@@ -768,9 +768,10 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     // MenuItem_Launch_Click
     //
-    // Opens the profile launch dialog and launches the selected profile.
-    // Sets the current patch level from the profile's server type before
-    // launching.
+    // Opens the profile launch dialog and launches the chosen profile.  When no profile is
+    // active, sets the current patch level from the profile's server type before launching.
+    // When a profile is active, the launch request is passed on without loading the chosen
+    // profile or changing the patch level.
     //
     // sender:  The menu item that raised the event.
     // e:       Standard event args; not inspected.
@@ -780,6 +781,15 @@ public partial class MainWindow : Window
         ProfileLaunchDialog select = new ProfileLaunchDialog { Owner = this };
         if ((select.ShowDialog() != true) || (select.SelectedProfileName == null))
         {
+            DebugLog.Write(LogChannel.Profiles, "MainWindow.MenuItem_Launch_Click: no profile chosen.", LogLevel.Trace);
+            return;
+        }
+
+        if (GlassContext.ProfileManager.HasActiveProfile)
+        {
+            DebugLog.Write(LogChannel.Profiles, "MainWindow.MenuItem_Launch_Click: a profile is active, passing '"
+                + select.SelectedProfileName + "' on without changing the patch level.", LogLevel.Trace);
+            await GlassContext.ProfileManager.LaunchProfile(select.SelectedProfileName);
             return;
         }
 
