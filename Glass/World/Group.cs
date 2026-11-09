@@ -89,7 +89,11 @@ public class Group
             return false;
         }
 
-        _members.Add(member);
+        lock (GlassContext.MembershipLock)
+        {
+            _members.Add(member);
+        }
+
         GlassContext.SignalBus.Publish(new SignalMembershipChanged(Id, RaidId));
 
         DebugLog.Write(LogChannel.Database, "Group.AddMember: added '" + member.Name + "' characterId="
@@ -113,7 +117,11 @@ public class Group
         {
             if (_members[i].Id == characterId)
             {
-                _members.RemoveAt(i);
+                lock (GlassContext.MembershipLock)
+                {
+                    _members.RemoveAt(i);
+                }
+
                 GlassContext.SignalBus.Publish(new SignalMembershipChanged(Id, RaidId));
 
                 DebugLog.Write(LogChannel.Database, "Group.RemoveMember: removed characterId=" + characterId
@@ -176,6 +184,45 @@ public class Group
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // Copy
+    //
+    // Makes an independent copy of this group: its ids, raid position and designations, and
+    // a new member list holding a new copy of each member.  The copy shares no list or member
+    // object with this group and publishes no membership change.  The copy is made while
+    // holding the membership lock.
+    //
+    // Returns the copy.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public Group Copy()
+    {
+        Group copy = new Group();
+
+        lock (GlassContext.MembershipLock)
+        {
+            copy.Id = Id;
+            copy.RaidId = RaidId;
+            copy.RaidGroupNumber = RaidGroupNumber;
+            copy.ServerGroupId = ServerGroupId;
+            copy.LeaderId = LeaderId;
+            copy.MainTankId = MainTankId;
+            copy.MainAssistId = MainAssistId;
+
+            foreach (GroupMember member in _members)
+            {
+                GroupMember memberCopy = new GroupMember();
+                memberCopy.Id = member.Id;
+                memberCopy.Name = member.Name;
+                memberCopy.Class = member.Class;
+                memberCopy.Level = member.Level;
+                memberCopy.Character = member.Character;
+                copy._members.Add(memberCopy);
+            }
+        }
+
+        return copy;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // SetLeader
     //
     // Makes the member with the given persistent character id the leader of this group.  A
@@ -203,7 +250,12 @@ public class Group
         }
 
         CharacterId previousLeaderId = LeaderId;
-        LeaderId = characterId;
+
+        lock (GlassContext.MembershipLock)
+        {
+            LeaderId = characterId;
+        }
+
         GlassContext.SignalBus.Publish(new SignalMembershipChanged(Id, RaidId));
 
         DebugLog.Write(LogChannel.Database, "Group.SetLeader: groupId=" + Id + " leader changed from characterId="

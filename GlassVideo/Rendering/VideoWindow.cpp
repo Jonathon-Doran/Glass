@@ -217,25 +217,30 @@ void VideoWindow::Render()
             u1 = max(0.0f, min(1.0f, u1));
             v1 = max(0.0f, min(1.0f, v1));
 
-            // Destination viewport is slot origin + dest offset.
+            // Destination offsets and sizes are defined against a 1920x1080 slot and are scaled to this slot.
+            const float referenceSlotWidth = 1472.0f;
+            const float referenceSlotHeight = 828.0f;
+            float scaleX = (float)slot->width / referenceSlotWidth;
+            float scaleY = (float)slot->height / referenceSlotHeight;
+
             D3D11_VIEWPORT destVp = {};
-            destVp.TopLeftX = (float)(slot->x + dest.x);
-            destVp.TopLeftY = (float)(slot->y + dest.y);
-            destVp.Width = (float)dest.width;
-            destVp.Height = (float)dest.height;
+            destVp.TopLeftX = (float)slot->x + ((float)dest.x * scaleX);
+            destVp.TopLeftY = (float)slot->y + ((float)dest.y * scaleY);
+            destVp.Width = (float)dest.width * scaleX;
+            destVp.Height = (float)dest.height * scaleY;
             destVp.MinDepth = 0.0f;
             destVp.MaxDepth = 1.0f;
 
             if (g_debugNextFrame)
             {
-                Logger::Instance().Write("Render: dest=%s slot=(%d,%d) dest=(%d,%d) titleBarUV=%.4f captureSize=(%dx%d) viewport=(%.0f,%.0f) size=(%dx%d)",
+                Logger::Instance().Write("VideoWindow::Render: dest=%s slot=(%d,%d %dx%d) dest=(%d,%d %dx%d) scale=(%.4f,%.4f) titleBarUV=%.4f captureSize=(%dx%d) viewport=(%.0f,%.0f %.0fx%.0f)",
                     dest.name.c_str(),
-                    slot->x, slot->y,
-                    dest.x, dest.y,
+                    slot->x, slot->y, slot->width, slot->height,
+                    dest.x, dest.y, dest.width, dest.height,
+                    scaleX, scaleY,
                     titleBarUV,
                     captureWidth, captureHeight,
-                    destVp.TopLeftX, destVp.TopLeftY,
-                    dest.width, dest.height);
+                    destVp.TopLeftX, destVp.TopLeftY, destVp.Width, destVp.Height);
             }
 
             _renderer.GetContext()->RSSetViewports(1, &destVp);

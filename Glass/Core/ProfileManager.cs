@@ -111,7 +111,7 @@ public class ProfileManager
                 + " " + character.Server
                 + " " + character.DatabaseId);
 
-            int delay = rng.Next(4000, 7000);
+            int delay = rng.Next(1000, 3000);
             await Task.Delay(delay);
         }
 

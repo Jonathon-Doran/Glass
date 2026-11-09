@@ -43,6 +43,8 @@ public static class GlassContext
     public static SignalBus SignalBus { get; set; } = null !;
     public static BufferPool BufferPool { get; set; } = null!;
 
+    public static readonly object MembershipLock = new object();
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // TryAcquirePacketSource
     //

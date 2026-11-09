@@ -62,9 +62,13 @@ public class Raid
             return false;
         }
 
-        _groups[raidGroupNumber - 1] = group;
-        group.RaidId = Id;
-        group.RaidGroupNumber = raidGroupNumber;
+        lock (GlassContext.MembershipLock)
+        {
+            _groups[raidGroupNumber - 1] = group;
+            group.RaidId = Id;
+            group.RaidGroupNumber = raidGroupNumber;
+        }
+
         GlassContext.SignalBus.Publish(new SignalMembershipChanged(group.Id, Id));
 
         DebugLog.Write(LogChannel.Database, "Raid.PlaceGroup: placed groupId=" + group.Id + " in raidId=" + Id
@@ -96,9 +100,13 @@ public class Raid
             return false;
         }
 
-        _groups[raidGroupNumber - 1] = null;
-        group.RaidId = RaidId.None;
-        group.RaidGroupNumber = 0;
+        lock (GlassContext.MembershipLock)
+        {
+            _groups[raidGroupNumber - 1] = null;
+            group.RaidId = RaidId.None;
+            group.RaidGroupNumber = 0;
+        }
+
         GlassContext.SignalBus.Publish(new SignalMembershipChanged(group.Id, Id));
 
         DebugLog.Write(LogChannel.Database, "Raid.RemoveGroup: removed groupId=" + group.Id + " from raidId=" + Id
@@ -169,7 +177,11 @@ public class Raid
             return false;
         }
 
-        _ungrouped.Add(member);
+        lock (GlassContext.MembershipLock)
+        {
+            _ungrouped.Add(member);
+        }
+
         GlassContext.SignalBus.Publish(new SignalMembershipChanged(GroupId.None, Id));
 
         DebugLog.Write(LogChannel.Database, "Raid.AddUngroupedMember: added '" + member.Name + "' characterId="
@@ -193,7 +205,11 @@ public class Raid
         {
             if (_ungrouped[i].Id == characterId)
             {
-                _ungrouped.RemoveAt(i);
+                lock (GlassContext.MembershipLock)
+                {
+                    _ungrouped.RemoveAt(i);
+                }
+
                 DebugLog.Write(LogChannel.Database, "Raid.RemoveUngroupedMember: removed characterId="
                     + characterId + " from raidId=" + Id + ", " + _ungrouped.Count + " ungrouped left.",
                     defaultLoglevel);
@@ -205,5 +221,52 @@ public class Raid
         DebugLog.Write(LogChannel.Database, "Raid.RemoveUngroupedMember: characterId=" + characterId
             + " is not ungrouped in raidId=" + Id + ", nothing removed.", LogLevel.Warn);
         return false;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Copy
+    //
+    // Makes an independent copy of this raid: its id and leader, a copy of each placed group
+    // at the same position, and a new ungrouped list holding a new copy of each ungrouped
+    // member.  The copy shares no group, list or member object with this raid and publishes
+    // no membership change.  The copy is made while holding the membership lock.
+    //
+    // Returns the copy.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public Raid Copy()
+    {
+        Raid copy = new Raid();
+        copy.Id = Id;
+        copy.LeaderId = LeaderId;
+
+        for (uint position = 0; position < MaxGroups; position++)
+        {
+            Group? group = _groups[position];
+            if (group != null)
+            {
+                copy._groups[position] = group.Copy();
+            }
+        }
+
+        lock (GlassContext.MembershipLock)
+        {
+            foreach (GroupMember member in _ungrouped)
+            {
+                GroupMember memberCopy = new GroupMember();
+                lock (GlassContext.MembershipLock)
+                {
+                    memberCopy.Id = member.Id;
+                    memberCopy.Name = member.Name;
+                    memberCopy.Class = member.Class;
+                    memberCopy.Level = member.Level;
+                    memberCopy.Character = member.Character;
+                }
+                copy._ungrouped.Add(memberCopy);
+            }
+        }
+
+        DebugLog.Write(LogChannel.Database, "Raid.Copy: copied raidId=" + Id + " with "
+            + copy._ungrouped.Count + " ungrouped members.", defaultLoglevel);
+        return copy;
     }
 }

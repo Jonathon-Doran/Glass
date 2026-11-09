@@ -68,7 +68,11 @@ public class RaidRepository
         raid.Id = new RaidId(_nextRaidId);
         _nextRaidId++;
 
-        _raids[raid.Id] = raid;
+        lock (GlassContext.MembershipLock)
+        {
+            _raids[raid.Id] = raid;
+        }
+
         GlassContext.SignalBus.Publish(new SignalMembershipChanged(GroupId.None, raid.Id));
 
         DebugLog.Write(LogChannel.Database, "RaidRepository.CreateRaid: created raidId=" + raid.Id + ".",
@@ -88,7 +92,13 @@ public class RaidRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public bool TryGetRaid(RaidId raidId, [NotNullWhen(true)] out Raid? raid)
     {
-        if (_raids.TryGetValue(raidId, out raid))
+        bool found;
+        lock (GlassContext.MembershipLock)
+        {
+            found = _raids.TryGetValue(raidId, out raid);
+        }
+
+        if (found)
         {
             return true;
         }
@@ -134,13 +144,21 @@ public class RaidRepository
             return true;
         }
 
-        foreach (Raid candidate in _raids.Values)
+        lock (GlassContext.MembershipLock)
         {
-            if (candidate.HasUngroupedMember(characterId))
+            foreach (Raid candidate in _raids.Values)
             {
-                raid = candidate;
-                return true;
+                if (candidate.HasUngroupedMember(characterId))
+                {
+                    raid = candidate;
+                    break;
+                }
             }
+        }
+
+        if (raid != null)
+        {
+            return true;
         }
 
         DebugLog.Write(LogChannel.Database, "RaidRepository.TryGetRaidOf: characterId=" + characterId
@@ -158,7 +176,17 @@ public class RaidRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public List<Raid> GetAllRaids()
     {
-        List<Raid> raids = new List<Raid>(_raids.Values);
+        List<Raid> liveRaids;
+        lock (GlassContext.MembershipLock)
+        {
+            liveRaids = new List<Raid>(_raids.Values);
+        }
+
+        List<Raid> raids = new List<Raid>();
+        foreach (Raid raid in liveRaids)
+        {
+            raids.Add(raid.Copy());
+        }
         raids.Sort((Raid left, Raid right) => left.Id.Value.CompareTo(right.Id.Value));
 
         DebugLog.Write(LogChannel.Database, "RaidRepository.GetAllRaids: returning " + raids.Count + " raids.",
@@ -176,7 +204,11 @@ public class RaidRepository
     {
         int raidCount = _raids.Count;
 
-        _raids.Clear();
+        lock (GlassContext.MembershipLock)
+        {
+            _raids.Clear();
+        }
+
         GlassContext.SignalBus.Publish(new SignalMembershipChanged(GroupId.None, RaidId.None));
 
         DebugLog.Write(LogChannel.Database, "RaidRepository.Clear: removed " + raidCount + " raids.",

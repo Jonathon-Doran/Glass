@@ -95,7 +95,11 @@ public class GroupRepository
         group.ServerGroupId = serverId;
         _nextGroupId++;
 
-        _groups[group.Id] = group;
+        lock (GlassContext.MembershipLock)
+        {
+            _groups[group.Id] = group;
+        }
+
         _groupsByServerId[serverId] = group;
         GlassContext.SignalBus.Publish(new SignalMembershipChanged(group.Id, RaidId.None));
 
@@ -147,7 +151,10 @@ public class GroupRepository
             return false;
         }
 
-        _groupsByMember[member.Id] = group;
+        lock (GlassContext.MembershipLock)
+        {
+            _groupsByMember[member.Id] = group;
+        }
 
         DebugLog.Write(LogChannel.Database, "GroupRepository.AddMember: indexed '" + member.Name + "' characterId="
             + member.Id + " to groupId=" + group.Id + ".", defaultLoglevel);
@@ -173,7 +180,10 @@ public class GroupRepository
             return false;
         }
 
-        _groupsByMember.Remove(characterId);
+        lock (GlassContext.MembershipLock)
+        {
+            _groupsByMember.Remove(characterId);
+        }
 
         if (group.RemoveMember(characterId) == false)
         {
@@ -198,7 +208,13 @@ public class GroupRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public bool TryGetGroupOf(CharacterId characterId, [NotNullWhen(true)] out Group? group)
     {
-        if (_groupsByMember.TryGetValue(characterId, out group))
+        bool found;
+        lock (GlassContext.MembershipLock)
+        {
+            found = _groupsByMember.TryGetValue(characterId, out group);
+        }
+
+        if (found)
         {
             return true;
         }
@@ -235,14 +251,24 @@ public class GroupRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // GetAllGroups
     //
-    // Returns every group held, in ascending group id order.  The list is a new copy on every call; the
-    // groups themselves are the live objects.
+    // Returns every group held, in ascending group id order.  The list and the groups in it are copies,
+    // independent of the groups held here.
     //
     // Returns the groups; empty when none are held.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public List<Group> GetAllGroups()
     {
-        List<Group> groups = new List<Group>(_groups.Values);
+        List<Group> liveGroups;
+        lock (GlassContext.MembershipLock)
+        {
+            liveGroups = new List<Group>(_groups.Values);
+        }
+
+        List<Group> groups = new List<Group>();
+        foreach (Group group in liveGroups)
+        {
+            groups.Add(group.Copy());
+        }
         groups.Sort((Group left, Group right) => left.Id.Value.CompareTo(right.Id.Value));
 
         DebugLog.Write(LogChannel.Database, "GroupRepository.GetAllGroups: returning " + groups.Count + " groups.",
@@ -288,9 +314,13 @@ public class GroupRepository
     {
         int groupCount = _groups.Count;
 
-        _groups.Clear();
+        lock (GlassContext.MembershipLock)
+        {
+            _groups.Clear();
+            _groupsByMember.Clear();
+        }
+
         _groupsByServerId.Clear();
-        _groupsByMember.Clear();
         GlassContext.SignalBus.Publish(new SignalMembershipChanged(GroupId.None, RaidId.None));
 
         DebugLog.Write(LogChannel.Database, "GroupRepository.Clear: removed " + groupCount + " groups.",
