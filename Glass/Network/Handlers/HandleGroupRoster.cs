@@ -31,8 +31,11 @@ public class HandleGroupRoster : OpcodeHandler
     private readonly SlotId _entryLevel_Slot;
     private readonly SlotId _entryTimestamp_Slot;
 
-    private readonly SlotId _entryUnknown1_Slot;
-    private readonly SlotId _entryUnknown2_Slot;
+    private readonly SlotId _entryIsMainTank_Slot;
+    private readonly SlotId _entryIsMainAssist_Slot;
+    private readonly SlotId _entryIsPuller_Slot;
+    private readonly SlotId _entryIsMarkNPC_Slot;
+
     private readonly SlotId _offline_Slot;
     private readonly SlotId _entryUnknown4_Slot;
     private readonly SlotId _entryUnknown5_Slot;
@@ -77,8 +80,11 @@ public class HandleGroupRoster : OpcodeHandler
         _entryLevel_Slot = _registry.IndexOfField(RosterCollection, "Level");
         _entryTimestamp_Slot = _registry.IndexOfField(RosterCollection, "Timestamp");
 
-        _entryUnknown1_Slot = _registry.IndexOfField(RosterCollection, "Unknown_1");
-        _entryUnknown2_Slot = _registry.IndexOfField(RosterCollection, "Unknown_2");
+        _entryIsMainTank_Slot = _registry.IndexOfField(RosterCollection, "Is_Main_Tank");
+        _entryIsMainAssist_Slot = _registry.IndexOfField(RosterCollection, "Is_Main_Assist");
+        _entryIsPuller_Slot = _registry.IndexOfField(RosterCollection, "Is_Puller");
+        _entryIsMarkNPC_Slot = _registry.IndexOfField(RosterCollection, "Is_Mark_NPC");
+
         _offline_Slot = _registry.IndexOfField(RosterCollection, "Unknown_3");
         _entryUnknown4_Slot = _registry.IndexOfField(RosterCollection, "Unknown_4");
         _entryUnknown5_Slot = _registry.IndexOfField(RosterCollection, "Unknown_5");
@@ -334,8 +340,10 @@ public class HandleGroupRoster : OpcodeHandler
 
                     FieldNodes.AddLabeledNode(_extractor, _entryTimestamp_Slot, "Timestamp: " + timestamp, memberNode);
 
-                    FieldNodes.AddUIntNode(_extractor, _entryUnknown1_Slot, "Unknown 1", memberNode);
-                    FieldNodes.AddUIntNode(_extractor, _entryUnknown2_Slot, "Unknown 2", memberNode);
+                    FieldNodes.AddBooleanNode(_extractor, _entryIsMainTank_Slot, "Is Main Tank", memberNode);
+                    FieldNodes.AddBooleanNode(_extractor, _entryIsMainAssist_Slot, "Is Main Assist", memberNode);
+                    FieldNodes.AddBooleanNode(_extractor, _entryIsPuller_Slot, "Is Puller", memberNode);
+                    FieldNodes.AddBooleanNode(_extractor, _entryIsMarkNPC_Slot, "Is Mark NPC", memberNode);
 
                     FieldNodes.AddUIntNode(_extractor, _entryUnknown4_Slot, "Unknown 4", memberNode);
                     FieldNodes.AddUIntNode(_extractor, _entryUnknown5_Slot, "Unknown 5", memberNode);

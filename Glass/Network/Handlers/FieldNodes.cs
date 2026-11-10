@@ -241,6 +241,44 @@ public static class FieldNodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // AddBooleanNode
+    //
+    // Builds a display node for a Boolean field and adds it beneath the supplied parent.  The
+    // field's value is read from the extractor's active bag, and the slot's byte range is
+    // attached to the new node.
+    //
+    // extractor:  The extractor whose active bag holds the field.
+    // slotId:     The slot to extract.
+    // label:      The label to use in the new display node.
+    // parent:     The display node's parent.
+    // format:     Numeric format string.  "?" renders hex and decimal together; a format
+    //             beginning with 'X' renders hex with a 0x prefix; any other format is passed
+    //             to ToString directly.  Defaults to "X".
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    public static uint AddBooleanNode(FieldExtractor extractor, SlotId slotId, string label,
+        FieldDisplayNode parent)
+    {
+        string valueString;
+        uint value = extractor.GetUIntAt(slotId);
+
+        if (value == 0)
+        {
+            valueString = "false";
+        }
+        else
+        {
+            valueString = "true";
+        }
+
+        FieldDisplayNode newNode = new FieldDisplayNode(label + ": " + valueString);
+        newNode.AddByteRange(extractor.GetByteRangeFor(slotId));
+        parent.AddChild(newNode);
+        return value;
+    }
+
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // AddLabeledNode
     //
     // Builds a display node carrying the supplied label text verbatim and adds it beneath the
