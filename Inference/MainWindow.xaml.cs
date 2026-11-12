@@ -2840,7 +2840,8 @@ public partial class MainWindow : Window
     // RefreshSummaryGrid
     //
     // Rebuilds the summary grid from the identification summary's current lines, grouped by
-    // opcode name.  The grid is shown only when there are lines.
+    // opcode name, and the character summary above it from the characters' zone placements.
+    // Each is shown only when it has content.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void RefreshSummaryGrid()
     {
@@ -2859,8 +2860,20 @@ public partial class MainWindow : Window
             SummaryGrid.Visibility = Visibility.Collapsed;
         }
 
+        List<CharacterTextSegment> segments = BuildCharacterSegments();
+        FillCharacterSummary(segments);
+        if (segments.Count > 0)
+        {
+            CharacterSummaryText.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            CharacterSummaryText.Visibility = Visibility.Collapsed;
+        }
+
         DebugLog.Write(LogChannel.InferenceDebug,
-            "MainWindow.RefreshSummaryGrid: " + lines.Count + " lines shown", LogLevel.Trace);
+            "MainWindow.RefreshSummaryGrid: " + lines.Count + " lines shown, "
+            + segments.Count + " character segments", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -2958,11 +2971,141 @@ public partial class MainWindow : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // BuildCharacterCopyText
+    //
+    // Builds the character text as plain text by joining the character text segments in
+    // order.
+    //
+    // Returns:  The text, empty when no character has a placement.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private string BuildCharacterCopyText()
+    {
+        List<CharacterTextSegment> segments = BuildCharacterSegments();
+        System.Text.StringBuilder text = new System.Text.StringBuilder();
+
+        for (int segmentIndex = 0; segmentIndex < segments.Count; segmentIndex++)
+        {
+            text.Append(segments[segmentIndex].Text);
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "MainWindow.BuildCharacterCopyText: " + text.Length + " characters", LogLevel.Trace);
+        return text.ToString();
+    }
+
+    private static readonly SolidColorBrush CharacterIdBrush =
+    new SolidColorBrush(Color.FromRgb(0x4F, 0xC3, 0xF7));
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FillCharacterSummary
+    //
+    // Replaces the character summary box's content with one paragraph built from the
+    // segments: id segments as runs in the id color, newline segments as line breaks, and
+    // other segments as plain runs.
+    //
+    // segments:  The character text segments, in order.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void FillCharacterSummary(List<CharacterTextSegment> segments)
+    {
+        Paragraph paragraph = new Paragraph();
+        paragraph.Margin = new Thickness(0);
+
+        for (int segmentIndex = 0; segmentIndex < segments.Count; segmentIndex++)
+        {
+            CharacterTextSegment segment = segments[segmentIndex];
+
+            if (segment.Text == Environment.NewLine)
+            {
+                paragraph.Inlines.Add(new LineBreak());
+                continue;
+            }
+
+            Run run = new Run(segment.Text);
+            if (segment.IsId)
+            {
+                run.Foreground = CharacterIdBrush;
+            }
+            paragraph.Inlines.Add(run);
+        }
+
+        CharacterSummaryText.Document.Blocks.Clear();
+        CharacterSummaryText.Document.Blocks.Add(paragraph);
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "MainWindow.FillCharacterSummary: " + segments.Count + " segments shown", LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // BuildCharacterSegments
+    //
+    // Builds the character text as segments, listing every character with zone placements in
+    // this capture: one line with the character's name and character id in hex, then one
+    // indented line per placement with the zone name, session id and spawn id in hex,
+    // followed by one further indented line per companion in that zone whose owner spawn id
+    // is the placement's spawn id, with the companion's name and spawn id in hex.  Ids are
+    // separate segments marked as ids, and each line ends with a newline segment.
+    //
+    // Returns:  The segments, empty when no character has a placement.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private List<CharacterTextSegment> BuildCharacterSegments()
+    {
+        List<CharacterTextSegment> segments = new List<CharacterTextSegment>();
+        IReadOnlyList<Character> characters = CharacterRepository.Instance.GetAll();
+        int listed = 0;
+
+        for (int characterIndex = 0; characterIndex < characters.Count; characterIndex++)
+        {
+            Character character = characters[characterIndex];
+            IReadOnlyList<ZonePlacement> placements = character.ZonePlacements;
+            if (placements.Count == 0)
+            {
+                continue;
+            }
+
+            segments.Add(new CharacterTextSegment("Character " + character.Name + "  id ", false));
+            segments.Add(new CharacterTextSegment("0x" + character.CharacterId.Value.ToString("X"), true));
+            segments.Add(new CharacterTextSegment(Environment.NewLine, false));
+
+            for (int placementIndex = 0; placementIndex < placements.Count; placementIndex++)
+            {
+                ZonePlacement placement = placements[placementIndex];
+                segments.Add(new CharacterTextSegment("    zone "
+                    + ZoneRepository.Instance.GetZoneName(placement.ZoneId) + "  session ", false));
+                segments.Add(new CharacterTextSegment(placement.SessionId.ToString(), true));
+                segments.Add(new CharacterTextSegment("  spawn ", false));
+                segments.Add(new CharacterTextSegment("0x" + placement.SpawnId.Value.ToString("X4"), true));
+                segments.Add(new CharacterTextSegment(Environment.NewLine, false));
+
+                List<Companion> companions = CompanionRepository.Instance.GetZoneCompanions(placement.ZoneId);
+                for (int companionIndex = 0; companionIndex < companions.Count; companionIndex++)
+                {
+                    Companion companion = companions[companionIndex];
+                    if (companion.OwnerSpawnId != placement.SpawnId)
+                    {
+                        continue;
+                    }
+
+                    segments.Add(new CharacterTextSegment("        companion " + companion.Name + "  spawn ", false));
+                    segments.Add(new CharacterTextSegment("0x" + companion.SpawnId.Value.ToString("X4"), true));
+                    segments.Add(new CharacterTextSegment(Environment.NewLine, false));
+                }
+            }
+            listed++;
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "MainWindow.BuildCharacterSegments: " + listed + " characters, " + segments.Count + " segments",
+            LogLevel.Trace);
+        return segments;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // Button_CopySummary_Click
     //
     // Copies the identification summary to the clipboard as plain text, preceded by the
-    // window title, the current patch level and the catalog's packet count.  A clipboard that
-    // cannot be opened is reported on the status bar.
+    // window title, the current patch level, the catalog's packet count, and the characters
+    // with their zone placements in this capture.  A clipboard that cannot be opened is
+    // reported on the status bar.
     //
     // sender:  The button that raised the event.
     // e:       Event arguments.
@@ -2978,6 +3121,7 @@ public partial class MainWindow : Window
         string text = "Capture: " + Title + Environment.NewLine
             + "Patch level: " + patchText + Environment.NewLine
             + "Packets: " + _packetCatalog.TotalPacketCount() + Environment.NewLine
+            + BuildCharacterCopyText()
             + IdentificationSummary.Instance.BuildCopyText();
 
         try
@@ -3555,6 +3699,8 @@ public partial class MainWindow : Window
         StatusBarRowText.Text = string.Empty;
         StatusBarSecondaryText.Text = string.Empty;
         AcceptedOpcodes.Instance.Clear();
+        CharacterRepository.Instance.ClearZonePlacements();
+        CompanionRepository.Instance.Clear();
 
         DebugLog.Write(LogChannel.InferenceDebug, "MainWindow.UIReset: complete", LogLevel.Trace);
     }
@@ -3582,5 +3728,29 @@ public partial class MainWindow : Window
         {
             _opcodeRowPresenter.Update(metadata, packetLength);
         });
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // CharacterTextSegment
+    //
+    // One piece of the character text shown above the summary grid: its text, and whether the
+    // text is an id (character id, session id or spawn id).
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private class CharacterTextSegment
+    {
+        public string Text { get; }
+        public bool IsId { get; }
+
+        ///////////////////////////////////////////////////////////////////////////////////////
+        // CharacterTextSegment (constructor)
+        //
+        // text:  The text of the piece.
+        // isId:  True when the text is an id.
+        ///////////////////////////////////////////////////////////////////////////////////////
+        public CharacterTextSegment(string text, bool isId)
+        {
+            Text = text;
+            IsId = isId;
+        }
     }
 }

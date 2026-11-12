@@ -381,17 +381,26 @@ public void Save(DatabaseId databaseId)
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // SetZoneSpawn
     //
-    // Places a character in a zone under a spawn id.  The character's previous placement, read from its
-    // current zone and spawn id, is removed from the index first; the new zone and spawn id are then
-    // assigned to the character and indexed.  A zone id or spawn id that is None is rejected and nothing
-    // changes.
+    // Places the packet's character in its session's zone under a spawn id.  The character's previous placement,
+    // read from its current zone and spawn id, is removed from the index first; the new zone and spawn id are then
+    // assigned to the character and indexed, and the placement is recorded on the character for the packet's
+    // session.  A packet with no character, or a zone id or spawn id that is None, is rejected and nothing changes.
     //
-    // character:  The cached character.
-    // zoneId:     The zone the character has entered.
-    // spawnId:    The server assigned spawn id within that zone.
+    // spawnId:   The server assigned spawn id within the zone.
+    // metadata:  The packet's metadata, carrying the character and its zone session.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public void SetZoneSpawn(Character character, ZoneId zoneId, SpawnId spawnId)
+    public void SetZoneSpawn(SpawnId spawnId, PacketMetadata metadata)
     {
+        Character? character = metadata.Character;
+        if (character == null)
+        {
+            DebugLog.Write(LogChannel.Database, "CharacterRepository.SetZoneSpawn: packet has no character, spawnId="
+                + spawnId + " not placed.", LogLevel.Error);
+            return;
+        }
+
+        ZoneId zoneId = metadata.Session.ZoneId;
+
         if (zoneId.Exists == false || spawnId.Exists == false)
         {
             DebugLog.Write(LogChannel.Database, "CharacterRepository.SetZoneSpawn: '" + character.Name + "' zoneId="
@@ -433,6 +442,24 @@ public void Save(DatabaseId databaseId)
         zoneTable[spawnId] = character;
         DebugLog.Write(LogChannel.Database, "CharacterRepository.SetZoneSpawn: '" + character.Name + "' placed at zoneId="
             + zoneId + " spawnId=" + spawnId, LogLevel.Trace);
+
+        character.SetZonePlacement(new ZonePlacement(zoneId, metadata.Session.SessionId, spawnId));
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // ClearZonePlacements
+    //
+    // Removes the zone placements recorded on every character held by the repository.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void ClearZonePlacements()
+    {
+        for (int characterIndex = 0; characterIndex < _characters.Count; characterIndex++)
+        {
+            _characters[characterIndex].ClearZonePlacements();
+        }
+
+        DebugLog.Write(LogChannel.Database, "CharacterRepository.ClearZonePlacements: cleared placements on "
+            + _characters.Count + " characters", LogLevel.Trace);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

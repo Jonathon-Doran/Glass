@@ -584,6 +584,20 @@
                         <Button x:Name="ButtonCopySummary" Content="Copy"
                                 Click="Button_CopySummary_Click" Padding="8,4"/>
                     </StackPanel>
+                    <RichTextBox x:Name="CharacterSummaryText"
+                                 DockPanel.Dock="Top"
+                                 IsReadOnly="True"
+                                 FontFamily="Consolas"
+                                 FontSize="12"
+                                 VerticalScrollBarVisibility="Auto"
+                                 HorizontalScrollBarVisibility="Auto"
+                                 MaxHeight="200"
+                                 Margin="4,0,4,4"
+                                 Visibility="Collapsed"
+                                 Background="{DynamicResource SystemControlPageBackgroundChromeLowBrush}"
+                                 Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}">
+                        <FlowDocument PageWidth="2000"/>
+                    </RichTextBox>
                     <DataGrid x:Name="SummaryGrid"
                               AutoGenerateColumns="False"
                               IsReadOnly="True"

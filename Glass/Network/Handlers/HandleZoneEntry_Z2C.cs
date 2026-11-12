@@ -92,10 +92,12 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandlePacket
     //
-    // Processes zone-to-client OP_ZoneEntry.  Players are not stored.  Every other spawn is
-    // recorded under the receiving character's zone: its mob type is looked up or created by
-    // zone and base name, and the spawn record is created on first sight and refreshed with the
-    // decoded field values on every sight.
+    // Processes zone-to-client OP_ZoneEntry.  Players are not stored as spawns.  The receiving
+    // character's own zone entries are counted on its session, and the character is placed in
+    // the zone under the spawn id of the second one; zone entries for any other player are not
+    // used.  Every other spawn is recorded under the receiving character's zone: its mob type
+    // is looked up or created by zone and base name, and the spawn record is created on first
+    // sight and refreshed with the decoded field values on every sight.
     // A spawn first seen after the receiving session is established is marked as a spawn point.
     // Note that spawns in dynamic zones are not recorded.
     //
@@ -116,7 +118,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         string name;
         uint spawnId;
         uint level;
-        uint persistentId;
+        uint characterId;
         uint A;
         uint model;
         uint mobClass;
@@ -146,7 +148,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             name = _extractor.GetStringAt(_name_Slot);
             spawnId = _extractor.GetUIntAt(_spawnId_Slot);
             level = _extractor.GetUIntAt(_level_Slot);
-            persistentId = _extractor.GetUIntAt(_id_Slot);
+            characterId = _extractor.GetUIntAt(_id_Slot);
             A = _extractor.GetUIntAt(_A_Slot);
             model = _extractor.GetUIntAt(_model_Slot);
             mobClass = _extractor.GetUIntAt(_class_Slot);
@@ -200,21 +202,39 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             return;
         }
 
-        // A nonzero persistent id is a player.  One of our own characters is placed in the zone under its
-        // spawn id; other players are not stored.
-        if (persistentId != 0)
+        // A nonzero persistent id is a player.  Only the receiving character's own zone entries
+        // are used: the second one on its session carries its spawn id in this zone.
+        if (characterId != 0)
         {
-            Character? player = CharacterRepository.Instance.GetByCharacterId((CharacterId)persistentId);
-            if (player != null)
+            if (character.CharacterId != (CharacterId)characterId)
             {
-                CharacterRepository.Instance.SetZoneSpawn(player, zoneId, (SpawnId)spawnId);
-                DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: placed '" + player.Name + "' in zoneId="
+                DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: '" + name + "' spawnId=0x"
+                    + spawnId.ToString("X4") + " is not the receiving character '" + character.Name
+                    + "'; not placed.", LogLevel.Trace);
+                return;
+            }
+
+            uint zoneEntryCount = metadata.Session.CountOwnZoneEntry();
+            if (zoneEntryCount == 2)
+            {
+                CharacterRepository.Instance.SetZoneSpawn((SpawnId)spawnId, metadata);
+                DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: placed '" + character.Name + "' in zoneId="
                     + zoneId + " spawnId=0x" + spawnId.ToString("X4"), LogLevel.Trace);
+
+                uint linked = CompanionRepository.Instance.LinkOwner(zoneId, character);
+                DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: linked " + linked + " companions to '"
+                    + character.Name + "'", LogLevel.Trace);
+            }
+            else if (zoneEntryCount > 2)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: own zone entry " + zoneEntryCount + " for '"
+                    + character.Name + "' spawnId=0x" + spawnId.ToString("X4") + "; not placed.", LogLevel.Warn);
             }
             else
             {
-                DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: '" + name + "' spawnId=0x"
-                    + spawnId.ToString("X4") + " is another player; not stored.", LogLevel.Trace);
+                DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: own zone entry " + zoneEntryCount + " for '"
+                    + character.Name + "' spawnId=0x" + spawnId.ToString("X4") + " is provisional; not placed.",
+                    LogLevel.Trace);
             }
             return;
         }
@@ -284,7 +304,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         spawn.Name = name;
         spawn.Level = (ushort)level;
         spawn.A = A;
-        spawn.PersistentId = persistentId;
+        spawn.PersistentId = characterId;
         spawn.IsPlayer = isPlayer;
         spawn.Type = type;
         spawn.Unknown1 = unknown1;

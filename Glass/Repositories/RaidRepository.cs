@@ -92,15 +92,12 @@ public class RaidRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public bool TryGetRaid(RaidId raidId, [NotNullWhen(true)] out Raid? raid)
     {
-        bool found;
         lock (GlassContext.MembershipLock)
         {
-            found = _raids.TryGetValue(raidId, out raid);
-        }
-
-        if (found)
-        {
-            return true;
+            if (_raids.TryGetValue(raidId, out raid))
+            {
+                return true;
+            }
         }
 
         DebugLog.Write(LogChannel.Database, "RaidRepository.TryGetRaid: raidId=" + raidId + " is not held.",

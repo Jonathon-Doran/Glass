@@ -4,7 +4,32 @@ using Glass.World;
 
 namespace Glass.Data.Models;
 
+///////////////////////////////////////////////////////////////////////////////////////////////
+// ZonePlacement
+//
+// One placement of a character in a zone: the zone, the character's own zone session, and
+// the spawn id the character held in that zone during that session.
+///////////////////////////////////////////////////////////////////////////////////////////////
+public class ZonePlacement
+{
+    public ZoneId ZoneId { get; }
+    public SessionId SessionId { get; }
+    public SpawnId SpawnId { get; }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ZonePlacement (constructor)
+    //
+    // zoneId:     The zone the character was placed in.
+    // sessionId:  The character's own zone session.
+    // spawnId:    The spawn id the character held in the zone.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public ZonePlacement(ZoneId zoneId, SessionId sessionId, SpawnId spawnId)
+    {
+        ZoneId = zoneId;
+        SessionId = sessionId;
+        SpawnId = spawnId;
+    }
+}
 
 public class Character
 {
@@ -87,6 +112,21 @@ public class Character
     // items, carried items, bag contents, and socketed augments alike.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public IEnumerable<ItemInstance> Items => _items.Values;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // _zonePlacements
+    //
+    // The zones this character has been placed in during this run, one per own zone session,
+    // in the order the sessions placed it.  Not stored in the database.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private readonly List<ZonePlacement> _zonePlacements = new List<ZonePlacement>();
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ZonePlacements
+    //
+    // The zones this character has been placed in during this run, in order.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public IReadOnlyList<ZonePlacement> ZonePlacements => _zonePlacements;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // ToString
@@ -451,7 +491,49 @@ public class Character
         _activeSpells[spell.Position] = spell;
     }
 
- 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // SetZonePlacement
+    //
+    // Records this character's placement for one of its zone sessions, replacing the placement
+    // already held for the same session, or appending when there is none.
+    //
+    // placement:  The placement to record.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public void SetZonePlacement(ZonePlacement placement)
+    {
+        for (int placementIndex = 0; placementIndex < _zonePlacements.Count; placementIndex++)
+        {
+            ZonePlacement held = _zonePlacements[placementIndex];
+            if (held.SessionId == placement.SessionId)
+            {
+                _zonePlacements[placementIndex] = placement;
+                DebugLog.Write(LogChannel.Fields, "Character.SetZonePlacement: '" + Name + "' session "
+                    + placement.SessionId + " spawnId=0x" + held.SpawnId.Value.ToString("X4")
+                    + " replaced by 0x" + placement.SpawnId.Value.ToString("X4") + " in zoneId="
+                    + placement.ZoneId, LogLevel.Trace);
+                return;
+            }
+        }
+
+        _zonePlacements.Add(placement);
+        DebugLog.Write(LogChannel.Fields, "Character.SetZonePlacement: '" + Name + "' session "
+            + placement.SessionId + " placed at spawnId=0x" + placement.SpawnId.Value.ToString("X4")
+            + " in zoneId=" + placement.ZoneId + ", " + _zonePlacements.Count + " placements held",
+            LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ClearZonePlacements
+    //
+    // Removes every zone placement recorded for this character.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public void ClearZonePlacements()
+    {
+        int removedCount = _zonePlacements.Count;
+        _zonePlacements.Clear();
+        DebugLog.Write(LogChannel.Fields, "Character.ClearZonePlacements: removed " + removedCount +
+            " placements from '" + Name + "'", LogLevel.Trace);
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // DescribeStorageLocation

@@ -43,6 +43,7 @@ public class Session : IDisposable
     private readonly SoeStream _toServer;
     private readonly SoeStream _fromServer;
     private bool _established = false;
+    private uint _ownZoneEntryCount = 0;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Session (constructor)
@@ -177,6 +178,10 @@ public class Session : IDisposable
     {
         get { return _established; }
     }
+    public uint OwnZoneEntryCount
+    {
+        get { return _ownZoneEntryCount; }
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // SetCharacter
@@ -261,6 +266,31 @@ public class Session : IDisposable
 
         DebugLog.Write(LogChannel.Sessions, "Session.MarkEstablished: " + Describe()
             + " established", LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // CountOwnZoneEntry
+    //
+    // Counts one zone entry received on this session for the session's own character.  Only a
+    // Zone session counts zone entries; any other server type is rejected and logged at Error.
+    //
+    // Returns:  The number of own zone entries counted on this session, including this one, or
+    //           0 when the session is not a zone session.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public uint CountOwnZoneEntry()
+    {
+        if (_serverType != ServerType.Zone)
+        {
+            DebugLog.Write(LogChannel.LowNetwork, "Session.CountOwnZoneEntry: " + Describe()
+                + " is not a zone session, ignoring", LogLevel.Error);
+            return 0;
+        }
+
+        _ownZoneEntryCount++;
+
+        DebugLog.Write(LogChannel.Sessions, "Session.CountOwnZoneEntry: " + Describe()
+            + " own zone entry " + _ownZoneEntryCount, LogLevel.Trace);
+        return _ownZoneEntryCount;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

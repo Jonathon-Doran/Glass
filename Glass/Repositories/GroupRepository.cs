@@ -208,15 +208,12 @@ public class GroupRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public bool TryGetGroupOf(CharacterId characterId, [NotNullWhen(true)] out Group? group)
     {
-        bool found;
         lock (GlassContext.MembershipLock)
         {
-            found = _groupsByMember.TryGetValue(characterId, out group);
-        }
-
-        if (found)
-        {
-            return true;
+            if (_groupsByMember.TryGetValue(characterId, out group))
+            {
+                return true;
+            }
         }
 
         DebugLog.Write(LogChannel.Database, "GroupRepository.TryGetGroupOf: characterId=" + characterId

@@ -138,9 +138,7 @@ public class HandleMovementHistory : OpcodeHandler
     {
         FieldDisplayNode root = new FieldDisplayNode();
 
-        SpawnId playerId = metadata.Character.SpawnId;
-        ZoneId zoneId = GlassContext.SessionRegistry.ZoneFromMetadata(metadata);
-        string characterName = ZoneRepository.Instance.LookupSpawnName(zoneId, playerId);
+        string characterName = metadata.CharacterName;
 
         try
         {

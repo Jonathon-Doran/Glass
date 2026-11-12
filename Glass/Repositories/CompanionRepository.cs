@@ -121,6 +121,70 @@ public class CompanionRepository
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // GetZoneCompanions
+    //
+    // Returns the companions held for one zone, in no particular order.
+    //
+    // zoneId:  The zone whose companions are returned.
+    //
+    // Returns a new list of the zone's companions; empty when the zone has no companion table.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public List<Companion> GetZoneCompanions(ZoneId zoneId)
+    {
+        List<Companion> companions = new List<Companion>();
+
+        if (_companionsByZone.TryGetValue(zoneId, out Dictionary<SpawnId, Companion>? zoneCompanions))
+        {
+            companions.AddRange(zoneCompanions.Values);
+        }
+
+        DebugLog.Write(LogChannel.Database, "CompanionRepository.GetZoneCompanions: zoneId=" + zoneId
+            + " returning " + companions.Count + " companions.", defaultLoglevel);
+        return companions;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // LinkOwner
+    //
+    // Sets the given character as the owner of every companion in the zone whose owner spawn id equals the
+    // character's spawn id.  A zone with no companion table links nothing.
+    //
+    // zoneId:  The zone the character has been placed in.
+    // owner:   The placed character.  Its SpawnId is the spawn id it holds in that zone.
+    //
+    // Returns the number of companions linked to the character.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public uint LinkOwner(ZoneId zoneId, Character owner)
+    {
+        if (_companionsByZone.TryGetValue(zoneId, out Dictionary<SpawnId, Companion>? zoneCompanions) == false)
+        {
+            DebugLog.Write(LogChannel.Database, "CompanionRepository.LinkOwner: zoneId=" + zoneId
+                + " has no companions, nothing linked to '" + owner.Name + "'.", defaultLoglevel);
+            return 0;
+        }
+
+        uint linked = 0;
+        foreach (Companion companion in zoneCompanions.Values)
+        {
+            if (companion.OwnerSpawnId != owner.SpawnId)
+            {
+                continue;
+            }
+
+            companion.Owner = owner;
+            companion.OwnerId = owner.CharacterId;
+            linked++;
+
+            DebugLog.Write(LogChannel.Database, "CompanionRepository.LinkOwner: '" + companion.Name + "' spawnId=0x"
+                + companion.SpawnId.Value.ToString("X4") + " linked to owner '" + owner.Name + "'.", defaultLoglevel);
+        }
+
+        DebugLog.Write(LogChannel.Database, "CompanionRepository.LinkOwner: zoneId=" + zoneId + " linked "
+            + linked + " companions to '" + owner.Name + "'.", defaultLoglevel);
+        return linked;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // ClearZoneCompanions
     //
     // Removes the given zone's companion table, discarding every companion held under it.  A zone id that
@@ -149,5 +213,19 @@ public class CompanionRepository
 
         DebugLog.Write(LogChannel.Database, "CompanionRepository.ClearZoneCompanions: zoneId=" + zoneId
             + " discarded " + discarded + " companions, table removed.", defaultLoglevel);
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Clear
+    //
+    // Removes every zone's companion table, discarding every companion held.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void Clear()
+    {
+        uint zones = (uint)_companionsByZone.Count;
+        _companionsByZone.Clear();
+
+        DebugLog.Write(LogChannel.Database, "CompanionRepository.Clear: removed " + zones + " zone tables.",
+            defaultLoglevel);
     }
 }
