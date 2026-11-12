@@ -186,7 +186,7 @@ public class InferNewZone : IInferOpcodes
 
         uint totalCount = (uint)catalog.TotalPacketCount();
 
-        for (uint i = 0; i < totalCount; i++)
+        for (uint i = 1; i <= totalCount; i++)
         {
             CatalogedPacket? packetOrNull = catalog.PacketAt(i);
             if (packetOrNull == null)

@@ -1,6 +1,7 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
 using Glass.Core.Signals;
+using Glass.Network.Client;
 using Glass.Network.Protocol;
 using Inference.Core;
 using Inference.Models;
@@ -23,6 +24,7 @@ public class InferZoneEntry_Z2C : IInferOpcodes
 {
     private const string OpcodeNameConstant = "OP_ZoneEntry_Z2C";
     private const string AnchorOpcodeName = "OP_PlayerProfile";   // must match InferPlayerProfile
+    private const LogLevel defaultLoglevel = LogLevel.Trace;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeName
@@ -61,7 +63,7 @@ public class InferZoneEntry_Z2C : IInferOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////
     public List<InferenceProposal> Infer(PacketCatalog catalog)
     {
-        DebugLog.Write(LogChannel.InferenceDebug, "InferZoneEntry_Z2C.Infer: starting", LogLevel.Trace);
+        DebugLog.Write(LogChannel.InferenceDebug, "InferZoneEntry_Z2C.Infer: starting", defaultLoglevel);
         List<InferenceProposal> proposals = new List<InferenceProposal>();
 
         OpcodeValue anchorWireValue = AcceptedOpcodes.Instance.WireValueFor(AnchorOpcodeName);
@@ -79,7 +81,7 @@ public class InferZoneEntry_Z2C : IInferOpcodes
         int anchorsFound = 0;
         uint totalCount = (uint)catalog.TotalPacketCount();
 
-        for (uint i = 0; i < totalCount; i++)
+        for (uint i = 1; i <= totalCount; i++)
         {
             CatalogedPacket? anchorOrNull = catalog.PacketAt(i);
             if (anchorOrNull == null)
@@ -94,8 +96,8 @@ public class InferZoneEntry_Z2C : IInferOpcodes
             }
             anchorsFound++;
 
-            OpcodeValue vote = FindFirstStringPacketOnPair(catalog, i + 1,
-                anchor.Metadata.SourcePort, anchor.Metadata.DestPort);
+            OpcodeValue vote = FindFirstStringPacketOnPair(catalog, i + 1, anchor.Metadata.Session.SessionId);
+
             if (!vote.Exists)
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
@@ -139,7 +141,7 @@ public class InferZoneEntry_Z2C : IInferOpcodes
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "InferZoneEntry_Z2C.Infer: wireValue=" + wireValue + " already accepted as "
-                    + AcceptedOpcodes.Instance.GetName(wireValue) + ", skipping", LogLevel.Info);
+                    + AcceptedOpcodes.Instance.GetName(wireValue) + ", skipping", defaultLoglevel);
                 continue;
             }
 
@@ -158,12 +160,12 @@ public class InferZoneEntry_Z2C : IInferOpcodes
             DebugLog.Write(LogChannel.InferenceDebug,
                 "InferZoneEntry_Z2C.Infer: wireValue=" + wireValue + " votes="
                 + votes[wireValue] + "/" + totalVotes + " confidence="
-                + confidence.ToString("F3"), LogLevel.Info);
+                + confidence.ToString("F3"), defaultLoglevel);
         }
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferZoneEntry_Z2C.Infer: " + anchorsFound + " anchors, "
-            + proposals.Count + " proposals", LogLevel.Info);
+            + proposals.Count + " proposals", defaultLoglevel);
         return proposals;
     }
 
@@ -187,11 +189,11 @@ public class InferZoneEntry_Z2C : IInferOpcodes
     //           disconnected or the catalog was exhausted first.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private OpcodeValue FindFirstStringPacketOnPair(PacketCatalog catalog, uint startIndex,
-        int portA, int portB)
+        SessionId session)
     {
         uint totalCount = (uint)catalog.TotalPacketCount();
 
-        for (uint i = startIndex; i < totalCount; i++)
+        for (uint i = startIndex; i <= totalCount; i++)
         {
             CatalogedPacket? packetOrNull = catalog.PacketAt(i);
             if (packetOrNull == null)
@@ -200,10 +202,7 @@ public class InferZoneEntry_Z2C : IInferOpcodes
             }
             CatalogedPacket packet = packetOrNull.Value;
 
-            bool onPair =
-                (packet.Metadata.SourcePort == portA && packet.Metadata.DestPort == portB)
-                || (packet.Metadata.SourcePort == portB && packet.Metadata.DestPort == portA);
-            if (!onPair)
+            if (packet.Metadata.Session.SessionId != session)
             {
                 continue;
             }
@@ -212,7 +211,7 @@ public class InferZoneEntry_Z2C : IInferOpcodes
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "InferZoneEntry_Z2C.FindFirstStringPacketOnPair: disconnect at index "
-                    + packet.PacketIndex + ", walk ended", LogLevel.Trace);
+                    + packet.PacketIndex + ", walk ended", defaultLoglevel);
                 return OpcodeValue.None;
             }
 
@@ -236,14 +235,14 @@ public class InferZoneEntry_Z2C : IInferOpcodes
                 DebugLog.Write(LogChannel.Inference,
                     "InferZoneEntry_Z2C.FindFirstStringPacketOnPair: match at index "
                     + packet.PacketIndex + ", wireValue=" + packet.Metadata.WireValue
-                    + ", string length " + stringLength, LogLevel.Trace);
+                    + ", string length " + stringLength, defaultLoglevel);
                 return packet.Metadata.WireValue;
             }
         }
 
         DebugLog.Write(LogChannel.Inference,
             "InferZoneEntry_Z2C.FindFirstStringPacketOnPair: exhausted without match",
-            LogLevel.Trace);
+            defaultLoglevel);
         return OpcodeValue.None;
     }
 }

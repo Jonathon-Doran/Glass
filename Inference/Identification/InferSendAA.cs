@@ -173,7 +173,7 @@ public class InferSendAA : IInferOpcodes
         Session? lastSession = null;
         uint totalCount = (uint)catalog.TotalPacketCount();
 
-        for (uint i = 0; i < totalCount; i++)
+        for (uint i = 1; i <= totalCount; i++)
         {
             CatalogedPacket? packetOrNull = catalog.PacketAt(i);
             if (packetOrNull == null)
@@ -242,7 +242,7 @@ public class InferSendAA : IInferOpcodes
         int lastIndex = -1;
         uint totalCount = (uint)catalog.TotalPacketCount();
 
-        for (uint i = 0; i < totalCount; i++)
+        for (uint i = 1; i <= totalCount; i++)
         {
             CatalogedPacket? packetOrNull = catalog.PacketAt(i);
             if (packetOrNull == null)

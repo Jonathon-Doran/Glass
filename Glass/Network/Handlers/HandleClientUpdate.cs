@@ -112,14 +112,6 @@ public class HandleClientUpdate : OpcodeHandler
                 // Note on heading:  measured as 160-degrees per second to within 0.2%.  One degree is 6.25ms of keypress.  
                 metadata.Character.Heading = extractor.GetUIntAt(_headingSlot) / 8192.0f * 360.0f;
             
-                DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + "] " + _opcodeName);
-                DebugLog.Write(LogChannel.Opcodes, "Player " + playerId + " (" + characterName + 
-                    ", 0x" + playerId.ToString("x4") + ") sequence " + sequence);
-                DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + 
-                    " ID: " + playerId.ToString("x4") + " Position:  (" + metadata.Character.XPos + 
-                    "," + metadata.Character.YPos + "," + metadata.Character.ZPos + ")");
-                DebugLog.Write(LogChannel.Opcodes, "[" + metadata.Timestamp.ToString("HH:mm:ss.fff") + 
-                    " Heading is " + metadata.Character.Heading.ToString() + " degrees");
             }
         }
         finally

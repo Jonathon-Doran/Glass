@@ -195,7 +195,7 @@ public class InferPlayerProfile : IInferOpcodes
         Session? lastSession = null;
         uint totalCount = (uint)catalog.TotalPacketCount();
 
-        for (uint i = 0; i < totalCount; i++)
+        for (uint i = 1; i <= totalCount; i++)
         {
             CatalogedPacket? packetOrNull = catalog.PacketAt(i);
             if (packetOrNull == null)
@@ -294,7 +294,7 @@ public class InferPlayerProfile : IInferOpcodes
 
         int found = 0;
         uint totalCount = (uint)catalog.TotalPacketCount();
-        for (uint i = 0; i < totalCount && found < firstLarge.Length; i++)
+        for (uint i = 1; i <= totalCount && found < firstLarge.Length; i++)
         {
             CatalogedPacket? packetOrNull = catalog.PacketAt(i);
             if (packetOrNull == null)

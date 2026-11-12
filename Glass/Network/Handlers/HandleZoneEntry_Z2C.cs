@@ -315,6 +315,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         // ZoneEntry messages do not contain the zone-id
         ZoneId zoneId = metadata.Session.ZoneId;
         string zoneName = ZoneRepository.Instance.GetZoneName(zoneId);
+        string spawnName = "Unknown";
 
         try
         {
@@ -343,7 +344,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             }
 
             SpawnId spawnId = (SpawnId) _extractor.GetUIntAt(_spawnId_Slot);
-            String spawnName = ZoneRepository.Instance.LookupSpawnName(zoneId, spawnId);
+            spawnName = ZoneRepository.Instance.LookupSpawnName(zoneId, spawnId);
 
             FieldNodes.AddLabeledNode(_extractor, _spawnId_Slot, "Spawn: " + spawnName + " (" +
                     spawnId + ", 0x" + spawnId.Value.ToString("X4") + ")", root);
@@ -381,7 +382,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             _extractor.Release();
         }
 
-        root.Text = "ZoneEntry to " + zoneName;
+        root.Text = "ZoneEntry: " + spawnName + " to " + zoneName;
         return root;
     }
     

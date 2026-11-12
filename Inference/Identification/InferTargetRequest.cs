@@ -32,27 +32,92 @@ public class InferTargetRequest : IInferOpcodes
     private const double LengthDistancePenalty = 0.5;      // log-LR per byte away from ExpectedLength
     private const double MaxAbsLogLR = 12.0;               // clamp per feature, roughly +/- 52 decibans
     private const double ReportThreshold = 0.40;           // minimum posterior to emit a proposal
+    private const LogLevel defaultLoglevel = LogLevel.Info;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // WireFacts
     //
     // One wire value's packets on zone sessions.  Packets counts them and ToServer how many
-    // are client-to-zone; SpawnPass counts how many hold a known spawn id with zero upper
-    // bytes, and EchoPass how many are followed by one zone-to-client packet with the same
-    // payload before the next packet of this wire value on that session.  Lengths holds the
-    // packet count per length.
+    // are client-to-zone.  SpawnTested counts the packets the spawn test judged (did not
+    // abstain on), and SpawnPass how many of those hold a known spawn id with zero upper
+    // bytes.  EchoTested counts the packets the echo test judged, and EchoPass how many of
+    // those are followed by one zone-to-client packet with the same payload before the next
+    // packet of this wire value on that session.  Lengths holds the packet count per length.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private class WireFacts
     {
         public OpcodeValue WireValue;
         public int Packets = 0;
         public int ToServer = 0;
+        public int SpawnTested = 0;
         public int SpawnPass = 0;
+        public int EchoTested = 0;
         public int EchoPass = 0;
         public int EchoNextRequest = 0;
         public int EchoPayloadMismatch = 0;
         public int EchoEndOfSearch = 0;
         public Dictionary<int, int> Lengths = new Dictionary<int, int>();
+
+        ///////////////////////////////////////////////////////////////////////////////////////
+        // AllToServer
+        //
+        // True when the wire value has packets and every one of them is client-to-zone.
+        ///////////////////////////////////////////////////////////////////////////////////////
+        public bool AllToServer
+        {
+            get { return Packets > 0 && ToServer == Packets; }
+        }
+
+        ///////////////////////////////////////////////////////////////////////////////////////
+        // AllSpawnPass
+        //
+        // True when the spawn test judged at least one packet and passed every packet it
+        // judged.  A wire value the test abstained on entirely is not counted as passing.
+        ///////////////////////////////////////////////////////////////////////////////////////
+        public bool AllSpawnPass
+        {
+            get { return SpawnTested > 0 && SpawnPass == SpawnTested; }
+        }
+
+        ///////////////////////////////////////////////////////////////////////////////////////
+        // AllEchoPass
+        //
+        // True when the echo test judged at least one packet and passed every packet it
+        // judged.  A wire value the test abstained on entirely is not counted as passing.
+        ///////////////////////////////////////////////////////////////////////////////////////
+        public bool AllEchoPass
+        {
+            get { return EchoTested > 0 && EchoPass == EchoTested; }
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // CandidateEvidence
+    //
+    // One unaccepted wire value's score before normalization: its facts, the sum of its
+    // per-feature log likelihood ratios, and the itemized deciban ledger for its proposal.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private class CandidateEvidence
+    {
+        public readonly WireFacts Facts;
+        public readonly double TotalLogLR;
+        public readonly string Ledger;
+
+        ///////////////////////////////////////////////////////////////////////////////////////
+        // CandidateEvidence (constructor)
+        //
+        // Stores the wire value's facts, summed log likelihood ratio and ledger.
+        //
+        // facts:       The wire value's facts.
+        // totalLogLR:  Sum of the wire value's per-feature natural-log likelihood ratios.
+        // ledger:      Itemized per-feature decibans and the total, without a posterior.
+        ///////////////////////////////////////////////////////////////////////////////////////
+        public CandidateEvidence(WireFacts facts, double totalLogLR, string ledger)
+        {
+            Facts = facts;
+            TotalLogLR = totalLogLR;
+            Ledger = ledger;
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -71,6 +136,20 @@ public class InferTargetRequest : IInferOpcodes
         NextRequest,
         PayloadMismatch,
         EndOfSearch
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // TestResult
+    //
+    // The outcome of one per-packet test.  Pass and Fail count toward the test's tally.
+    // Abstain means the packet carries nothing the test can judge, such as a zero spawn id
+    // or an all-zero payload, and the packet is left out of the test's tally entirely.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private enum TestResult
+    {
+        Pass,
+        Fail,
+        Abstain
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -97,7 +176,13 @@ public class InferTargetRequest : IInferOpcodes
     // Infer
     //
     // Examines every application wire value, totals each test's results across all of
-    // them, then scores each unaccepted wire value.
+    // them, then scores each unaccepted wire value.  The scores are normalized against one
+    // another and against a none-of-these hypothesis carrying one candidate's prior weight:
+    //
+    //   posterior(i) = exp(L(i)) / (1 + sum over unaccepted j of exp(L(j)))
+    //
+    // so candidates compete for the opcode and a capture without it leaves every
+    // candidate low.  Candidates below ReportThreshold are not proposed.
     //
     // catalog:  The session's cataloged packets.
     //
@@ -106,7 +191,7 @@ public class InferTargetRequest : IInferOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////
     public List<InferenceProposal> Infer(PacketCatalog catalog)
     {
-        DebugLog.Write(LogChannel.InferenceDebug, "InferTargetRequest.Infer: starting", LogLevel.Trace);
+        DebugLog.Write(LogChannel.InferenceDebug, "InferTargetRequest.Infer: starting", defaultLoglevel);
         List<InferenceProposal> proposals = new List<InferenceProposal>();
 
         List<WireFacts> facts = new List<WireFacts>();
@@ -136,15 +221,15 @@ public class InferTargetRequest : IInferOpcodes
         int allEcho = 0;
         for (int i = 0; i < facts.Count; i++)
         {
-            if (facts[i].ToServer == facts[i].Packets)
+            if (facts[i].AllToServer)
             {
                 allToServer++;
             }
-            if (facts[i].SpawnPass == facts[i].Packets)
+            if (facts[i].AllSpawnPass)
             {
                 allSpawn++;
             }
-            if (facts[i].EchoPass == facts[i].Packets)
+            if (facts[i].AllEchoPass)
             {
                 allEcho++;
             }
@@ -152,31 +237,73 @@ public class InferTargetRequest : IInferOpcodes
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferTargetRequest.Infer: backgrounds over " + facts.Count + " wire values, all C2Z "
-            + allToServer + ", all spawn " + allSpawn + ", all echo " + allEcho, LogLevel.Trace);
+            + allToServer + ", all spawn " + allSpawn + ", all echo " + allEcho, defaultLoglevel);
 
         Dictionary<int, int> pooledSizes = catalog.PooledSizeHistogram();
+        List<CandidateEvidence> scored = new List<CandidateEvidence>();
         for (int i = 0; i < facts.Count; i++)
         {
             if (AcceptedOpcodes.Instance.IsAccepted(facts[i].WireValue))
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "InferTargetRequest.Infer: wireValue=" + facts[i].WireValue + " already accepted as "
-                    + AcceptedOpcodes.Instance.GetName(facts[i].WireValue) + ", skipping", LogLevel.Trace);
+                    + AcceptedOpcodes.Instance.GetName(facts[i].WireValue) + ", skipping", defaultLoglevel);
                 continue;
             }
-            InferenceProposal? proposal = ScoreCandidate(facts[i], allToServer, allSpawn, allEcho,
-                facts.Count, pooledSizes);
-            if (proposal != null)
+            scored.Add(ScoreCandidate(facts[i], allToServer, allSpawn, allEcho,
+                facts.Count, pooledSizes));
+        }
+
+        if (scored.Count == 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "InferTargetRequest.Infer: every examined wire value is accepted, no proposals",
+                defaultLoglevel);
+            return proposals;
+        }
+
+        double weightSum = 1.0;
+        for (int i = 0; i < scored.Count; i++)
+        {
+            weightSum += Math.Exp(scored[i].TotalLogLR);
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "InferTargetRequest.Infer: " + scored.Count + " candidates, none-of-these posterior "
+            + (1.0 / weightSum).ToString("F3"), defaultLoglevel);
+
+        scored.Sort((a, b) => b.TotalLogLR.CompareTo(a.TotalLogLR));
+        int shown = Math.Min(3, scored.Count);
+        for (int i = 0; i < shown; i++)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "InferTargetRequest.Infer: rank " + (i + 1) + " wireValue=" + scored[i].Facts.WireValue
+                + " " + scored[i].Ledger + ", posterior "
+                + (Math.Exp(scored[i].TotalLogLR) / weightSum).ToString("F3"), defaultLoglevel);
+        }
+
+        for (int i = 0; i < scored.Count; i++)
+        {
+            double posterior = Math.Exp(scored[i].TotalLogLR) / weightSum;
+            if (posterior < ReportThreshold)
             {
-                proposals.Add(proposal);
+                continue;
             }
+
+            InferenceProposal proposal = new InferenceProposal();
+            proposal.Label = Label;
+            proposal.Opcode = new PatchOpcode(GlassContext.CurrentPatchLevel, scored[i].Facts.WireValue);
+            proposal.Confidence = posterior;
+            proposal.Evidence = scored[i].Ledger + ", posterior " + posterior.ToString("F3")
+                + " over " + scored.Count + " candidates and none";
+            proposals.Add(proposal);
         }
 
         proposals.Sort((a, b) => b.Confidence.CompareTo(a.Confidence));
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferTargetRequest.Infer: " + facts.Count + " wire values examined, "
-            + proposals.Count + " proposals", LogLevel.Trace);
+            + proposals.Count + " proposals", defaultLoglevel);
         return proposals;
     }
 
@@ -196,35 +323,43 @@ public class InferTargetRequest : IInferOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // PassesSpawn
+    // TestSpawn
     //
     // Tests whether the payload is a 16-bit spawn id known in the zone, followed by two zero
-    // bytes.
+    // bytes.  A spawn id of zero is not evidence of anything, so the test abstains on it.
     //
     // payload:  The bytes to test.
     // zoneId:   The zone of the packet's session.
     //
-    // Returns:  True when the payload is ExpectedLength bytes, the upper 16 bits are zero,
-    //           and the lower 16 bits are a known spawn id in the zone.
+    // Returns:  Abstain when the payload is at least 4 bytes, the upper 16 bits are zero and
+    //           the spawn id is zero.  Pass when the upper 16 bits are zero and the lower 16
+    //           bits are a known spawn id in the zone.  Fail otherwise.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private static bool PassesSpawn(ReadOnlySpan<byte> payload, ZoneId zoneId)
+    private static TestResult TestSpawn(ReadOnlySpan<byte> payload, ZoneId zoneId)
     {
         if (payload.Length < 4)
         {
-            return false;
+            return TestResult.Fail;
         }
 
         if (payload[2] != 0 || payload[3] != 0)
         {
-            return false;
+            return TestResult.Fail;
         }
+
         ushort rawSpawnId = BinaryPrimitives.ReadUInt16LittleEndian(payload);
         if (rawSpawnId == 0)
         {
-            return true;
+            return TestResult.Abstain;
         }
+
         SpawnId spawnId = (SpawnId)(uint)rawSpawnId;
-        return ZoneRepository.Instance.IsKnownSpawn(zoneId, spawnId);
+        if (ZoneRepository.Instance.IsKnownSpawn(zoneId, spawnId))
+        {
+            return TestResult.Pass;
+        }
+
+        return TestResult.Fail;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -233,18 +368,26 @@ public class InferTargetRequest : IInferOpcodes
     // Searches for a zone-to-client packet on the request's session carrying a payload
     // identical to the request's.  Packets are examined in arrival order from the one after
     // the request up to, but not including, endIndex.  Packets that do not match are ignored.
+    // A request whose payload is all zeros, or empty, is not evidence of anything, since
+    // zeros match far too much, so the test abstains on it without searching.
     //
     // catalog:   The session's cataloged packets.
     // request:   The request packet.
-    // endIndex:  Arrival index at which the search stops: the next packet of the request's
-    //            wire value on the same session, or the catalog's total packet count.
+    // endIndex:  Message id at which the search stops: the next packet of the request's
+    //            wire value on the same session, or one past the last message id.
     //
-    // Returns:  True when a matching packet is found before endIndex.
+    // Returns:  Abstain when the request payload holds no nonzero byte.  Pass when a matching
+    //           packet is found before endIndex.  Fail otherwise.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private static bool FindResponse(PacketCatalog catalog, CatalogedPacket request, uint endIndex)
+    private static TestResult FindResponse(PacketCatalog catalog, CatalogedPacket request, uint endIndex)
     {
         Session session = request.Metadata.Session;
         ReadOnlySpan<byte> requestPayload = request.Payload.AsReadOnlySpan();
+
+        if (!requestPayload.ContainsAnyExcept((byte)0))
+        {
+            return TestResult.Abstain;
+        }
 
         for (uint index = request.PacketIndex + 1; index < endIndex; index++)
         {
@@ -254,7 +397,7 @@ public class InferTargetRequest : IInferOpcodes
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "InferTargetRequest.FindResponse: no packet at index " + index
                     + ", stopping search", LogLevel.Error);
-                return false;
+                return TestResult.Fail;
             }
             CatalogedPacket following = found.Value;
 
@@ -268,19 +411,20 @@ public class InferTargetRequest : IInferOpcodes
             }
             if (following.Payload.AsReadOnlySpan().SequenceEqual(requestPayload))
             {
-                return true;
+                return TestResult.Pass;
             }
         }
-        return false;
+        return TestResult.Fail;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // ExamineWireValue
     //
     // Walks one wire value's packets once, from last to first, keeping only packets on zone
-    // sessions, and tallies direction, length, and the spawn and echo tests.  The echo test
-    // for each packet stops at the next packet of this wire value on the same session, or
-    // at the end of the catalog when there is none.
+    // sessions, and tallies direction, length, and the spawn and echo tests.  A test that
+    // abstains on a packet leaves that packet out of the test's tally.  The echo test for
+    // each packet stops at the next packet of this wire value on the same session, or one
+    // past the last message id when there is none.
     //
     // catalog:    The session's cataloged packets.
     // wireValue:  The wire value.
@@ -292,7 +436,7 @@ public class InferTargetRequest : IInferOpcodes
         WireFacts wire = new WireFacts();
         wire.WireValue = wireValue;
 
-        uint catalogEnd = (uint)catalog.TotalPacketCount();
+        uint catalogEnd = (uint)catalog.TotalPacketCount() + 1;
         Dictionary<Session, uint> nextIndexBySession = new Dictionary<Session, uint>();
 
         List<CatalogedPacket> bucket = catalog.PacketsFor(wireValue, null, null, int.MaxValue);
@@ -328,32 +472,34 @@ public class InferTargetRequest : IInferOpcodes
                 wire.Lengths[payload.Length] = 1;
             }
 
-            if (PassesSpawn(payload, session.ZoneId))
+            TestResult spawnResult = TestSpawn(payload, session.ZoneId);
+            if (spawnResult != TestResult.Abstain)
             {
-                wire.SpawnPass++;
+                wire.SpawnTested++;
+                if (spawnResult == TestResult.Pass)
+                {
+                    wire.SpawnPass++;
+                }
             }
-            if (FindResponse(catalog, bucket[i], endIndex))
+
+            TestResult echoResult = FindResponse(catalog, bucket[i], endIndex);
+            if (echoResult != TestResult.Abstain)
             {
-                wire.EchoPass++;
+                wire.EchoTested++;
+                if (echoResult == TestResult.Pass)
+                {
+                    wire.EchoPass++;
+                }
             }
         }
 
-        if (wire.Packets > 0)
-        {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "InferTargetRequest.ExamineWireValue: wireValue=" + wireValue + " " + wire.Packets
-                + " packets, " + wire.ToServer + " C2Z, spawn " + wire.SpawnPass
-                + ", echo " + wire.EchoPass, LogLevel.Trace);
-        }
-
-        if (wire.Packets > 0 && wire.SpawnPass == wire.Packets
-                 && wire.EchoPass > 0 && wire.EchoPass < wire.Packets)
+        if (wire.SpawnTested > 0 && wire.SpawnPass == wire.SpawnTested
+                 && wire.EchoPass > 0 && wire.EchoPass < wire.EchoTested)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "InferTargetRequest.ExamineWireValue: wireValue=" + wireValue + " passes spawn on all "
-                + wire.Packets + ", echo matched " + wire.EchoPass + ", next request first "
-                + wire.EchoNextRequest + ", payload mismatch " + wire.EchoPayloadMismatch
-                + ", end of search " + wire.EchoEndOfSearch, LogLevel.Warn);
+                + wire.SpawnTested + " tested, echo matched " + wire.EchoPass + " of "
+                + wire.EchoTested + " tested", LogLevel.Warn);
         }
         return wire;
     }
@@ -362,71 +508,61 @@ public class InferTargetRequest : IInferOpcodes
     // ScoreCandidate
     //
     // Scores the direction, spawn and echo tests once for the wire value: passing on every
-    // packet is compared with how many other examined wire values do the same, and each
-    // failing packet is charged the leak.  Length is scored against ExpectedLength.  Sums the
-    // log likelihood ratios and converts the total to a posterior with prior odds of one over
-    // the number of examined wire values.  Builds a proposal with an itemized deciban ledger
-    // when the posterior reaches ReportThreshold.
+    // judged packet is compared with how many other examined wire values do the same, and
+    // each failing packet is charged the leak.  The spawn and echo tests are scored over the
+    // packets they judged; a test that abstained on every packet contributes zero.  Length
+    // is scored against ExpectedLength.  Sums the log likelihood ratios and builds an
+    // itemized deciban ledger ending with the total.
     //
     // candidate:      The candidate's facts.
     // allToServer:    Examined wire values whose every packet is client-to-zone.
-    // allSpawn:       Examined wire values whose every packet passes the spawn test.
-    // allEcho:        Examined wire values whose every packet passes the echo test.
+    // allSpawn:       Examined wire values whose every judged packet passes the spawn test.
+    // allEcho:        Examined wire values whose every judged packet passes the echo test.
     // examinedCount:  Number of examined wire values.
     // pooledSizes:    Message count per length across the capture.
     //
-    // Returns:  The proposal, or null when the posterior is below threshold.
+    // Returns:  The candidate's summed log likelihood ratio and ledger.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private InferenceProposal? ScoreCandidate(WireFacts candidate, int allToServer, int allSpawn,
+    private CandidateEvidence ScoreCandidate(WireFacts candidate, int allToServer, int allSpawn,
         int allEcho, int examinedCount, Dictionary<int, int> pooledSizes)
     {
         int others = examinedCount - 1;
 
-        int othersToServer = allToServer - (candidate.ToServer == candidate.Packets ? 1 : 0);
+        int othersToServer = allToServer - (candidate.AllToServer ? 1 : 0);
         double directionLogLR = EvidenceScoring.PayloadPredicateLogLR(candidate.ToServer,
             candidate.Packets, othersToServer, others, LeakProbability, MaxAbsLogLR);
 
         double lengthLogLR = EvidenceScoring.SizeRangeLogLR(candidate.Lengths, ExpectedLength,
             ExpectedLength, pooledSizes, LengthLeakProbability, LengthDistancePenalty, MaxAbsLogLR);
 
-        int othersSpawn = allSpawn - (candidate.SpawnPass == candidate.Packets ? 1 : 0);
-        double spawnLogLR = EvidenceScoring.PayloadPredicateLogLR(candidate.SpawnPass,
-            candidate.Packets, othersSpawn, others, LeakProbability, MaxAbsLogLR);
+        double spawnLogLR = 0.0;
+        if (candidate.SpawnTested > 0)
+        {
+            int othersSpawn = allSpawn - (candidate.AllSpawnPass ? 1 : 0);
+            spawnLogLR = EvidenceScoring.PayloadPredicateLogLR(candidate.SpawnPass,
+                candidate.SpawnTested, othersSpawn, others, LeakProbability, MaxAbsLogLR);
+        }
 
-        int othersEcho = allEcho - (candidate.EchoPass == candidate.Packets ? 1 : 0);
-        double echoLogLR = EvidenceScoring.PayloadPredicateLogLR(candidate.EchoPass,
-            candidate.Packets, othersEcho, others, LeakProbability, MaxAbsLogLR);
+        double echoLogLR = 0.0;
+        if (candidate.EchoTested > 0)
+        {
+            int othersEcho = allEcho - (candidate.AllEchoPass ? 1 : 0);
+            echoLogLR = EvidenceScoring.PayloadPredicateLogLR(candidate.EchoPass,
+                candidate.EchoTested, othersEcho, others, LeakProbability, MaxAbsLogLR);
+        }
 
         double totalLogLR = directionLogLR + lengthLogLR + spawnLogLR + echoLogLR;
-        double posterior = EvidenceScoring.CombinePosterior(totalLogLR, 1.0 / examinedCount);
 
         string ledger =
             candidate.Packets + " packets, " + candidate.ToServer + " C2Z, spawn "
-            + candidate.SpawnPass + ", echo " + candidate.EchoPass + " | "
+            + candidate.SpawnPass + "/" + candidate.SpawnTested + ", echo "
+            + candidate.EchoPass + "/" + candidate.EchoTested + " | "
             + "direction " + EvidenceScoring.ToDecibans(directionLogLR).ToString("F1") + " db, "
             + "length " + EvidenceScoring.ToDecibans(lengthLogLR).ToString("F1") + " db, "
             + "spawn " + EvidenceScoring.ToDecibans(spawnLogLR).ToString("F1") + " db, "
             + "echo " + EvidenceScoring.ToDecibans(echoLogLR).ToString("F1") + " db | "
-            + "total " + EvidenceScoring.ToDecibans(totalLogLR).ToString("F1") + " db, "
-            + "prior 1/" + examinedCount + ", posterior " + posterior.ToString("F3");
+            + "total " + EvidenceScoring.ToDecibans(totalLogLR).ToString("F1") + " db";
 
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "InferTargetRequest.ScoreCandidate: wireValue=" + candidate.WireValue + " " + ledger,
-            LogLevel.Trace);
-
-        if (posterior < ReportThreshold)
-        {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "InferTargetRequest.ScoreCandidate: wireValue=" + candidate.WireValue
-                + " below threshold, no proposal", LogLevel.Trace);
-            return null;
-        }
-
-        InferenceProposal proposal = new InferenceProposal();
-        proposal.Label = Label;
-        proposal.Opcode = new PatchOpcode(GlassContext.CurrentPatchLevel, candidate.WireValue);
-        proposal.Confidence = posterior;
-        proposal.Evidence = ledger;
-        return proposal;
+        return new CandidateEvidence(candidate, totalLogLR, ledger);
     }
 }

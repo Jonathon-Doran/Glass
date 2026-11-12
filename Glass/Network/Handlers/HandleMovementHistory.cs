@@ -1,10 +1,12 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
 using Glass.Data.Models;
+using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using System;
 using System.Runtime.InteropServices;
+using System.Security.Policy;
 
 namespace Glass.Network.Handlers;
 
@@ -136,6 +138,10 @@ public class HandleMovementHistory : OpcodeHandler
     {
         FieldDisplayNode root = new FieldDisplayNode();
 
+        SpawnId playerId = metadata.Character.SpawnId;
+        ZoneId zoneId = GlassContext.SessionRegistry.ZoneFromMetadata(metadata);
+        string characterName = ZoneRepository.Instance.LookupSpawnName(zoneId, playerId);
+
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
@@ -168,7 +174,7 @@ public class HandleMovementHistory : OpcodeHandler
             _extractor.Release();
         }
 
-        root.Text = "Movement History";
+        root.Text = "Movement History (" + characterName + ")";
         return root;
     }
 }
