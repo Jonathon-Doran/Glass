@@ -581,20 +581,15 @@
                         <TextBlock Text="Target level:" VerticalAlignment="Center" Margin="0,0,4,0"/>
                         <TextBlock x:Name="IdentificationTargetLevel" Text="(none)"
                                    VerticalAlignment="Center" Margin="0,0,12,0"/>
-                        <Button x:Name="ButtonAcceptProposal" Content="Accept"
-                                Click="Button_AcceptProposal_Click" Padding="8,4" Margin="0,0,4,0"
-                                IsEnabled="False"/>
-                        <Button x:Name="ButtonRejectProposal" Content="Reject"
-                                Click="Button_RejectProposal_Click" Padding="8,4"
-                                IsEnabled="False"/>
+                        <Button x:Name="ButtonCopySummary" Content="Copy"
+                                Click="Button_CopySummary_Click" Padding="8,4"/>
                     </StackPanel>
-                    <DataGrid x:Name="ProposalGrid"
+                    <DataGrid x:Name="SummaryGrid"
                               AutoGenerateColumns="False"
                               IsReadOnly="True"
                               SelectionMode="Single"
-                              HeadersVisibility="Column"
                               Visibility="Collapsed"
-                              SelectionChanged="ProposalGrid_SelectionChanged">
+                              HeadersVisibility="Column">
                         <DataGrid.GroupStyle>
                             <GroupStyle>
                                 <GroupStyle.HeaderTemplate>
@@ -606,11 +601,35 @@
                             </GroupStyle>
                         </DataGrid.GroupStyle>
                         <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="Accept" Width="130"
+                                                    ClipboardContentBinding="{Binding OpcodeName}">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding Checked, Mode=OneWay}"
+                                                  Click="SummaryCheckBox_Click"
+                                                  HorizontalAlignment="Center"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTextColumn Header="Opcode"     Width="80"  Binding="{Binding OpcodeHex}"/>
-                            <DataGridTextColumn Header="Confidence" Width="100" Binding="{Binding Confidence}"/>
-                            <DataGridTextColumn Header="Count"      Width="80"  Binding="{Binding Count}"/>
-                            <DataGridTextColumn Header="Evidence"   Width="*"   Binding="{Binding Evidence}"/>
-                            <DataGridTextColumn Header="Status"     Width="90"  Binding="{Binding Status}"/>
+                            <DataGridTextColumn Header="Confidence" Width="90"  Binding="{Binding Confidence, StringFormat=F2}"/>
+                            <DataGridTextColumn Header="Outcome"    Width="90"  Binding="{Binding Outcome}"/>
+                            <DataGridTextColumn Header="Run"        Width="50"  Binding="{Binding RunNumber}"/>
+                            <DataGridTextColumn Header="Evidence"   Width="*"   Binding="{Binding Evidence}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="TextWrapping" Value="Wrap"/>
+                                        <Setter Property="Margin" Value="0,0,12,0"/>
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Messages"   Width="*"   Binding="{Binding Messages}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="TextWrapping" Value="Wrap"/>
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
                         </DataGrid.Columns>
                     </DataGrid>
                 </DockPanel>

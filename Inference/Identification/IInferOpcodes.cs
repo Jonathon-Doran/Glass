@@ -19,6 +19,36 @@ public class InferenceProposal
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
+// IdentificationOutcome
+//
+// How one handler's identification run ended.  None is the state before an outcome is
+// recorded.  Proposed: the handler returned at least one proposal.  NoProposal: the handler
+// returned an empty list.  Failed: the handler threw or returned null.
+///////////////////////////////////////////////////////////////////////////////////////////////
+public enum IdentificationOutcome
+{
+    None,
+    Proposed,
+    NoProposal,
+    Failed
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+// IdentificationResult
+//
+// The record of one handler's identification run: the opcode name and label the handler
+// identifies, how the run ended, the proposals it returned, and the status messages
+// produced during the run.
+///////////////////////////////////////////////////////////////////////////////////////////////
+public class IdentificationResult
+{
+    public string OpcodeName = string.Empty;
+    public string Label = string.Empty;
+    public IdentificationOutcome Outcome = IdentificationOutcome.None;
+    public List<InferenceProposal> Proposals = new List<InferenceProposal>();
+    public List<string> Messages = new List<string>();
+}
+///////////////////////////////////////////////////////////////////////////////////////////////
 // IInferOpcodes
 //
 // A cold-path identification strategy for a single opcode version.  Given the session's

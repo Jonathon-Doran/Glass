@@ -29,7 +29,6 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using static Glass.Network.Protocol.SoeConstants;
@@ -79,7 +78,6 @@ public partial class MainWindow : Window
     private int? _analysisFilterSessionId;
     private int _analysisMaxPackets = 20;
     private int _analysisMaxHexBytes = 256;
-    private readonly Action<SignalInferenceStatus> _inferenceStatusHandler;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // MainWindow
@@ -99,15 +97,10 @@ public partial class MainWindow : Window
         DebugLog.Write(LogChannel.Inference, "Inference log initialized", LogLevel.Trace);
 
         InitializeAnalysisFilters();
-        AddDummyCandidates();
         InitializePipes();
 
         GlassContext.SignalBus = new SignalBus();
         GlassContext.PacketBus = new PacketBus();
-
-
-        _inferenceStatusHandler = OnInferenceStatus;
-        GlassContext.SignalBus.Subscribe(_inferenceStatusHandler);
 
         OpenDatabase();
         ProtocolStackBootstrap.Initialize();
@@ -194,30 +187,6 @@ public partial class MainWindow : Window
 
      //   DebugLog.DisableAllChannels();
      //   DebugLog.Enable(LogChannel.Memory);
-    }
-
-    private void AddDummyCandidates()
-    {
-        // ----- Dummy candidates for UI review (remove when real analysis is wired) -----
-        ObservableCollection<AnalysisCandidate> dummyCandidates
-            = new ObservableCollection<AnalysisCandidate>();
-
-        dummyCandidates.Add(new AnalysisCandidate
-        {
-            Name = "OP_PlayerProfile",
-            Confidence = "High",
-            Evidence = "Size 23471, seen once per zone-in, contains character name at offset 904"
-        });
-
-        dummyCandidates.Add(new AnalysisCandidate
-        {
-            Name = "OP_ZoneEntry",
-            Confidence = "Medium",
-            Evidence = "Size 1204, seen once per zone-in, direction Z2C, precedes spawn burst"
-        });
-
-        CandidateGrid.ItemsSource = dummyCandidates;
-        DebugLog.Write(LogChannel.InferenceDebug, "MainWindow: loaded 2 dummy candidates for UI review");
     }
 
     private void RestoreLastPatchLevel()
@@ -1935,26 +1904,6 @@ public partial class MainWindow : Window
         }));
     }
 
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // OnInferenceStatus
-    //
-    // Shows an identification routine's status line in the secondary status bar text.
-    // Arrives on the scan thread, so the update is marshaled to the UI thread.
-    //
-    // signal:  The status carrying the line to display
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private void OnInferenceStatus(SignalInferenceStatus signal)
-    {
-        DebugLog.Write(LogChannel.Inference, "MainWindow.OnInferenceStatus: '" + signal.Text + "'",
-            LogLevel.Trace);
-
-        Dispatcher.Invoke(() =>
-        {
-            StatusBarSecondaryText.Text = signal.Text;
-        });
-    }
-
     ///////////////////////////////////////////////////////////////////////////////////////////
     // MenuItem_Save_Click
     //
@@ -2888,13 +2837,40 @@ public partial class MainWindow : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // RefreshSummaryGrid
+    //
+    // Rebuilds the summary grid from the identification summary's current lines, grouped by
+    // opcode name.  The grid is shown only when there are lines.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void RefreshSummaryGrid()
+    {
+        List<IdentificationSummaryLine> lines =
+            new List<IdentificationSummaryLine>(IdentificationSummary.Instance.Lines);
+        ListCollectionView view = new ListCollectionView(lines);
+        view.GroupDescriptions.Add(new PropertyGroupDescription("OpcodeName"));
+        SummaryGrid.ItemsSource = view;
+
+        if (lines.Count > 0)
+        {
+            SummaryGrid.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            SummaryGrid.Visibility = Visibility.Collapsed;
+        }
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "MainWindow.RefreshSummaryGrid: " + lines.Count + " lines shown", LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // Button_RunIdentification_Click
     //
     // Runs opcode identification against the current catalog.  If capture is still running,
-    // prompts to stop it first; aborts if the operator declines.  Prepares the catalog,
-    // runs the scanner, and shows the proposals grouped by label in the grid.  Read-only:
-    // no patch level is created or modified here; a target level is created when a proposal
-    // is first accepted.
+    // prompts to stop it first; aborts if the operator declines.  Prepares the catalog, runs
+    // the scanner with the auto-accept floor from the settings, records the results in the
+    // identification summary, and shows the summary in the grid.  Read-only: no patch level
+    // is created or modified here.
     //
     // sender:  The button that raised the event.
     // e:       Event arguments.
@@ -2921,100 +2897,104 @@ public partial class MainWindow : Window
         }
         IdentificationTargetLevel.Text = string.Empty;
         _packetCatalog.Prepare();
+
+        double autoAcceptFloor = Properties.Settings.Default.AutoAcceptFloor;
         InferenceScanner scanner = new InferenceScanner();
-        List<InferenceProposal> proposals = scanner.Scan(_packetCatalog);
-        proposals.Sort((a, b) =>
-        {
-            int labelCompare = string.Compare(a.Label, b.Label, System.StringComparison.Ordinal);
-            if (labelCompare != 0)
-            {
-                return labelCompare;
-            }
-            return b.Confidence.CompareTo(a.Confidence);
-        });
-        List<ProposalRow> rows = new List<ProposalRow>();
-        foreach (InferenceProposal proposal in proposals)
-        {
-            ProposalRow row = new ProposalRow();
-            row.Label = proposal.Label;
-            row.OpcodeHex = proposal.Opcode.ToString();
-            row.Confidence = proposal.Confidence.ToString("F2");
-            row.Count = _packetCatalog.CountFor(proposal.Opcode.Value);
-            row.WireValue = proposal.Opcode.Value;
-            row.Evidence = proposal.Evidence;
-            rows.Add(row);
-        }
-        ListCollectionView view = new ListCollectionView(rows);
-        view.GroupDescriptions.Add(new PropertyGroupDescription("Label"));
-        ProposalGrid.ItemsSource = view;
-        ProposalGrid.Visibility = Visibility.Visible;
+        List<IdentificationResult> results = scanner.Scan(_packetCatalog, autoAcceptFloor);
+
+        IdentificationSummary.Instance.AddResults(results);
+        RefreshSummaryGrid();
+
         DebugLog.Write(LogChannel.InferenceDebug,
-            "Button_RunIdentification_Click: " + rows.Count + " proposals shown", LogLevel.Trace);
+            "Button_RunIdentification_Click: " + results.Count + " handler results, floor "
+            + autoAcceptFloor.ToString("F2"), LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // ProposalGrid_SelectionChanged
+    // SummaryCheckBox_Click
     //
-    // Enables the Accept and Reject buttons when a proposal row is selected.
+    // Accepts or removes the acceptance of a summary line when its checkbox is clicked.  A
+    // refused check is reported on the status bar.  The checkbox is then set from the line's
+    // accepted state and the grid is refreshed.
     //
-    // sender:  The grid that raised the event.
+    // sender:  The checkbox that raised the event.
     // e:       Event arguments.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private void ProposalGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void SummaryCheckBox_Click(object sender, RoutedEventArgs e)
     {
-        bool hasSelection = ProposalGrid.SelectedItem is ProposalRow;
-        ButtonAcceptProposal.IsEnabled = hasSelection;
-        ButtonRejectProposal.IsEnabled = hasSelection;
+        CheckBox? box = sender as CheckBox;
+        if (box == null)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MainWindow.SummaryCheckBox_Click: sender is not a CheckBox", LogLevel.Error);
+            return;
+        }
+
+        IdentificationSummaryLine? line = box.DataContext as IdentificationSummaryLine;
+        if (line == null)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MainWindow.SummaryCheckBox_Click: checkbox has no summary line", LogLevel.Error);
+            return;
+        }
+
+        bool requested = box.IsChecked == true;
+        string conflict;
+        if (!IdentificationSummary.Instance.TrySetChecked(line, requested, out conflict))
+        {
+            StatusBarSecondaryText.Text = "Identification: " + conflict;
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MainWindow.SummaryCheckBox_Click: refused, " + conflict, LogLevel.Trace);
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MainWindow.SummaryCheckBox_Click: " + line.OpcodeName + " " + line.OpcodeHex
+                + " " + (requested ? "checked" : "unchecked"), LogLevel.Trace);
+        }
+
+        box.IsChecked = line.Checked;
+        SummaryGrid.Items.Refresh();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // Button_AcceptProposal_Click
+    // Button_CopySummary_Click
     //
-    // Marks the selected proposal accepted.  Writing the wire value into the target level
-    // is added when the scanner is in place.
+    // Copies the identification summary to the clipboard as plain text, preceded by the
+    // window title, the current patch level and the catalog's packet count.  A clipboard that
+    // cannot be opened is reported on the status bar.
     //
     // sender:  The button that raised the event.
     // e:       Event arguments.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private void Button_AcceptProposal_Click(object sender, RoutedEventArgs e)
+    private void Button_CopySummary_Click(object sender, RoutedEventArgs e)
     {
-        ProposalRow? selected = ProposalGrid.SelectedItem as ProposalRow;
-        if (selected == null)
+        string patchText = "none";
+        if (_currentPatchLevel != null)
         {
-            DebugLog.Write(LogChannel.InferenceDebug, "Button_AcceptProposal_Click: no selection", LogLevel.Trace);
+            patchText = _currentPatchLevel.Value.ToString();
+        }
+
+        string text = "Capture: " + Title + Environment.NewLine
+            + "Patch level: " + patchText + Environment.NewLine
+            + "Packets: " + _packetCatalog.TotalPacketCount() + Environment.NewLine
+            + IdentificationSummary.Instance.BuildCopyText();
+
+        try
+        {
+            Clipboard.SetText(text);
+        }
+        catch (System.Runtime.InteropServices.COMException ex)
+        {
+            StatusBarSecondaryText.Text = "Identification: copy failed, clipboard in use";
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MainWindow.Button_CopySummary_Click: clipboard failed, " + ex.Message, LogLevel.Warn);
             return;
         }
 
-        selected.Status = "Accepted";
-        ProposalGrid.Items.Refresh();
-        AcceptedOpcodes.Instance.Accept(selected.WireValue, selected.Label);
-        String opcodeName = AcceptedOpcodes.Instance.GetName(selected.WireValue);
+        StatusBarSecondaryText.Text = "Identification: summary copied";
         DebugLog.Write(LogChannel.InferenceDebug,
-            "Button_AcceptProposal_Click: accepted " + selected.OpcodeHex + " as " + opcodeName, LogLevel.Trace);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Button_RejectProposal_Click
-    //
-    // Marks the selected proposal rejected.
-    //
-    // sender:  The button that raised the event.
-    // e:       Event arguments.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private void Button_RejectProposal_Click(object sender, RoutedEventArgs e)
-    {
-        ProposalRow? selected = ProposalGrid.SelectedItem as ProposalRow;
-        if (selected == null)
-        {
-            DebugLog.Write(LogChannel.InferenceDebug, "Button_RejectProposal_Click: no selection", LogLevel.Trace);
-            return;
-        }
-
-        selected.Status = "Rejected";
-        ProposalGrid.Items.Refresh();
-
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "Button_RejectProposal_Click: rejected " + selected.OpcodeHex, LogLevel.Trace);
+            "MainWindow.Button_CopySummary_Click: copied " + text.Length + " characters", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -3144,24 +3124,6 @@ public partial class MainWindow : Window
         }
 
         applyAction(argb, row);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // ProposalRow
-    //
-    // One opcode-identity proposal shown in the Analysis grid.  Properties rather than
-    // fields because WPF bindings require properties.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private class ProposalRow
-    {
-        public string OpcodeHex { get; set; } = string.Empty;
-        public string ProposedName { get; set; } = string.Empty;
-        public string Confidence { get; set; } = string.Empty;
-        public int Count { get; set; }
-        public string Evidence { get; set; } = string.Empty;
-        public string Label {  get; set; } = string.Empty;
-        public OpcodeValue WireValue { get; set; }
-        public string Status { get; set; } = "Pending";
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -3550,7 +3512,8 @@ public partial class MainWindow : Window
     //
     // Returns the application to its initial state.  Clears the packet catalog
     // and both presenters, closes any open OpcodeManageWindow, clears the
-    // candidate grid and hex dump display, resets the Analysis tab filters
+    // candidate grid, the identification summary and its grid, the accepted
+    // opcodes and the hex dump display, resets the Analysis tab filters
     // to their first item, collapses the find bar and clears its text, and
     // clears the trace status text blocks.
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -3572,7 +3535,8 @@ public partial class MainWindow : Window
         }
 
         CandidateGrid.ItemsSource = null;
-        ProposalGrid.ItemsSource = null;
+        IdentificationSummary.Instance.Clear();
+        RefreshSummaryGrid();
         IdentificationTargetLevel.Text = "(none)";
         HexDumpDisplay.Document.Blocks.Clear();
 
@@ -3590,7 +3554,6 @@ public partial class MainWindow : Window
 
         StatusBarRowText.Text = string.Empty;
         StatusBarSecondaryText.Text = string.Empty;
-        ProposalGrid.Visibility = Visibility.Collapsed;
         AcceptedOpcodes.Instance.Clear();
 
         DebugLog.Write(LogChannel.InferenceDebug, "MainWindow.UIReset: complete", LogLevel.Trace);

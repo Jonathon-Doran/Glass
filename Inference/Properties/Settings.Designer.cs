@@ -69,5 +69,17 @@ namespace Inference.Properties {
                 this["EverQuestFolder"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("0.8")]
+        public double AutoAcceptFloor {
+            get {
+                return ((double)(this["AutoAcceptFloor"]));
+            }
+            set {
+                this["AutoAcceptFloor"] = value;
+            }
+        }
     }
 }
