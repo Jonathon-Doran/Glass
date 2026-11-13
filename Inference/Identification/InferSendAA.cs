@@ -86,26 +86,6 @@ public class InferSendAA : IInferOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    //
-    // The logical name of the opcode this handler identifies.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return OpcodeNameConstant; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Label
-    //
-    // The printable group identifier for this handler's proposals.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string Label
-    {
-        get { return OpcodeNameConstant; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
     // Infer
     //
     // Finds the zone sessions and their runs, selects the candidates from the runs,
@@ -113,20 +93,21 @@ public class InferSendAA : IInferOpcodes
     //
     // catalog:  The session's cataloged packets.
     //
-    // Returns:  Proposals ordered by posterior descending, empty when there are no zone
-    //           sessions, no candidates, or nothing scores at threshold.
+    // Returns:  The result, with proposals ordered by posterior descending; no proposals
+    //           when there are no zone sessions, no candidates, or nothing scores at
+    //           threshold.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public List<InferenceProposal> Infer(PacketCatalog catalog)
+    public IdentificationResult Infer(PacketCatalog catalog)
     {
         DebugLog.Write(LogChannel.InferenceDebug, "InferSendAA.Infer: starting", LogLevel.Trace);
-        List<InferenceProposal> proposals = new List<InferenceProposal>();
+        IdentificationResult result = IdentificationResult.ForOpcode(OpcodeNameConstant);
 
         List<Session> zoneSessions = FindZoneSessions(catalog);
         if (zoneSessions.Count == 0)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "InferSendAA.Infer: no zone sessions, no proposals", LogLevel.Warn);
-            return proposals;
+            return result;
         }
 
         SessionRuns[] runs = FindRuns(catalog, zoneSessions);
@@ -135,7 +116,7 @@ public class InferSendAA : IInferOpcodes
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "InferSendAA.Infer: no candidates, no proposals", LogLevel.Warn);
-            return proposals;
+            return result;
         }
 
         int opcodeCount = catalog.KnownOpcodes().Length;
@@ -146,15 +127,15 @@ public class InferSendAA : IInferOpcodes
             InferenceProposal? proposal = ScoreCandidate(candidate, runs, opcodeCount, pooledSizes);
             if (proposal != null)
             {
-                proposals.Add(proposal);
+                result.Proposals.Add(proposal);
             }
         }
 
-        proposals.Sort((a, b) => b.Confidence.CompareTo(a.Confidence));
+        result.Proposals.Sort((a, b) => b.Confidence.CompareTo(a.Confidence));
 
         DebugLog.Write(LogChannel.InferenceDebug,
-            "InferSendAA.Infer: " + proposals.Count + " proposals", LogLevel.Info);
-        return proposals;
+            "InferSendAA.Infer: " + result.Proposals.Count + " proposals", LogLevel.Info);
+        return result;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -453,68 +434,6 @@ public class InferSendAA : IInferOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // ScoreCandidate
-    //
-    // Sums the run, proximity, and size range log likelihood ratios for one candidate and
-    // converts the total to a posterior with prior odds of one over the number of wire
-    // values in the capture.  Builds a proposal with an itemized deciban ledger when the
-    // posterior reaches ReportThreshold.
-    //
-    // candidate:    The candidate's facts.
-    // runs:         Per zone session run records.
-    // opcodeCount:  Number of distinct wire values in the capture.
-    // pooledSizes:  Message count per length across the capture.
-    //
-    // Returns:  The proposal, or null when no session qualified or the posterior is below
-    //           threshold.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private InferenceProposal? ScoreCandidate(CandidateFacts candidate, SessionRuns[] runs,
-        int opcodeCount, Dictionary<int, int> pooledSizes)
-    {
-        int qualifyingSessions;
-        int matchedSessions;
-        double runLogLR = RunLogLR(candidate, runs, opcodeCount,
-            out qualifyingSessions, out matchedSessions);
-        if (qualifyingSessions == 0)
-        {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "InferSendAA.ScoreCandidate: wireValue=" + candidate.WireValue
-                + " has no qualifying zone sessions, skipping", LogLevel.Trace);
-            return null;
-        }
-
-        double proximityLogLR = ProximityLogLR(candidate, runs);
-        double rangeLogLR = RangeLogLR(candidate, pooledSizes);
-        double totalLogLR = runLogLR + proximityLogLR + rangeLogLR;
-        double posterior = EvidenceScoring.CombinePosterior(totalLogLR, 1.0 / opcodeCount);
-
-        string ledger =
-            matchedSessions + "/" + qualifyingSessions + " zone sessions with the run, "
-            + candidate.Lengths.Count + " Z2C occurrences in zone sessions | "
-            + "run " + EvidenceScoring.ToDecibans(runLogLR).ToString("F1") + " db, "
-            + "proximity " + EvidenceScoring.ToDecibans(proximityLogLR).ToString("F1") + " db, "
-            + "range " + EvidenceScoring.ToDecibans(rangeLogLR).ToString("F1") + " db | "
-            + "total " + EvidenceScoring.ToDecibans(totalLogLR).ToString("F1") + " db, "
-            + "prior 1/" + opcodeCount + ", posterior " + posterior.ToString("F3");
-
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "InferSendAA.ScoreCandidate: wireValue=" + candidate.WireValue + " " + ledger,
-            LogLevel.Trace);
-
-        if (posterior < ReportThreshold)
-        {
-            return null;
-        }
-
-        InferenceProposal proposal = new InferenceProposal();
-        proposal.Label = Label;
-        proposal.Opcode = new PatchOpcode(GlassContext.CurrentPatchLevel, candidate.WireValue);
-        proposal.Confidence = posterior;
-        proposal.Evidence = ledger;
-        return proposal;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
     // RunLogLR
     //
     // Log likelihood ratio from the session runs.  A zone session qualifies only when it
@@ -683,5 +602,63 @@ public class InferSendAA : IInferOpcodes
 
         return EvidenceScoring.SizeRangeLogLR(observed, RangeLow, RangeHigh, pooledSizes,
             LeakProbability, RangeDistancePenalty, MaxAbsLogLR);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ScoreCandidate
+    //
+    // Sums the run, proximity, and size range log likelihood ratios for one candidate and
+    // converts the total to a posterior with prior odds of one over the number of wire
+    // values in the capture.  Builds a proposal with an itemized deciban ledger when the
+    // posterior reaches ReportThreshold.
+    //
+    // candidate:    The candidate's facts.
+    // runs:         Per zone session run records.
+    // opcodeCount:  Number of distinct wire values in the capture.
+    // pooledSizes:  Message count per length across the capture.
+    //
+    // Returns:  The proposal, or null when no session qualified or the posterior is below
+    //           threshold.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private InferenceProposal? ScoreCandidate(CandidateFacts candidate, SessionRuns[] runs,
+        int opcodeCount, Dictionary<int, int> pooledSizes)
+    {
+        int qualifyingSessions;
+        int matchedSessions;
+        double runLogLR = RunLogLR(candidate, runs, opcodeCount,
+            out qualifyingSessions, out matchedSessions);
+        if (qualifyingSessions == 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "InferSendAA.ScoreCandidate: wireValue=" + candidate.WireValue
+                + " has no qualifying zone sessions, skipping", LogLevel.Trace);
+            return null;
+        }
+
+        double proximityLogLR = ProximityLogLR(candidate, runs);
+        double rangeLogLR = RangeLogLR(candidate, pooledSizes);
+        double totalLogLR = runLogLR + proximityLogLR + rangeLogLR;
+        double posterior = EvidenceScoring.CombinePosterior(totalLogLR, 1.0 / opcodeCount);
+
+        string ledger =
+            matchedSessions + "/" + qualifyingSessions + " zone sessions with the run, "
+            + candidate.Lengths.Count + " Z2C occurrences in zone sessions | "
+            + "run " + EvidenceScoring.ToDecibans(runLogLR).ToString("F1") + " db, "
+            + "proximity " + EvidenceScoring.ToDecibans(proximityLogLR).ToString("F1") + " db, "
+            + "range " + EvidenceScoring.ToDecibans(rangeLogLR).ToString("F1") + " db | "
+            + "total " + EvidenceScoring.ToDecibans(totalLogLR).ToString("F1") + " db, "
+            + "prior 1/" + opcodeCount + ", posterior " + posterior.ToString("F3");
+
+        DebugLog.Write(LogChannel.InferenceDebug,
+            "InferSendAA.ScoreCandidate: wireValue=" + candidate.WireValue + " " + ledger,
+            LogLevel.Trace);
+
+        if (posterior < ReportThreshold)
+        {
+            return null;
+        }
+
+        return InferenceProposal.ForOpcode(OpcodeNameConstant,
+            new PatchOpcode(GlassContext.CurrentPatchLevel, candidate.WireValue), posterior, ledger);
     }
 }

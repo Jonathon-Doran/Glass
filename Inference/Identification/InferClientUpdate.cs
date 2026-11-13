@@ -62,26 +62,6 @@ public class InferClientUpdate : IInferOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    //
-    // The logical name of the opcode this handler identifies.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return OpcodeNameConstant; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Label
-    //
-    // The printable group identifier for this handler's proposals.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string Label
-    {
-        get { return OpcodeNameConstant; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
     // Infer
     //
     // Examines every application wire value, selects the candidates by count, totals each
@@ -90,13 +70,14 @@ public class InferClientUpdate : IInferOpcodes
     //
     // catalog:  The session's cataloged packets.
     //
-    // Returns:  Proposals ordered by posterior descending, empty when nothing was examined,
-    //           no candidate was examined, or nothing scores at threshold.
+    // Returns:  The result, with proposals ordered by posterior descending; no proposals
+    //           when nothing was examined, no candidate was examined, or nothing scores at
+    //           threshold.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public List<InferenceProposal> Infer(PacketCatalog catalog)
+    public IdentificationResult Infer(PacketCatalog catalog)
     {
         DebugLog.Write(LogChannel.InferenceDebug, "InferClientUpdate.Infer: starting", LogLevel.Trace);
-        List<InferenceProposal> proposals = new List<InferenceProposal>();
+        IdentificationResult result = IdentificationResult.ForOpcode(OpcodeNameConstant);
 
         List<WireFacts> facts = new List<WireFacts>();
         OpcodeValue[] known = catalog.KnownOpcodes();
@@ -118,7 +99,7 @@ public class InferClientUpdate : IInferOpcodes
             DebugLog.Write(LogChannel.InferenceDebug,
                 "InferClientUpdate.Infer: no packets on zone sessions with a zone, no proposals",
                 LogLevel.Warn);
-            return proposals;
+            return result;
         }
 
         List<OpcodeValue> candidates = SelectCandidates(catalog);
@@ -146,16 +127,16 @@ public class InferClientUpdate : IInferOpcodes
                 totalSelfId, totalToClient, totalKnown, pooledSizes);
             if (proposal != null)
             {
-                proposals.Add(proposal);
+                result.Proposals.Add(proposal);
             }
         }
 
-        proposals.Sort((a, b) => b.Confidence.CompareTo(a.Confidence));
+        result.Proposals.Sort((a, b) => b.Confidence.CompareTo(a.Confidence));
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferClientUpdate.Infer: " + facts.Count + " wire values examined, "
-            + proposals.Count + " proposals", LogLevel.Info);
-        return proposals;
+            + result.Proposals.Count + " proposals", LogLevel.Info);
+        return result;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -414,12 +395,8 @@ public class InferClientUpdate : IInferOpcodes
             return null;
         }
 
-        InferenceProposal proposal = new InferenceProposal();
-        proposal.Label = Label;
-        proposal.Opcode = new PatchOpcode(GlassContext.CurrentPatchLevel, candidate.WireValue);
-        proposal.Confidence = posterior;
-        proposal.Evidence = ledger;
-        return proposal;
+        return InferenceProposal.ForOpcode(OpcodeNameConstant,
+            new PatchOpcode(GlassContext.CurrentPatchLevel, candidate.WireValue), posterior, ledger);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

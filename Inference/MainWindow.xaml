@@ -625,6 +625,7 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Name"       Width="160" Binding="{Binding OpcodeName}"/>
                             <DataGridTextColumn Header="Opcode"     Width="80"  Binding="{Binding OpcodeHex}"/>
                             <DataGridTextColumn Header="Confidence" Width="90"  Binding="{Binding Confidence, StringFormat=F2}"/>
                             <DataGridTextColumn Header="Outcome"    Width="90"  Binding="{Binding Outcome}"/>

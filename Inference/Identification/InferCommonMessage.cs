@@ -74,26 +74,6 @@ public class InferCommonMessage : IInferOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    //
-    // The logical name of the opcode this handler identifies.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return OpcodeNameConstant; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Label
-    //
-    // The printable group identifier for this handler's proposals.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string Label
-    {
-        get { return OpcodeNameConstant; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
     // Infer
     //
     // Finds the zone sessions with a character and their names, selects the candidates,
@@ -101,13 +81,14 @@ public class InferCommonMessage : IInferOpcodes
     //
     // catalog:  The session's cataloged packets.
     //
-    // Returns:  Proposals ordered by posterior descending, empty when there are no sessions
-    //           with a character, no candidates, or nothing scores at threshold.
+    // Returns:  The result, with proposals ordered by posterior descending; no proposals
+    //           when there are no sessions with a character, no candidates, or nothing
+    //           scores at threshold.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public List<InferenceProposal> Infer(PacketCatalog catalog)
+    public IdentificationResult Infer(PacketCatalog catalog)
     {
         DebugLog.Write(LogChannel.InferenceDebug, "InferCommonMessage.Infer: starting", LogLevel.Trace);
-        List<InferenceProposal> proposals = new List<InferenceProposal>();
+        IdentificationResult result = IdentificationResult.ForOpcode(OpcodeNameConstant);
 
         List<Session> sessions = FindCharacterSessions(catalog);
         if (sessions.Count == 0)
@@ -115,7 +96,7 @@ public class InferCommonMessage : IInferOpcodes
             DebugLog.Write(LogChannel.InferenceDebug,
                 "InferCommonMessage.Infer: no zone sessions with a character, no proposals",
                 LogLevel.Warn);
-            return proposals;
+            return result;
         }
 
         byte[][] names = SessionNames(sessions);
@@ -124,7 +105,7 @@ public class InferCommonMessage : IInferOpcodes
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "InferCommonMessage.Infer: no candidates, no proposals", LogLevel.Warn);
-            return proposals;
+            return result;
         }
 
         List<OpcodeValue> joinValues = FindJoinValues(catalog, sessions);
@@ -145,15 +126,15 @@ public class InferCommonMessage : IInferOpcodes
                 opcodesMostlyText, opcodeCount);
             if (proposal != null)
             {
-                proposals.Add(proposal);
+                result.Proposals.Add(proposal);
             }
         }
 
-        proposals.Sort((a, b) => b.Confidence.CompareTo(a.Confidence));
+        result.Proposals.Sort((a, b) => b.Confidence.CompareTo(a.Confidence));
 
         DebugLog.Write(LogChannel.InferenceDebug,
-            "InferCommonMessage.Infer: " + proposals.Count + " proposals", LogLevel.Info);
-        return proposals;
+            "InferCommonMessage.Infer: " + result.Proposals.Count + " proposals", LogLevel.Info);
+        return result;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -631,12 +612,8 @@ public class InferCommonMessage : IInferOpcodes
             return null;
         }
 
-        InferenceProposal proposal = new InferenceProposal();
-        proposal.Label = Label;
-        proposal.Opcode = new PatchOpcode(GlassContext.CurrentPatchLevel, candidate.WireValue);
-        proposal.Confidence = posterior;
-        proposal.Evidence = ledger;
-        return proposal;
+        return InferenceProposal.ForOpcode(OpcodeNameConstant,
+            new PatchOpcode(GlassContext.CurrentPatchLevel, candidate.WireValue), posterior, ledger);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

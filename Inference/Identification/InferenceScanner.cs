@@ -1,9 +1,6 @@
-﻿using Glass.Core;
-using Glass.Core.Logging;
-using Glass.Core.Signals;
+﻿using Glass.Core.Logging;
 using Inference.Core;
-using SQLitePCL;
-using System;
+
 using System.Collections.Generic;
 
 namespace Inference.Identification;
@@ -18,13 +15,11 @@ namespace Inference.Identification;
 public class InferenceScanner
 {
     private readonly List<IInferOpcodes> _handlers;
-    private readonly Action<SignalInferenceStatus> _statusHandler;
-    private IdentificationResult? _currentResult = null;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // InferenceScanner (constructor)
     //
-    // Builds the handler list in identification order and binds the status collector.
+    // Builds the handler list in identification order.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public InferenceScanner()
     {
@@ -43,11 +38,8 @@ public class InferenceScanner
         _handlers.Add(new InferManaUpdate());
         _handlers.Add(new InferCastRequest());
         _handlers.Add(new InferCastResolution());
-        _handlers.Add(new InferTargetRequest());
+       // _handlers.Add(new InferTargetRequest());
         _handlers.Add(new InferHpUpdate());
-
-
-        _statusHandler = CollectStatus;
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferenceScanner.ctor: " + _handlers.Count + " handlers", LogLevel.Trace);
@@ -56,18 +48,18 @@ public class InferenceScanner
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Scan
     //
-    // Runs each handler against the catalog in order and records one result per handler run.
-    // A handler whose opcode already has an accepted wire value is skipped and has no result.
-    // Status lines published while a handler runs are added to that handler's result.  A
-    // result with proposals is offered for automatic acceptance before the next handler runs.
-    // A handler that throws or returns null is recorded as Failed with the reason in its
-    // messages, and the scan continues with the remaining handlers.
+    // Runs each handler against the catalog in order and records one result per handler.  A
+    // result whose opcode names are all already accepted is marked AlreadyAccepted and its
+    // proposals are dropped.  A result whose outcome the handler left as None is marked
+    // Proposed or NoProposal by its proposal count, and a Proposed result is offered for
+    // automatic acceptance before the next handler runs.  A handler that throws or returns
+    // null is recorded as a Failed result labeled with the handler's class name, with the
+    // reason in its messages, and the scan continues with the remaining handlers.
     //
     // catalog:          The session's cataloged packets.
     // autoAcceptFloor:  The minimum posterior for automatic acceptance.
     //
-    // Returns:  One result per handler run, in handler order.  Empty when the catalog is null
-    //           or every handler was skipped.
+    // Returns:  One result per handler, in handler order.  Empty when the catalog is null.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public List<IdentificationResult> Scan(PacketCatalog catalog, double autoAcceptFloor)
     {
@@ -82,80 +74,71 @@ public class InferenceScanner
 
         DebugLog.Write(LogChannel.InferenceDebug, "InferenceScanner.Scan: starting", LogLevel.Info);
 
-        GlassContext.SignalBus.Subscribe(_statusHandler);
-        try
+        for (int handlerIndex = 0; handlerIndex < _handlers.Count; handlerIndex++)
         {
-            for (int handlerIndex = 0; handlerIndex < _handlers.Count; handlerIndex++)
+            IInferOpcodes handler = _handlers[handlerIndex];
+            string handlerName = handler.GetType().Name;
+
+            IdentificationResult? result = null;
+            string failure = string.Empty;
+            try
             {
-                IInferOpcodes handler = _handlers[handlerIndex];
-
-                if (AcceptedOpcodes.Instance.WireValueFor(handler.OpcodeName).Exists)
+                result = handler.Infer(catalog);
+                if (result == null)
                 {
-                    DebugLog.Write(LogChannel.InferenceDebug,
-                        "InferenceScanner.Scan: " + handler.Label + " already accepted, skipped",
-                        LogLevel.Trace);
-                    continue;
+                    failure = "returned null";
                 }
+            }
+            catch (System.Exception ex)
+            {
+                failure = "threw: " + ex.Message;
+            }
 
-                IdentificationResult result = new IdentificationResult();
-                result.OpcodeName = handler.OpcodeName;
-                result.Label = handler.Label;
-                _currentResult = result;
+            if (result == null)
+            {
+                result = new IdentificationResult();
+                result.OpcodeNames.Add(handlerName);
+                result.GroupLabel = handlerName;
+                result.Outcome = IdentificationOutcome.Failed;
+                result.Messages.Add(failure);
+                results.Add(result);
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "InferenceScanner.Scan: " + handlerName + " " + failure, LogLevel.Error);
+                continue;
+            }
 
-                List<InferenceProposal>? handlerProposals = null;
-                try
-                {
-                    handlerProposals = handler.Infer(catalog);
-                }
-                catch (System.Exception ex)
-                {
-                    result.Outcome = IdentificationOutcome.Failed;
-                    result.Messages.Add("threw: " + ex.Message);
-                    DebugLog.Write(LogChannel.InferenceDebug,
-                        "InferenceScanner.Scan: " + handler.Label + " threw: " + ex.Message,
-                        LogLevel.Error);
-                }
-                finally
-                {
-                    _currentResult = null;
-                }
+            if (AllAccepted(result.OpcodeNames))
+            {
+                result.Outcome = IdentificationOutcome.AlreadyAccepted;
+                result.Proposals.Clear();
+                results.Add(result);
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "InferenceScanner.Scan: " + result.GroupLabel + " already accepted, proposals dropped",
+                    LogLevel.Trace);
+                continue;
+            }
 
-                if (result.Outcome == IdentificationOutcome.Failed)
-                {
-                    results.Add(result);
-                    continue;
-                }
-
-                if (handlerProposals == null)
-                {
-                    result.Outcome = IdentificationOutcome.Failed;
-                    result.Messages.Add("returned null");
-                    DebugLog.Write(LogChannel.InferenceDebug,
-                        "InferenceScanner.Scan: " + handler.Label + " returned null", LogLevel.Warn);
-                    results.Add(result);
-                    continue;
-                }
-
-                result.Proposals = handlerProposals;
-                if (handlerProposals.Count > 0)
+            if (result.Outcome == IdentificationOutcome.None)
+            {
+                if (result.Proposals.Count > 0)
                 {
                     result.Outcome = IdentificationOutcome.Proposed;
-                    IdentificationSummary.Instance.AutoAccept(result, autoAcceptFloor);
                 }
                 else
                 {
                     result.Outcome = IdentificationOutcome.NoProposal;
                 }
-                results.Add(result);
-
-                DebugLog.Write(LogChannel.InferenceDebug,
-                    "InferenceScanner.Scan: " + handler.Label + " -> "
-                    + handlerProposals.Count + " proposals", LogLevel.Info);
             }
-        }
-        finally
-        {
-            GlassContext.SignalBus.Unsubscribe(_statusHandler);
+
+            if (result.Outcome == IdentificationOutcome.Proposed)
+            {
+                IdentificationSummary.Instance.AutoAccept(result, autoAcceptFloor);
+            }
+            results.Add(result);
+
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "InferenceScanner.Scan: " + result.GroupLabel + " " + result.Outcome + ", "
+                + result.Proposals.Count + " proposals", LogLevel.Info);
         }
 
         DebugLog.Write(LogChannel.InferenceDebug,
@@ -164,26 +147,28 @@ public class InferenceScanner
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // CollectStatus
+    // AllAccepted
     //
-    // Adds a status line to the result of the handler currently running.  A status line
-    // published while no handler is running is logged and discarded.
+    // Tests whether every opcode name in a list has an accepted wire value.
     //
-    // signal:  The status carrying the line.
+    // opcodeNames:  The opcode names to test.
+    //
+    // Returns:  True when the list is not empty and every name is accepted, false otherwise.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private void CollectStatus(SignalInferenceStatus signal)
+    private static bool AllAccepted(List<string> opcodeNames)
     {
-        if (_currentResult == null)
+        if (opcodeNames.Count == 0)
         {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "InferenceScanner.CollectStatus: no handler running, discarded '" + signal.Text + "'",
-                LogLevel.Warn);
-            return;
+            return false;
         }
 
-        _currentResult.Messages.Add(signal.Text);
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "InferenceScanner.CollectStatus: " + _currentResult.Label + " '" + signal.Text + "'",
-            LogLevel.Trace);
+        for (int nameIndex = 0; nameIndex < opcodeNames.Count; nameIndex++)
+        {
+            if (!AcceptedOpcodes.Instance.WireValueFor(opcodeNames[nameIndex]).Exists)
+            {
+                return false;
+            }
+        }
+        return true;
     }
 }

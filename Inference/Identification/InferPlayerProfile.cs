@@ -70,26 +70,6 @@ public class InferPlayerProfile : IInferOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    //
-    // The logical name of the opcode this handler identifies.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return OpcodeNameConstant; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Label
-    //
-    // The printable group identifier for this handler's proposals.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string Label
-    {
-        get { return OpcodeNameConstant; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
     // Infer
     //
     // Selects the candidates, finds the zone sessions, which of them carry the anchor, and
@@ -98,13 +78,14 @@ public class InferPlayerProfile : IInferOpcodes
     //
     // catalog:  The session's cataloged packets.
     //
-    // Returns:  Proposals ordered by posterior descending, empty when there are no
-    //           candidates, no zone sessions, or nothing scores at threshold.
+    // Returns:  The result, with proposals ordered by posterior descending; no proposals
+    //           when there are no candidates, no zone sessions, or nothing scores at
+    //           threshold.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public List<InferenceProposal> Infer(PacketCatalog catalog)
+    public IdentificationResult Infer(PacketCatalog catalog)
     {
         DebugLog.Write(LogChannel.InferenceDebug, "InferPlayerProfile.Infer: starting", LogLevel.Trace);
-        List<InferenceProposal> proposals = new List<InferenceProposal>();
+        IdentificationResult result = IdentificationResult.ForOpcode(OpcodeNameConstant);
 
         List<OpcodeValue> candidates = SelectCandidates(catalog);
         List<Session> zoneSessions = FindZoneSessions(catalog);
@@ -113,7 +94,7 @@ public class InferPlayerProfile : IInferOpcodes
             DebugLog.Write(LogChannel.InferenceDebug,
                 "InferPlayerProfile.Infer: " + candidates.Count + " candidates, "
                 + zoneSessions.Count + " zone sessions, no proposals", LogLevel.Warn);
-            return proposals;
+            return result;
         }
 
         bool[] anchorSessions = FindAnchorSessions(catalog, zoneSessions);
@@ -131,15 +112,15 @@ public class InferPlayerProfile : IInferOpcodes
             InferenceProposal? proposal = ScoreCandidate(facts, i, anchorSessions);
             if (proposal != null)
             {
-                proposals.Add(proposal);
+                result.Proposals.Add(proposal);
             }
         }
 
-        proposals.Sort((a, b) => b.Confidence.CompareTo(a.Confidence));
+        result.Proposals.Sort((a, b) => b.Confidence.CompareTo(a.Confidence));
 
         DebugLog.Write(LogChannel.InferenceDebug,
-            "InferPlayerProfile.Infer: " + proposals.Count + " proposals", LogLevel.Info);
-        return proposals;
+            "InferPlayerProfile.Infer: " + result.Proposals.Count + " proposals", LogLevel.Info);
+        return result;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -434,12 +415,8 @@ public class InferPlayerProfile : IInferOpcodes
             return null;
         }
 
-        InferenceProposal proposal = new InferenceProposal();
-        proposal.Label = Label;
-        proposal.Opcode = new PatchOpcode(GlassContext.CurrentPatchLevel, candidate.WireValue);
-        proposal.Confidence = posterior;
-        proposal.Evidence = ledger;
-        return proposal;
+        return InferenceProposal.ForOpcode(OpcodeNameConstant,
+            new PatchOpcode(GlassContext.CurrentPatchLevel, candidate.WireValue), posterior, ledger);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

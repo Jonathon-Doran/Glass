@@ -36,26 +36,6 @@ public class InferMovementHistory : IInferOpcodes
     private const double ReportThreshold = 0.0;          // minimum posterior to emit a proposal
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    //
-    // The logical name of the opcode this handler identifies.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return OpcodeNameConstant; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Label
-    //
-    // The printable group identifier for this handler's proposals.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string Label
-    {
-        get { return OpcodeNameConstant; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
     // Infer
     //
     // Scores every unaccepted wire value in the catalog against the MovementHistory
@@ -72,19 +52,19 @@ public class InferMovementHistory : IInferOpcodes
     //
     // catalog:  The session's cataloged packets.  Prepare must have run.
     //
-    // Returns:  Proposals ordered by catalog rank, empty when the catalog is empty or
-    //           nothing scores at threshold.
+    // Returns:  The result, with proposals ordered by catalog rank; no proposals when the
+    //           catalog is empty or nothing scores at threshold.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public List<InferenceProposal> Infer(PacketCatalog catalog)
+    public IdentificationResult Infer(PacketCatalog catalog)
     {
         DebugLog.Write(LogChannel.InferenceDebug, "InferMovementHistory.Infer: starting", LogLevel.Trace);
-        List<InferenceProposal> proposals = new List<InferenceProposal>();
+        IdentificationResult result = IdentificationResult.ForOpcode(OpcodeNameConstant);
 
         List<OpcodeValue> ranked = catalog.OpcodesByCountDescending();
         if (ranked.Count == 0)
         {
             DebugLog.Write(LogChannel.InferenceDebug, "InferMovementHistory.Infer: catalog empty", LogLevel.Warn);
-            return proposals;
+            return result;
         }
 
         int opcodeCount = ranked.Count;
@@ -223,11 +203,7 @@ public class InferMovementHistory : IInferOpcodes
                 structureNote = "differs from stored " + storedRecordBytes + " - mutated?";
             }
 
-            InferenceProposal proposal = new InferenceProposal();
-            proposal.Label = Label;
-            proposal.Opcode = new PatchOpcode(GlassContext.CurrentPatchLevel, wireValue);
-            proposal.Confidence = posterior;
-            proposal.Evidence =
+            string ledger =
                 stats.Count + "/" + totalCount + " messages, "
                 + stats.DistinctSizeCount + " sizes, min " + stats.MinSize
                 + " | stride " + discoveredStride + ", confirmed " + confirmedCount + "/"
@@ -239,13 +215,13 @@ public class InferMovementHistory : IInferOpcodes
                 + " db | total " + EvidenceScoring.ToDecibans(totalLogLR).ToString("F1")
                 + " db, prior 1/" + opcodeCount
                 + ", posterior " + posterior.ToString("F3");
-            proposals.Add(proposal);
-
+            result.Proposals.Add(InferenceProposal.ForOpcode(OpcodeNameConstant,
+                new PatchOpcode(GlassContext.CurrentPatchLevel, wireValue), posterior, ledger));
         }
 
         DebugLog.Write(LogChannel.InferenceDebug,
-            "InferMovementHistory.Infer: " + proposals.Count + " proposals", LogLevel.Trace);
-        return proposals;
+            "InferMovementHistory.Infer: " + result.Proposals.Count + " proposals", LogLevel.Trace);
+        return result;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

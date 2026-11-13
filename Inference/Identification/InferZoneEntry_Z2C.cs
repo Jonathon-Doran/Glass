@@ -27,26 +27,6 @@ public class InferZoneEntry_Z2C : IInferOpcodes
     private const LogLevel defaultLoglevel = LogLevel.Trace;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    //
-    // The logical name of the opcode this handler identifies.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return OpcodeNameConstant; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Label
-    //
-    // The printable group identifier for this handler's proposals.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string Label
-    {
-        get { return OpcodeNameConstant; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
     // Infer
     //
     // Looks up the wire value accepted as OP_PlayerProfile, walks the catalog for packets
@@ -54,17 +34,18 @@ public class InferZoneEntry_Z2C : IInferOpcodes
     // same port pair whose payload begins with a null-terminated printable string as that
     // session's ZoneEntry vote.  Votes are tallied by wire value and emitted as proposals
     // ordered by vote count descending, confidence being the fraction of votes carried.
-    // Returns no proposals when OP_PlayerProfile has not been accepted this session.
+    // Makes no proposals when OP_PlayerProfile has not been accepted this session, and adds a
+    // message saying so to the result.
     //
     // catalog:  The session's cataloged packets.
     //
-    // Returns:  Proposals ordered best-first, empty when the anchor is missing or no
-    //           session produced a vote.
+    // Returns:  The result, with proposals ordered best-first; no proposals when the anchor
+    //           is missing or no session produced a vote.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public List<InferenceProposal> Infer(PacketCatalog catalog)
+    public IdentificationResult Infer(PacketCatalog catalog)
     {
         DebugLog.Write(LogChannel.InferenceDebug, "InferZoneEntry_Z2C.Infer: starting", defaultLoglevel);
-        List<InferenceProposal> proposals = new List<InferenceProposal>();
+        IdentificationResult result = IdentificationResult.ForOpcode(OpcodeNameConstant);
 
         OpcodeValue anchorWireValue = AcceptedOpcodes.Instance.WireValueFor(AnchorOpcodeName);
         if (!anchorWireValue.Exists)
@@ -72,9 +53,9 @@ public class InferZoneEntry_Z2C : IInferOpcodes
             DebugLog.Write(LogChannel.Inference,
                 "InferZoneEntry_Z2C.Infer: " + AnchorOpcodeName
                 + " not accepted this session, cannot anchor, no proposals", LogLevel.Warn);
-            GlassContext.SignalBus.Publish(new SignalInferenceStatus(
-                OpcodeNameConstant + " skipped: accept " + AnchorOpcodeName + " first, then run identification again"));
-            return proposals;
+            result.Messages.Add(OpcodeNameConstant + " skipped: accept " + AnchorOpcodeName
+                + " first, then run identification again");
+            return result;
         }
 
         Dictionary<OpcodeValue, int> votes = new Dictionary<OpcodeValue, int>();
@@ -122,7 +103,7 @@ public class InferZoneEntry_Z2C : IInferOpcodes
             DebugLog.Write(LogChannel.InferenceDebug,
                 "InferZoneEntry_Z2C.Infer: " + anchorsFound + " anchors, no votes, no proposals",
                 LogLevel.Warn);
-            return proposals;
+            return result;
         }
 
         int totalVotes = 0;
@@ -146,16 +127,13 @@ public class InferZoneEntry_Z2C : IInferOpcodes
             }
 
             double confidence = (double)votes[wireValue] / totalVotes;
-            InferenceProposal proposal = new InferenceProposal();
-            proposal.Label = Label;
-            proposal.Opcode = new PatchOpcode(GlassContext.CurrentPatchLevel, wireValue);
-            proposal.Confidence = confidence;
-            proposal.Evidence =
+            string ledger =
                 votes[wireValue] + "/" + totalVotes + " zone sessions' first string-leading Z2C"
                 + " message after " + AnchorOpcodeName
                 + " | " + catalog.CountFor(wireValue) + " packets in capture"
                 + " | agreement " + confidence.ToString("F3");
-            proposals.Add(proposal);
+            result.Proposals.Add(InferenceProposal.ForOpcode(OpcodeNameConstant,
+                new PatchOpcode(GlassContext.CurrentPatchLevel, wireValue), confidence, ledger));
 
             DebugLog.Write(LogChannel.InferenceDebug,
                 "InferZoneEntry_Z2C.Infer: wireValue=" + wireValue + " votes="
@@ -165,8 +143,8 @@ public class InferZoneEntry_Z2C : IInferOpcodes
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferZoneEntry_Z2C.Infer: " + anchorsFound + " anchors, "
-            + proposals.Count + " proposals", defaultLoglevel);
-        return proposals;
+            + result.Proposals.Count + " proposals", defaultLoglevel);
+        return result;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

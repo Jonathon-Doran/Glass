@@ -67,44 +67,25 @@ public class InferManaUpdate : IInferOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    //
-    // The logical name of the opcode this handler identifies.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return OpcodeNameConstant; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Label
-    //
-    // The printable group identifier for this handler's proposals.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string Label
-    {
-        get { return OpcodeNameConstant; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
     // Infer
     //
     // Requires OP_ZoneEntry_Z2C to be accepted this session, and builds each session's cutoff
-    // from it.  Examines every application wire value with packets on zone sessions, builds
-    // the backgrounds for direction, maximum mana matches and self coverage over all of them,
-    // and scores each wire value not already accepted.  The maximum mana background counts
-    // the wire values with at least one matching packet.
+    // from it; when it is not accepted, no proposals are made and a message saying so is added
+    // to the result.  Examines every application wire value with packets on zone sessions,
+    // builds the backgrounds for direction, maximum mana matches and self coverage over all of
+    // them, and scores each wire value not already accepted.  The maximum mana background
+    // counts the wire values with at least one matching packet.
     //
     // catalog:  The session's cataloged packets.
     //
-    // Returns:  Proposals ordered by posterior descending, empty when OP_ZoneEntry_Z2C is not
-    //           accepted, no wire value has packets on a zone session, or nothing scores at
-    //           threshold.
+    // Returns:  The result, with proposals ordered by posterior descending; no proposals
+    //           when OP_ZoneEntry_Z2C is not accepted, no wire value has packets on a zone
+    //           session, or nothing scores at threshold.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public List<InferenceProposal> Infer(PacketCatalog catalog)
+    public IdentificationResult Infer(PacketCatalog catalog)
     {
         DebugLog.Write(LogChannel.InferenceDebug, "InferManaUpdate.Infer: starting", defaultLoglevel);
-        List<InferenceProposal> proposals = new List<InferenceProposal>();
+        IdentificationResult result = IdentificationResult.ForOpcode(OpcodeNameConstant);
 
         OpcodeValue zoneEntryWireValue = AcceptedOpcodes.Instance.WireValueFor(ZoneEntryOpcodeName);
         if (!zoneEntryWireValue.Exists)
@@ -112,10 +93,9 @@ public class InferManaUpdate : IInferOpcodes
             DebugLog.Write(LogChannel.Inference,
                 "InferManaUpdate.Infer: " + ZoneEntryOpcodeName
                 + " not accepted this session, no proposals", LogLevel.Warn);
-            GlassContext.SignalBus.Publish(new SignalInferenceStatus(
-                OpcodeNameConstant + " skipped: accept " + ZoneEntryOpcodeName
-                + " first, then run identification again"));
-            return proposals;
+            result.Messages.Add(OpcodeNameConstant + " skipped: accept " + ZoneEntryOpcodeName
+                + " first, then run identification again");
+            return result;
         }
 
         Dictionary<Session, uint> cutoffs = BuildSelfZoneEntryCutoffs(catalog, zoneEntryWireValue);
@@ -142,7 +122,7 @@ public class InferManaUpdate : IInferOpcodes
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "InferManaUpdate.Infer: no packets on zone sessions, no proposals", LogLevel.Warn);
-            return proposals;
+            return result;
         }
 
         int allToClient = 0;
@@ -180,16 +160,16 @@ public class InferManaUpdate : IInferOpcodes
                 eligibleSessions, facts.Count, pooledSizes);
             if (proposal != null)
             {
-                proposals.Add(proposal);
+                result.Proposals.Add(proposal);
             }
         }
 
-        proposals.Sort((a, b) => b.Confidence.CompareTo(a.Confidence));
+        result.Proposals.Sort((a, b) => b.Confidence.CompareTo(a.Confidence));
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferManaUpdate.Infer: " + facts.Count + " wire values examined, "
-            + proposals.Count + " proposals", defaultLoglevel);
-        return proposals;
+            + result.Proposals.Count + " proposals", defaultLoglevel);
+        return result;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -656,11 +636,7 @@ public class InferManaUpdate : IInferOpcodes
             "InferManaUpdate.ScoreCandidate: wireValue=" + candidate.WireValue + " " + ledger,
             defaultLoglevel);
 
-        InferenceProposal proposal = new InferenceProposal();
-        proposal.Label = Label;
-        proposal.Opcode = new PatchOpcode(GlassContext.CurrentPatchLevel, candidate.WireValue);
-        proposal.Confidence = posterior;
-        proposal.Evidence = ledger;
-        return proposal;
+        return InferenceProposal.ForOpcode(OpcodeNameConstant,
+            new PatchOpcode(GlassContext.CurrentPatchLevel, candidate.WireValue), posterior, ledger);
     }
 }

@@ -35,25 +35,6 @@ public class InferMobUpdate : IInferOpcodes
     {
         { 14, 7457 },
     };
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    //
-    // The logical name of the opcode this handler identifies.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return OpcodeNameConstant; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Label
-    //
-    // The printable group identifier for this handler's proposals.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string Label
-    {
-        get { return OpcodeNameConstant; }
-    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Infer
@@ -66,18 +47,18 @@ public class InferMobUpdate : IInferOpcodes
     //
     // catalog:  The session's cataloged packets.  Prepare must have run.
     //
-    // Returns:  Proposals ordered by catalog rank, empty when the catalog is empty or
-    //           nothing scores at threshold.
+    // Returns:  The result, with proposals ordered by catalog rank; no proposals when the
+    //           catalog is empty or nothing scores at threshold.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public List<InferenceProposal> Infer(PacketCatalog catalog)
+    public IdentificationResult Infer(PacketCatalog catalog)
     {
         DebugLog.Write(LogChannel.InferenceDebug, "InferMobUpdate.Infer: starting", LogLevel.Trace);
-        List<InferenceProposal> proposals = new List<InferenceProposal>();
+        IdentificationResult result = IdentificationResult.ForOpcode(OpcodeNameConstant);
         List<OpcodeValue> ranked = catalog.OpcodesByCountDescending();
         if (ranked.Count == 0)
         {
             DebugLog.Write(LogChannel.InferenceDebug, "InferMobUpdate.Infer: catalog empty", LogLevel.Warn);
-            return proposals;
+            return result;
         }
         int opcodeCount = ranked.Count;
         ulong totalCount = catalog.TotalPacketCount();
@@ -127,11 +108,7 @@ public class InferMobUpdate : IInferOpcodes
             {
                 continue;
             }
-            InferenceProposal proposal = new InferenceProposal();
-            proposal.Label = Label;
-            proposal.Opcode = new PatchOpcode(GlassContext.CurrentPatchLevel, wireValue);
-            proposal.Confidence = posterior;
-            proposal.Evidence =
+            string ledger =
                 stats.Count + "/" + totalCount + " messages, "
                 + stats.DistinctSizeCount + " sizes, min " + stats.MinSize
                 + " | dir " + EvidenceScoring.ToDecibans(directionLogLR).ToString("F1")
@@ -141,10 +118,11 @@ public class InferMobUpdate : IInferOpcodes
                 + " db | total " + EvidenceScoring.ToDecibans(totalLogLR).ToString("F1")
                 + " db, prior 1/" + opcodeCount
                 + ", posterior " + posterior.ToString("F3");
-            proposals.Add(proposal);
+            result.Proposals.Add(InferenceProposal.ForOpcode(OpcodeNameConstant,
+                new PatchOpcode(GlassContext.CurrentPatchLevel, wireValue), posterior, ledger));
         }
         DebugLog.Write(LogChannel.InferenceDebug,
-            "InferMobUpdate.Infer: " + proposals.Count + " proposals", LogLevel.Info);
-        return proposals;
+            "InferMobUpdate.Infer: " + result.Proposals.Count + " proposals", LogLevel.Info);
+        return result;
     }
 }

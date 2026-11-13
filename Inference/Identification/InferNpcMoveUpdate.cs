@@ -44,25 +44,6 @@ public class InferNpcMoveUpdate : IInferOpcodes
     };
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    //
-    // The logical name of the opcode this handler identifies.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return OpcodeNameConstant; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Label
-    //
-    // The printable group identifier for this handler's proposals.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string Label
-    {
-        get { return OpcodeNameConstant; }
-    }
-    ///////////////////////////////////////////////////////////////////////////////////////////
     // Infer
     //
     // Scores every unaccepted wire value in the catalog against the NpcMoveUpdate hypothesis
@@ -75,18 +56,19 @@ public class InferNpcMoveUpdate : IInferOpcodes
     //
     // catalog:  The session's cataloged packets.  Prepare must have run.
     //
-    // Returns:  Proposals in descending message count, empty when the catalog is empty,
-    //           every value is accepted, or nothing scores at threshold.
+    // Returns:  The result, with proposals in descending message count; no proposals when
+    //           the catalog is empty, every value is accepted, or nothing scores at
+    //           threshold.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public List<InferenceProposal> Infer(PacketCatalog catalog)
+    public IdentificationResult Infer(PacketCatalog catalog)
     {
         DebugLog.Write(LogChannel.InferenceDebug, "InferNpcMoveUpdate.Infer: starting", LogLevel.Trace);
-        List<InferenceProposal> proposals = new List<InferenceProposal>();
+        IdentificationResult result = IdentificationResult.ForOpcode(OpcodeNameConstant);
         List<OpcodeValue> allRanked = catalog.OpcodesByCountDescending();
         if (allRanked.Count == 0)
         {
             DebugLog.Write(LogChannel.InferenceDebug, "InferNpcMoveUpdate.Infer: catalog empty", LogLevel.Warn);
-            return proposals;
+            return result;
         }
 
         List<OpcodeValue> ranked = new List<OpcodeValue>();
@@ -105,7 +87,7 @@ public class InferNpcMoveUpdate : IInferOpcodes
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "InferNpcMoveUpdate.Infer: every wire value is accepted, no candidates", LogLevel.Warn);
-            return proposals;
+            return result;
         }
 
         int opcodeCount = ranked.Count;
@@ -151,11 +133,7 @@ public class InferNpcMoveUpdate : IInferOpcodes
             {
                 continue;
             }
-            InferenceProposal proposal = new InferenceProposal();
-            proposal.Label = Label;
-            proposal.Opcode = new PatchOpcode(GlassContext.CurrentPatchLevel, wireValue);
-            proposal.Confidence = posterior;
-            proposal.Evidence =
+            string ledger =
                 stats.Count + "/" + totalCount + " messages, "
                 + stats.DistinctSizeCount + " sizes, min " + stats.MinSize
                 + " | dir " + EvidenceScoring.ToDecibans(directionLogLR).ToString("F1") + " db,"
@@ -165,11 +143,12 @@ public class InferNpcMoveUpdate : IInferOpcodes
                 + " spawn " + EvidenceScoring.ToDecibans(spawnLogLR).ToString("F1") + " db,"
                 + " | total " + EvidenceScoring.ToDecibans(totalLogLR).ToString("F1") + " db,"
                 + " prior 1/" + opcodeCount + ", posterior " + posterior.ToString("F3");
-            proposals.Add(proposal);
+            result.Proposals.Add(InferenceProposal.ForOpcode(OpcodeNameConstant,
+                new PatchOpcode(GlassContext.CurrentPatchLevel, wireValue), posterior, ledger));
         }
         DebugLog.Write(LogChannel.InferenceDebug,
-            "InferNpcMoveUpdate.Infer: " + proposals.Count + " proposals", LogLevel.Trace);
-        return proposals;
+            "InferNpcMoveUpdate.Infer: " + result.Proposals.Count + " proposals", LogLevel.Trace);
+        return result;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

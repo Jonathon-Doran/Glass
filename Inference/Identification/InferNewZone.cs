@@ -36,120 +36,6 @@ public class InferNewZone : IInferOpcodes
         { 339, 2 },
         { 346, 7 },
     };
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    //
-    // The logical name of the opcode this handler identifies.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return OpcodeNameConstant; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Label
-    //
-    // The printable group identifier for this handler's proposals.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string Label
-    {
-        get { return OpcodeNameConstant; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // BeginsWithTwoStrings
-    //
-    // Tests whether a payload starts with two consecutive null-terminated strings of
-    // printable ASCII (bytes 0x20 to 0x7E), each at least one character long, with the
-    // second terminator inside the payload.
-    //
-    // payload:  The bytes to test.
-    //
-    // Returns:  True when both strings are present at offset 0.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private static bool BeginsWithTwoStrings(ReadOnlySpan<byte> payload)
-    {
-        int offset = 0;
-
-        for (int stringIndex = 0; stringIndex < 2; stringIndex++)
-        {
-            int start = offset;
-
-            while (offset < payload.Length && payload[offset] >= 0x20 && payload[offset] <= 0x7E)
-            {
-                offset++;
-            }
-
-            if (offset == start || offset >= payload.Length || payload[offset] != 0x00)
-            {
-                return false;
-            }
-
-            offset++;
-        }
-
-        return true;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Increment
-    //
-    // Adds one to a wire value's count in a dictionary, inserting it at one when absent.
-    //
-    // counts:     The dictionary to update.
-    // wireValue:  The key to increment.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private static void Increment(Dictionary<OpcodeValue, int> counts, OpcodeValue wireValue)
-    {
-        int seen;
-        if (counts.TryGetValue(wireValue, out seen))
-        {
-            counts[wireValue] = seen + 1;
-        }
-        else
-        {
-            counts[wireValue] = 1;
-        }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Count
-    //
-    // Reads a wire value's count from a dictionary, treating an absent key as zero.
-    //
-    // counts:     The dictionary to read.
-    // wireValue:  The key to read.
-    //
-    // Returns:  The stored count, or zero.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private static int Count(Dictionary<OpcodeValue, int> counts, OpcodeValue wireValue)
-    {
-        int seen;
-        if (counts.TryGetValue(wireValue, out seen))
-        {
-            return seen;
-        }
-        return 0;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // AllPayloadsSatisfy
-    //
-    // Tests whether every payload of a wire value satisfied a predicate, from the per-opcode
-    // satisfying and total counts.
-    //
-    // satisfying:  Satisfying payload count per wire value.
-    // totals:      Total payload count per wire value.
-    // wireValue:   The wire value to test.
-    //
-    // Returns:  True when the wire value has at least one payload and all of them satisfied.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private static bool AllPayloadsSatisfy(Dictionary<OpcodeValue, int> satisfying,
-        Dictionary<OpcodeValue, int> totals, OpcodeValue wireValue)
-    {
-        int total = Count(totals, wireValue);
-        return total > 0 && Count(satisfying, wireValue) == total;
-    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Infer
@@ -162,13 +48,13 @@ public class InferNewZone : IInferOpcodes
     //
     // catalog:  The session's cataloged packets.  Prepare must have run.
     //
-    // Returns:  Proposals ordered by catalog rank, empty when the catalog is empty or nothing
-    //           scores at threshold.
+    // Returns:  The result, with proposals ordered by catalog rank; no proposals when the
+    //           catalog is empty or nothing scores at threshold.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public List<InferenceProposal> Infer(PacketCatalog catalog)
+    public IdentificationResult Infer(PacketCatalog catalog)
     {
         DebugLog.Write(LogChannel.InferenceDebug, "InferNewZone.Infer: starting", LogLevel.Trace);
-        List<InferenceProposal> proposals = new List<InferenceProposal>();
+        IdentificationResult result = IdentificationResult.ForOpcode(OpcodeNameConstant);
 
         OpcodeValue dumpWireValue = new OpcodeValue(0xa923);
         catalog.LogSizeHistogram(dumpWireValue);
@@ -177,7 +63,7 @@ public class InferNewZone : IInferOpcodes
         if (ranked.Count == 0)
         {
             DebugLog.Write(LogChannel.InferenceDebug, "InferNewZone.Infer: catalog empty", LogLevel.Warn);
-            return proposals;
+            return result;
         }
 
         // pass 1: per wire value, payload total and two-string head count
@@ -275,11 +161,7 @@ public class InferNewZone : IInferOpcodes
                 continue;
             }
 
-            InferenceProposal proposal = new InferenceProposal();
-            proposal.Label = Label;
-            proposal.Opcode = new PatchOpcode(GlassContext.CurrentPatchLevel, wireValue);
-            proposal.Confidence = posterior;
-            proposal.Evidence =
+            string ledger =
                 stats.Count + "/" + catalog.TotalPacketCount() + " messages, "
                 + stats.DistinctSizeCount + " sizes, min " + stats.MinSize + " | "
                 + "dir " + EvidenceScoring.ToDecibans(directionLogLR).ToString("F1") + " db, "
@@ -288,11 +170,107 @@ public class InferNewZone : IInferOpcodes
                 + "total " + EvidenceScoring.ToDecibans(totalLogLR).ToString("F1") + " db, "
                 + "prior 1/" + opcodeCount + ", "
                 + "posterior " + posterior.ToString("F3");
-            proposals.Add(proposal);
+            result.Proposals.Add(InferenceProposal.ForOpcode(OpcodeNameConstant,
+                new PatchOpcode(GlassContext.CurrentPatchLevel, wireValue), posterior, ledger));
         }
 
         DebugLog.Write(LogChannel.InferenceDebug,
-            "InferNewZone.Infer: " + proposals.Count + " proposals", LogLevel.Trace);
-        return proposals;
+            "InferNewZone.Infer: " + result.Proposals.Count + " proposals", LogLevel.Trace);
+        return result;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // BeginsWithTwoStrings
+    //
+    // Tests whether a payload starts with two consecutive null-terminated strings of
+    // printable ASCII (bytes 0x20 to 0x7E), each at least one character long, with the
+    // second terminator inside the payload.
+    //
+    // payload:  The bytes to test.
+    //
+    // Returns:  True when both strings are present at offset 0.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static bool BeginsWithTwoStrings(ReadOnlySpan<byte> payload)
+    {
+        int offset = 0;
+
+        for (int stringIndex = 0; stringIndex < 2; stringIndex++)
+        {
+            int start = offset;
+
+            while (offset < payload.Length && payload[offset] >= 0x20 && payload[offset] <= 0x7E)
+            {
+                offset++;
+            }
+
+            if (offset == start || offset >= payload.Length || payload[offset] != 0x00)
+            {
+                return false;
+            }
+
+            offset++;
+        }
+
+        return true;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Increment
+    //
+    // Adds one to a wire value's count in a dictionary, inserting it at one when absent.
+    //
+    // counts:     The dictionary to update.
+    // wireValue:  The key to increment.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static void Increment(Dictionary<OpcodeValue, int> counts, OpcodeValue wireValue)
+    {
+        int seen;
+        if (counts.TryGetValue(wireValue, out seen))
+        {
+            counts[wireValue] = seen + 1;
+        }
+        else
+        {
+            counts[wireValue] = 1;
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Count
+    //
+    // Reads a wire value's count from a dictionary, treating an absent key as zero.
+    //
+    // counts:     The dictionary to read.
+    // wireValue:  The key to read.
+    //
+    // Returns:  The stored count, or zero.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static int Count(Dictionary<OpcodeValue, int> counts, OpcodeValue wireValue)
+    {
+        int seen;
+        if (counts.TryGetValue(wireValue, out seen))
+        {
+            return seen;
+        }
+        return 0;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // AllPayloadsSatisfy
+    //
+    // Tests whether every payload of a wire value satisfied a predicate, from the per-opcode
+    // satisfying and total counts.
+    //
+    // satisfying:  Satisfying payload count per wire value.
+    // totals:      Total payload count per wire value.
+    // wireValue:   The wire value to test.
+    //
+    // Returns:  True when the wire value has at least one payload and all of them satisfied.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static bool AllPayloadsSatisfy(Dictionary<OpcodeValue, int> satisfying,
+        Dictionary<OpcodeValue, int> totals, OpcodeValue wireValue)
+    {
+        int total = Count(totals, wireValue);
+        return total > 0 && Count(satisfying, wireValue) == total;
     }
 }

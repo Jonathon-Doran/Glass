@@ -78,41 +78,23 @@ public class InferCastResolution : IInferOpcodes
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // OpcodeName
-    //
-    // The logical name of the opcode this handler identifies.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string OpcodeName
-    {
-        get { return OpcodeNameConstant; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Label
-    //
-    // The printable group identifier for this handler's proposals.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    public string Label
-    {
-        get { return OpcodeNameConstant; }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
     // Infer
     //
     // Examines every application wire value, totals each test's results across all of
     // them, then scores each unaccepted wire value.  The mana test uses the mana updates of
-    // the accepted OP_ManaUpdate wire value and abstains when none is accepted.
+    // the accepted OP_ManaUpdate wire value; when none is accepted, no proposals are made and
+    // a message saying so is added to the result.
     //
     // catalog:  The session's cataloged packets.
     //
-    // Returns:  Proposals ordered by posterior descending, empty when no wire value has
-    //           packets on a zone session or nothing scores at threshold.
+    // Returns:  The result, with proposals ordered by posterior descending; no proposals
+    //           when OP_ManaUpdate is not accepted, no wire value has packets on a zone
+    //           session, or nothing scores at threshold.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    public List<InferenceProposal> Infer(PacketCatalog catalog)
+    public IdentificationResult Infer(PacketCatalog catalog)
     {
         DebugLog.Write(LogChannel.InferenceDebug, "InferCastResolution.Infer: starting", LogLevel.Trace);
-        List<InferenceProposal> proposals = new List<InferenceProposal>();
+        IdentificationResult result = IdentificationResult.ForOpcode(OpcodeNameConstant);
 
         bool spellsLoaded = SpellCatalog.Instance.Count > 0;
         if (!spellsLoaded)
@@ -127,10 +109,9 @@ public class InferCastResolution : IInferOpcodes
             DebugLog.Write(LogChannel.Inference,
                 "InferCastResolution.Infer: " + ManaUpdateOpcodeName
                 + " not accepted this session, no proposals", LogLevel.Warn);
-            GlassContext.SignalBus.Publish(new SignalInferenceStatus(
-                OpcodeNameConstant + " skipped: accept " + ManaUpdateOpcodeName
-                + " first, then run identification again"));
-            return proposals;
+            result.Messages.Add(OpcodeNameConstant + " skipped: accept " + ManaUpdateOpcodeName
+                + " first, then run identification again");
+            return result;
         }
 
         Dictionary<Session, List<CatalogedPacket>> selfManaUpdates = BuildSelfManaUpdates(catalog, manaWireValue);
@@ -155,7 +136,7 @@ public class InferCastResolution : IInferOpcodes
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "InferCastResolution.Infer: no packets on zone sessions, no proposals", LogLevel.Warn);
-            return proposals;
+            return result;
         }
 
         int allToClient = 0;
@@ -198,16 +179,16 @@ public class InferCastResolution : IInferOpcodes
                 trailerRateSum, facts.Count, spellsLoaded, pooledSizes);
             if (proposal != null)
             {
-                proposals.Add(proposal);
+                result.Proposals.Add(proposal);
             }
         }
 
-        proposals.Sort((a, b) => b.Confidence.CompareTo(a.Confidence));
+        result.Proposals.Sort((a, b) => b.Confidence.CompareTo(a.Confidence));
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferCastResolution.Infer: " + facts.Count + " wire values examined, "
-            + proposals.Count + " proposals", LogLevel.Info);
-        return proposals;
+            + result.Proposals.Count + " proposals", LogLevel.Info);
+        return result;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -645,11 +626,7 @@ public class InferCastResolution : IInferOpcodes
             return null;
         }
 
-        InferenceProposal proposal = new InferenceProposal();
-        proposal.Label = Label;
-        proposal.Opcode = new PatchOpcode(GlassContext.CurrentPatchLevel, candidate.WireValue);
-        proposal.Confidence = posterior;
-        proposal.Evidence = ledger;
-        return proposal;
+        return InferenceProposal.ForOpcode(OpcodeNameConstant,
+            new PatchOpcode(GlassContext.CurrentPatchLevel, candidate.WireValue), posterior, ledger);
     }
 }

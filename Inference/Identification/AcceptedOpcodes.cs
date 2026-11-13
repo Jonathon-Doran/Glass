@@ -167,10 +167,11 @@ public class AcceptedOpcodes
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // IdentificationSummaryLine
 //
-// One line of the identification summary: a proposal from a handler run, or the record of a
-// handler run that produced no proposal, in which case WireValue is None.  Properties rather
-// than fields because WPF bindings require properties.  Checked is true when the line's wire
-// value is accepted under the line's opcode name.
+// One line of the identification summary: one opcode assignment from a proposal, or the
+// record of a handler run that produced no proposal for an opcode, in which case WireValue
+// is None.  Lines from the same proposal share a GroupKey and are checked and unchecked
+// together.  Properties rather than fields because WPF bindings require properties.
+// Checked is true when the line's wire value is accepted under the line's opcode name.
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class IdentificationSummaryLine
 {
@@ -178,6 +179,9 @@ public class IdentificationSummaryLine
     public OpcodeValue WireValue { get; }
     public double Confidence { get; }
     public string Evidence { get; }
+    public uint GroupKey { get; }
+    public string GroupLabel { get; }
+    public double GroupConfidence { get; }
     public IdentificationOutcome Outcome { get; }
     public string Messages { get; }
     public uint RunNumber { get; }
@@ -205,21 +209,28 @@ public class IdentificationSummaryLine
     ///////////////////////////////////////////////////////////////////////////////////////////
     // IdentificationSummaryLine (constructor)
     //
-    // opcodeName:  The opcode name the line is about.
-    // wireValue:   The proposed wire value, or None when the run produced no proposal.
-    // confidence:  The proposal's posterior, 0 when there is no proposal.
-    // evidence:    The proposal's evidence ledger, empty when there is no proposal.
-    // outcome:     How the handler run ended.
-    // messages:    The status lines from the handler run, joined for display.
-    // runNumber:   The identification run that produced the line.
+    // opcodeName:       The opcode name the line is about.
+    // wireValue:        The proposed wire value, or None when there is none.
+    // confidence:       This assignment's own confidence, 0 when there is no proposal.
+    // evidence:         This assignment's own evidence, empty when there is no proposal.
+    // groupKey:         The key shared by every line of the same proposal.
+    // groupLabel:       The label the line is grouped under for display.
+    // groupConfidence:  The proposal's joint confidence, 0 when there is no proposal.
+    // outcome:          How the handler run ended.
+    // messages:         The status lines from the handler run, joined for display.
+    // runNumber:        The identification run that produced the line.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public IdentificationSummaryLine(string opcodeName, OpcodeValue wireValue, double confidence,
-        string evidence, IdentificationOutcome outcome, string messages, uint runNumber)
+        string evidence, uint groupKey, string groupLabel, double groupConfidence,
+        IdentificationOutcome outcome, string messages, uint runNumber)
     {
         OpcodeName = opcodeName;
         WireValue = wireValue;
         Confidence = confidence;
         Evidence = evidence;
+        GroupKey = groupKey;
+        GroupLabel = groupLabel;
+        GroupConfidence = groupConfidence;
         Outcome = outcome;
         Messages = messages;
         RunNumber = runNumber;
@@ -240,6 +251,7 @@ public class IdentificationSummary
     private static IdentificationSummary? _instance;
     private readonly List<IdentificationSummaryLine> _lines;
     private uint _runCount;
+    private uint _groupCount = 0;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Instance
@@ -284,9 +296,11 @@ public class IdentificationSummary
     ///////////////////////////////////////////////////////////////////////////////////////////
     // AddResults
     //
-    // Records one identification run.  For each result, the unchecked lines already held for
-    // its opcode name are removed, then one line is added per proposal, or a single line with
-    // no wire value when the result has no proposals.  Checked lines are kept.
+    // Records one identification run.  A result marked AlreadyAccepted changes nothing.  For
+    // every other result, the unchecked lines already held for any of its opcode names are
+    // removed, then each proposal is added as a group of lines sharing one group key, one
+    // line per assignment.  A result with no proposals is added as one group with a line per
+    // opcode name and no wire value.  Checked lines are kept.
     //
     // results:  The handler results of the run, in handler order.
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -297,36 +311,57 @@ public class IdentificationSummary
         for (int resultIndex = 0; resultIndex < results.Count; resultIndex++)
         {
             IdentificationResult result = results[resultIndex];
+
+            if (result.Outcome == IdentificationOutcome.AlreadyAccepted)
+            {
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "IdentificationSummary.AddResults: " + result.GroupLabel + " already accepted, no lines added",
+                    defaultLoglevel);
+                continue;
+            }
+
             string messages = string.Join("; ", result.Messages);
 
-            int removed = _lines.RemoveAll(line => line.OpcodeName == result.OpcodeName && !line.Checked);
+            int removed = _lines.RemoveAll(line => result.OpcodeNames.Contains(line.OpcodeName) && !line.Checked);
             if (removed > 0)
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
-                    "IdentificationSummary.AddResults: " + result.OpcodeName + " replaced " + removed
+                    "IdentificationSummary.AddResults: " + result.GroupLabel + " replaced " + removed
                     + " unchecked lines", defaultLoglevel);
             }
 
             if (result.Proposals.Count == 0)
             {
-                _lines.Add(new IdentificationSummaryLine(result.OpcodeName, OpcodeValue.None, 0.0,
-                    string.Empty, result.Outcome, messages, _runCount));
+                _groupCount++;
+                for (int nameIndex = 0; nameIndex < result.OpcodeNames.Count; nameIndex++)
+                {
+                    _lines.Add(new IdentificationSummaryLine(result.OpcodeNames[nameIndex], OpcodeValue.None,
+                        0.0, string.Empty, _groupCount, result.GroupLabel, 0.0, result.Outcome, messages,
+                        _runCount));
+                }
                 DebugLog.Write(LogChannel.InferenceDebug,
-                    "IdentificationSummary.AddResults: " + result.OpcodeName + " " + result.Outcome
-                    + ", no proposal line added", defaultLoglevel);
+                    "IdentificationSummary.AddResults: " + result.GroupLabel + " " + result.Outcome
+                    + ", " + result.OpcodeNames.Count + " lines with no wire value added", defaultLoglevel);
                 continue;
             }
 
             for (int proposalIndex = 0; proposalIndex < result.Proposals.Count; proposalIndex++)
             {
                 InferenceProposal proposal = result.Proposals[proposalIndex];
-                _lines.Add(new IdentificationSummaryLine(result.OpcodeName, proposal.Opcode.Value,
-                    proposal.Confidence, proposal.Evidence, result.Outcome, messages, _runCount));
+                _groupCount++;
+
+                for (int assignmentIndex = 0; assignmentIndex < proposal.Assignments.Count; assignmentIndex++)
+                {
+                    OpcodeAssignment assignment = proposal.Assignments[assignmentIndex];
+                    _lines.Add(new IdentificationSummaryLine(assignment.OpcodeName, assignment.Opcode.Value,
+                        assignment.Confidence, assignment.Evidence, _groupCount, result.GroupLabel,
+                        proposal.Confidence, result.Outcome, messages, _runCount));
+                }
             }
 
             DebugLog.Write(LogChannel.InferenceDebug,
-                "IdentificationSummary.AddResults: " + result.OpcodeName + " added "
-                + result.Proposals.Count + " proposal lines", defaultLoglevel);
+                "IdentificationSummary.AddResults: " + result.GroupLabel + " added "
+                + result.Proposals.Count + " proposals", defaultLoglevel);
         }
 
         DebugLog.Write(LogChannel.InferenceDebug,
@@ -374,70 +409,103 @@ public class IdentificationSummary
     ///////////////////////////////////////////////////////////////////////////////////////////
     // TrySetChecked
     //
-    // Checks or unchecks a line.  Checking accepts the line's wire value under its opcode
-    // name; unchecking removes that acceptance.  A check is refused when the line has no wire
-    // value, when the wire value is already accepted under any name, or when the opcode name
-    // is already accepted with any wire value.
+    // Checks or unchecks a line together with every line sharing its group key.  Unchecking
+    // removes the acceptance of every member that is accepted.  Checking is refused when any
+    // member has no wire value, when two members share a wire value or an opcode name, or
+    // when any member not yet accepted would conflict with an existing acceptance; otherwise
+    // every member not yet accepted is accepted.  A refused check accepts nothing.
     //
-    // line:      The line to change.
-    // check:     True to check the line, false to uncheck it.
+    // line:      The line that was clicked.
+    // check:     True to check the line's group, false to uncheck it.
     // conflict:  Receives a description of why a check was refused, empty otherwise.
     //
-    // Returns:  True when the line is in the requested state afterward, false when refused.
+    // Returns:  True when the group is in the requested state afterward, false when refused.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public bool TrySetChecked(IdentificationSummaryLine line, bool check, out string conflict)
     {
         conflict = string.Empty;
-
-        if (!line.WireValue.Exists)
-        {
-            conflict = line.OpcodeName + " has no proposed wire value";
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "IdentificationSummary.TrySetChecked: " + conflict + ", refused", LogLevel.Warn);
-            return false;
-        }
-
-        if (line.Checked == check)
-        {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "IdentificationSummary.TrySetChecked: " + line.OpcodeName + " " + line.OpcodeHex
-                + " already " + (check ? "checked" : "unchecked"), defaultLoglevel);
-            return true;
-        }
+        List<IdentificationSummaryLine> members = _lines.FindAll(member => member.GroupKey == line.GroupKey);
 
         if (!check)
         {
-            AcceptedOpcodes.Instance.Remove(line.WireValue);
+            for (int memberIndex = 0; memberIndex < members.Count; memberIndex++)
+            {
+                if (members[memberIndex].Checked)
+                {
+                    AcceptedOpcodes.Instance.Remove(members[memberIndex].WireValue);
+                }
+            }
             DebugLog.Write(LogChannel.InferenceDebug,
-                "IdentificationSummary.TrySetChecked: unchecked " + line.OpcodeName + " "
-                + line.OpcodeHex, defaultLoglevel);
+                "IdentificationSummary.TrySetChecked: unchecked " + line.GroupLabel + " group "
+                + line.GroupKey + ", " + members.Count + " members", defaultLoglevel);
             return true;
         }
 
-        if (FindAcceptanceConflict(line.WireValue, line.OpcodeName, out conflict))
+        for (int memberIndex = 0; memberIndex < members.Count; memberIndex++)
         {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "IdentificationSummary.TrySetChecked: " + conflict + ", refused", LogLevel.Warn);
-            return false;
+            IdentificationSummaryLine member = members[memberIndex];
+
+            if (!member.WireValue.Exists)
+            {
+                conflict = member.OpcodeName + " has no proposed wire value";
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "IdentificationSummary.TrySetChecked: " + conflict + ", refused", LogLevel.Warn);
+                return false;
+            }
+
+            for (int otherIndex = memberIndex + 1; otherIndex < members.Count; otherIndex++)
+            {
+                IdentificationSummaryLine other = members[otherIndex];
+                if (other.WireValue == member.WireValue || other.OpcodeName == member.OpcodeName)
+                {
+                    conflict = member.OpcodeName + " " + member.OpcodeHex + " and " + other.OpcodeName + " "
+                        + other.OpcodeHex + " share a wire value or name";
+                    DebugLog.Write(LogChannel.InferenceDebug,
+                        "IdentificationSummary.TrySetChecked: " + conflict + ", refused", LogLevel.Warn);
+                    return false;
+                }
+            }
+
+            if (member.Checked)
+            {
+                continue;
+            }
+
+            if (FindAcceptanceConflict(member.WireValue, member.OpcodeName, out conflict))
+            {
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "IdentificationSummary.TrySetChecked: " + conflict + ", refused", LogLevel.Warn);
+                return false;
+            }
         }
 
-        AcceptedOpcodes.Instance.Accept(line.WireValue, line.OpcodeName);
+        for (int memberIndex = 0; memberIndex < members.Count; memberIndex++)
+        {
+            IdentificationSummaryLine member = members[memberIndex];
+            if (!member.Checked)
+            {
+                AcceptedOpcodes.Instance.Accept(member.WireValue, member.OpcodeName);
+            }
+        }
+
         DebugLog.Write(LogChannel.InferenceDebug,
-            "IdentificationSummary.TrySetChecked: checked " + line.OpcodeName + " " + line.OpcodeHex,
-            defaultLoglevel);
+            "IdentificationSummary.TrySetChecked: checked " + line.GroupLabel + " group " + line.GroupKey
+            + ", " + members.Count + " members", defaultLoglevel);
         return true;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // AutoAccept
     //
-    // Accepts a handler result's proposal when the result holds exactly one proposal and its
-    // posterior is at or above the floor, unless the acceptance would conflict with an
-    // existing one.  An acceptance, or a conflict that prevented one, is added to the result's
+    // Accepts every assignment of a handler result's proposal when the result holds exactly
+    // one proposal, its joint posterior is at or above the floor, every assignment has a wire
+    // value, no two assignments share a wire value or opcode name, and no assignment would
+    // conflict with an existing acceptance.  Otherwise nothing is accepted.  An acceptance,
+    // or the reason one was prevented after the floor test passed, is added to the result's
     // messages.
     //
     // result:  The handler result.
-    // floor:   The minimum posterior for automatic acceptance.
+    // floor:   The minimum joint posterior for automatic acceptance.
     //
     // Returns:  True when the proposal was accepted, false otherwise.
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -446,38 +514,73 @@ public class IdentificationSummary
         if (result.Proposals.Count != 1)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "IdentificationSummary.AutoAccept: " + result.OpcodeName + " has "
+                "IdentificationSummary.AutoAccept: " + result.GroupLabel + " has "
                 + result.Proposals.Count + " proposals, not auto-accepted", defaultLoglevel);
             return false;
         }
 
         InferenceProposal proposal = result.Proposals[0];
-        OpcodeValue wireValue = proposal.Opcode.Value;
 
         if (proposal.Confidence < floor)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "IdentificationSummary.AutoAccept: " + result.OpcodeName + " " + wireValue
-                + " posterior " + proposal.Confidence.ToString("F3") + " below floor "
-                + floor.ToString("F2") + ", not auto-accepted", defaultLoglevel);
+                "IdentificationSummary.AutoAccept: " + result.GroupLabel + " posterior "
+                + proposal.Confidence.ToString("F3") + " below floor " + floor.ToString("F2")
+                + ", not auto-accepted", defaultLoglevel);
             return false;
         }
 
-        string conflict;
-        if (FindAcceptanceConflict(wireValue, result.OpcodeName, out conflict))
+        for (int assignmentIndex = 0; assignmentIndex < proposal.Assignments.Count; assignmentIndex++)
         {
-            result.Messages.Add("not auto-accepted: " + conflict);
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "IdentificationSummary.AutoAccept: " + result.OpcodeName + " " + wireValue
-                + " not auto-accepted, " + conflict, LogLevel.Warn);
-            return false;
+            OpcodeAssignment assignment = proposal.Assignments[assignmentIndex];
+            OpcodeValue wireValue = assignment.Opcode.Value;
+            string conflict;
+
+            if (!wireValue.Exists)
+            {
+                conflict = assignment.OpcodeName + " has no proposed wire value";
+                result.Messages.Add("not auto-accepted: " + conflict);
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "IdentificationSummary.AutoAccept: " + result.GroupLabel + " not auto-accepted, "
+                    + conflict, LogLevel.Warn);
+                return false;
+            }
+
+            for (int otherIndex = assignmentIndex + 1; otherIndex < proposal.Assignments.Count; otherIndex++)
+            {
+                OpcodeAssignment other = proposal.Assignments[otherIndex];
+                if (other.Opcode.Value == wireValue || other.OpcodeName == assignment.OpcodeName)
+                {
+                    conflict = assignment.OpcodeName + " and " + other.OpcodeName + " share a wire value or name";
+                    result.Messages.Add("not auto-accepted: " + conflict);
+                    DebugLog.Write(LogChannel.InferenceDebug,
+                        "IdentificationSummary.AutoAccept: " + result.GroupLabel + " not auto-accepted, "
+                        + conflict, LogLevel.Warn);
+                    return false;
+                }
+            }
+
+            if (FindAcceptanceConflict(wireValue, assignment.OpcodeName, out conflict))
+            {
+                result.Messages.Add("not auto-accepted: " + conflict);
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "IdentificationSummary.AutoAccept: " + result.GroupLabel + " not auto-accepted, "
+                    + conflict, LogLevel.Warn);
+                return false;
+            }
         }
 
-        AcceptedOpcodes.Instance.Accept(wireValue, result.OpcodeName);
+        for (int assignmentIndex = 0; assignmentIndex < proposal.Assignments.Count; assignmentIndex++)
+        {
+            OpcodeAssignment assignment = proposal.Assignments[assignmentIndex];
+            AcceptedOpcodes.Instance.Accept(assignment.Opcode.Value, assignment.OpcodeName);
+        }
+
         result.Messages.Add("auto-accepted at floor " + floor.ToString("F2"));
         DebugLog.Write(LogChannel.InferenceDebug,
-            "IdentificationSummary.AutoAccept: " + result.OpcodeName + " " + wireValue
-            + " accepted, posterior " + proposal.Confidence.ToString("F3"), defaultLoglevel);
+            "IdentificationSummary.AutoAccept: " + result.GroupLabel + " accepted "
+            + proposal.Assignments.Count + " assignments, posterior " + proposal.Confidence.ToString("F3"),
+            defaultLoglevel);
         return true;
     }
 
