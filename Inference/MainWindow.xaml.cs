@@ -2840,15 +2840,15 @@ public partial class MainWindow : Window
     // RefreshSummaryGrid
     //
     // Rebuilds the summary grid from the identification summary's current lines, grouped by
-    // group label, and the character summary above it from the characters' zone placements.
-    // Each is shown only when it has content.
+    // group key so each proposal stands as its own group, and the character summary above it
+    // from the characters' zone placements.  Each is shown only when it has content.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void RefreshSummaryGrid()
     {
         List<IdentificationSummaryLine> lines =
             new List<IdentificationSummaryLine>(IdentificationSummary.Instance.Lines);
         ListCollectionView view = new ListCollectionView(lines);
-        view.GroupDescriptions.Add(new PropertyGroupDescription("GroupLabel"));
+        view.GroupDescriptions.Add(new PropertyGroupDescription("GroupKey"));
         SummaryGrid.ItemsSource = view;
 
         if (lines.Count > 0)

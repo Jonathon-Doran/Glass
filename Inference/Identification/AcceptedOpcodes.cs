@@ -172,6 +172,7 @@ public class AcceptedOpcodes
 // is None.  Lines from the same proposal share a GroupKey and are checked and unchecked
 // together.  Properties rather than fields because WPF bindings require properties.
 // Checked is true when the line's wire value is accepted under the line's opcode name.
+// ConfidenceText is the line's confidence formatted to two decimal places.
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class IdentificationSummaryLine
 {
@@ -182,6 +183,7 @@ public class IdentificationSummaryLine
     public uint GroupKey { get; }
     public string GroupLabel { get; }
     public double GroupConfidence { get; }
+    public string GroupEvidence { get; }
     public IdentificationOutcome Outcome { get; }
     public string Messages { get; }
     public uint RunNumber { get; }
@@ -195,6 +197,14 @@ public class IdentificationSummaryLine
                 return WireValue.ToString();
             }
             return string.Empty;
+        }
+    }
+
+    public string ConfidenceText
+    {
+        get
+        {
+            return Confidence.ToString("F2");
         }
     }
 
@@ -216,12 +226,13 @@ public class IdentificationSummaryLine
     // groupKey:         The key shared by every line of the same proposal.
     // groupLabel:       The label the line is grouped under for display.
     // groupConfidence:  The proposal's joint confidence, 0 when there is no proposal.
+    // groupEvidence:    The proposal's joint evidence, empty when there is no proposal.
     // outcome:          How the handler run ended.
     // messages:         The status lines from the handler run, joined for display.
     // runNumber:        The identification run that produced the line.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public IdentificationSummaryLine(string opcodeName, OpcodeValue wireValue, double confidence,
-        string evidence, uint groupKey, string groupLabel, double groupConfidence,
+        string evidence, uint groupKey, string groupLabel, double groupConfidence, string groupEvidence,
         IdentificationOutcome outcome, string messages, uint runNumber)
     {
         OpcodeName = opcodeName;
@@ -231,6 +242,7 @@ public class IdentificationSummaryLine
         GroupKey = groupKey;
         GroupLabel = groupLabel;
         GroupConfidence = groupConfidence;
+        GroupEvidence = groupEvidence;
         Outcome = outcome;
         Messages = messages;
         RunNumber = runNumber;
@@ -299,8 +311,9 @@ public class IdentificationSummary
     // Records one identification run.  A result marked AlreadyAccepted changes nothing.  For
     // every other result, the unchecked lines already held for any of its opcode names are
     // removed, then each proposal is added as a group of lines sharing one group key, one
-    // line per assignment.  A result with no proposals is added as one group with a line per
-    // opcode name and no wire value.  Checked lines are kept.
+    // line per assignment, each carrying the proposal's joint confidence and evidence.  A
+    // result with no proposals is added as one group with a line per opcode name and no wire
+    // value.  Checked lines are kept.
     //
     // results:  The handler results of the run, in handler order.
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -336,8 +349,8 @@ public class IdentificationSummary
                 for (int nameIndex = 0; nameIndex < result.OpcodeNames.Count; nameIndex++)
                 {
                     _lines.Add(new IdentificationSummaryLine(result.OpcodeNames[nameIndex], OpcodeValue.None,
-                        0.0, string.Empty, _groupCount, result.GroupLabel, 0.0, result.Outcome, messages,
-                        _runCount));
+                        0.0, string.Empty, _groupCount, result.GroupLabel, 0.0, string.Empty, result.Outcome,
+                        messages, _runCount));
                 }
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "IdentificationSummary.AddResults: " + result.GroupLabel + " " + result.Outcome
@@ -355,7 +368,7 @@ public class IdentificationSummary
                     OpcodeAssignment assignment = proposal.Assignments[assignmentIndex];
                     _lines.Add(new IdentificationSummaryLine(assignment.OpcodeName, assignment.Opcode.Value,
                         assignment.Confidence, assignment.Evidence, _groupCount, result.GroupLabel,
-                        proposal.Confidence, result.Outcome, messages, _runCount));
+                        proposal.Confidence, proposal.Evidence, result.Outcome, messages, _runCount));
                 }
             }
 
@@ -497,12 +510,12 @@ public class IdentificationSummary
     ///////////////////////////////////////////////////////////////////////////////////////////
     // AutoAccept
     //
-    // Accepts every assignment of a handler result's proposal when the result holds exactly
-    // one proposal, its joint posterior is at or above the floor, every assignment has a wire
-    // value, no two assignments share a wire value or opcode name, and no assignment would
-    // conflict with an existing acceptance.  Otherwise nothing is accepted.  An acceptance,
-    // or the reason one was prevented after the floor test passed, is added to the result's
-    // messages.
+    // Accepts every assignment of the one proposal in a handler result whose joint posterior
+    // is at or above the floor, when exactly one proposal reaches the floor, every assignment
+    // of it has a wire value, no two assignments share a wire value or opcode name, and no
+    // assignment would conflict with an existing acceptance.  Otherwise nothing is accepted.
+    // An acceptance, or the reason one was prevented after the floor test passed, is added
+    // to the result's messages.
     //
     // result:  The handler result.
     // floor:   The minimum joint posterior for automatic acceptance.
@@ -511,21 +524,22 @@ public class IdentificationSummary
     ///////////////////////////////////////////////////////////////////////////////////////////
     public bool AutoAccept(IdentificationResult result, double floor)
     {
-        if (result.Proposals.Count != 1)
+        InferenceProposal? proposal = null;
+        int atFloor = 0;
+        for (int proposalIndex = 0; proposalIndex < result.Proposals.Count; proposalIndex++)
         {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "IdentificationSummary.AutoAccept: " + result.GroupLabel + " has "
-                + result.Proposals.Count + " proposals, not auto-accepted", defaultLoglevel);
-            return false;
+            if (result.Proposals[proposalIndex].Confidence >= floor)
+            {
+                atFloor++;
+                proposal = result.Proposals[proposalIndex];
+            }
         }
 
-        InferenceProposal proposal = result.Proposals[0];
-
-        if (proposal.Confidence < floor)
+        if (atFloor != 1 || proposal == null)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "IdentificationSummary.AutoAccept: " + result.GroupLabel + " posterior "
-                + proposal.Confidence.ToString("F3") + " below floor " + floor.ToString("F2")
+                "IdentificationSummary.AutoAccept: " + result.GroupLabel + " has " + atFloor
+                + " of " + result.Proposals.Count + " proposals at floor " + floor.ToString("F2")
                 + ", not auto-accepted", defaultLoglevel);
             return false;
         }
@@ -587,10 +601,14 @@ public class IdentificationSummary
     ///////////////////////////////////////////////////////////////////////////////////////////
     // BuildCopyText
     //
-    // Builds the summary as plain text: a count line, then one entry per line in the order
-    // held.  Each entry gives the opcode name, wire value, whether it is accepted, outcome,
-    // confidence and run number, followed by its evidence and messages on separate indented
-    // lines when present.
+    // Builds the summary as plain text: a count line, then the lines in the order held.  A
+    // group of more than one line is set off by a blank line before and after it, and is
+    // written as a header giving the group label, group key, group confidence and run number,
+    // followed by the group evidence and messages once, then each member indented with its
+    // opcode name, wire value, whether it is accepted, outcome and confidence, and its own
+    // evidence beneath it when present.  A group of one line is written as that line's opcode
+    // name, wire value, whether it is accepted, outcome, confidence and run number, followed
+    // by its evidence and messages on separate indented lines when present.
     //
     // Returns:  The summary text.
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -598,6 +616,17 @@ public class IdentificationSummary
     {
         StringBuilder text = new StringBuilder();
         text.AppendLine("Identification summary: " + _lines.Count + " lines, " + _runCount + " runs");
+
+        Dictionary<uint, int> groupSizes = new Dictionary<uint, int>();
+        for (int lineIndex = 0; lineIndex < _lines.Count; lineIndex++)
+        {
+            uint key = _lines[lineIndex].GroupKey;
+            groupSizes[key] = groupSizes.GetValueOrDefault(key) + 1;
+        }
+
+        uint currentGroup = 0;
+        bool inGroup = false;
+        int headers = 0;
 
         for (int lineIndex = 0; lineIndex < _lines.Count; lineIndex++)
         {
@@ -607,6 +636,46 @@ public class IdentificationSummary
             if (line.WireValue.Exists)
             {
                 wireText = line.OpcodeHex;
+            }
+
+            if (groupSizes[line.GroupKey] > 1)
+            {
+                if (!inGroup || line.GroupKey != currentGroup)
+                {
+                    currentGroup = line.GroupKey;
+                    inGroup = true;
+                    headers++;
+
+                    text.AppendLine();
+                    text.AppendLine(line.GroupLabel + " group " + line.GroupKey
+                        + "  confidence " + line.GroupConfidence.ToString("F3")
+                        + "  run " + line.RunNumber);
+                    if (line.GroupEvidence.Length > 0)
+                    {
+                        text.AppendLine("    evidence: " + line.GroupEvidence);
+                    }
+                    if (line.Messages.Length > 0)
+                    {
+                        text.AppendLine("    messages: " + line.Messages);
+                    }
+                }
+
+                text.AppendLine("    " + line.OpcodeName
+                    + "  wire " + wireText
+                    + "  accepted " + (line.Checked ? "yes" : "no")
+                    + "  outcome " + line.Outcome
+                    + "  confidence " + line.Confidence.ToString("F2"));
+                if (line.Evidence.Length > 0)
+                {
+                    text.AppendLine("        evidence: " + line.Evidence);
+                }
+                continue;
+            }
+
+            if (inGroup)
+            {
+                text.AppendLine();
+                inGroup = false;
             }
 
             text.AppendLine(line.OpcodeName
@@ -627,10 +696,10 @@ public class IdentificationSummary
         }
 
         DebugLog.Write(LogChannel.InferenceDebug,
-            "IdentificationSummary.BuildCopyText: " + _lines.Count + " lines", defaultLoglevel);
+            "IdentificationSummary.BuildCopyText: " + _lines.Count + " lines, " + headers + " group headers",
+            defaultLoglevel);
         return text.ToString();
     }
-
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Clear
     //

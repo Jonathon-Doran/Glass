@@ -608,8 +608,24 @@
                             <GroupStyle>
                                 <GroupStyle.HeaderTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding Name}" FontWeight="Bold"
-                                                   Margin="4,8,0,2"/>
+                                        <StackPanel Margin="4,8,0,2">
+                                            <TextBlock Text="{Binding Items[0].GroupLabel}" FontWeight="Bold"/>
+                                            <TextBlock TextWrapping="Wrap">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding ItemCount}" Value="1">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                                <Run Text="confidence "/>
+                                                <Run Text="{Binding Items[0].GroupConfidence, StringFormat=F3, Mode=OneWay}"/>
+                                                <Run Text="  |  "/>
+                                                <Run Text="{Binding Items[0].GroupEvidence, Mode=OneWay}"/>
+                                            </TextBlock>
+                                        </StackPanel>
                                     </DataTemplate>
                                 </GroupStyle.HeaderTemplate>
                             </GroupStyle>
@@ -627,7 +643,8 @@
                             </DataGridTemplateColumn>
                             <DataGridTextColumn Header="Name"       Width="160" Binding="{Binding OpcodeName}"/>
                             <DataGridTextColumn Header="Opcode"     Width="80"  Binding="{Binding OpcodeHex}"/>
-                            <DataGridTextColumn Header="Confidence" Width="90"  Binding="{Binding Confidence, StringFormat=F2}"/>
+                            <DataGridTextColumn Header="Confidence" Width="90"  Binding="{Binding Confidence, StringFormat=F2}"
+                                                ClipboardContentBinding="{Binding ConfidenceText}"/>
                             <DataGridTextColumn Header="Outcome"    Width="90"  Binding="{Binding Outcome}"/>
                             <DataGridTextColumn Header="Run"        Width="50"  Binding="{Binding RunNumber}"/>
                             <DataGridTextColumn Header="Evidence"   Width="*"   Binding="{Binding Evidence}">
