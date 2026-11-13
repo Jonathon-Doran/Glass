@@ -56,8 +56,7 @@ public class InferNewZone : IInferOpcodes
         DebugLog.Write(LogChannel.InferenceDebug, "InferNewZone.Infer: starting", LogLevel.Trace);
         IdentificationResult result = IdentificationResult.ForOpcode(OpcodeNameConstant);
 
-        OpcodeValue dumpWireValue = new OpcodeValue(0xa923);
-        catalog.LogSizeHistogram(dumpWireValue);
+        // catalog.LogSizeHistogram(dumpWireValue);
 
         List<OpcodeValue> ranked = catalog.OpcodesByCountDescending();
         if (ranked.Count == 0)

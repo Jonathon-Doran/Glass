@@ -133,7 +133,7 @@ public class InferCommonMessage : IInferOpcodes
         result.Proposals.Sort((a, b) => b.Confidence.CompareTo(a.Confidence));
 
         DebugLog.Write(LogChannel.InferenceDebug,
-            "InferCommonMessage.Infer: " + result.Proposals.Count + " proposals", LogLevel.Info);
+            "InferCommonMessage.Infer: " + result.Proposals.Count + " proposals", LogLevel.Trace);
         return result;
     }
 

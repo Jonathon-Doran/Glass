@@ -595,7 +595,7 @@ public partial class MainWindow : Window
     {
         if (OpcodeGrid.SelectedItem == null)
         {
-            DebugLog.Write(LogChannel.InferenceDebug, "RefreshAnalysis: no opcode selected, skipping", LogLevel.Warn);
+            DebugLog.Write(LogChannel.InferenceDebug, "RefreshAnalysis: no opcode selected, skipping", LogLevel.Trace);
             return;
         }
 

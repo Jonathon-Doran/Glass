@@ -143,7 +143,7 @@ public class InferInventory : IInferOpcodes
         result.Proposals.Sort((a, b) => b.Confidence.CompareTo(a.Confidence));
 
         DebugLog.Write(LogChannel.InferenceDebug,
-            "InferInventory.Infer: " + result.Proposals.Count + " proposals", LogLevel.Info);
+            "InferInventory.Infer: " + result.Proposals.Count + " proposals", LogLevel.Trace);
         return result;
     }
 
@@ -252,9 +252,6 @@ public class InferInventory : IInferOpcodes
         OpcodeValue profileWireValue = AcceptedOpcodes.Instance.WireValueFor(ProfileOpcodeName);
         if (!profileWireValue.Exists)
         {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "InferInventory.FindProfileSessions: " + ProfileOpcodeName
-                + " not accepted, sessions qualify only by carrying the candidate", LogLevel.Warn);
             return hasProfile;
         }
 

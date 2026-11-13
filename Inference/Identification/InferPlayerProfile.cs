@@ -119,7 +119,7 @@ public class InferPlayerProfile : IInferOpcodes
         result.Proposals.Sort((a, b) => b.Confidence.CompareTo(a.Confidence));
 
         DebugLog.Write(LogChannel.InferenceDebug,
-            "InferPlayerProfile.Infer: " + result.Proposals.Count + " proposals", LogLevel.Info);
+            "InferPlayerProfile.Infer: " + result.Proposals.Count + " proposals", LogLevel.Trace);
         return result;
     }
 
@@ -228,9 +228,6 @@ public class InferPlayerProfile : IInferOpcodes
         OpcodeValue anchorWireValue = AcceptedOpcodes.Instance.WireValueFor(AnchorOpcodeName);
         if (!anchorWireValue.Exists)
         {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "InferPlayerProfile.FindAnchorSessions: " + AnchorOpcodeName
-                + " not accepted, sessions qualify only by carrying the candidate", LogLevel.Warn);
             return hasAnchor;
         }
 

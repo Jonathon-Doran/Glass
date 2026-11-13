@@ -216,7 +216,7 @@ public class PacketCatalog
             List<int> lengths = new List<int>(stats.SizeHistogram.Keys);
             lengths.Sort();
             DebugLog.Write(LogChannel.InferenceDebug,
-                "PacketCatalog.LogSizeHistogram: opcode 0x" + opcode + ", "
+                "PacketCatalog.LogSizeHistogram: opcode " + opcode + ", "
                 + lengths.Count + " lengths, " + stats.Count + " messages total", LogLevel.Info);
             for (int lengthIndex = 0; lengthIndex < lengths.Count; lengthIndex++)
             {
@@ -663,12 +663,12 @@ public class PacketCatalog
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "PacketCatalog.Prepare: pure channel " + pureEntry.Key
-                    + " = " + pureEntry.Value + " opcodes", LogLevel.Info);
+                    + " = " + pureEntry.Value + " opcodes", LogLevel.Trace);
             }
             DebugLog.Write(LogChannel.InferenceDebug,
                 "PacketCatalog.Prepare: sorted " + _byCountDescending.Count + " opcodes, pooled "
                 + _pooledSizeHistogram.Count + " lengths, " + _pooledChannelCounts.Count
-                + " channels", LogLevel.Info);
+                + " channels", LogLevel.Trace);
         }
         DebugLog.Write(LogChannel.InferenceDebug, "PacketCatalog.Prepare: done", LogLevel.Trace);
     }

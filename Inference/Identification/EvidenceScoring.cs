@@ -1118,7 +1118,7 @@ public static class EvidenceScoring
             DebugLog.Write(LogChannel.InferenceDebug,
                 "EvidenceScoring.StrideConfirmationLogLR: " + capable.Count
                 + " capable payloads truncated to " + maxCapablePayloads
-                + " largest", LogLevel.Warn);
+                + " largest", LogLevel.Trace);
             capable.RemoveRange(maxCapablePayloads, capable.Count - maxCapablePayloads);
         }
 
@@ -1395,7 +1395,7 @@ public static class EvidenceScoring
         {
             DebugLog.Write(LogChannel.InferenceDebug,
                 "EvidenceScoring.SizeRangeLogLR: missing observed histogram, returning 0",
-                LogLevel.Warn);
+                LogLevel.Trace);
             return 0.0;
         }
         if (highBound < lowBound)
@@ -1526,7 +1526,7 @@ public static class EvidenceScoring
         if (payloadCount < 1)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "EvidenceScoring.PayloadPredicateLogLR: no payloads, returning 0", LogLevel.Warn);
+                "EvidenceScoring.PayloadPredicateLogLR: no payloads, returning 0", LogLevel.Trace);
             return 0.0;
         }
 

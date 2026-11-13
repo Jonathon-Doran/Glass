@@ -19,7 +19,7 @@ namespace Inference.Identification;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class InferTargetSequence : IInferOpcodes
 {
-    private const LogLevel defaultLoglevel = LogLevel.Info;
+    private const LogLevel defaultLoglevel = LogLevel.Trace;
 
     private const string RequestOpcodeName = "OP_Target_Request";
     private const string HpReportOpcodeName = "OP_TargetHpUpdate";
@@ -30,16 +30,11 @@ public class InferTargetSequence : IInferOpcodes
     private const int RequestLength = 4;                 // expected target request payload length
     private const int HpReportLength = 18;               // expected HP report payload length
     private const int CloseLength = 4;                   // expected closing message payload length
-    private const int LengthTolerance = 10;              // bytes either side of an expected length
-    private const int MinimumNameLength = 4;             // printable characters before a null to count as a name
-    private const double AnchorStringShare = 0.5;        // share of packets with a name for a buff list candidate
     private const int MaxWindowPackets = 10;             // unaccepted packets scanned either side of an anchor
     private const int ExampleCount = 5;                  // packet numbers reported per missing member
     private const int ReportedGroups = 3;                // best groups returned, highest confidence first
     private const int BuffListMinLength = 11;            // smallest buff list payload seen
     private const int CountedLengthLimit = 100;          // packets longer than this are left out of the candidate tallies
-    private static readonly OpcodeValue ForcedRequest = new OpcodeValue(0x6700);   // temporary diagnostic
-
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // TargetWindow
@@ -117,15 +112,10 @@ public class InferTargetSequence : IInferOpcodes
         result.Messages.Add(byRequest.Count + " request candidates");
 
         List<InferenceProposal> groups = new List<InferenceProposal>();
-        InferenceProposal? forcedGroup = null;
         foreach (KeyValuePair<OpcodeValue, List<TargetWindow>> entry in byRequest)
         {
             InferenceProposal group = ScoreGroup(entry.Key, entry.Value, lists);
             groups.Add(group);
-            if (entry.Key == ForcedRequest)
-            {
-                forcedGroup = group;
-            }
         }
 
         groups.Sort((a, b) => b.Confidence.CompareTo(a.Confidence));
@@ -133,21 +123,6 @@ public class InferTargetSequence : IInferOpcodes
         for (int groupIndex = 0; groupIndex < reported; groupIndex++)
         {
             result.Proposals.Add(groups[groupIndex]);
-        }
-
-        if (forcedGroup == null)
-        {
-            result.Messages.Add("forced request " + ForcedRequest + " has no target windows");
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "InferTargetSequence.Infer: forced request " + ForcedRequest + " has no target windows",
-                defaultLoglevel);
-        }
-        else if (!result.Proposals.Contains(forcedGroup))
-        {
-            result.Proposals.Add(forcedGroup);
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "InferTargetSequence.Infer: forced request " + ForcedRequest + " added below the top "
-                + reported + ", group " + forcedGroup.Confidence.ToString("F3"), defaultLoglevel);
         }
 
         InferenceProposal best = result.Proposals[0];
@@ -275,40 +250,6 @@ public class InferTargetSequence : IInferOpcodes
             "InferTargetSequence.FindFirstTargets: " + firstTargets.Count + " wire values with a non-zero request in "
             + list.Count + " packets", LogLevel.Trace);
         return firstTargets;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // FindNames
-    //
-    // Finds every run of at least MinimumNameLength printable characters, 0x20 through 0x7E,
-    // that ends in a null byte, anywhere in a payload.
-    //
-    // payload:  The bytes to search.
-    //
-    // Returns:  The strings found, in payload order; empty when there are none.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private static List<string> FindNames(ReadOnlySpan<byte> payload)
-    {
-        List<string> names = new List<string>();
-        int runStart = 0;
-
-        for (int position = 0; position < payload.Length; position++)
-        {
-            byte value = payload[position];
-            if (value >= 0x20 && value <= 0x7E)
-            {
-                continue;
-            }
-
-            int runLength = position - runStart;
-            if (value == 0 && runLength >= MinimumNameLength)
-            {
-                names.Add(System.Text.Encoding.ASCII.GetString(payload.Slice(runStart, runLength)));
-            }
-            runStart = position + 1;
-        }
-
-        return names;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -440,15 +381,6 @@ public class InferTargetSequence : IInferOpcodes
             }
         }
 
-        if (window.Request == ForcedRequest)
-        {
-            DebugLog.Write(LogChannel.InferenceDebug,
-                "InferTargetSequence.ExamineWindow: " + ForcedRequest + " request at message "
-                + window.RequestIndex + (clear ? " clear" : string.Empty) + ", buff list ["
-                + string.Join(", ", window.BuffLists) + "] close [" + string.Join(", ", window.Closes)
-                + "]", defaultLoglevel);
-        }
-
         return window;
     }
 
@@ -550,89 +482,6 @@ public class InferTargetSequence : IInferOpcodes
         }
 
         return winner;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // ReportForcedRequest
-    //
-    // Temporary diagnostic.  Treats ForcedRequest as the target request and, for each of its
-    // packets other than the first on each session, tallies the distinct wire values in the
-    // following packets of the session's list, at most MaxWindowPackets positions and before
-    // the next client-to-zone packet.  Adds the request's window count and the eight wire
-    // values found in the most windows, with their length ranges, to the result's messages.
-    //
-    // lists:   The unaccepted packets of each zone session.
-    // result:  The result receiving the messages.
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private static void ReportForcedRequest(Dictionary<Session, List<CatalogedPacket>> lists,
-        IdentificationResult result)
-    {
-        const int reportedFollowers = 8;
-
-        Dictionary<OpcodeValue, int> windowsWith = new Dictionary<OpcodeValue, int>();
-        Dictionary<OpcodeValue, int> minLength = new Dictionary<OpcodeValue, int>();
-        Dictionary<OpcodeValue, int> maxLength = new Dictionary<OpcodeValue, int>();
-        int windows = 0;
-
-        foreach (List<CatalogedPacket> list in lists.Values)
-        {
-            bool firstSeen = false;
-            for (int position = 0; position < list.Count; position++)
-            {
-                if (list[position].Metadata.WireValue != ForcedRequest)
-                {
-                    continue;
-                }
-                if (!firstSeen)
-                {
-                    firstSeen = true;
-                    continue;
-                }
-                windows++;
-
-                HashSet<OpcodeValue> seen = new HashSet<OpcodeValue>();
-                int forwardLimit = Math.Min(list.Count - 1, position + MaxWindowPackets);
-                for (int next = position + 1; next <= forwardLimit; next++)
-                {
-                    CatalogedPacket packet = list[next];
-                    if (packet.Metadata.ToServer)
-                    {
-                        break;
-                    }
-                    OpcodeValue wireValue = packet.Metadata.WireValue;
-                    int length = packet.Payload.Length;
-
-                    if (!minLength.ContainsKey(wireValue) || length < minLength[wireValue])
-                    {
-                        minLength[wireValue] = length;
-                    }
-                    if (!maxLength.ContainsKey(wireValue) || length > maxLength[wireValue])
-                    {
-                        maxLength[wireValue] = length;
-                    }
-                    if (seen.Add(wireValue))
-                    {
-                        windowsWith[wireValue] = windowsWith.GetValueOrDefault(wireValue) + 1;
-                    }
-                }
-            }
-        }
-
-        result.Messages.Add("forced request " + ForcedRequest + ": " + windows + " windows");
-
-        List<OpcodeValue> followers = new List<OpcodeValue>(windowsWith.Keys);
-        followers.Sort((a, b) => windowsWith[b].CompareTo(windowsWith[a]));
-        int reported = Math.Min(reportedFollowers, followers.Count);
-        for (int followerIndex = 0; followerIndex < reported; followerIndex++)
-        {
-            OpcodeValue wireValue = followers[followerIndex];
-            result.Messages.Add("after request: " + wireValue + " length " + minLength[wireValue] + "-"
-                + maxLength[wireValue] + " in " + windowsWith[wireValue] + "/" + windows + " windows");
-        }
-
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "InferTargetSequence.ReportForcedRequest: " + ForcedRequest + " " + windows + " windows, "
-            + followers.Count + " distinct followers", LogLevel.Warn);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

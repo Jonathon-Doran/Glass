@@ -145,7 +145,7 @@ public class InferCastRequest : IInferOpcodes
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferCastRequest.Infer: " + facts.Count + " wire values examined, "
-            + result.Proposals.Count + " proposals", LogLevel.Info);
+            + result.Proposals.Count + " proposals", LogLevel.Trace);
         return result;
     }
 

@@ -71,9 +71,6 @@ public class InferMobUpdate : IInferOpcodes
             OpcodeValue wireValue = ranked[rank];
             if (AcceptedOpcodes.Instance.IsAccepted(wireValue))
             {
-                DebugLog.Write(LogChannel.InferenceDebug,
-                    "InferMobUpdate.Infer: wireValue=" + wireValue + " already accepted as "
-                    + AcceptedOpcodes.Instance.GetName(wireValue) + ", skipping", LogLevel.Info);
                 continue;
             }
             OpcodeStats? statsOrNull = catalog.StatsFor(wireValue);
@@ -122,7 +119,7 @@ public class InferMobUpdate : IInferOpcodes
                 new PatchOpcode(GlassContext.CurrentPatchLevel, wireValue), posterior, ledger));
         }
         DebugLog.Write(LogChannel.InferenceDebug,
-            "InferMobUpdate.Infer: " + result.Proposals.Count + " proposals", LogLevel.Info);
+            "InferMobUpdate.Infer: " + result.Proposals.Count + " proposals", LogLevel.Trace);
         return result;
     }
 }

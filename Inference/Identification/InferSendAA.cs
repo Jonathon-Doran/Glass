@@ -134,7 +134,7 @@ public class InferSendAA : IInferOpcodes
         result.Proposals.Sort((a, b) => b.Confidence.CompareTo(a.Confidence));
 
         DebugLog.Write(LogChannel.InferenceDebug,
-            "InferSendAA.Infer: " + result.Proposals.Count + " proposals", LogLevel.Info);
+            "InferSendAA.Infer: " + result.Proposals.Count + " proposals", LogLevel.Trace);
         return result;
     }
 

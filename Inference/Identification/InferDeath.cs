@@ -118,7 +118,7 @@ public class InferDeath : IInferOpcodes
 
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferDeath.Infer: " + facts.Count + " wire values examined, "
-            + result.Proposals.Count + " proposals", LogLevel.Info);
+            + result.Proposals.Count + " proposals", LogLevel.Trace);
         return result;
     }
 
