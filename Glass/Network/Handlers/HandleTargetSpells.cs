@@ -142,6 +142,8 @@ public class HandleTargetSpells: OpcodeHandler
     {
         ZoneId zoneId = GlassContext.SessionRegistry.ZoneFromMetadata(metadata);
         FieldDisplayNode root = new FieldDisplayNode();
+        string playerName;
+
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
@@ -171,7 +173,7 @@ public class HandleTargetSpells: OpcodeHandler
 
             SpawnId playerId = (SpawnId)_extractor.GetUIntAt(_playerIdSlot);
 
-            string playerName = ZoneRepository.Instance.LookupSpawnName(zoneId, playerId);
+            playerName = ZoneRepository.Instance.LookupSpawnName(zoneId, playerId);
 
             FieldNodes.AddLabeledNode(_extractor, _playerIdSlot, "Spawn: " + playerName + " (" +
                     playerId + ", 0x" + playerId.Value.ToString("X4") + ")", root);
@@ -202,7 +204,7 @@ public class HandleTargetSpells: OpcodeHandler
         {
             _extractor.Release();
         }
-        root.Text = "Target Buff Timers";
+        root.Text = "Target Spells (" + playerName + ")";
         return root;
     }
 }

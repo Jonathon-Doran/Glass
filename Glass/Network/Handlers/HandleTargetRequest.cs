@@ -111,6 +111,7 @@ public class HandleTargetRequest : OpcodeHandler
 
         FieldDisplayNode root = new FieldDisplayNode();
         string targetName;
+        SpawnId spawnId;
 
         try
         {
@@ -121,7 +122,7 @@ public class HandleTargetRequest : OpcodeHandler
                 return root;
             }
 
-            SpawnId spawnId = (SpawnId) _extractor.GetUIntAt(_spawnIdSlot);
+            spawnId = (SpawnId) _extractor.GetUIntAt(_spawnIdSlot);
 
             targetName = ZoneRepository.Instance.LookupSpawnName(zoneId, spawnId);
 
@@ -133,7 +134,15 @@ public class HandleTargetRequest : OpcodeHandler
             _extractor.Release();
         }
 
-        root.Text = "Target (" + targetName + ")";
+        if (spawnId == 0x0000)
+        {
+            root.Text = metadata.CharacterName + " clears target";
+        }
+        else
+        {
+            root.Text = metadata.CharacterName + " targets " + targetName;
+        }
+
         return root;
     }
 }
