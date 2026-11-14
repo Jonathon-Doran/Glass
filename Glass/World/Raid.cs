@@ -8,8 +8,8 @@ namespace Glass.World;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // Raid
 //
-// A raid of up to MaxGroups groups, plus the raid members who are in no group.  Id is
-// assigned by Glass and is valid for the run only.  Groups are held as an array indexed by
+// A raid of up to MaxGroups groups, plus the raid members who are in no group.  Id is the
+// server's raid id, as sent in raid messages.  Groups are held as an array indexed by
 // raid group number minus one, because a group's number is part of how the raid is
 // organized: a numbered group can be empty, and moving a member between groups changes the
 // number they are under.  An empty position holds null.  The groups and the ungrouped
@@ -48,17 +48,17 @@ public class Raid
         if ((raidGroupNumber < 1) || (raidGroupNumber > MaxGroups))
         {
             DebugLog.Write(LogChannel.Database, "Raid.PlaceGroup: raid group number " + raidGroupNumber
-                + " is outside 1 to " + MaxGroups + ", groupId=" + group.Id + " not placed in raidId="
-                + Id + ".", LogLevel.Error);
+                + " is outside 1 to " + MaxGroups + ", group id 0x" + group.Id.Value.ToString("X")
+                + " not placed in raid id 0x" + Id.Value.ToString("X") + ".", LogLevel.Error);
             return false;
         }
 
         Group? occupant = _groups[raidGroupNumber - 1];
         if (occupant != null)
         {
-            DebugLog.Write(LogChannel.Database, "Raid.PlaceGroup: raidId=" + Id + " group " + raidGroupNumber
-                + " already holds groupId=" + occupant.Id + ", groupId=" + group.Id + " not placed.",
-                LogLevel.Warn);
+            DebugLog.Write(LogChannel.Database, "Raid.PlaceGroup: raid id 0x" + Id.Value.ToString("X") + " group "
+                + raidGroupNumber + " already holds group id 0x" + occupant.Id.Value.ToString("X")
+                + ", group id 0x" + group.Id.Value.ToString("X") + " not placed.", LogLevel.Warn);
             return false;
         }
 
@@ -71,8 +71,8 @@ public class Raid
 
         GlassContext.SignalBus.Publish(new SignalMembershipChanged(group.Id, Id));
 
-        DebugLog.Write(LogChannel.Database, "Raid.PlaceGroup: placed groupId=" + group.Id + " in raidId=" + Id
-            + " as group " + raidGroupNumber + ".", defaultLoglevel);
+        DebugLog.Write(LogChannel.Database, "Raid.PlaceGroup: placed group id 0x" + group.Id.Value.ToString("X")
+            + " in raid id 0x" + Id.Value.ToString("X") + " as group " + raidGroupNumber + ".", defaultLoglevel);
         return true;
     }
 
@@ -94,9 +94,9 @@ public class Raid
         if ((group.RaidId != Id) || (raidGroupNumber < 1) || (raidGroupNumber > MaxGroups)
             || (ReferenceEquals(_groups[raidGroupNumber - 1], group) == false))
         {
-            DebugLog.Write(LogChannel.Database, "Raid.RemoveGroup: groupId=" + group.Id + " with raidId="
-                + group.RaidId + " group " + raidGroupNumber + " is not in raidId=" + Id + ", nothing removed.",
-                LogLevel.Warn);
+            DebugLog.Write(LogChannel.Database, "Raid.RemoveGroup: group id 0x" + group.Id.Value.ToString("X")
+                + " with raid id 0x" + group.RaidId.Value.ToString("X") + " group " + raidGroupNumber
+                + " is not in raid id 0x" + Id.Value.ToString("X") + ", nothing removed.", LogLevel.Warn);
             return false;
         }
 
@@ -109,8 +109,8 @@ public class Raid
 
         GlassContext.SignalBus.Publish(new SignalMembershipChanged(group.Id, Id));
 
-        DebugLog.Write(LogChannel.Database, "Raid.RemoveGroup: removed groupId=" + group.Id + " from raidId=" + Id
-            + " group " + raidGroupNumber + ".", defaultLoglevel);
+        DebugLog.Write(LogChannel.Database, "Raid.RemoveGroup: removed group id 0x" + group.Id.Value.ToString("X")
+            + " from raid id 0x" + Id.Value.ToString("X") + " group " + raidGroupNumber + ".", defaultLoglevel);
         return true;
     }
 
@@ -130,7 +130,7 @@ public class Raid
         if ((raidGroupNumber < 1) || (raidGroupNumber > MaxGroups))
         {
             DebugLog.Write(LogChannel.Database, "Raid.GroupAt: raid group number " + raidGroupNumber
-                + " is outside 1 to " + MaxGroups + " in raidId=" + Id + ".", LogLevel.Error);
+                + " is outside 1 to " + MaxGroups + " in raid id 0x" + Id.Value.ToString("X") + ".", LogLevel.Error);
             return null;
         }
 
@@ -172,8 +172,9 @@ public class Raid
     {
         if (HasUngroupedMember(member.Id))
         {
-            DebugLog.Write(LogChannel.Database, "Raid.AddUngroupedMember: raidId=" + Id + " already holds '"
-                + member.Name + "' characterId=" + member.Id + " ungrouped, not added.", LogLevel.Warn);
+            DebugLog.Write(LogChannel.Database, "Raid.AddUngroupedMember: raid id 0x" + Id.Value.ToString("X")
+                + " already holds '" + member.Name + "' characterId=0x" + member.Id.Value.ToString("X")
+                + " ungrouped, not added.", LogLevel.Warn);
             return false;
         }
 
@@ -184,8 +185,9 @@ public class Raid
 
         GlassContext.SignalBus.Publish(new SignalMembershipChanged(GroupId.None, Id));
 
-        DebugLog.Write(LogChannel.Database, "Raid.AddUngroupedMember: added '" + member.Name + "' characterId="
-            + member.Id + " to raidId=" + Id + ", " + _ungrouped.Count + " ungrouped.", defaultLoglevel);
+        DebugLog.Write(LogChannel.Database, "Raid.AddUngroupedMember: added '" + member.Name + "' characterId=0x"
+            + member.Id.Value.ToString("X") + " to raid id 0x" + Id.Value.ToString("X") + ", " + _ungrouped.Count
+            + " ungrouped.", defaultLoglevel);
         return true;
     }
 
@@ -210,16 +212,18 @@ public class Raid
                     _ungrouped.RemoveAt(i);
                 }
 
-                DebugLog.Write(LogChannel.Database, "Raid.RemoveUngroupedMember: removed characterId="
-                    + characterId + " from raidId=" + Id + ", " + _ungrouped.Count + " ungrouped left.",
-                    defaultLoglevel);
+                GlassContext.SignalBus.Publish(new SignalMembershipChanged(GroupId.None, Id));
+
+                DebugLog.Write(LogChannel.Database, "Raid.RemoveUngroupedMember: removed characterId=0x"
+                    + characterId.Value.ToString("X") + " from raid id 0x" + Id.Value.ToString("X") + ", "
+                    + _ungrouped.Count + " ungrouped left.", defaultLoglevel);
                 return true;
             }
         }
-        GlassContext.SignalBus.Publish(new SignalMembershipChanged(GroupId.None, Id));
 
-        DebugLog.Write(LogChannel.Database, "Raid.RemoveUngroupedMember: characterId=" + characterId
-            + " is not ungrouped in raidId=" + Id + ", nothing removed.", LogLevel.Warn);
+        DebugLog.Write(LogChannel.Database, "Raid.RemoveUngroupedMember: characterId=0x"
+            + characterId.Value.ToString("X") + " is not ungrouped in raid id 0x" + Id.Value.ToString("X")
+            + ", nothing removed.", LogLevel.Warn);
         return false;
     }
 
@@ -265,7 +269,7 @@ public class Raid
             }
         }
 
-        DebugLog.Write(LogChannel.Database, "Raid.Copy: copied raidId=" + Id + " with "
+        DebugLog.Write(LogChannel.Database, "Raid.Copy: copied raid id 0x" + Id.Value.ToString("X") + " with "
             + copy._ungrouped.Count + " ungrouped members.", defaultLoglevel);
         return copy;
     }

@@ -36,8 +36,8 @@ public class GroupMember
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // Group
 //
-// A group of up to MaxMembers members.  Id is assigned by Glass and is valid for the run
-// only.  A group in a raid carries the raid's id and its numbered position in the raid, 1
+// A group of up to MaxMembers members.  Id is the server's group id, as sent in group
+// messages.  A group in a raid carries the raid's id and its numbered position in the raid, 1
 // to 12; a group outside a raid has RaidId None, and RaidGroupNumber is then 0, meaning no
 // position.  Members are held as a list because a member's position within the group
 // carries no meaning, only its presence.  The list is changed only through this class.
@@ -49,7 +49,6 @@ public class Group
     public GroupId Id;
     public RaidId RaidId = RaidId.None;
     public uint RaidGroupNumber = 0;
-    public ServerGroupId ServerGroupId = ServerGroupId.None;
 
     public CharacterId LeaderId = CharacterId.None;
     public CharacterId MainTankId = CharacterId.None;
@@ -202,7 +201,6 @@ public class Group
             copy.Id = Id;
             copy.RaidId = RaidId;
             copy.RaidGroupNumber = RaidGroupNumber;
-            copy.ServerGroupId = ServerGroupId;
             copy.LeaderId = LeaderId;
             copy.MainTankId = MainTankId;
             copy.MainAssistId = MainAssistId;

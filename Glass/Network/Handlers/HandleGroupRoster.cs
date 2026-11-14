@@ -113,10 +113,10 @@ public class HandleGroupRoster : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleZoneToClient
     //
-    // Processes zone-to-client traffic.  Finds the group with the roster's server group id,
-    // creating it when none is held, and adds each member whose Offline flag is clear.  A member
-    // with the flag set is not present and is not added.  When the roster names a leader who is
-    // in the group afterward, that member is made the leader.
+    // Processes zone-to-client traffic.  Finds the group with the roster's group id, creating
+    // it when none is held, and adds each member whose Offline flag is clear.  A member with the
+    // flag set is not present and is not added.  When the roster names a leader who is in the
+    // group afterward, that member is made the leader.
     //
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
@@ -132,16 +132,16 @@ public class HandleGroupRoster : OpcodeHandler
                 return;
             }
 
-            ServerGroupId serverGroupId = (ServerGroupId)_extractor.GetUIntAt(_groupId_Slot);
+            GroupId groupId = (GroupId)_extractor.GetUIntAt(_groupId_Slot);
             string leaderName = _extractor.GetStringAt(_leaderName_Slot);
 
-            if (GroupRepository.Instance.TryGetGroupByServerId(serverGroupId, out Group? group) == false)
+            if (GroupRepository.Instance.TryGetGroup(groupId, out Group? group) == false)
             {
-                group = GroupRepository.Instance.CreateGroup(serverGroupId);
+                group = GroupRepository.Instance.CreateGroup(groupId);
                 if (group == null)
                 {
-                    DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.HandleZoneToClient: no group for server group id 0x"
-                        + serverGroupId.Value.ToString("X") + ", roster not applied.", LogLevel.Error);
+                    DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.HandleZoneToClient: no group for group id 0x"
+                        + groupId.Value.ToString("X") + ", roster not applied.", LogLevel.Error);
                     return;
                 }
             }
@@ -162,8 +162,8 @@ public class HandleGroupRoster : OpcodeHandler
                     if (unknown_3 != 0)
                     {
                         DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.HandleZoneToClient: '" + name
-                            + "' has Unknown 3 set to 0x" + unknown_3.ToString("X") + ", not present, not added to groupId="
-                            + group.Id + ".", LogLevel.Trace);
+                            + "' has Unknown 3 set to 0x" + unknown_3.ToString("X") + ", not present, not added to group id 0x"
+                            + group.Id.Value.ToString("X") + ".", LogLevel.Trace);
                         continue;
                     }
 
@@ -172,36 +172,38 @@ public class HandleGroupRoster : OpcodeHandler
             }
             else
             {
-                DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.HandleZoneToClient: roster for groupId=" + group.Id
-                    + " has no member entries.", LogLevel.Warn);
+                DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.HandleZoneToClient: roster for group id 0x"
+                    + group.Id.Value.ToString("X") + " has no member entries.", LogLevel.Warn);
             }
 
             if (leaderName.Length == 0)
             {
-                DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.HandleZoneToClient: roster for groupId=" + group.Id
-                    + " names no leader, leader not changed.", LogLevel.Trace);
+                DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.HandleZoneToClient: roster for group id 0x"
+                    + group.Id.Value.ToString("X") + " names no leader, leader not changed.", LogLevel.Trace);
                 return;
             }
 
             if (CharacterRepository.Instance.TryGetCharacterIdByName(leaderName, out CharacterId leaderId) == false)
             {
                 DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.HandleZoneToClient: leader '" + leaderName
-                    + "' has no character id, leader of groupId=" + group.Id + " not changed.", LogLevel.Trace);
+                    + "' has no character id, leader of group id 0x" + group.Id.Value.ToString("X")
+                    + " not changed.", LogLevel.Trace);
                 return;
             }
 
             if (group.HasMember(leaderId) == false)
             {
                 DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.HandleZoneToClient: leader '" + leaderName
-                    + "' characterId=" + leaderId + " is not present in groupId=" + group.Id + ", leader not changed.",
-                    LogLevel.Trace);
+                    + "' characterId=0x" + leaderId.Value.ToString("X") + " is not present in group id 0x"
+                    + group.Id.Value.ToString("X") + ", leader not changed.", LogLevel.Trace);
                 return;
             }
 
             group.SetLeader(leaderId);
 
-            DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.HandleZoneToClient: groupId=" + group.Id + " leader is '"
-                + leaderName + "' characterId=" + leaderId + ".", LogLevel.Trace);
+            DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.HandleZoneToClient: group id 0x"
+                + group.Id.Value.ToString("X") + " leader is '" + leaderName + "' characterId=0x"
+                + leaderId.Value.ToString("X") + ".", LogLevel.Trace);
         }
         finally
         {
@@ -233,22 +235,25 @@ public class HandleGroupRoster : OpcodeHandler
 
         if (group.HasMember(characterId))
         {
-            DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.AddRosterMember: '" + name + "' characterId="
-                + characterId + " is already in groupId=" + group.Id + ", nothing changed.", LogLevel.Trace);
+            DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.AddRosterMember: '" + name + "' characterId=0x"
+                + characterId.Value.ToString("X") + " is already in group id 0x" + group.Id.Value.ToString("X")
+                + ", nothing changed.", LogLevel.Trace);
             return;
         }
 
         if (GroupRepository.Instance.TryGetGroupOf(characterId, out Group? oldGroup))
         {
-            DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.AddRosterMember: '" + name + "' characterId="
-                + characterId + " is in groupId=" + oldGroup.Id + " but the roster places it in groupId=" + group.Id
-                + ", removing from groupId=" + oldGroup.Id + ".", LogLevel.Warn);
+            DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.AddRosterMember: '" + name + "' characterId=0x"
+                + characterId.Value.ToString("X") + " is in group id 0x" + oldGroup.Id.Value.ToString("X")
+                + " but the roster places it in group id 0x" + group.Id.Value.ToString("X")
+                + ", removing from group id 0x" + oldGroup.Id.Value.ToString("X") + ".", LogLevel.Warn);
 
             if (GroupRepository.Instance.RemoveMember(characterId) == false)
             {
                 DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.AddRosterMember: could not remove '" + name
-                    + "' characterId=" + characterId + " from groupId=" + oldGroup.Id + ", not added to groupId="
-                    + group.Id + ".", LogLevel.Error);
+                    + "' characterId=0x" + characterId.Value.ToString("X") + " from group id 0x"
+                    + oldGroup.Id.Value.ToString("X") + ", not added to group id 0x"
+                    + group.Id.Value.ToString("X") + ".", LogLevel.Error);
                 return;
             }
         }
@@ -261,14 +266,17 @@ public class HandleGroupRoster : OpcodeHandler
 
         if (GroupRepository.Instance.AddMember(group, member) == false)
         {
-            DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.AddRosterMember: groupId=" + group.Id
-                + " did not accept '" + name + "' characterId=" + characterId + ".", LogLevel.Warn);
+            DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.AddRosterMember: group id 0x"
+                + group.Id.Value.ToString("X") + " did not accept '" + name + "' characterId=0x"
+                + characterId.Value.ToString("X") + ".", LogLevel.Warn);
             return;
         }
 
-        DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.AddRosterMember: added '" + name + "' characterId="
-            + characterId + " level " + level + " to groupId=" + group.Id + ".", LogLevel.Trace);
+        DebugLog.Write(LogChannel.Opcodes, "HandleGroupRoster.AddRosterMember: added '" + name + "' characterId=0x"
+            + characterId.Value.ToString("X") + " level " + level + " to group id 0x"
+            + group.Id.Value.ToString("X") + ".", LogLevel.Trace);
     }
+
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Describe

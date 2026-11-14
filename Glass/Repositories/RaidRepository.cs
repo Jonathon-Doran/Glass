@@ -10,9 +10,9 @@ namespace Glass.Data.Repositories;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // RaidRepository
 //
-// In-memory repository of the raids seen this run, held in a dictionary keyed by RaidId.  Each raid manages
-// its own groups and ungrouped members.  Raid ids are assigned here in sequence, independent of group ids.
-// Nothing is read from or written to the database.
+// In-memory repository of the raids seen this run, held in a dictionary keyed by RaidId, the server's raid
+// id.  Each raid manages its own groups and ungrouped members.  Nothing is read from or written to the
+// database.
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 public class RaidRepository
 {
@@ -21,7 +21,6 @@ public class RaidRepository
     private static RaidRepository? _instance = null;
 
     private readonly Dictionary<RaidId, Raid> _raids;
-    private uint _nextRaidId = 0;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Instance
@@ -58,15 +57,31 @@ public class RaidRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // CreateRaid
     //
-    // Creates an empty raid with the next raid id in sequence and stores it.
+    // Creates an empty raid with the given raid id and stores it.  A raid id of None, and a raid id already
+    // held, are each rejected and nothing changes.
     //
-    // Returns the new raid.
+    // raidId:  The raid id the server uses for the raid.
+    //
+    // Returns the new raid, or null if the raid id was rejected.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public Raid CreateRaid()
+    public Raid? CreateRaid(RaidId raidId)
     {
+        if (raidId.Exists == false)
+        {
+            DebugLog.Write(LogChannel.Database, "RaidRepository.CreateRaid: raid id is None, no raid created.",
+                LogLevel.Error);
+            return null;
+        }
+
+        if (_raids.ContainsKey(raidId))
+        {
+            DebugLog.Write(LogChannel.Database, "RaidRepository.CreateRaid: raid id 0x"
+                + raidId.Value.ToString("X") + " is already held, no raid created.", LogLevel.Warn);
+            return null;
+        }
+
         Raid raid = new Raid();
-        raid.Id = new RaidId(_nextRaidId);
-        _nextRaidId++;
+        raid.Id = raidId;
 
         lock (GlassContext.MembershipLock)
         {
@@ -75,8 +90,8 @@ public class RaidRepository
 
         GlassContext.SignalBus.Publish(new SignalMembershipChanged(GroupId.None, raid.Id));
 
-        DebugLog.Write(LogChannel.Database, "RaidRepository.CreateRaid: created raidId=" + raid.Id + ".",
-            defaultLoglevel);
+        DebugLog.Write(LogChannel.Database, "RaidRepository.CreateRaid: created raid id 0x"
+            + raidId.Value.ToString("X") + ".", defaultLoglevel);
         return raid;
     }
 
@@ -100,8 +115,8 @@ public class RaidRepository
             }
         }
 
-        DebugLog.Write(LogChannel.Database, "RaidRepository.TryGetRaid: raidId=" + raidId + " is not held.",
-            defaultLoglevel);
+        DebugLog.Write(LogChannel.Database, "RaidRepository.TryGetRaid: raid id 0x" + raidId.Value.ToString("X")
+            + " is not held.", defaultLoglevel);
         return false;
     }
 
@@ -125,16 +140,17 @@ public class RaidRepository
         {
             if (group.RaidId.Exists == false)
             {
-                DebugLog.Write(LogChannel.Database, "RaidRepository.TryGetRaidOf: characterId=" + characterId
-                    + " is in groupId=" + group.Id + ", which is in no raid.", defaultLoglevel);
+                DebugLog.Write(LogChannel.Database, "RaidRepository.TryGetRaidOf: characterId=0x"
+                    + characterId.Value.ToString("X") + " is in group id 0x" + group.Id.Value.ToString("X")
+                    + ", which is in no raid.", defaultLoglevel);
                 return false;
             }
 
             if (TryGetRaid(group.RaidId, out raid) == false)
             {
-                DebugLog.Write(LogChannel.Database, "RaidRepository.TryGetRaidOf: characterId=" + characterId
-                    + " is in groupId=" + group.Id + ", whose raidId=" + group.RaidId + " is not held.",
-                    LogLevel.Error);
+                DebugLog.Write(LogChannel.Database, "RaidRepository.TryGetRaidOf: characterId=0x"
+                    + characterId.Value.ToString("X") + " is in group id 0x" + group.Id.Value.ToString("X")
+                    + ", whose raid id 0x" + group.RaidId.Value.ToString("X") + " is not held.", LogLevel.Error);
                 return false;
             }
 
@@ -158,8 +174,8 @@ public class RaidRepository
             return true;
         }
 
-        DebugLog.Write(LogChannel.Database, "RaidRepository.TryGetRaidOf: characterId=" + characterId
-            + " belongs to no raid.", defaultLoglevel);
+        DebugLog.Write(LogChannel.Database, "RaidRepository.TryGetRaidOf: characterId=0x"
+            + characterId.Value.ToString("X") + " belongs to no raid.", defaultLoglevel);
         return false;
     }
 
@@ -194,8 +210,7 @@ public class RaidRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Clear
     //
-    // Removes every raid.  Raid ids already issued are not reused.  A membership change is published so that
-    // views of the raids rebuild.
+    // Removes every raid.  A membership change is published so that views of the raids rebuild.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Clear()
     {

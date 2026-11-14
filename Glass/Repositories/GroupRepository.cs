@@ -9,10 +9,11 @@ namespace Glass.Data.Repositories;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // GroupRepository
 //
-// In-memory repository of the groups seen this run.  Groups are held in a dictionary keyed by GroupId, and
-// each member's group is indexed by the member's persistent character id, so a character is in at most one
-// group.  Group ids are assigned here in sequence.  Nothing is read from or written to the database.
+// In-memory repository of the groups seen this run.  Groups are held in a dictionary keyed by GroupId, the
+// server's group id, and each member's group is indexed by the member's persistent character id, so a
+// character is in at most one group.  Nothing is read from or written to the database.
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 public class GroupRepository
 {
     private const LogLevel defaultLoglevel = LogLevel.Trace;
@@ -21,10 +22,6 @@ public class GroupRepository
 
     private readonly Dictionary<GroupId, Group> _groups;
     private readonly Dictionary<CharacterId, Group> _groupsByMember;
-    private readonly Dictionary<ServerGroupId, Group> _groupsByServerId;
-
-    private const int MaxGroupMembers = 6;
-    private uint _nextGroupId = 0;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Instance
@@ -52,7 +49,6 @@ public class GroupRepository
     {
         _groups = new Dictionary<GroupId, Group>();
         _groupsByMember = new Dictionary<CharacterId, Group>();
-        _groupsByServerId = new Dictionary<ServerGroupId, Group>();
 
         // register the signal handlers
         GlassContext.SessionRegistry.AllSessionsDisconnected += Clear;
@@ -65,46 +61,41 @@ public class GroupRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // CreateGroup
     //
-    // Creates an empty group for the given server group id, with the next Glass group id in sequence, and
-    // stores it under both ids.  A server group id of None, and a server group id already held, are each
-    // rejected and nothing changes.
+    // Creates an empty group with the given group id and stores it.  A group id of None, and a group id
+    // already held, are each rejected and nothing changes.
     //
-    // serverId:  The group id the server uses for the group.
+    // groupId:  The group id the server uses for the group.
     //
-    // Returns the new group, or null if the server group id was rejected.
+    // Returns the new group, or null if the group id was rejected.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public Group? CreateGroup(ServerGroupId serverId)
+    public Group? CreateGroup(GroupId groupId)
     {
-        if (serverId.Exists == false)
+        if (groupId.Exists == false)
         {
-            DebugLog.Write(LogChannel.Database, "GroupRepository.CreateGroup: server group id is None, "
-                + "no group created.", LogLevel.Error);
+            DebugLog.Write(LogChannel.Database, "GroupRepository.CreateGroup: group id is None, no group created.",
+                LogLevel.Error);
             return null;
         }
 
-        if (_groupsByServerId.TryGetValue(serverId, out Group? existing))
+        if (_groups.ContainsKey(groupId))
         {
-            DebugLog.Write(LogChannel.Database, "GroupRepository.CreateGroup: server group id 0x"
-                + serverId.Value.ToString("X") + " is already groupId=" + existing.Id + ", no group created.",
-                LogLevel.Warn);
+            DebugLog.Write(LogChannel.Database, "GroupRepository.CreateGroup: group id 0x"
+                + groupId.Value.ToString("X") + " is already held, no group created.", LogLevel.Warn);
             return null;
         }
 
         Group group = new Group();
-        group.Id = new GroupId(_nextGroupId);
-        group.ServerGroupId = serverId;
-        _nextGroupId++;
+        group.Id = groupId;
 
         lock (GlassContext.MembershipLock)
         {
             _groups[group.Id] = group;
         }
 
-        _groupsByServerId[serverId] = group;
         GlassContext.SignalBus.Publish(new SignalMembershipChanged(group.Id, RaidId.None));
 
-        DebugLog.Write(LogChannel.Database, "GroupRepository.CreateGroup: created groupId=" + group.Id
-            + " for server group id 0x" + serverId.Value.ToString("X") + ".", defaultLoglevel);
+        DebugLog.Write(LogChannel.Database, "GroupRepository.CreateGroup: created group id 0x"
+            + groupId.Value.ToString("X") + ".", defaultLoglevel);
         return group;
     }
 
@@ -222,26 +213,35 @@ public class GroupRepository
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // TryGetGroupByServerId
+    // TryGetGroup
     //
-    // Looks up the group with the given server group id.
+    // Looks up the group with the given group id.
     //
-    // serverId:  The group id the server uses for the group.
-    // group:     Receives the group if found, null otherwise.
+    // groupId:  The group id the server uses for the group.
+    // group:    Receives the group if found, null otherwise.
     //
     // Returns true if the group is held, false otherwise.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public bool TryGetGroupByServerId(ServerGroupId serverId, [NotNullWhen(true)] out Group? group)
+    public bool TryGetGroup(GroupId groupId, [NotNullWhen(true)] out Group? group)
     {
-        if (_groupsByServerId.TryGetValue(serverId, out group))
+        Group? held;
+
+        lock (GlassContext.MembershipLock)
         {
-            DebugLog.Write(LogChannel.Database, "GroupRepository.TryGetGroupByServerId: server group id 0x"
-                + serverId.Value.ToString("X") + " is groupId=" + group.Id + ".", defaultLoglevel);
+            _groups.TryGetValue(groupId, out held);
+        }
+
+        if (held != null)
+        {
+            group = held;
+            DebugLog.Write(LogChannel.Database, "GroupRepository.TryGetGroup: group id 0x"
+                + groupId.Value.ToString("X") + " is held.", defaultLoglevel);
             return true;
         }
 
-        DebugLog.Write(LogChannel.Database, "GroupRepository.TryGetGroupByServerId: server group id 0x"
-            + serverId.Value.ToString("X") + " is not held.", defaultLoglevel);
+        group = null;
+        DebugLog.Write(LogChannel.Database, "GroupRepository.TryGetGroup: group id 0x"
+            + groupId.Value.ToString("X") + " is not held.", defaultLoglevel);
         return false;
     }
 
@@ -317,7 +317,6 @@ public class GroupRepository
             _groupsByMember.Clear();
         }
 
-        _groupsByServerId.Clear();
         GlassContext.SignalBus.Publish(new SignalMembershipChanged(GroupId.None, RaidId.None));
 
         DebugLog.Write(LogChannel.Database, "GroupRepository.Clear: removed " + groupCount + " groups.",

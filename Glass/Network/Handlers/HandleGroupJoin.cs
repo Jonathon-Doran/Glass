@@ -88,8 +88,8 @@ public class HandleGroupJoin : OpcodeHandler
     // HandleZoneToClient
     //
     // Processes zone-to-client traffic.  Adds the joining character to the group with the
-    // packet's server group id, creating the group when none is held.  A character already in
-    // that group is left as it is; a character in a different group is removed from it first.
+    // packet's group id, creating the group when none is held.  A character already in that
+    // group is left as it is; a character in a different group is removed from it first.
     //
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
@@ -105,7 +105,7 @@ public class HandleGroupJoin : OpcodeHandler
                 return;
             }
 
-            ServerGroupId serverGroupId = (ServerGroupId)_extractor.GetUIntAt(_groupId_Slot);
+            GroupId groupId = (GroupId)_extractor.GetUIntAt(_groupId_Slot);
             string characterName = _extractor.GetStringAt(_characterName_Slot);
             uint characterLevel = _extractor.GetUIntAt(_characterLevel_Slot);
             CharacterId characterId = (CharacterId)_extractor.GetUIntAt(_characterId_Slot);
@@ -115,13 +115,13 @@ public class HandleGroupJoin : OpcodeHandler
             uint unknown3 = _extractor.GetUIntAt(_Unknown3_Slot);
             uint unknown4 = _extractor.GetUIntAt(_Unknown4_Slot);
 
-            if (GroupRepository.Instance.TryGetGroupByServerId(serverGroupId, out Group? group) == false)
+            if (GroupRepository.Instance.TryGetGroup(groupId, out Group? group) == false)
             {
-                group = GroupRepository.Instance.CreateGroup(serverGroupId);
+                group = GroupRepository.Instance.CreateGroup(groupId);
                 if (group == null)
                 {
-                    DebugLog.Write(LogChannel.Opcodes, "HandleGroupJoin.HandleZoneToClient: no group for server group id 0x"
-                        + serverGroupId.Value.ToString("X") + ", '" + characterName + "' not added.", LogLevel.Error);
+                    DebugLog.Write(LogChannel.Opcodes, "HandleGroupJoin.HandleZoneToClient: no group for group id 0x"
+                        + groupId.Value.ToString("X") + ", '" + characterName + "' not added.", LogLevel.Error);
                     return;
                 }
             }
@@ -129,8 +129,8 @@ public class HandleGroupJoin : OpcodeHandler
             if (group.HasMember(characterId))
             {
                 DebugLog.Write(LogChannel.Opcodes, "HandleGroupJoin.HandleZoneToClient: '" + characterName
-                    + "' characterId=" + characterId + " is already in groupId=" + group.Id + ", nothing changed.",
-                    LogLevel.Trace);
+                    + "' characterId=0x" + characterId.Value.ToString("X") + " is already in group id 0x"
+                    + group.Id.Value.ToString("X") + ", nothing changed.", LogLevel.Trace);
                 return;
             }
 
@@ -138,14 +138,16 @@ public class HandleGroupJoin : OpcodeHandler
             if (GroupRepository.Instance.TryGetGroupOf(characterId, out Group? oldGroup))
             {
                 DebugLog.Write(LogChannel.Opcodes, "HandleGroupJoin.HandleZoneToClient: '" + characterName
-                    + "' characterId=" + characterId + " is in groupId=" + oldGroup.Id + " but joined groupId="
-                    + group.Id + ", removing from groupId=" + oldGroup.Id + ".", LogLevel.Warn);
+                    + "' characterId=0x" + characterId.Value.ToString("X") + " is in group id 0x"
+                    + oldGroup.Id.Value.ToString("X") + " but joined group id 0x" + group.Id.Value.ToString("X")
+                    + ", removing from group id 0x" + oldGroup.Id.Value.ToString("X") + ".", LogLevel.Warn);
 
                 if (GroupRepository.Instance.RemoveMember(characterId) == false)
                 {
                     DebugLog.Write(LogChannel.Opcodes, "HandleGroupJoin.HandleZoneToClient: could not remove '"
-                        + characterName + "' characterId=" + characterId + " from groupId=" + oldGroup.Id
-                        + ", not added to groupId=" + group.Id + ".", LogLevel.Error);
+                        + characterName + "' characterId=0x" + characterId.Value.ToString("X") + " from group id 0x"
+                        + oldGroup.Id.Value.ToString("X") + ", not added to group id 0x"
+                        + group.Id.Value.ToString("X") + ".", LogLevel.Error);
                     return;
                 }
             }
@@ -158,14 +160,15 @@ public class HandleGroupJoin : OpcodeHandler
 
             if (GroupRepository.Instance.AddMember(group, member) == false)
             {
-                DebugLog.Write(LogChannel.Opcodes, "HandleGroupJoin.HandleZoneToClient: groupId=" + group.Id
-                    + " did not accept '" + characterName + "' characterId=" + characterId + ".", LogLevel.Warn);
+                DebugLog.Write(LogChannel.Opcodes, "HandleGroupJoin.HandleZoneToClient: group id 0x"
+                    + group.Id.Value.ToString("X") + " did not accept '" + characterName + "' characterId=0x"
+                    + characterId.Value.ToString("X") + ".", LogLevel.Warn);
                 return;
             }
 
             DebugLog.Write(LogChannel.Opcodes, "HandleGroupJoin.HandleZoneToClient: added '" + characterName
-                + "' characterId=" + characterId + " level " + characterLevel + " to groupId=" + group.Id
-                + " (server group id 0x" + serverGroupId.Value.ToString("X") + ").", LogLevel.Trace);
+                + "' characterId=0x" + characterId.Value.ToString("X") + " level " + characterLevel
+                + " to group id 0x" + group.Id.Value.ToString("X") + ".", LogLevel.Trace);
         }
         finally
         {
