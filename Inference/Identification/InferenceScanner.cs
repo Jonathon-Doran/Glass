@@ -41,6 +41,7 @@ public class InferenceScanner
         _handlers.Add(new InferHpUpdate());
         _handlers.Add(new InferTargetSequence());
         _handlers.Add(new InferGroupMembership());
+        _handlers.Add(new InferRaidGeneral());
 
 
         DebugLog.Write(LogChannel.InferenceDebug,
