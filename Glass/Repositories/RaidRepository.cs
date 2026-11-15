@@ -96,6 +96,45 @@ public class RaidRepository
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // RemoveRaid
+    //
+    // Removes the given raid and takes each of its groups out of it.  A raid not held is rejected and nothing
+    // changes.
+    //
+    // raid:  The raid to remove.
+    //
+    // Returns true if the raid was removed, false if it was not held.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public bool RemoveRaid(Raid raid)
+    {
+        bool removed;
+
+        lock (GlassContext.MembershipLock)
+        {
+            removed = _raids.Remove(raid.Id);
+        }
+
+        if (removed == false)
+        {
+            DebugLog.Write(LogChannel.General, "RaidRepository.RemoveRaid: raid id 0x" + raid.Id.Value.ToString("X")
+                + " is not held, nothing removed.", LogLevel.Warn);
+            return false;
+        }
+
+        List<Group> groups = new List<Group>(raid.Groups);
+        foreach (Group group in groups)
+        {
+            raid.RemoveGroup(group);
+        }
+
+        GlassContext.SignalBus.Publish(new SignalMembershipChanged(GroupId.None, raid.Id));
+
+        DebugLog.Write(LogChannel.General, "RaidRepository.RemoveRaid: removed raid id 0x" + raid.Id.Value.ToString("X")
+            + " and " + groups.Count + " groups from it.", defaultLoglevel);
+        return true;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // TryGetRaid
     //
     // Looks up the raid with the given id.

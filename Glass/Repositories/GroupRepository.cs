@@ -92,8 +92,6 @@ public class GroupRepository
             _groups[group.Id] = group;
         }
 
-        GlassContext.SignalBus.Publish(new SignalMembershipChanged(group.Id, RaidId.None));
-
         DebugLog.Write(LogChannel.Database, "GroupRepository.CreateGroup: created group id 0x"
             + groupId.Value.ToString("X") + ".", defaultLoglevel);
         return group;
@@ -135,16 +133,21 @@ public class GroupRepository
             return false;
         }
 
-        if (group.AddMember(member) == false)
-        {
-            DebugLog.Write(LogChannel.Database, "GroupRepository.AddMember: groupId=" + group.Id + " refused '"
-                + member.Name + "', not indexed.", LogLevel.Warn);
-            return false;
-        }
-
         lock (GlassContext.MembershipLock)
         {
             _groupsByMember[member.Id] = group;
+        }
+
+        if (group.AddMember(member) == false)
+        {
+            lock (GlassContext.MembershipLock)
+            {
+                _groupsByMember.Remove(member.Id);
+            }
+
+            DebugLog.Write(LogChannel.General, "GroupRepository.AddMember: group id 0x" + group.Id.Value.ToString("X")
+                + " refused '" + member.Name + "', index entry removed.", LogLevel.Warn);
+            return false;
         }
 
         DebugLog.Write(LogChannel.Database, "GroupRepository.AddMember: indexed '" + member.Name + "' characterId="

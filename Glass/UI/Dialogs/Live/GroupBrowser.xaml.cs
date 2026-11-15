@@ -24,7 +24,7 @@ public partial class GroupBrowser : Window
 {
     private int _refreshPending = 0;
 
-    private const LogLevel defaultLoglevel = LogLevel.Trace;
+    private const LogLevel defaultLoglevel = LogLevel.Info;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // GroupBrowser (constructor)
@@ -48,7 +48,7 @@ public partial class GroupBrowser : Window
     protected override void OnClosed(System.EventArgs e)
     {
         GlassContext.SignalBus.Unsubscribe<SignalMembershipChanged>(OnMembershipChanged);
-        DebugLog.Write(LogChannel.General, "GroupBrowser.OnClosed: unsubscribed from membership changes",
+        DebugLog.Write(LogChannel.UI, "GroupBrowser.OnClosed: unsubscribed from membership changes",
             defaultLoglevel);
         base.OnClosed(e);
     }
@@ -63,7 +63,7 @@ public partial class GroupBrowser : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void Button_Refresh_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.General, "GroupBrowser.Button_Refresh_Click: refresh requested",
+        DebugLog.Write(LogChannel.UI, "GroupBrowser.Button_Refresh_Click: refresh requested",
             defaultLoglevel);
         RefreshTree();
     }
@@ -121,15 +121,15 @@ public partial class GroupBrowser : Window
     // with the given label, the group id and the member count.
     //
     // group:  The group to show.
-    // label:  The title the caller has composed, such as "Group 3" or "Group".
+    // label:  The title the caller has composed, such as "Group".
     //
     // Returns the node, expanded.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private static TreeViewItem BuildGroupNode(Group group, string label)
     {
         TreeViewItem node = new TreeViewItem();
-        node.Header = label + "  [groupId " + group.Id + "]  " + group.Members.Count + " of "
-            + Group.MaxMembers + " members";
+        node.Header = label + "  [group id 0x" + group.Id.Value.ToString("X") + "]  " + group.Members.Count
+            + " members";
         node.IsExpanded = true;
 
         foreach (GroupMember member in group.Members)
@@ -143,9 +143,8 @@ public partial class GroupBrowser : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     // BuildRaidNode
     //
-    // Builds the tree for one raid: a branch per occupied numbered group, in number order,
-    // and an Ungrouped branch holding the raid members in no group when there are any.  Empty
-    // group positions are not shown.
+    // Builds the tree for one raid: a branch per group, and an Ungrouped branch holding the
+    // raid members in no group when there are any.
     //
     // raid:  The raid to show.
     //
@@ -156,17 +155,9 @@ public partial class GroupBrowser : Window
         TreeViewItem node = new TreeViewItem();
         node.IsExpanded = true;
 
-        uint groupCount = 0;
-        for (uint raidGroupNumber = 1; raidGroupNumber <= Raid.MaxGroups; raidGroupNumber++)
+        foreach (Group group in raid.Groups)
         {
-            Group? group = raid.GroupAt(raidGroupNumber);
-            if (group == null)
-            {
-                continue;
-            }
-
-            node.Items.Add(BuildGroupNode(group, "Group " + raidGroupNumber));
-            groupCount++;
+            node.Items.Add(BuildGroupNode(group, "Group"));
         }
 
         if (raid.Ungrouped.Count > 0)
@@ -183,8 +174,22 @@ public partial class GroupBrowser : Window
             node.Items.Add(ungroupedNode);
         }
 
-        node.Header = "Raid  [raidId " + raid.Id + "]  leader " + raid.LeaderId + ", " + groupCount
-            + " groups, " + raid.Ungrouped.Count + " ungrouped";
+        string leader = "None";
+        if (raid.LeaderId.Exists)
+        {
+            Character? leaderCharacter = CharacterRepository.Instance.GetByCharacterId(raid.LeaderId);
+            if (leaderCharacter != null)
+            {
+                leader = leaderCharacter.Name;
+            }
+            else
+            {
+                leader = "0x" + raid.LeaderId.Value.ToString("X");
+            }
+        }
+
+        node.Header = "Raid  [raid id 0x" + raid.Id.Value.ToString("X") + "]  leader " + leader + ", "
+            + raid.Groups.Count + " groups, " + raid.Ungrouped.Count + " ungrouped";
         return node;
     }
 
@@ -241,7 +246,7 @@ public partial class GroupBrowser : Window
         ResultCount.Text = raids.Count + " raids, " + freeGroups + " groups in no raid, " + soloCharacters
             + " characters in no group";
 
-        DebugLog.Write(LogChannel.General, "GroupBrowser.RefreshTree: " + raids.Count + " raids, " + freeGroups
+        DebugLog.Write(LogChannel.UI, "GroupBrowser.RefreshTree: " + raids.Count + " raids, " + freeGroups
             + " groups in no raid, " + soloCharacters + " of " + characters.Count
             + " session characters in no group", defaultLoglevel);
     }
@@ -261,7 +266,7 @@ public partial class GroupBrowser : Window
             return;
         }
 
-        DebugLog.Write(LogChannel.General, "GroupBrowser.OnMembershipChanged: groupId=" + signal.GroupId
+        DebugLog.Write(LogChannel.UI, "GroupBrowser.OnMembershipChanged: groupId=" + signal.GroupId
             + " raidId=" + signal.RaidId + ", rebuild scheduled", defaultLoglevel);
 
         Dispatcher.BeginInvoke(new System.Action(() =>
@@ -271,3 +276,238 @@ public partial class GroupBrowser : Window
         }));
     }
 }
+
+#if DEBUG
+///////////////////////////////////////////////////////////////////////////////////////////////
+// MembershipChangeLog
+//
+// Debug-only record of what the group browser would show.  On each membership change it
+// builds the browser's lines from the repositories and logs each line that is gone and each
+// line that is new, so the order and timing of visible changes can be compared with the
+// packets.  It needs no window.
+///////////////////////////////////////////////////////////////////////////////////////////////
+public class MembershipChangeLog
+{
+    private const LogLevel defaultLoglevel = LogLevel.Info;
+
+    private List<string> _shownLines = new List<string>();
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // MembershipChangeLog (constructor)
+    //
+    // Subscribes to membership changes.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public MembershipChangeLog()
+    {
+        GlassContext.SignalBus.Subscribe<SignalMembershipChanged>(OnMembershipChanged);
+
+        DebugLog.Write(LogChannel.UI, "MembershipChangeLog: subscribed to membership changes.", defaultLoglevel);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // MemberText
+    //
+    // Builds the text the browser shows for one group or raid member: name, class, level and
+    // character id, followed by the roles the member holds in its group (leader, main tank,
+    // main assist).
+    //
+    // member:  The member to describe.
+    // group:   The group the member belongs to, or null for a member in no group.
+    //
+    // Returns the text.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static string MemberText(GroupMember member, Group? group)
+    {
+        EQClass memberClass = member.Class;
+        if (member.Character != null)
+        {
+            memberClass = member.Character.Class;
+        }
+
+        string text = member.Name + "  " + memberClass.ToDisplayString() + " " + member.Level + "  [0x"
+            + member.Id.Value.ToString("X") + "]";
+
+        if (group != null)
+        {
+            if (group.LeaderId == member.Id)
+            {
+                text += "  Leader";
+            }
+
+            if (group.MainTankId == member.Id)
+            {
+                text += "  MainTank";
+            }
+
+            if (group.MainAssistId == member.Id)
+            {
+                text += "  MainAssist";
+            }
+        }
+
+        return text;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // GroupText
+    //
+    // Builds the header text the browser shows for one group: the label, the group id and
+    // the member count.
+    //
+    // group:  The group to describe.
+    // label:  The title shown before the group id, such as "Group".
+    //
+    // Returns the text.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static string GroupText(Group group, string label)
+    {
+        return label + "  [group id 0x" + group.Id.Value.ToString("X") + "]  " + group.Members.Count + " members";
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // RaidText
+    //
+    // Builds the header text the browser shows for one raid: the raid id, the leader's
+    // character id or None, the group count and the ungrouped member count.
+    //
+    // raid:  The raid to describe.
+    //
+    // Returns the text.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static string RaidText(Raid raid)
+    {
+        string leader = "None";
+        if (raid.LeaderId.Exists)
+        {
+            Character? leaderCharacter = CharacterRepository.Instance.GetByCharacterId(raid.LeaderId);
+            if (leaderCharacter != null)
+            {
+                leader = leaderCharacter.Name;
+            }
+            else
+            {
+                leader = "0x" + raid.LeaderId.Value.ToString("X");
+            }
+        }
+
+        return "Raid  [raid id 0x" + raid.Id.Value.ToString("X") + "]  leader " + leader + ", "
+            + raid.Groups.Count + " groups, " + raid.Ungrouped.Count + " ungrouped";
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // CollectLines
+    //
+    // Builds the lines the browser would show, in its order: each raid with its groups,
+    // their members and its ungrouped members; each group in no raid with its members; and
+    // each session character in no group and no raid.  Each line is preceded by the ids of
+    // its parent lines, separated by " / ", so counts appear only on the line they belong to.
+    //
+    // Returns the lines.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static List<string> CollectLines()
+    {
+        List<string> lines = new List<string>();
+
+        List<Raid> raids = RaidRepository.Instance.GetAllRaids();
+        foreach (Raid raid in raids)
+        {
+            string raidPrefix = "Raid  [raid id 0x" + raid.Id.Value.ToString("X") + "]";
+            lines.Add(RaidText(raid));
+
+            foreach (Group group in raid.Groups)
+            {
+                string groupPrefix = raidPrefix + " / Group  [group id 0x" + group.Id.Value.ToString("X") + "]";
+                lines.Add(raidPrefix + " / " + GroupText(group, "Group"));
+
+                foreach (GroupMember member in group.Members)
+                {
+                    lines.Add(groupPrefix + " / " + MemberText(member, group));
+                }
+            }
+
+            if (raid.Ungrouped.Count > 0)
+            {
+                string ungroupedPrefix = raidPrefix + " / Ungrouped";
+                lines.Add(ungroupedPrefix + "  " + raid.Ungrouped.Count + " members");
+
+                foreach (GroupMember member in raid.Ungrouped)
+                {
+                    lines.Add(ungroupedPrefix + " / " + MemberText(member, null));
+                }
+            }
+        }
+
+        List<Group> groups = GroupRepository.Instance.GetAllGroups();
+        foreach (Group group in groups)
+        {
+            if (group.RaidId.Exists)
+            {
+                continue;
+            }
+
+            string groupPrefix = "Group  [group id 0x" + group.Id.Value.ToString("X") + "]";
+            lines.Add(GroupText(group, "Group"));
+
+            foreach (GroupMember member in group.Members)
+            {
+                lines.Add(groupPrefix + " / " + MemberText(member, group));
+            }
+        }
+
+        List<Character> characters = SessionStore.Instance.GetSessionCharacters();
+        foreach (Character character in characters)
+        {
+            if (GroupRepository.Instance.TryGetGroupOf(character.CharacterId, out Group? group))
+            {
+                continue;
+            }
+
+            if (RaidRepository.Instance.TryGetRaidOf(character.CharacterId, out Raid? raid))
+            {
+                continue;
+            }
+
+            lines.Add(character.Name + "  [0x" + character.CharacterId.Value.ToString("X") + "]  no group");
+        }
+
+        return lines;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // OnMembershipChanged
+    //
+    // Builds the lines the browser would now show, logs each line that is gone and each line
+    // that is new since the last change, and keeps the new lines for the next comparison.  A
+    // change with no visible effect logs nothing.
+    //
+    // signal:  The membership change.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void OnMembershipChanged(SignalMembershipChanged signal)
+    {
+        List<string> lines = CollectLines();
+
+        HashSet<string> previous = new HashSet<string>(_shownLines);
+        HashSet<string> current = new HashSet<string>(lines);
+
+        foreach (string line in _shownLines)
+        {
+            if (current.Contains(line) == false)
+            {
+                DebugLog.Write(LogChannel.UI, "MembershipChangeLog.OnMembershipChanged: gone  " + line,
+                    defaultLoglevel);
+            }
+        }
+
+        foreach (string line in lines)
+        {
+            if (previous.Contains(line) == false)
+            {
+                DebugLog.Write(LogChannel.UI, "MembershipChangeLog.OnMembershipChanged: shown  " + line,
+                    defaultLoglevel);
+            }
+        }
+
+        _shownLines = lines;
+    }
+}
+#endif

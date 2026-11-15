@@ -14,6 +14,10 @@ namespace Glass.Core;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public static class ProtocolStackBootstrap
 {
+#if DEBUG
+    private static MembershipChangeLog? _membershipChangeLog = null;
+#endif
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Initialize
     //
@@ -46,6 +50,12 @@ public static class ProtocolStackBootstrap
         GlassContext.SessionRegistry = new SessionRegistry();
         DebugLog.Write(LogChannel.General,
             "ProtocolStackBootstrap.Initialize: SessionRegistry constructed", LogLevel.Trace);
+
+#if DEBUG
+        _membershipChangeLog = new MembershipChangeLog();
+        DebugLog.Write(LogChannel.General,
+            "ProtocolStackBootstrap.Initialize: MembershipChangeLog constructed", LogLevel.Trace);
+#endif
 
         DebugLog.Write(LogChannel.General, "ProtocolStackBootstrap.Initialize: complete", LogLevel.Trace);
     }

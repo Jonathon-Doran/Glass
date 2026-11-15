@@ -11,7 +11,7 @@ namespace Glass.World;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // GroupMember
 //
-// One member of a group or raid, identified by the server's persistent character id, which
+// One member of a group or raid, identified by the character id, which
 // is valid across zones.  A spawn id is not held here; incoming zone data tagged with a
 // spawn id is translated to the member through the zone's placements.  Class and level are
 // held for members that are not one of the user's characters.  Character refers to the
@@ -36,16 +36,11 @@ public class GroupMember
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // Group
 //
-// A group of up to MaxMembers members.  Id is the server's group id, as sent in group
-// messages.  A group in a raid carries the raid's id and its numbered position in the raid, 1
-// to 12; a group outside a raid has RaidId None, and RaidGroupNumber is then 0, meaning no
-// position.  Members are held as a list because a member's position within the group
-// carries no meaning, only its presence.  The list is changed only through this class.
+// A group's members.  A group in a raid carries the raid's id; a group outside a raid has
+// RaidId None.  
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class Group
 {
-    public const int MaxMembers = 6;
-
     public GroupId Id;
     public RaidId RaidId = RaidId.None;
     public uint RaidGroupNumber = 0;
@@ -65,8 +60,8 @@ public class Group
     ///////////////////////////////////////////////////////////////////////////////////////////
     // AddMember
     //
-    // Adds a member to this group.  A member whose character id is already in the group, and
-    // a group that already holds MaxMembers members, are each rejected and nothing changes.
+    // Adds a member to this group.  A member whose character id is already in the group is
+    // rejected and nothing changes.
     //
     // member:  The member to add.
     //
@@ -76,15 +71,9 @@ public class Group
     {
         if (HasMember(member.Id))
         {
-            DebugLog.Write(LogChannel.Database, "Group.AddMember: groupId=" + Id + " already holds '"
-                + member.Name + "' characterId=" + member.Id + ", not added.", LogLevel.Warn);
-            return false;
-        }
-
-        if (_members.Count >= MaxMembers)
-        {
-            DebugLog.Write(LogChannel.Database, "Group.AddMember: groupId=" + Id + " is full, '"
-                + member.Name + "' not added.", LogLevel.Warn);
+            DebugLog.Write(LogChannel.General, "Group.AddMember: group id 0x" + Id.Value.ToString("X")
+                + " already holds '" + member.Name + "' characterId=0x" + member.Id.Value.ToString("X")
+                + ", not added.", LogLevel.Warn);
             return false;
         }
 
@@ -95,18 +84,19 @@ public class Group
 
         GlassContext.SignalBus.Publish(new SignalMembershipChanged(Id, RaidId));
 
-        DebugLog.Write(LogChannel.Database, "Group.AddMember: added '" + member.Name + "' characterId="
-            + member.Id + " to groupId=" + Id + ", " + _members.Count + " members.", defaultLoglevel);
+        DebugLog.Write(LogChannel.General, "Group.AddMember: added '" + member.Name + "' characterId=0x"
+            + member.Id.Value.ToString("X") + " to group id 0x" + Id.Value.ToString("X") + ", "
+            + _members.Count + " members.", defaultLoglevel);
         return true;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // RemoveMember
     //
-    // Removes the member with the given persistent character id from this group.  A character
-    // not in the group is rejected and nothing changes.
+    // Removes the member with the given character id from this group.  A character not in
+    // the group is rejected and nothing changes.
     //
-    // characterId:  The persistent character id of the member to remove.
+    // characterId:  The character id of the member to remove.
     //
     // Returns true if the member was removed, false if it was not in the group.
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -123,23 +113,24 @@ public class Group
 
                 GlassContext.SignalBus.Publish(new SignalMembershipChanged(Id, RaidId));
 
-                DebugLog.Write(LogChannel.Database, "Group.RemoveMember: removed characterId=" + characterId
-                    + " from groupId=" + Id + ", " + _members.Count + " members left.", defaultLoglevel);
+                DebugLog.Write(LogChannel.General, "Group.RemoveMember: removed characterId=0x"
+                    + characterId.Value.ToString("X") + " from group id 0x" + Id.Value.ToString("X") + ", "
+                    + _members.Count + " members left.", defaultLoglevel);
                 return true;
             }
         }
 
-        DebugLog.Write(LogChannel.Database, "Group.RemoveMember: characterId=" + characterId
-            + " is not in groupId=" + Id + ", nothing removed.", LogLevel.Warn);
+        DebugLog.Write(LogChannel.General, "Group.RemoveMember: characterId=0x" + characterId.Value.ToString("X")
+            + " is not in group id 0x" + Id.Value.ToString("X") + ", nothing removed.", LogLevel.Warn);
         return false;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // HasMember
     //
-    // Tests whether this group holds a member with the given persistent character id.
+    // Tests whether this group holds a member with the given character id.
     //
-    // characterId:  The persistent character id to look for.
+    // characterId:  The character id to look for.
     //
     // Returns true if the group holds that member, false otherwise.
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -177,15 +168,15 @@ public class Group
         }
 
         member = null;
-        DebugLog.Write(LogChannel.Database, "Group.TryGetMemberByName: groupId=" + Id + " holds no member named '"
-            + name + "'.", defaultLoglevel);
+        DebugLog.Write(LogChannel.General, "Group.TryGetMemberByName: group id 0x" + Id.Value.ToString("X")
+            + " holds no member named '" + name + "'.", defaultLoglevel);
         return false;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Copy
     //
-    // Makes an independent copy of this group: its ids, raid position and designations, and
+    // Makes an independent copy of this group: its ids, and designations, and
     // a new member list holding a new copy of each member.  The copy shares no list or member
     // object with this group and publishes no membership change.  The copy is made while
     // holding the membership lock.
@@ -223,11 +214,11 @@ public class Group
     ///////////////////////////////////////////////////////////////////////////////////////////
     // SetLeader
     //
-    // Makes the member with the given persistent character id the leader of this group.  A
-    // character not in the group is rejected and nothing changes.  When that member is
-    // already the leader, nothing changes and no signal is published.
+    // Makes the member with the given character id the leader of this group.  A character not
+    // in the group is rejected and nothing changes.  When that member is already the leader,
+    // nothing changes and no signal is published.
     //
-    // characterId:  The persistent character id of the new leader.
+    // characterId:  The character id of the new leader.
     //
     // Returns true if the member is the leader afterward, false if it was not in the group.
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -235,15 +226,16 @@ public class Group
     {
         if (HasMember(characterId) == false)
         {
-            DebugLog.Write(LogChannel.Database, "Group.SetLeader: characterId=" + characterId
-                + " is not in groupId=" + Id + ", leader not changed.", LogLevel.Warn);
+            DebugLog.Write(LogChannel.General, "Group.SetLeader: characterId=0x" + characterId.Value.ToString("X")
+                + " is not in group id 0x" + Id.Value.ToString("X") + ", leader not changed.", LogLevel.Warn);
             return false;
         }
 
         if (LeaderId == characterId)
         {
-            DebugLog.Write(LogChannel.Database, "Group.SetLeader: characterId=" + characterId
-                + " is already leader of groupId=" + Id + ", nothing changed.", defaultLoglevel);
+            DebugLog.Write(LogChannel.General, "Group.SetLeader: characterId=0x" + characterId.Value.ToString("X")
+                + " is already leader of group id 0x" + Id.Value.ToString("X") + ", nothing changed.",
+                defaultLoglevel);
             return true;
         }
 
@@ -256,8 +248,9 @@ public class Group
 
         GlassContext.SignalBus.Publish(new SignalMembershipChanged(Id, RaidId));
 
-        DebugLog.Write(LogChannel.Database, "Group.SetLeader: groupId=" + Id + " leader changed from characterId="
-            + previousLeaderId + " to characterId=" + characterId + ".", defaultLoglevel);
+        DebugLog.Write(LogChannel.General, "Group.SetLeader: group id 0x" + Id.Value.ToString("X")
+            + " leader changed from characterId=0x" + previousLeaderId.Value.ToString("X") + " to characterId=0x"
+            + characterId.Value.ToString("X") + ".", defaultLoglevel);
         return true;
     }
 }

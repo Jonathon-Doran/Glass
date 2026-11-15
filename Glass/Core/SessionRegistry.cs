@@ -3,6 +3,7 @@ using Glass.Core.Signals;
 using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Network.Client;
+using Glass.World;
 using System.Runtime.InteropServices;
 using static Glass.Network.Protocol.SoeConstants;
 
@@ -280,6 +281,20 @@ public class SessionRegistry
 
         metadata.Session.SetCharacter(character);
 
+        GroupId groupId = GroupId.None;
+        if (GroupRepository.Instance.TryGetGroupOf(character.CharacterId, out Group? group))
+        {
+            groupId = group.Id;
+        }
+
+        RaidId raidId = RaidId.None;
+        if (RaidRepository.Instance.TryGetRaidOf(character.CharacterId, out Raid? raid))
+        {
+            raidId = raid.Id;
+        }
+
+        GlassContext.SignalBus.Publish(new SignalMembershipChanged(groupId, raidId));
+
         lock (_lock)
         {
             foreach (KeyValuePair<string, SessionEntry> pair in _sessions)
@@ -298,7 +313,6 @@ public class SessionRegistry
                     + character.Name + ", ISXGlass session " + pair.Value.SessionName, LogLevel.Trace);
 
                 GlassContext.SignalBus.Publish(new SignalSessionAdded(metadata.Session.SessionId, character.Name));
-
                 DebugLog.Write(LogChannel.SignalBus, "SessionRegistry.IdentifySession: published SignalSessionAdded "
                     + metadata.Session.SessionId + " for " + character.Name, LogLevel.Trace);
 

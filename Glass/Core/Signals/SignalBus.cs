@@ -176,6 +176,41 @@ public class SignalBus
         }
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // PendingSignal
+    //
+    // A signal published while another signal was being delivered on the same thread, held
+    // until that delivery finishes: the subscriber list for its type, the signal itself, and
+    // its type name for logging.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private readonly struct PendingSignal
+    {
+        public readonly SubscriberList List;
+        public readonly object Payload;
+        public readonly string TypeName;
+
+        ///////////////////////////////////////////////////////////////////////////////////////
+        // PendingSignal (constructor)
+        //
+        // list:      The subscriber list for the signal's runtime type.
+        // payload:   The signal instance.
+        // typeName:  The signal's runtime type name.
+        ///////////////////////////////////////////////////////////////////////////////////////
+        public PendingSignal(SubscriberList list, object payload, string typeName)
+        {
+            List = list;
+            Payload = payload;
+            TypeName = typeName;
+        }
+    }
+
+    // Per-thread delivery state.  No initializers: a [ThreadStatic] initializer runs on one thread only.
+    [ThreadStatic]
+    private static uint _dispatchDepth;
+
+    [ThreadStatic]
+    private static Queue<PendingSignal>? _pending;
+
     private readonly Dictionary<Type, SubscriberList> _listsByType;
     private readonly object _mapLock;
 
@@ -275,9 +310,14 @@ public class SignalBus
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Publish
     //
-    // Delivers a signal to every current subscriber of its runtime type,
-    // synchronously, in subscription order.  A subscriber that throws is
-    // logged and the next subscriber still runs.
+    // Delivers a signal to every current subscriber of its runtime type, synchronously, in
+    // subscription order.  A subscriber that throws is logged and the next subscriber still
+    // runs.
+    //
+    // A signal published while another signal is being delivered on the same thread is
+    // queued.  The outermost Publish delivers its own signal, then each queued signal in the
+    // order it was published, so every subscriber of one signal finishes before delivery of
+    // the next begins.
     //
     // The runtime type of signal is the dispatch key, not the static type T.
     // A Publish<BaseSignal>(derived) call delivers only to subscribers of the
@@ -307,7 +347,35 @@ public class SignalBus
             }
         }
 
-        list.InvokeAll(signal, runtimeType.Name);
+        if (_dispatchDepth > 0)
+        {
+            if (_pending == null)
+            {
+                _pending = new Queue<PendingSignal>();
+            }
+
+            _pending.Enqueue(new PendingSignal(list, signal, runtimeType.Name));
+
+            DebugLog.Write(LogChannel.SignalBus, "SignalBus.Publish<" + runtimeType.Name
+                + ">: published during a delivery, queued behind " + (_pending.Count - 1) + " others.", LogLevel.Trace);
+            return;
+        }
+
+        _dispatchDepth++;
+        try
+        {
+            list.InvokeAll(signal, runtimeType.Name);
+
+            while ((_pending != null) && (_pending.Count > 0))
+            {
+                PendingSignal next = _pending.Dequeue();
+                next.List.InvokeAll(next.Payload, next.TypeName);
+            }
+        }
+        finally
+        {
+            _dispatchDepth--;
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
