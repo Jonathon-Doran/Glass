@@ -7,7 +7,6 @@ using Glass.Network.Protocol.Fields;
 using Glass.UI;
 using Inference.Models;
 using Inference.UI;
-using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -285,7 +284,8 @@ public partial class OpcodeTracePresenter
             OpcodeTraceRow row = new OpcodeTraceRow(packet.PacketIndex,
                             timestampLocal, opcodeToDisplay, desc, packet.Metadata.Channel,
                             characterName, length, packet.Payload,
-                            (ushort)packet.Metadata.SourcePortX, (ushort)packet.Metadata.DestPortX);
+                            (ushort)packet.Metadata.SourcePort, (ushort)packet.Metadata.DestPort);
+
             row.Color = GetPacketColor(packet.PacketIndex, packet.Opcode);
             _rows.Add(row);
             _rowByPacketIndex[packet.PacketIndex] = row;
@@ -295,12 +295,10 @@ public partial class OpcodeTracePresenter
         // A PacketIndex of 0 may not make any sense.
         if (_rows.Count > 0)
         {
-            DebugLog.Write(LogChannel.Opcodes, "Refresh call#1 to MoveToMessage", LogLevel.Info);
             _searchCursor.MoveToMessage(_rows[0].PacketIndex);
         }
         else
         {
-            DebugLog.Write(LogChannel.Opcodes, "Refresh call#2 to MoveToMessage", LogLevel.Info);
             _searchCursor.MoveToMessage(0u);
         }
        

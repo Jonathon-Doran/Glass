@@ -365,7 +365,7 @@ public class PacketCatalog
                 {
                     continue;
                 }
-                if (sessionId != null && packet.Metadata.SessionId != sessionId.Value)
+                if (sessionId != null && packet.Metadata.Session.SessionId != sessionId.Value)
                 {
                     continue;
                 }

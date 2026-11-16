@@ -61,7 +61,6 @@ public class SessionDemux
         }
 
         metadata.Session = session;
-        metadata.SessionId = session.SessionId;
 
         SoeStream stream = metadata.ToServer ? session.ToServerStream : session.FromServerStream;
         stream.HandlePacket(metadata);

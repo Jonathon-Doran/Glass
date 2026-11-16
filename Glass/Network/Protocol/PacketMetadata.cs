@@ -24,11 +24,6 @@ public struct PacketMetadata
     public OpcodeValue WireValue;         // will be removed in favor of Opcode
     public DateTime Timestamp;
 
-    public string SourceIp;
-    public int SourcePort;
-    public string DestIp;
-    public int DestPort;
-
     // The client's address and port on the local machine
     public string LocalIp;
     public ushort LocalPort;
@@ -37,7 +32,6 @@ public struct PacketMetadata
     public string RemoteIp;
     public ushort RemotePort;
 
-    public SessionId SessionId;      // will be removed in favor of session
     public Character? Character;
     public StreamId Channel;
     public Session Session;
@@ -52,12 +46,12 @@ public struct PacketMetadata
     {
         get { return Character == null ? "unknown" : Character.Name; }
     }
-    public ushort SourcePortX
+    public ushort SourcePort
     {
         get { return ToServer ? LocalPort : RemotePort; }
     }
 
-    public ushort DestPortX
+    public ushort DestPort
     {
         get { return ToServer ? RemotePort : LocalPort; }
     }

@@ -64,7 +64,6 @@ public partial class MainWindow : Window
 
     private bool _hasUnsavedChanges = false;
     private readonly Stack<object> _undoStack = new Stack<object>();
-    private SessionDemux? _sessionDemux;
 
     private readonly RetainedBufferPool _retainedBufferPool;
     private readonly PacketCatalog _packetCatalog;
@@ -283,7 +282,7 @@ public partial class MainWindow : Window
             StatusIsx.Text = "ISX: Disconnected";
             DebugLog.Write(LogChannel.InferenceDebug, "ISXGlass pipe disconnected", LogLevel.Trace);
         });
-        GlassContext.ISXGlassPipe.MessageReceived += msg => Dispatcher.Invoke(() => HandleISXGlassMessage(msg));
+        GlassContext.ISXGlassPipe.MessageReceived += msg => Dispatcher.Invoke(() => GlassContext.ProfileManager.HandleISXGlassMessage(msg));
         GlassContext.ISXGlassPipe.Start();
 
         GlassContext.GlassVideoPipe = new PipeManager("GlassVideo", "GlassVideo_Cmd", "GlassVideo_Notify");
@@ -1010,26 +1009,28 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     // MenuItem_LaunchProfile_Click
     //
-    // Handles the Profile > Launch Profile menu item click.  Opens the Launch
-    // Profile dialog filtered by the current patch level's server type.  If the
-    // user selects a profile, starts packet capture and then launches the
-    // profile.
+    // Handles the Profile > Launch Profile menu item click.  Sets the current patch level,
+    // opens the Launch Profile dialog filtered by that patch level's server type, and
+    // launches the selected profile.  Refreshes the capture status after the launch attempt.
     //
     // sender:  The menu item that raised the event.
     // e:       Event arguments.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private async void MenuItem_LaunchProfile_Click(object sender, RoutedEventArgs e)
     {
-        DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_LaunchProfile_Click", LogLevel.Trace);
+        DebugLog.Write(LogChannel.InferenceDebug, "MenuItem_LaunchProfile_Click: entered", LogLevel.Trace);
 
         if (_currentPatchLevel == null)
         {
-            DebugLog.Write(LogChannel.General, "No patch level before launch.", LogLevel.Error);
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MenuItem_LaunchProfile_Click: no patch level before launch", LogLevel.Error);
             return;
         }
-        
-        if (! GlassContext.ISXGlassPipe.IsConnected)
+
+        if (!GlassContext.ISXGlassPipe.IsConnected)
         {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MenuItem_LaunchProfile_Click: ISXGlass pipe not connected", LogLevel.Warn);
             MessageBox.Show("ISXGlassPipe is not connected.  Unable to launch sessions",
                 "ISX Disconnected", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
@@ -1039,7 +1040,7 @@ public partial class MainWindow : Window
         string serverType = _currentPatchLevel.Value.ServerType;
         GlassContext.PatchRegistry.LoadPatchLevel(_currentPatchLevel.Value);
         OpcodeDispatch.RebuildForCurrentPatchLevel();
-        DebugLog.Write(LogChannel.Inference,
+        DebugLog.Write(LogChannel.InferenceDebug,
             "MenuItem_LaunchProfile_Click: patch level set for serverType=" + serverType, LogLevel.Trace);
 
         ProfileLaunchDialog dialog = new ProfileLaunchDialog(serverType);
@@ -1047,30 +1048,29 @@ public partial class MainWindow : Window
 
         if ((dialog.ShowDialog() != true) || (dialog.SelectedProfileName == null))
         {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MenuItem_LaunchProfile_Click: dialog cancelled or no profile selected", LogLevel.Trace);
             return;
         }
 
         DebugLog.Write(LogChannel.InferenceDebug,
-            "MenuItem_LaunchProfile_Click: profile selected: " + dialog.SelectedProfileName, LogLevel.Info);
+            "MenuItem_LaunchProfile_Click: profile selected: " + dialog.SelectedProfileName, LogLevel.Trace);
 
-        _sessionDemux = new SessionDemux();
-        GlassContext.PacketCapture = new PacketCapture(_sessionDemux);
-
-        string bpfFilter = SoeConstants.CaptureFilter();
-        if (!GlassContext.PacketCapture.Start(bpfFilter))
+        bool launched = await GlassContext.ProfileManager.LaunchProfile(dialog.SelectedProfileName);
+        if (!launched)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "MenuItem_LaunchProfile_Click: capture failed to start", LogLevel.Error);
-            MessageBox.Show("Failed to start packet capture.",
-                "Capture Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
+                "MenuItem_LaunchProfile_Click: launch of " + dialog.SelectedProfileName + " failed", LogLevel.Error);
+            MessageBox.Show("Failed to launch profile " + dialog.SelectedProfileName + ".",
+                "Launch Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "MenuItem_LaunchProfile_Click: launch of " + dialog.SelectedProfileName + " succeeded", LogLevel.Trace);
         }
 
-        DebugLog.Write(LogChannel.InferenceDebug,
-            "MenuItem_LaunchProfile_Click: capture started", LogLevel.Info);
         UpdateCaptureStatus();
-
-        await GlassContext.ProfileManager.LaunchProfile(dialog.SelectedProfileName);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////
@@ -3316,7 +3316,7 @@ public partial class MainWindow : Window
                 dumpSample.Header += session.LocalPort + " <-> " + session.RemotePort + Environment.NewLine;
             }
 
-            dumpSample.Header += "Session " + packet.Metadata.SessionId + " " + name + ", Channel " + StreamAbbrev[packet.Metadata.Channel];
+            dumpSample.Header += "Session " + packet.Metadata.Session.SessionId + " " + name + ", Channel " + StreamAbbrev[packet.Metadata.Channel];
 
             dumpSample.Lines = new List<HexDumpLine>();
 
@@ -3556,102 +3556,6 @@ public partial class MainWindow : Window
         }
 
         _opcodeTracePresenter.ApplyCharacterFilter(character);
-    }
-
-
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // HandleISXGlassMessage
-    //
-    // Opcode a message from the ISXGlass extension.  These are typically session management
-    // notifications that must be passed on.
-    //
-    // msg:  The text of the message to process
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    private void HandleISXGlassMessage(string msg)
-    {
-        DebugLog.Write(LogChannel.ISXGlass, $"ISXGlass: message in {msg}", LogLevel.Info);
-        var parts = msg.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0)
-        {
-            return;
-        }
-
-        string messageId = parts[0];
-
-        switch (messageId)
-        {
-            // connect ONE session
-            case "session_connected":
-                {
-                    if (parts.Length < 4)
-                    {
-                        DebugLog.Write(LogChannel.InferenceDebug, $"ISXGlass: malformed session_connected: {msg}", LogLevel.Error);
-                        return;
-                    }
-
-                    string sessionName = parts[1];
-                    uint pid = uint.Parse(parts[2]);
-                    IntPtr hwnd = (IntPtr)Convert.ToUInt64(parts[3], 16);
-
-                    string characterName = string.Empty;
-
-                    if (GlassContext.ProfileManager.HasActiveProfile)
-                    {
-                        bool hasId = uint.TryParse(sessionName.Substring(2), out uint accountId);
-                        if (!hasId)
-                        {
-                            DebugLog.Write(LogChannel.InferenceDebug, $"ISXGlass: no integer account-id: {sessionName}", LogLevel.Error);
-                            return;
-                        }
-
-                        characterName = GlassContext.ProfileManager.GetCharacterNameByAccountId(accountId);
-                        DebugLog.Write(LogChannel.ISXGlass, $"session connected: {sessionName}, pid={pid}, character={characterName}", LogLevel.Info);
-                        GlassContext.SessionRegistry.OnSessionConnected(sessionName, characterName, pid, hwnd);
-                        int slot = GlassContext.ProfileManager.GetSlotForCharacter(characterName);
-                        if (slot == -1)
-                        {
-                            return;
-                        }
-
-                        string cmd = $"slot_assign {slot} {sessionName} {hwnd:X}";
-                        DebugLog.Write(LogChannel.ISXGlass, $"HandleISXGlassMessage: sending {cmd}", LogLevel.Trace);
-                        GlassContext.GlassVideoPipe.Send(cmd);
-                    }
-                    else
-                    {
-                        DebugLog.Write(LogChannel.ISXGlass, $"session connected: {sessionName}, pid={pid}, no active profile.", LogLevel.Error);
-                        GlassContext.SessionRegistry.OnSessionConnected(sessionName, characterName, pid, hwnd);
-                    }
-
-                    break;
-                }
-
-            case "session_disconnected":
-                {
-                    if (GlassContext.SessionRegistry == null)
-                    {
-                        // a bit of a hack.  I'm not sure why we sometimes get a stale session disconnect
-                        return;
-                    }
-
-                    if (parts.Length < 2)
-                    {
-                        DebugLog.Write(LogChannel.InferenceDebug, $"ISXGlass: malformed session_disconnected: {msg}", LogLevel.Error);
-                        return;
-                    }
-
-                    string sessionName = parts[1];
-                    DebugLog.Write(LogChannel.ISXGlass, $"session_disconnected: {sessionName}", LogLevel.Trace);
-                    GlassContext.GlassVideoPipe.Send($"unassign {sessionName}");
-                    GlassContext.SessionRegistry.OnSessionDisconnected(sessionName);
-                    break;
-                }
-
-            default:
-                DebugLog.Write(LogChannel.ISXGlass, $"{msg}");
-                break;
-        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

@@ -377,6 +377,114 @@ public class ProfileManager
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // HandleISXGlassMessage
+    //
+    // Parses and dispatches a message received from ISXGlass over the notify pipe.
+    // session_connected registers the session with the session registry and, when a profile
+    // is active, resolves the session's character and assigns its GlassVideo slot.
+    // session_disconnected unassigns the session in GlassVideo and removes it from the
+    // session registry.  Any other message is logged.
+    //
+    // msg:  The message received.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void HandleISXGlassMessage(string msg)
+    {
+        DebugLog.Write(LogChannel.ISXGlass, "ProfileManager.HandleISXGlassMessage: message in " + msg, LogLevel.Trace);
+        string[] parts = msg.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+        {
+            DebugLog.Write(LogChannel.ISXGlass, "ProfileManager.HandleISXGlassMessage: empty message ignored", LogLevel.Warn);
+            return;
+        }
+
+        string messageId = parts[0];
+
+        switch (messageId)
+        {
+            case "session_connected":
+                {
+                    if (parts.Length < 4)
+                    {
+                        DebugLog.Write(LogChannel.ISXGlass, "ProfileManager.HandleISXGlassMessage: malformed session_connected: "
+                            + msg, LogLevel.Warn);
+                        return;
+                    }
+
+                    string sessionName = parts[1];
+                    uint pid = uint.Parse(parts[2]);
+                    IntPtr hwnd = (IntPtr)Convert.ToUInt64(parts[3], 16);
+
+                    string characterName = string.Empty;
+
+                    if (HasActiveProfile)
+                    {
+                        bool hasId = uint.TryParse(sessionName.Substring(2), out uint accountId);
+                        if (!hasId)
+                        {
+                            DebugLog.Write(LogChannel.ISXGlass, "ProfileManager.HandleISXGlassMessage: no integer account-id: "
+                                + sessionName, LogLevel.Warn);
+                            return;
+                        }
+
+                        characterName = GetCharacterNameByAccountId(accountId);
+                        DebugLog.Write(LogChannel.Sessions, "ProfileManager.HandleISXGlassMessage: session connected: "
+                            + sessionName + ", pid=" + pid + ", character=" + characterName, LogLevel.Trace);
+                        GlassContext.SessionRegistry.OnSessionConnected(sessionName, characterName, pid, hwnd);
+                        int slot = GetSlotForCharacter(characterName);
+                        if (slot == -1)
+                        {
+                            DebugLog.Write(LogChannel.Sessions, "ProfileManager.HandleISXGlassMessage: no slot for "
+                                + characterName + ", slot_assign not sent", LogLevel.Warn);
+                            return;
+                        }
+
+                        string cmd = "slot_assign " + slot + " " + sessionName + " " + hwnd.ToString("X");
+                        DebugLog.Write(LogChannel.Sessions, "ProfileManager.HandleISXGlassMessage: sending " + cmd, LogLevel.Trace);
+                        GlassContext.GlassVideoPipe.Send(cmd);
+                    }
+                    else
+                    {
+                        DebugLog.Write(LogChannel.Sessions, "ProfileManager.HandleISXGlassMessage: session connected: "
+                            + sessionName + ", pid=" + pid + ", no active profile", LogLevel.Trace);
+                        GlassContext.SessionRegistry.OnSessionConnected(sessionName, characterName, pid, hwnd);
+                    }
+
+                    break;
+                }
+
+            case "session_disconnected":
+                {
+                    if (parts.Length < 2)
+                    {
+                        DebugLog.Write(LogChannel.Sessions, "ProfileManager.HandleISXGlassMessage: malformed session_disconnected: "
+                            + msg, LogLevel.Warn);
+                        return;
+                    }
+
+                    string sessionName = parts[1];
+                    DebugLog.Write(LogChannel.Sessions, "ProfileManager.HandleISXGlassMessage: session_disconnected: "
+                        + sessionName, LogLevel.Trace);
+                    GlassContext.GlassVideoPipe.Send("unassign " + sessionName);
+                    if (GlassContext.SessionRegistry != null)
+                    {
+                        GlassContext.SessionRegistry.OnSessionDisconnected(sessionName);
+                    }
+                    else
+                    {
+                        DebugLog.Write(LogChannel.Sessions, "ProfileManager.HandleISXGlassMessage: no session registry, "
+                            + sessionName + " not removed", LogLevel.Warn);
+                    }
+
+                    break;
+                }
+
+            default:
+                DebugLog.Write(LogChannel.ISXGlass, "ProfileManager.HandleISXGlassMessage: unhandled message: " + msg, LogLevel.Trace);
+                break;
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // GetCharacterNameByAccountId
     //
     // Searches the active profile's slot assignments for a character whose

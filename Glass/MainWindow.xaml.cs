@@ -59,7 +59,7 @@ public partial class MainWindow : Window
         GlassContext.ISXGlassPipe = new PipeManager("ISXGlass", "ISXGlass_Commands", "ISXGlass_Notify");
         GlassContext.ISXGlassPipe.Connected += () => Dispatcher.Invoke(() => SetISXGlassStatus(true));
         GlassContext.ISXGlassPipe.Disconnected += () => Dispatcher.Invoke(() => SetISXGlassStatus(false));
-        GlassContext.ISXGlassPipe.MessageReceived += msg => Dispatcher.Invoke(() => HandleISXGlassMessage(msg));
+        GlassContext.ISXGlassPipe.MessageReceived += msg => Dispatcher.Invoke(() => GlassContext.ProfileManager.HandleISXGlassMessage(msg));
         GlassContext.ISXGlassPipe.Start();
 
         GlassContext.KeyboardManager = new KeyboardManager();
@@ -456,97 +456,6 @@ public partial class MainWindow : Window
         }
     }
 
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleISXGlassMessage
-    //
-    // Parses and dispatches messages received from ISXGlass over the notify pipe.
-    //
-    // msg:  The message received
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    private void HandleISXGlassMessage(string msg)
-    {
-        DebugLog.Write(LogChannel.ISXGlass, $"ISXGlass: message in {msg}", LogLevel.Trace);
-        var parts = msg.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0)
-        {
-            return;
-        }
-
-        string messageId = parts[0];
-
-        switch (messageId)
-        {
-            // connect ONE session
-            case "session_connected":
-                {
-                    if (parts.Length < 4)
-                    {
-                        DebugLog.Write(LogChannel.ISXGlass, $"ISXGlass: malformed session_connected: {msg}", LogLevel.Trace);
-                        return;
-                    }
-
-                    string sessionName = parts[1];
-                    uint pid = uint.Parse(parts[2]);
-                    IntPtr hwnd = (IntPtr)Convert.ToUInt64(parts[3], 16);
-
-                    string characterName = string.Empty;
-
-                    if (GlassContext.ProfileManager.HasActiveProfile)
-                    {
-                        bool hasId = uint.TryParse(sessionName.Substring(2), out uint accountId);
-                        if (! hasId)
-                        {
-                            DebugLog.Write(LogChannel.ISXGlass, $"ISXGlass: no integer account-id: {sessionName}", LogLevel.Warn);
-                            return;
-                        }
-
-                        characterName = GlassContext.ProfileManager.GetCharacterNameByAccountId(accountId);
-                        DebugLog.Write(LogChannel.Sessions, $"session connected: {sessionName}, pid={pid}, character={characterName}", LogLevel.Trace);
-                        GlassContext.SessionRegistry.OnSessionConnected(sessionName, characterName, pid, hwnd);
-                        int slot = GlassContext.ProfileManager.GetSlotForCharacter(characterName);
-                        if (slot == -1)
-                        {
-                            return;
-                        }
-
-                        string cmd = $"slot_assign {slot} {sessionName} {hwnd:X}";
-                        DebugLog.Write(LogChannel.Sessions, $"HandleISXGlassMessage: sending {cmd}", LogLevel.Trace);
-                        GlassContext.GlassVideoPipe.Send(cmd);
-                    }
-                    else
-                    {
-                        DebugLog.Write(LogChannel.Sessions, $"session connected: {sessionName}, pid={pid}, no active profile.", LogLevel.Trace);
-                        GlassContext.SessionRegistry.OnSessionConnected(sessionName, characterName, pid, hwnd);
-                    }
-
-                    break;
-                }
-
-            case "session_disconnected":
-                {
-                    if (parts.Length < 2)
-                    {
-                        DebugLog.Write(LogChannel.Sessions, $"ISXGlass: malformed session_disconnected: {msg}", LogLevel.Trace);
-                        return;
-                    }
-
-                    string sessionName = parts[1];
-                    DebugLog.Write(LogChannel.Sessions, $"session_disconnected: {sessionName}", LogLevel.Trace);
-                    GlassContext.GlassVideoPipe.Send($"unassign {sessionName}");
-                    if (GlassContext.SessionRegistry != null)
-                    {
-                        GlassContext.SessionRegistry.OnSessionDisconnected(sessionName);
-                    }
-
-                    break;
-                }
-
-            default:
-                DebugLog.Write(LogChannel.ISXGlass, msg);
-                break;
-        }
-    }
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // OnAllSessionsDisconnected
     //

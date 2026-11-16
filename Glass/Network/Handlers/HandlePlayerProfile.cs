@@ -236,8 +236,6 @@ public class HandlePlayerProfile : OpcodeHandler
                 if (metadata.Character == null)
                 {
                     GlassContext.SessionRegistry.IdentifySession(character, metadata);
-                    DebugLog.Write(LogChannel.Inference, "identifying port " + metadata.DestPort + " as " + name,
-                        LogLevel.Trace);
                 }
 			}
         }
