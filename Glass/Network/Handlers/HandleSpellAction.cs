@@ -92,7 +92,7 @@ public class HandleSpellAction : OpcodeHandler
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
             uint spellGem = _extractor.GetUIntAt(_spellGemSlot);
-            uint spellID = _extractor.GetUIntAt(_spellGemSlot);
+            uint spellID = _extractor.GetUIntAt(_spellIDSlot);
             uint action = _extractor.GetUIntAt(_actionSlot);
         }
         finally
@@ -125,7 +125,7 @@ public class HandleSpellAction : OpcodeHandler
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
 
             uint spellGem = _extractor.GetUIntAt(_spellGemSlot);
-            uint spellID = _extractor.GetUIntAt(_spellGemSlot);
+            uint spellID = _extractor.GetUIntAt(_spellIDSlot);
             uint action = _extractor.GetUIntAt(_actionSlot);
         }
         finally
