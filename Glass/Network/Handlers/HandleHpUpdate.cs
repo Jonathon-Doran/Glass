@@ -151,6 +151,7 @@ public class HandleHpUpdate : OpcodeHandler
         FieldDisplayNode root = new FieldDisplayNode();
         ZoneId zoneId = GlassContext.SessionRegistry.ZoneFromMetadata(metadata);
         string characterName = "Unknown";
+        uint currentHP = 0;
 
         try
         {
@@ -159,7 +160,7 @@ public class HandleHpUpdate : OpcodeHandler
             SpawnId playerId = (SpawnId) _extractor.GetUIntAt(_playerIdSlot);
             characterName = ZoneRepository.Instance.LookupSpawnName(zoneId, playerId);
 
-            uint currentHP = _extractor.GetUIntAt(_currentHPSlot);
+            currentHP = _extractor.GetUIntAt(_currentHPSlot);
             uint maxHP = _extractor.GetUIntAt(_maxHPSlot);
 
             FieldNodes.AddLabeledNode(_extractor, _playerIdSlot, "Spawn: " + characterName + " (" +
@@ -173,7 +174,7 @@ public class HandleHpUpdate : OpcodeHandler
             _extractor.Release();
         }
 
-        root.Text = "HP Update (" + characterName + ")";
+        root.Text = "HP Update (" + characterName + "=" + currentHP + ")";
         return root;
     }
 }

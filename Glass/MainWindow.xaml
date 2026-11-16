@@ -41,7 +41,8 @@
                 <MenuItem Header="Manage Machines..." Click="ManageMachines_Click"/>
                 <MenuItem x:Name="ManageVideoSourcesMenuItem" Header="Manage VideoSources..." Click="ManageVideoSources_Click"/>
                 <MenuItem x:Name="ManageVideoDestinationsMenuItem" Header="Manage VideoDestinations..." Click="ManageVideoDestinations_Click"/>
-
+                <MenuItem Header="_Group Browser..." Click="MenuItem_GroupBrowser_Click"/>
+                
                 <MenuItem x:Name="MenuToggleOsd" Header="Toggle OSD" SubmenuOpened="MenuToggleOsd_SubmenuOpened">
                     <MenuItem Header="G15" Tag="{x:Static models:KeyboardType.G15}" Click="ToggleOsd_Click"/>
                     <MenuItem Header="G13" Tag="{x:Static models:KeyboardType.G13}" Click="ToggleOsd_Click"/>

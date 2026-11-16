@@ -88,11 +88,12 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
+        InitializeLogging();
+
         GlassContext.ProfileManager = new ProfileManager();
         GlassContext.KeyboardManager = new KeyboardManager();
         GlassContext.KeyboardManager.Start();
 
-        InitializeLogging();
         DebugLog.Write(LogChannel.InferenceDebug, "Inference application started", LogLevel.Trace);
         DebugLog.Write(LogChannel.Inference, "Inference log initialized", LogLevel.Trace);
 
@@ -113,7 +114,6 @@ public partial class MainWindow : Window
         GlassContext.SessionRegistry.AllSessionsDisconnected += OnAllSessionsDisconnected;
 
         UpdateControlStates();
-        GlassContext.KeyboardManager.Shutdown();
 
         _retainedBufferPool = new RetainedBufferPool();
         _packetCatalog = new PacketCatalog(_retainedBufferPool);
@@ -162,9 +162,10 @@ public partial class MainWindow : Window
         DebugLog.AddHandler(LogSink.InferenceDebugTab, debugTabHandler);
         DebugLog.Route(LogChannel.InferenceDebug, LogSink.InferenceDebugTab);
 
-        GlassDebugLogHandler aux1Handler = new GlassDebugLogHandler("database.log");
+        GlassDebugLogHandler aux1Handler = new GlassDebugLogHandler("input.log");
         DebugLog.AddHandler(LogSink.Aux1LogFile, aux1Handler);
-        DebugLog.Route(LogChannel.Database, LogSink.Aux1LogFile);
+        DebugLog.Route(LogChannel.Input, LogSink.Aux1LogFile);
+        DebugLog.Route(LogChannel.Profiles, LogSink.Aux1LogFile);
 
         GlassDebugLogHandler aux2Handler = new GlassDebugLogHandler("ui.log");
         DebugLog.AddHandler(LogSink.Aux2LogFile, aux2Handler);

@@ -16,6 +16,8 @@ namespace Glass.Input;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 public class HidManager
 {
+    private const LogLevel defaultLoglevel = LogLevel.Info;
+
     private readonly ConcurrentQueue<HidKeyEventArgs> _keyQueue = new();
     private readonly ConcurrentQueue<HidAxisEventArgs> _axisQueue = new();
     private readonly List<HidDeviceReader> _readers = new();
@@ -65,18 +67,18 @@ public class HidManager
             HidDeviceReader reader = new HidDeviceReader(devicePath, instance, parser, _keyQueue, _axisQueue, _deliverySignal);
             _readers.Add(reader);
 
-            DebugLog.Write(LogChannel.Input, $"HidManager: discovered {instance}, reader constructed.", LogLevel.Trace);
+            DebugLog.Write(LogChannel.Input, $"HidManager: discovered {instance}, reader constructed.", defaultLoglevel);
 
             if (_ledBuilderFactories.TryGetValue(instance.Pid, out Func<IBuildLedReport>? factory))
             {
                 _ledWriters[instance] = new HidDeviceWriter(devicePath, instance);
                 _ledBuilders[instance] = factory();
 
-                DebugLog.Write(LogChannel.Input, $"HidManager: {instance} supports LED output, writer constructed.", LogLevel.Trace);
+                DebugLog.Write(LogChannel.Input, $"HidManager: {instance} supports LED output, writer constructed.", defaultLoglevel);
             }
         }
 
-        DebugLog.Write(LogChannel.Input, $"HidManager: discovery complete, {_readers.Count} device(s), {_ledWriters.Count} LED-capable.", LogLevel.Trace);
+        DebugLog.Write(LogChannel.Input, $"HidManager: discovery complete, {_readers.Count} device(s), {_ledWriters.Count} LED-capable.", defaultLoglevel);
     }
 
 
@@ -97,7 +99,7 @@ public class HidManager
             instances.Add(reader.Instance);
         }
 
-        DebugLog.Write(LogChannel.Input, $"HidManager.GetConnectedInstances: {instances.Count} instance(s).", LogLevel.Trace);
+        DebugLog.Write(LogChannel.Input, $"HidManager.GetConnectedInstances: {instances.Count} instance(s).", defaultLoglevel);
         return instances;
     }
 
@@ -115,7 +117,7 @@ public class HidManager
     {
         foreach (var pid in pids)
         {
-            DebugLog.Write(LogChannel.Input, $"HidKeyInput.RegisterParser: pid='{pid}' device={parser.Device}.", LogLevel.Trace);
+            DebugLog.Write(LogChannel.Input, $"HidKeyInput.RegisterParser: pid='{pid}' device={parser.Device}.", defaultLoglevel);
             _parsers[pid] = parser;
         }
     }
@@ -135,7 +137,7 @@ public class HidManager
     {
         foreach (var pid in pids)
         {
-            DebugLog.Write(LogChannel.Input, $"HidManager.RegisterLedBuilder: pid='{pid}'.", LogLevel.Trace);
+            DebugLog.Write(LogChannel.Input, $"HidManager.RegisterLedBuilder: pid='{pid}'.", defaultLoglevel);
             _ledBuilderFactories[pid] = factory;
         }
     }
@@ -155,7 +157,7 @@ public class HidManager
             return;
         }
 
-        DebugLog.Write(LogChannel.Input, $"HidManager.Start: starting {_readers.Count} reader(s), {_ledWriters.Count} LED writer(s).", LogLevel.Trace);
+        DebugLog.Write(LogChannel.Input, $"HidManager.Start: starting {_readers.Count} reader(s), {_ledWriters.Count} LED writer(s).", defaultLoglevel);
 
         foreach (HidDeviceReader reader in _readers)
         {
@@ -181,7 +183,7 @@ public class HidManager
         };
         _deliveryThread.Start();
 
-        DebugLog.Write(LogChannel.Input, "HidManager.Start: running.", LogLevel.Trace);
+        DebugLog.Write(LogChannel.Input, "HidManager.Start: running.", defaultLoglevel);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -200,7 +202,7 @@ public class HidManager
             return;
         }
 
-        DebugLog.Write(LogChannel.Input, "HidManager.Stop: stopping.", LogLevel.Trace);
+        DebugLog.Write(LogChannel.Input, "HidManager.Stop: stopping.", defaultLoglevel);
 
         _running = false;
         _deliverySignal.Release();
@@ -218,7 +220,7 @@ public class HidManager
         _deliveryThread?.Join(TimeSpan.FromSeconds(3));
         _deliveryThread = null;
 
-        DebugLog.Write(LogChannel.Input, "HidManager.Stop: stopped.", LogLevel.Trace);
+        DebugLog.Write(LogChannel.Input, "HidManager.Stop: stopped.", defaultLoglevel);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -230,7 +232,7 @@ public class HidManager
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private void DeliveryThread()
     {
-        DebugLog.Write(LogChannel.Input, "HidManager.DeliveryThread: starting.", LogLevel.Trace);
+        DebugLog.Write(LogChannel.Input, "HidManager.DeliveryThread: starting.", defaultLoglevel);
 
         while (_running)
         {
@@ -238,7 +240,7 @@ public class HidManager
 
             while (_keyQueue.TryDequeue(out var keyArgs))
             {
-                DebugLog.Write(LogChannel.Input, $"HidManager.DeliveryThread: delivering raw key='{keyArgs.KeyName}' {keyArgs.Device} isPressed={keyArgs.IsPressed}.", LogLevel.Trace);
+                DebugLog.Write(LogChannel.Input, $"HidManager.DeliveryThread: delivering raw key='{keyArgs.KeyName}' {keyArgs.Device} isPressed={keyArgs.IsPressed}.", defaultLoglevel);
 
                 try
                 {
@@ -278,7 +280,7 @@ public class HidManager
             Thread.Sleep(10);
         }
 
-        DebugLog.Write(LogChannel.Input, "HidManager.DeliveryThread: exiting.", LogLevel.Trace);
+        DebugLog.Write(LogChannel.Input, "HidManager.DeliveryThread: exiting.", defaultLoglevel);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -301,7 +303,7 @@ public class HidManager
 
         if (deviceCount == 0)
         {
-            DebugLog.Write(LogChannel.Input, "HidKeyInput.EnumerateDevices: no Raw Input devices found.");
+            DebugLog.Write(LogChannel.Input, "HidKeyInput.EnumerateDevices: no Raw Input devices found.", defaultLoglevel);
             return results;
         }
 
@@ -310,11 +312,11 @@ public class HidManager
 
         if (found == unchecked((uint)-1))
         {
-            DebugLog.Write(LogChannel.Input, $"HidKeyInput.EnumerateDevices: GetRawInputDeviceList failed error={Marshal.GetLastWin32Error()}.");
+            DebugLog.Write(LogChannel.Input, $"HidKeyInput.EnumerateDevices: GetRawInputDeviceList failed error={Marshal.GetLastWin32Error()}.", defaultLoglevel);
             return results;
         }
 
-        DebugLog.Write(LogChannel.Input, $"HidKeyInput.EnumerateDevices: scanning {found} devices.");
+        DebugLog.Write(LogChannel.Input, $"HidKeyInput.EnumerateDevices: scanning {found} devices.", defaultLoglevel);
 
         for (int i = 0; i < found; i++)
         {
@@ -350,11 +352,11 @@ public class HidManager
 
             var instance = new HidDeviceInstance(parser.Device, count, deviceId);
 
-            DebugLog.Write(LogChannel.Input, $"HidKeyInput.EnumerateDevices: found deviceId='{deviceId}', {instance}, path='{path}'.", LogLevel.Info);
+            DebugLog.Write(LogChannel.Input, $"HidKeyInput.EnumerateDevices: found deviceId='{deviceId}', {instance}, path='{path}'.",  defaultLoglevel);
             results.Add((instance, path));
         }
 
-        DebugLog.Write(LogChannel.Input, $"HidKeyInput.EnumerateDevices: found {results.Count} Logitech HID devices.", LogLevel.Info);
+        DebugLog.Write(LogChannel.Input, $"HidKeyInput.EnumerateDevices: found {results.Count} Logitech HID devices.", defaultLoglevel);
         return results;
     }
 
@@ -369,7 +371,7 @@ public class HidManager
     {
         bool connected = _readers.Any(reader => reader.DeviceType == type);
 
-        DebugLog.Write(LogChannel.Input, $"HidKeyInput.IsDeviceConnected: type={type} connected={connected}.", LogLevel.Trace);
+        DebugLog.Write(LogChannel.Input, $"HidKeyInput.IsDeviceConnected: type={type} connected={connected}.", defaultLoglevel);
 
         return connected;
     }
@@ -541,6 +543,6 @@ public class HidManager
             writer.SendReport(report);
         }
 
-        DebugLog.Write(LogChannel.Input, $"HidManager.SendLedColors: {instance} sent {reports.Count} report(s).", LogLevel.Trace);
+        DebugLog.Write(LogChannel.Input, $"HidManager.SendLedColors: {instance} sent {reports.Count} report(s).", defaultLoglevel);
     }
 }

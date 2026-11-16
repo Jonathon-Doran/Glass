@@ -38,12 +38,12 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        InitializeLogging();
+
         SetDatabaseMenuState(false);
         AutoLoadDatabase();
 
         GlassContext.ProfileManager = new ProfileManager();
-
-        InitializeLogging();
 
         if (Database.IsInitialized)
         {
@@ -139,10 +139,11 @@ public partial class MainWindow : Window
         GlassDebugLogHandler inputLogHandler = new GlassDebugLogHandler("input.log");
         DebugLog.AddHandler(LogSink.Aux3LogFile, inputLogHandler);
         DebugLog.Route(LogChannel.Input, LogSink.Aux3LogFile);
+        DebugLog.Route(LogChannel.Profiles, LogSink.Aux3LogFile);
 
-                GlassDebugLogHandler lowNetLogHandler = new GlassDebugLogHandler("lowNetwork.log");
-               DebugLog.AddHandler(LogSink.Aux2LogFile, lowNetLogHandler);
-              DebugLog.Route(LogChannel.LowNetwork, LogSink.Aux2LogFile);
+        GlassDebugLogHandler lowNetLogHandler = new GlassDebugLogHandler("lowNetwork.log");
+        DebugLog.AddHandler(LogSink.Aux2LogFile, lowNetLogHandler);
+        DebugLog.Route(LogChannel.LowNetwork, LogSink.Aux2LogFile);
 
         GlassConsoleLogHandler glassConsoleLogHandler = new GlassConsoleLogHandler(ConsoleOutput, ConsoleScroller);
         DebugLog.AddHandler(LogSink.GlassConsole, glassConsoleLogHandler);
@@ -259,7 +260,9 @@ public partial class MainWindow : Window
             var sessionItem = new MenuItem { Header = name, Tag = "recent" };
             sessionItem.Click += async (s, e) =>
             {
-                await GlassContext.ProfileManager.LaunchProfile(name);
+                DebugLog.Write(LogChannel.Profiles, "MainWindow.BuildRecentProfilesMenu: recent item launching '"
+                    + name + "'.", LogLevel.Trace);
+                await LaunchNamedProfile(name);
             };
             MenuSessions.Items.Add(sessionItem);
         }
@@ -367,100 +370,6 @@ public partial class MainWindow : Window
 
         ConsoleInput.Clear();
         e.Handled = true;
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // PushRelayGroupState
-    //
-    // Sends the full relay group membership state for the given profile to ISXGlass.
-    // Sends one message per group: "relaygroup <groupId> <characterId1> <characterId2>..."
-    // Groups with no profile members are skipped.
-    // Called on ISXGlass connect if a profile is active, and on profile load if already connected.
-    //
-    // profileId:  The profile whose relay group state to push
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void PushRelayGroupState(int profileId)
-    {
-        List<RelayGroup> groups = new RelayGroupGateway().GetAllGroupsForProfile(profileId);
-
-        foreach (RelayGroup group in groups)
-        {
-            if (group.Characters.Count == 0)
-            {
-                continue;
-            }
-
-            System.Text.StringBuilder sb = new System.Text.StringBuilder();
-            sb.Append($"relay_group {group.Id}");
-            foreach (Character character in group.Characters)
-            {
-                sb.Append($" {character.DatabaseId}");
-            }
-
-            string message = sb.ToString();
-            GlassContext.ISXGlassPipe.Send(message);
-        }
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // PushCommandState
-    //
-    // Sends all command definitions to ISXGlass over the pipe.
-    // Sends cmd_define for each command, followed by cmd_step for each step.
-    // Key alias values are resolved to their actual keystroke strings before sending.
-    // Called as part of profile launch after new_profile is sent.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void PushCommandState()
-    {
-        List<Command> commands = new CommandGateway().GetAllCommands();
-        KeyAliasGateway aliasRepo = new KeyAliasGateway();
-
-        foreach (Command command in commands)
-        {
-            Command? full = new CommandGateway().GetCommand(command.Id);
-            if (full == null)
-            {
-                DebugLog.Write(LogChannel.ISXGlass, $"MainWindow.PushCommandState: commandId={command.Id} not found, skipping.", LogLevel.Trace);
-                continue;
-            }
-
-            if (full.Steps.Count == 0)
-            {
-                DebugLog.Write(LogChannel.ISXGlass, $"MainWindow.PushCommandState: commandId={command.Id} name='{command.Name}' has no steps, skipping.", LogLevel.Trace);
-                continue;
-            }
-
-            GlassContext.ISXGlassPipe.Send($"cmd_define {full.Id}");
-
-            foreach (CommandStep step in full.Steps.OrderBy(s => s.Sequence))
-            {
-                string value = step.Value;
-                string message;
-
-                if (step.Type == "pageload")
-                {
-                    continue;
-                }
-
-                if (step.Type == "key")
-                {
-                    string? resolved = aliasRepo.Resolve(value);
-                    if (resolved != null)
-                    {
-                        value = resolved;
-                    }
-                    message = $"cmd_step {full.Id} {step.Sequence} {step.Type} {step.PressType} {step.DelayMs} {value}";
-                }
-                else
-                {
-                    message = $"cmd_step {full.Id} {step.Sequence} {step.Type} {step.DelayMs} {value}";
-                }
-
-                GlassContext.ISXGlassPipe.Send(message);
-            }
-        }
-
-        DebugLog.Write(LogChannel.ISXGlass, "MainWindow.PushCommandState: done.", LogLevel.Trace);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -768,10 +677,7 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     // MenuItem_Launch_Click
     //
-    // Opens the profile launch dialog and launches the chosen profile.  When no profile is
-    // active, sets the current patch level from the profile's server type before launching.
-    // When a profile is active, the launch request is passed on without loading the chosen
-    // profile or changing the patch level.
+    // Opens the profile launch dialog and launches the chosen profile.
     //
     // sender:  The menu item that raised the event.
     // e:       Standard event args; not inspected.
@@ -785,24 +691,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (GlassContext.ProfileManager.HasActiveProfile)
-        {
-            DebugLog.Write(LogChannel.Profiles, "MainWindow.MenuItem_Launch_Click: a profile is active, passing '"
-                + select.SelectedProfileName + "' on without changing the patch level.", LogLevel.Trace);
-            await GlassContext.ProfileManager.LaunchProfile(select.SelectedProfileName);
-            return;
-        }
-
-        ProfileRepository repo = ProfileRepository.Instance;
-        repo.LoadProfile(select.SelectedProfileName);
-        string serverType = repo.GetServerType();
-
-        GlassContext.CurrentPatchLevel = GlassContext.PatchRegistry.LoadLatestPatchLevel(serverType);
-        DebugLog.Write(LogChannel.General,
-            "MenuItem_Launch_Click: patch level set for serverType=" + serverType, LogLevel.Trace);
-        OpcodeDispatch.RebuildForCurrentPatchLevel();
-
-        await GlassContext.ProfileManager.LaunchProfile(select.SelectedProfileName);
+        DebugLog.Write(LogChannel.Profiles, "MainWindow.MenuItem_Launch_Click: launching '"
+            + select.SelectedProfileName + "'.", LogLevel.Trace);
+        await LaunchNamedProfile(select.SelectedProfileName);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1048,6 +939,64 @@ public partial class MainWindow : Window
         }
 
         DebugLog.Write(LogChannel.General, $"MainWindow.MenuItem_GenerateEQUI_Click: done. {characters.Count} characters processed.", LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // MenuItem_GroupBrowser_Click
+    //
+    // Opens a modeless Group Browser owned by this window.
+    //
+    // sender:  The menu item.
+    // e:       The routed event args.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void MenuItem_GroupBrowser_Click(object sender, RoutedEventArgs e)
+    {
+        GroupBrowser browser = new GroupBrowser();
+        browser.Owner = this;
+        browser.Show();
+        DebugLog.Write(LogChannel.General, "MainWindow.MenuItem_GroupBrowser_Click: Group Browser opened",
+            LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // LaunchNamedProfile
+    //
+    // Launches the named profile.  When no profile is active, loads the profile to read its
+    // server type, sets the current patch level to the latest level for that server type, and
+    // rebuilds opcode dispatch before launching.  When a profile is active, the launch request
+    // is passed on without changing the patch level.
+    //
+    // profileName:  The name of the profile to launch.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private async Task LaunchNamedProfile(string profileName)
+    {
+        if (GlassContext.ProfileManager.HasActiveProfile)
+        {
+            DebugLog.Write(LogChannel.Profiles, "MainWindow.LaunchNamedProfile: a profile is active, passing '"
+                + profileName + "' on without changing the patch level.", LogLevel.Trace);
+            await GlassContext.ProfileManager.LaunchProfile(profileName);
+            return;
+        }
+
+        ProfileRepository repo = ProfileRepository.Instance;
+        repo.LoadProfile(profileName);
+        string serverType = repo.GetServerType();
+
+        GlassContext.CurrentPatchLevel = GlassContext.PatchRegistry.LoadLatestPatchLevel(serverType);
+        DebugLog.Write(LogChannel.Profiles, "MainWindow.LaunchNamedProfile: patch level set for serverType="
+            + serverType, LogLevel.Trace);
+        OpcodeDispatch.RebuildForCurrentPatchLevel();
+
+        bool launched = await GlassContext.ProfileManager.LaunchProfile(profileName);
+        if (!launched)
+        {
+            DebugLog.Write(LogChannel.Profiles, "MainWindow.LaunchNamedProfile: '" + profileName
+                + "' was not launched.", LogLevel.Error);
+            return;
+        }
+
+        DebugLog.Write(LogChannel.Profiles, "MainWindow.LaunchNamedProfile: '" + profileName + "' launched.",
+            LogLevel.Trace);
     }
 
     private void UpdateToolsMenuState()
