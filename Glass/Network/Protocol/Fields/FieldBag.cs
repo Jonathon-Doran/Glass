@@ -477,8 +477,7 @@ public sealed class FieldBag
                 + fieldSlot.GetName(this) + "' at index " + slot.Index
                 + " failed with " + result + ", slot type is " + fieldSlot.Type;
             DebugLog.Write(LogChannel.Fields, readFailure);
-            // FIXME -- here to keep us from crashing until Tracking fully implemented
-            // Environment.FailFast(readFailure);
+            Environment.FailFast(readFailure);
         }
         return value;
     }
@@ -596,7 +595,7 @@ public sealed class FieldBag
                 + fieldSlot.GetName(this) + "' at index " + slot.Index
                 + " failed with result " + result + ", slot type expected " + fieldSlot.Type;
             DebugLog.Write(LogChannel.Fields, readFailure);
-          //  Environment.FailFast(readFailure);
+            Environment.FailFast(readFailure);
         }
         return value;
     }

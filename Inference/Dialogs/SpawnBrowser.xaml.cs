@@ -253,7 +253,7 @@ public class SpawnBrowserRow
     public uint Type { get; }
     public string Unknown1 { get; }
     public string Unknown2 { get; }
-    public uint Unknown3 { get; }
+    public float Unknown3 { get; }
     public uint C { get; }
     public uint Model { get; }
     public uint Class { get; }

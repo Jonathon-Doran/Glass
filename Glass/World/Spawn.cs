@@ -32,7 +32,7 @@ public class Spawn
     public uint Type;
     public float Unknown1;
     public uint Unknown2;
-    public uint Unknown3;
+    public float Unknown3;
     public uint C;
     public uint Model;
     public uint Class;

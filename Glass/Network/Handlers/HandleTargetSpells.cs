@@ -29,7 +29,7 @@ public class HandleTargetSpells: OpcodeHandler
     private readonly SlotId _buffsGateSlot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleBuffTimers  (constructor)
+    // HandleTargetSpells (constructor)
     //
     // Resolves the opcode and caches the field slots this handler reads.
     //
@@ -75,7 +75,7 @@ public class HandleTargetSpells: OpcodeHandler
     {
         switch (metadata.Channel)
         {
-            case SoeConstants.StreamId.StreamClientToZone:
+            case SoeConstants.StreamId.StreamZoneToClient:
                 HandleZoneToClient(data, metadata);
                 break;
         }
@@ -84,7 +84,7 @@ public class HandleTargetSpells: OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleClientToZone
     //
-    // Processes client-to-zone traffic
+    // Processes zone-to-client traffic
     //
     // data:      The application payload
     // metadata:  Packet metadata (timestamp, source/dest)
@@ -115,10 +115,6 @@ public class HandleTargetSpells: OpcodeHandler
             for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
             {
                 _extractor.EnterGate(entriesGate, bagIndex);
-
-                uint playerID = _extractor.GetUIntAt(_playerIdSlot);
-                uint interTickGap = _extractor.GetUIntAt(_interTickGapSlot);
-                uint kind = _extractor.GetUIntAt(_kindSlot);
             }
         }
         finally
@@ -130,7 +126,7 @@ public class HandleTargetSpells: OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Describe
     //
-    // Extracts OP_BuffTimers against the active patch and builds a display tree: a root node for
+    // Extracts OP_TargetSpells against the active patch and builds a display tree: a root node for
     // the collection with one leaf child per field each carrying its payload byte range.
     //
     // data:      The application payload

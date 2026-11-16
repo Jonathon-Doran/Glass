@@ -126,7 +126,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         uint type;
         float unknown1;
         uint unknown2;
-        uint unknown3;
+        float unknown3;
         uint C;
         string lastName;
         uint ownerId;
@@ -156,7 +156,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             type = _extractor.GetUIntAt(_type_Slot);
             unknown1 = _extractor.GetFloatAt(_unknown_1_Slot);
             unknown2 = _extractor.GetUIntAt(_unknown_2_Slot);
-            unknown3 = _extractor.GetUIntAt(_unknown_3_Slot);
+            unknown3 = _extractor.GetFloatAt(_unknown_3_Slot);
             C = _extractor.GetUIntAt(_C_Slot);
             lastName = _extractor.GetStringAt(_lastname_Slot);
             ownerId = _extractor.GetUIntAt(_ownerId_Slot);
@@ -381,6 +381,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             FieldNodes.AddUIntNode(_extractor, _isPlayer_Slot, "Player", root, "D");
             FieldNodes.AddFloatNode(_extractor, _unknown_1_Slot, "Unknown 1", root, "F2");
             FieldNodes.AddUIntNode(_extractor, _unknown_2_Slot, "Unknown 2", root, "?");
+            FieldNodes.AddFloatNode(_extractor, _unknown_3_Slot, "Unknown 3", root, "?");
             FieldNodes.AddUIntNode(_extractor, _C_Slot, "C", root, "D");
 
             uint bagCount = _extractor.BagCount(quadsGate);

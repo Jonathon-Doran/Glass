@@ -201,7 +201,7 @@ public class HandleBuffTimers : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Describe
     //
-    // Extracts OP_BuffTimers against the active patch and builds a display tree: a root node for
+    // Extracts OP_Buff_Timers against the active patch and builds a display tree: a root node for
     // the collection with one leaf child per field each carrying its payload byte range.
     //
     // data:      The application payload

@@ -1331,10 +1331,10 @@ public class HandleInventory : OpcodeHandler
         FieldNodes.AddUIntNode(_extractor, _Skill_Max_Change_Slot, "Skill Max Change", itemNode, "D");
 
 
-        FieldNodes.AddUIntNode(_extractor, _Field_7_Slot, "Field 7", itemNode, "?");
+        FieldNodes.AddUInt64Node(_extractor, _Field_7_Slot, "Field 7", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_8_Slot, "Field 8", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_9_Slot, "Field 9", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_10_Slot, "Field 10", itemNode, "?");
+        FieldNodes.AddUInt64Node(_extractor, _Field_10_Slot, "Field 10", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_11_Slot, "Timestamp", itemNode);
         FieldNodes.AddUIntNode(_extractor, _IsAttuned_Slot, "Is Attuned", itemNode, "D");
         FieldNodes.AddUIntNode(_extractor, _Field_14_Slot, "Field 14", itemNode, "?");
@@ -1359,7 +1359,7 @@ public class HandleInventory : OpcodeHandler
         FieldNodes.AddUIntNode(_extractor, _DF_13_Slot, "DF 13", itemNode, "?");
 
         FieldNodes.AddUIntNode(_extractor, _Field_2C_Slot, "Field 2C", itemNode, "?");
-        FieldNodes.AddUIntNode(_extractor, _Field_30_Slot, "Field 30", itemNode, "?");
+        FieldNodes.AddUInt64Node(_extractor, _Field_30_Slot, "Field 30", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_48_Slot, "Field 48", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_D3_Slot, "Field D3", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_D4_Slot, "Field D4", itemNode, "?");
@@ -1419,7 +1419,7 @@ public class HandleInventory : OpcodeHandler
 
         // blob 4DC
 
-        FieldNodes.AddUIntNode(_extractor, _Field_21C_Slot, "Field 21C", itemNode, "?");
+        FieldNodes.AddFloatNode(_extractor, _Field_21C_Slot, "Field 21C", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_52C_Slot, "Field 52C", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_530_Slot, "Field 530", itemNode, "?");
         FieldNodes.AddUIntNode(_extractor, _Field_540_Slot, "Field 540", itemNode, "?");

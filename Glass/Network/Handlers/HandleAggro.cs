@@ -92,7 +92,12 @@ public class HandleAggro: OpcodeHandler
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
-            uint playerId = _extractor.GetUIntAt(_playerIdSlot);
+            SpawnId playerId = SpawnId.None;
+
+            if (_extractor.IsPresent(_playerIdSlot))
+            {
+                playerId = (SpawnId)_extractor.GetUIntAt(_playerIdSlot);
+            }
 
             GateHandle entryGate = _extractor.GetGateAt(_entryGateSlot);
             if (entryGate.Exists == true)
