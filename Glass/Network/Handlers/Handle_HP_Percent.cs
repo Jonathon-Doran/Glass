@@ -110,6 +110,7 @@ public class HandleHP_Percent: OpcodeHandler
         FieldDisplayNode root = new FieldDisplayNode();
         ZoneId zoneId = GlassContext.SessionRegistry.ZoneFromMetadata(metadata);
         string spawnName;
+        uint percent;
 
         try
         {
@@ -126,14 +127,14 @@ public class HandleHP_Percent: OpcodeHandler
             FieldNodes.AddLabeledNode(_extractor, _spawnIDSlot, "Spawn: " + spawnName + " (" +
                 spawnId + ", 0x" + spawnId.Value.ToString("X4") + ")", root);
 
-            FieldNodes.AddUIntNode(_extractor, _percentSlot, "Percent", root, "D");
+            percent = FieldNodes.AddUIntNode(_extractor, _percentSlot, "Percent", root, "D");
         }
         finally
         {
             _extractor.Release();
         }
 
-        root.Text = "HP Percent (" + spawnName + ")";
+        root.Text = "HP Percent (" + spawnName + " " + percent + "%)";
         return root;
     }
 }

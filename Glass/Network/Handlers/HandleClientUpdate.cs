@@ -212,15 +212,13 @@ public class HandleClientUpdate : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public override uint ResolveVersion(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        switch (metadata.Channel)
+        if (metadata.ToServer)
         {
-            case SoeConstants.StreamId.StreamClientToZone:
-                return 1;
-
-            case SoeConstants.StreamId.StreamZoneToClient:
-                return 2;
+            return 1;
         }
-
-        return 0;
+        else
+        {
+            return 2;
+        }
     }
 }

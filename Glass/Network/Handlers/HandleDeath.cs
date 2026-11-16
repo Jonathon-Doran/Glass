@@ -4,6 +4,7 @@ using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
+using Glass.World;
 using System;
 using System.Buffers.Binary;
 using System.Security.Policy;
@@ -20,8 +21,11 @@ public class HandleDeath : OpcodeHandler
     private readonly CollectionHandle _collectionHandle;
     private readonly GateDefinitionHandle _top_level_gate;
 
-    private readonly SlotId _spawnIdSlot;
-    private readonly SlotId _killerIdSlot;
+    private readonly SlotId _spawnId_Slot;
+    private readonly SlotId _killerId_Slot;
+    private readonly SlotId _spellId_Slot;
+    private readonly SlotId _damage_Slot;
+    private readonly SlotId _skill_Slot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleDeath (constructor)
@@ -49,8 +53,11 @@ public class HandleDeath : OpcodeHandler
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_Death");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
 
-        _spawnIdSlot = _registry.IndexOfField(_collectionHandle, "spawn_id");
-        _killerIdSlot = _registry.IndexOfField(_collectionHandle, "killer_id");
+        _spawnId_Slot = _registry.IndexOfField(_collectionHandle, "spawn_id");
+        _killerId_Slot = _registry.IndexOfField(_collectionHandle, "killer_id");
+        _spellId_Slot = _registry.IndexOfField(_collectionHandle, "spell_id");
+        _damage_Slot = _registry.IndexOfField(_collectionHandle, "damage");
+        _skill_Slot = _registry.IndexOfField(_collectionHandle, "skill");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -93,8 +100,8 @@ public class HandleDeath : OpcodeHandler
                 return;
             }
 
-            spawnId = _extractor.GetUIntAt(_spawnIdSlot);
-            killerId = _extractor.GetUIntAt(_killerIdSlot);
+            spawnId = _extractor.GetUIntAt(_spawnId_Slot);
+            killerId = _extractor.GetUIntAt(_killerId_Slot);
 
         }
         finally
@@ -131,17 +138,25 @@ public class HandleDeath : OpcodeHandler
                 return root;
             }
 
-            SpawnId spawnId = (SpawnId)_extractor.GetUIntAt(_spawnIdSlot);
-            SpawnId killerId = (SpawnId)_extractor.GetUIntAt(_killerIdSlot);
+            SpawnId spawnId = (SpawnId)_extractor.GetUIntAt(_spawnId_Slot);
+            SpawnId killerId = (SpawnId)_extractor.GetUIntAt(_killerId_Slot);
+            SpellId spellId = (SpellId)_extractor.GetUIntAt(_spellId_Slot);
+            uint skillId = _extractor.GetUIntAt(_skill_Slot);
 
             targetName = ZoneRepository.Instance.LookupSpawnName(zoneId, spawnId);
             killerName = ZoneRepository.Instance.LookupSpawnName(zoneId, killerId);
 
-            FieldNodes.AddLabeledNode(_extractor, _spawnIdSlot, "Target: " + targetName + " (" +
+            FieldNodes.AddLabeledNode(_extractor, _spawnId_Slot, "Target: " + targetName + " (" +
                     spawnId + ", 0x" + spawnId.Value.ToString("X4") + ")", root);
 
-            FieldNodes.AddLabeledNode(_extractor, _spawnIdSlot, "Killer: " + killerName + " (" +
+            FieldNodes.AddLabeledNode(_extractor, _spawnId_Slot, "Killer: " + killerName + " (" +
                     killerId + ", 0x" + killerId.Value.ToString("X4") + ")", root);
+            FieldNodes.AddLabeledNode(_extractor, _skill_Slot, "Skill: " + Skills.GetSkillName(skillId), root);
+
+            string spellName = SpellCatalog.Instance.LookupSpell(spellId);
+            FieldNodes.AddLabeledNode(_extractor, _spellId_Slot, "Spell: " + spellName + " (" +
+                spellId + ", 0x" + spellId.Value.ToString("X4") + ")", root);
+            FieldNodes.AddUIntNode(_extractor, _damage_Slot, "Damage", root, "D");
         }
         finally
         {

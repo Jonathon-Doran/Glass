@@ -36,6 +36,7 @@ public partial class OpcodeTracePresenter
             OnMatch,
             OnRow
         }
+        private const LogLevel defaultLoglevel = LogLevel.Trace;
 
         private readonly OpcodeTracePresenter _owner;
         private CursorState _state;
@@ -133,7 +134,7 @@ public partial class OpcodeTracePresenter
         public void SetWrap(bool wrap)
         {
             DebugLog.Write(LogChannel.Opcodes,
-                "SearchCursor.SetWrap: " + _wrap + " -> " + wrap, LogLevel.Trace);
+                "SearchCursor.SetWrap: " + _wrap + " -> " + wrap, defaultLoglevel);
 
             _wrap = wrap;
         }
@@ -163,7 +164,7 @@ public partial class OpcodeTracePresenter
             if (object.ReferenceEquals(newRow, _currentRow))
             {
                 DebugLog.Write(LogChannel.Opcodes,
-                    "SearchCursor.TransitionToRow: already on target row, no change", LogLevel.Trace);
+                    "SearchCursor.TransitionToRow: already on target row, no change", defaultLoglevel);
                 return;
             }
 
@@ -172,12 +173,12 @@ public partial class OpcodeTracePresenter
                 _currentRow.IsCursorRow = false;
                 DebugLog.Write(LogChannel.Opcodes,
                     "SearchCursor.TransitionToRow: cleared border on packetIndex "
-                    + _currentRow.PacketIndex, LogLevel.Trace);
+                    + _currentRow.PacketIndex, defaultLoglevel);
             }
             else
             {
                 DebugLog.Write(LogChannel.Opcodes,
-                    "SearchCursor.TransitionToRow: no outgoing row to clear", LogLevel.Trace);
+                    "SearchCursor.TransitionToRow: no outgoing row to clear", defaultLoglevel);
             }
 
             _currentRow = newRow;
@@ -193,7 +194,7 @@ public partial class OpcodeTracePresenter
             newRow.IsCursorRow = true;
             DebugLog.Write(LogChannel.Opcodes,
                 "SearchCursor.TransitionToRow: set border on packetIndex "
-                + newRow.PacketIndex, LogLevel.Trace);
+                + newRow.PacketIndex, defaultLoglevel);
         }
 
         ///////////////////////////////////////////////////////////////////////////////////////
@@ -232,7 +233,7 @@ public partial class OpcodeTracePresenter
                     Repaint(outgoingElement);
                     DebugLog.Write(LogChannel.Opcodes,
                         "SearchCursor.BringCursorIntoView: painted match at packetIndex "
-                        + match.PacketIndex + " in place, no scroll", LogLevel.Trace);
+                        + match.PacketIndex + " in place, no scroll", defaultLoglevel);
                     return;
                 }
 
@@ -243,7 +244,7 @@ public partial class OpcodeTracePresenter
 
                 DebugLog.Write(LogChannel.Opcodes,
                     "SearchCursor.BringCursorIntoView: scrolling match at packetIndex "
-                    + match.PacketIndex + " into view, paint deferred to settled", LogLevel.Trace);
+                    + match.PacketIndex + " into view, paint deferred to settled", defaultLoglevel);
             }
         }
 
@@ -282,7 +283,7 @@ public partial class OpcodeTracePresenter
                     outgoingElement = _owner._matches[(int)_matchIndex].Element;
                     DebugLog.Write(LogChannel.Opcodes,
                         "SearchCursor.MoveToMessage: captured outgoing element at match index "
-                        + _matchIndex, LogLevel.Trace);
+                        + _matchIndex, defaultLoglevel);
                 }
                 else
                 {
@@ -333,11 +334,13 @@ public partial class OpcodeTracePresenter
         ///////////////////////////////////////////////////////////////////////////////////////
         // AdvanceForward
         //
-        // Moves the cursor to the next live match, pruning stale matches as they are encountered.
-        // From a match the scan starts after it; from a row the scan starts at the first match at
-        // or after the row's position.  With wrap set the end continues from index zero; with wrap
-        // off reaching the end leaves the cursor unchanged.  The cursor is also left unchanged when
-        // no live match is found.  On landing the cursor-row border is maintained and the match is
+        // Moves the cursor to the next live match on a visible row, pruning stale matches as
+        // they are encountered.  A match whose row is hidden is skipped and left in the list, so
+        // it is found again once the row is shown.  From a match the scan starts after it; from
+        // a row the scan starts at the first match at or after the row's position.  With wrap
+        // set the end continues from index zero; with wrap off reaching the end leaves the
+        // cursor unchanged.  The cursor is also left unchanged when no live match on a visible
+        // row is found.  On landing the cursor-row border is maintained and the match is
         // centered in the list.
         ///////////////////////////////////////////////////////////////////////////////////////
         public void AdvanceForward()
@@ -346,7 +349,6 @@ public partial class OpcodeTracePresenter
             {
                 return;
             }
-
 
             // capture the outgoing match's element before the walk, while _matchIndex still names
             // the pre-move match; a mid-walk prune can shift the list past recovery afterward.
@@ -375,6 +377,7 @@ public partial class OpcodeTracePresenter
 
             uint examined = 0u;
             uint limit = (uint)_owner._matches.Count;
+            uint hiddenSkipped = 0u;
 
             while (examined < limit)
             {
@@ -383,14 +386,14 @@ public partial class OpcodeTracePresenter
                     if (_wrap == false)
                     {
                         DebugLog.Write(LogChannel.Opcodes,
-                            "SearchCursor.AdvanceForward: end reached, wrap off, cursor unchanged",
-                            LogLevel.Trace);
+                            "SearchCursor.AdvanceForward: end reached, wrap off, cursor unchanged ("
+                            + hiddenSkipped + " hidden match(es) skipped)", defaultLoglevel);
                         return;
                     }
 
                     globalMatchIndex = 0u;
                     DebugLog.Write(LogChannel.Opcodes,
-                        "SearchCursor.AdvanceForward: wrapped to index 0", LogLevel.Trace);
+                        "SearchCursor.AdvanceForward: wrapped to index 0", defaultLoglevel);
                 }
 
                 if (_owner.RemoveMatchIfStale(globalMatchIndex) == true)
@@ -399,7 +402,16 @@ public partial class OpcodeTracePresenter
                     continue;
                 }
 
-                SearchMatch matchTest = _owner._matches[(int) globalMatchIndex];
+                SearchMatch candidate = _owner._matches[(int)globalMatchIndex];
+                OpcodeTraceRow? candidateRow;
+                if (_owner._rowByPacketIndex.TryGetValue(candidate.PacketIndex, out candidateRow)
+                    && candidateRow.IsHidden)
+                {
+                    hiddenSkipped = hiddenSkipped + 1u;
+                    examined = examined + 1u;
+                    globalMatchIndex = globalMatchIndex + 1u;
+                    continue;
+                }
 
                 SetCursorOnMatch(globalMatchIndex);
 
@@ -412,28 +424,38 @@ public partial class OpcodeTracePresenter
                         + " has no row in map", LogLevel.Warn);
                 }
 
+                DebugLog.Write(LogChannel.Opcodes,
+                    "SearchCursor.AdvanceForward: landed on index " + globalMatchIndex + " after skipping "
+                    + hiddenSkipped + " hidden match(es)", defaultLoglevel);
+
                 TransitionToRow(newRow);
                 BringCursorIntoView(outgoingElement, true);
                 return;
             }
+
+            DebugLog.Write(LogChannel.Opcodes,
+                "SearchCursor.AdvanceForward: no live match on a visible row, cursor unchanged ("
+                + hiddenSkipped + " hidden match(es) skipped)", defaultLoglevel);
         }
 
         ///////////////////////////////////////////////////////////////////////////////////////
         // AdvanceBackward
         //
-        // Moves the cursor to the previous live match, pruning stale matches as they are
-        // encountered.  From a match the scan starts before it; from a row the scan starts at the
-        // last match at or before the row's position.  With wrap set, passing index zero continues
-        // from the last index; with wrap off, passing the start leaves the cursor unchanged.  The
-        // cursor is also left unchanged when no live match is found.  On landing the cursor-row
-        // border is maintained and the match is centered in the list.
+        // Moves the cursor to the previous live match on a visible row, pruning stale matches as
+        // they are encountered.  A match whose row is hidden is skipped and left in the list, so
+        // it is found again once the row is shown.  From a match the scan starts before it; from
+        // a row the scan starts at the last match at or before the row's position.  With wrap
+        // set, passing index zero continues from the last index; with wrap off, passing the
+        // start leaves the cursor unchanged.  The cursor is also left unchanged when no live
+        // match on a visible row is found.  On landing the cursor-row border is maintained and
+        // the match is centered in the list.
         ///////////////////////////////////////////////////////////////////////////////////////
         public void AdvanceBackward()
         {
             if (_owner._matches.Count == 0)
             {
                 DebugLog.Write(LogChannel.Opcodes,
-                    "SearchCursor.AdvanceBackward: empty match list, cursor unchanged", LogLevel.Trace);
+                    "SearchCursor.AdvanceBackward: empty match list, cursor unchanged", defaultLoglevel);
                 return;
             }
 
@@ -462,14 +484,14 @@ public partial class OpcodeTracePresenter
                     {
                         DebugLog.Write(LogChannel.Opcodes,
                             "SearchCursor.AdvanceBackward: at start, wrap off, cursor unchanged",
-                            LogLevel.Trace);
+                            defaultLoglevel);
                         return;
                     }
 
                     globalMatchIndex = (uint)_owner._matches.Count - 1u;
                     DebugLog.Write(LogChannel.Opcodes,
                         "SearchCursor.AdvanceBackward: wrapped to last index " + globalMatchIndex,
-                        LogLevel.Trace);
+                        defaultLoglevel);
                 }
                 else
                 {
@@ -486,12 +508,13 @@ public partial class OpcodeTracePresenter
             {
                 DebugLog.Write(LogChannel.Opcodes,
                     "SearchCursor.AdvanceBackward: no match at or before row, cursor unchanged",
-                    LogLevel.Trace);
+                    defaultLoglevel);
                 return;
             }
 
             uint examined = 0u;
             uint limit = (uint)_owner._matches.Count;
+            uint hiddenSkipped = 0u;
 
             while (examined < limit)
             {
@@ -503,7 +526,7 @@ public partial class OpcodeTracePresenter
                     {
                         DebugLog.Write(LogChannel.Opcodes,
                             "SearchCursor.AdvanceBackward: list emptied by pruning, cursor unchanged",
-                            LogLevel.Trace);
+                            defaultLoglevel);
                         return;
                     }
 
@@ -517,14 +540,45 @@ public partial class OpcodeTracePresenter
                         {
                             DebugLog.Write(LogChannel.Opcodes,
                                 "SearchCursor.AdvanceBackward: start reached after prune, wrap off, cursor unchanged",
-                                LogLevel.Trace);
+                                defaultLoglevel);
                             return;
                         }
 
                         globalMatchIndex = (uint)_owner._matches.Count - 1u;
                         DebugLog.Write(LogChannel.Opcodes,
                             "SearchCursor.AdvanceBackward: wrapped to last index " + globalMatchIndex
-                            + " after prune", LogLevel.Trace);
+                            + " after prune", defaultLoglevel);
+                    }
+                    else
+                    {
+                        globalMatchIndex = globalMatchIndex - 1u;
+                    }
+
+                    continue;
+                }
+
+                SearchMatch candidate = _owner._matches[(int)globalMatchIndex];
+                OpcodeTraceRow? candidateRow;
+                if (_owner._rowByPacketIndex.TryGetValue(candidate.PacketIndex, out candidateRow)
+                    && candidateRow.IsHidden)
+                {
+                    hiddenSkipped = hiddenSkipped + 1u;
+                    examined = examined + 1u;
+
+                    if (globalMatchIndex == 0u)
+                    {
+                        if (_wrap == false)
+                        {
+                            DebugLog.Write(LogChannel.Opcodes,
+                                "SearchCursor.AdvanceBackward: start reached past hidden rows, wrap off, cursor unchanged ("
+                                + hiddenSkipped + " hidden match(es) skipped)", defaultLoglevel);
+                            return;
+                        }
+
+                        globalMatchIndex = (uint)_owner._matches.Count - 1u;
+                        DebugLog.Write(LogChannel.Opcodes,
+                            "SearchCursor.AdvanceBackward: wrapped to last index " + globalMatchIndex
+                            + " past hidden rows", defaultLoglevel);
                     }
                     else
                     {
@@ -535,8 +589,8 @@ public partial class OpcodeTracePresenter
                 }
 
                 DebugLog.Write(LogChannel.Opcodes,
-                    "SearchCursor.AdvanceBackward: live match found at index " + globalMatchIndex,
-                    LogLevel.Trace);
+                    "SearchCursor.AdvanceBackward: live match found at index " + globalMatchIndex
+                    + " after skipping " + hiddenSkipped + " hidden match(es)", defaultLoglevel);
 
                 SetCursorOnMatch(globalMatchIndex);
 
@@ -555,7 +609,8 @@ public partial class OpcodeTracePresenter
             }
 
             DebugLog.Write(LogChannel.Opcodes,
-                "SearchCursor.AdvanceBackward: cursor unchanged, no live match found", LogLevel.Trace);
+                "SearchCursor.AdvanceBackward: no live match on a visible row, cursor unchanged ("
+                + hiddenSkipped + " hidden match(es) skipped)", defaultLoglevel);
         }
 
         ///////////////////////////////////////////////////////////////////////////////////////
@@ -582,7 +637,7 @@ public partial class OpcodeTracePresenter
                 _matchIndex = _matchIndex - 1u;
                 DebugLog.Write(LogChannel.Opcodes,
                     "SearchCursor.NotifyMatchRemoved: removal at " + removedIndex
-                    + " below cursor, match index now " + _matchIndex, LogLevel.Trace);
+                    + " below cursor, match index now " + _matchIndex, defaultLoglevel);
                 return;
             }
 
@@ -591,7 +646,7 @@ public partial class OpcodeTracePresenter
                 _matchIndexValid = false;
                 DebugLog.Write(LogChannel.Opcodes,
                     "SearchCursor.NotifyMatchRemoved: cursor's own match removed at " + removedIndex
-                    + ", index invalidated for anchor re-resolve", LogLevel.Trace);
+                    + ", index invalidated for anchor re-resolve", defaultLoglevel);
             }
         }
 
@@ -685,7 +740,7 @@ public partial class OpcodeTracePresenter
                 {
                     DebugLog.Write(LogChannel.Opcodes,
                         "SearchCursor.StartIndexForAnchorBackward: resolved to index " + candidateIndex
-                        + " same packet, rowTextOffset=" + candidate.Element.RowTextOffset, LogLevel.Trace);
+                        + " same packet, rowTextOffset=" + candidate.Element.RowTextOffset, defaultLoglevel);
                     found = true;
                     return candidateIndex;
                 }
@@ -694,7 +749,7 @@ public partial class OpcodeTracePresenter
                 {
                     DebugLog.Write(LogChannel.Opcodes,
                         "SearchCursor.StartIndexForAnchorBackward: resolved to index " + candidateIndex
-                        + " packetIndex=" + candidate.PacketIndex, LogLevel.Trace);
+                        + " packetIndex=" + candidate.PacketIndex, defaultLoglevel);
                     found = true;
                     return candidateIndex;
                 }
@@ -703,7 +758,7 @@ public partial class OpcodeTracePresenter
             DebugLog.Write(LogChannel.Opcodes,
                 "SearchCursor.StartIndexForAnchorBackward: no match at or before anchor packetIndex "
                 + _rowPacketIndex + " rowTextOffset=" + _anchorTextOffset
-                + ", cursor will be left unchanged", LogLevel.Trace);
+                + ", cursor will be left unchanged", defaultLoglevel);
             found = false;
             return 0u;
         }
@@ -740,7 +795,7 @@ public partial class OpcodeTracePresenter
 
             DebugLog.Write(LogChannel.Opcodes,
                 "SearchCursor.SetCursorOnMatch: index " + newIndex + " packetIndex "
-                + _rowPacketIndex + " anchorOffset " + _anchorTextOffset, LogLevel.Trace);
+                + _rowPacketIndex + " anchorOffset " + _anchorTextOffset, defaultLoglevel);
         }
 
         ///////////////////////////////////////////////////////////////////////////////////////
@@ -795,7 +850,7 @@ public partial class OpcodeTracePresenter
                     DebugLog.Write(LogChannel.Opcodes,
                         "SearchCursor.StartIndexForRowBackward: row " + _rowPacketIndex + " starts at index "
                         + candidateIndex + " (packetIndex=" + candidate.PacketIndex + "), skipped " + skipped
-                        + " stale match(es)", LogLevel.Trace);
+                        + " stale match(es)", defaultLoglevel);
                     found = true;
                     return candidateIndex;
                 }
@@ -803,7 +858,7 @@ public partial class OpcodeTracePresenter
 
             DebugLog.Write(LogChannel.Opcodes,
                 "SearchCursor.StartIndexForRowBackward: no live match at or before row " + _rowPacketIndex
-                + ", skipped " + skipped + " stale match(es)", LogLevel.Trace);
+                + ", skipped " + skipped + " stale match(es)", defaultLoglevel);
             found = false;
             return 0u;
         }
@@ -840,14 +895,14 @@ public partial class OpcodeTracePresenter
                     DebugLog.Write(LogChannel.Opcodes,
                         "SearchCursor.StartIndexForRow: row " + _rowPacketIndex + " starts at index " + i
                         + " (packetIndex=" + candidate.PacketIndex + "), skipped " + skipped
-                        + " stale match(es)", LogLevel.Trace);
+                        + " stale match(es)", defaultLoglevel);
                     return i;
                 }
             }
 
             DebugLog.Write(LogChannel.Opcodes,
                 "SearchCursor.StartIndexForRow: no live match at or after row " + _rowPacketIndex
-                + ", skipped " + skipped + " stale match(es)", LogLevel.Trace);
+                + ", skipped " + skipped + " stale match(es)", defaultLoglevel);
             return (uint)_owner._matches.Count;
         }
 
@@ -895,12 +950,12 @@ public partial class OpcodeTracePresenter
                 outgoingElement.NotifySpansChanged();
                 DebugLog.Write(LogChannel.Opcodes,
                     "SearchCursor.Repaint: notified outgoing element to clear stale cursor span",
-                    LogLevel.Trace);
+                    defaultLoglevel);
             }
 
             DebugLog.Write(LogChannel.Opcodes,
                 "SearchCursor.Repaint: stamped " + stamped + " cursor span(s) at match index "
-                + _matchIndex, LogLevel.Trace);
+                + _matchIndex, defaultLoglevel);
         }
 
         ///////////////////////////////////////////////////////////////////////////////////////

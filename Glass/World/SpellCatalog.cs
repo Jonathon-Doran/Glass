@@ -536,6 +536,11 @@ public class SpellCatalog
     {
         string spellName;
         SpellRecord? record;
+        if (spellId == 0xffffffff)
+        {
+            return "None";
+        }
+
         if (TryGet(spellId, out record) == true)
         {
             spellName = record.Name;
