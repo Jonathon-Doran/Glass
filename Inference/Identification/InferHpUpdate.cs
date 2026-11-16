@@ -224,11 +224,11 @@ public class InferHpUpdate : IInferOpcodes
     ///////////////////////////////////////////////////////////////////////////////////////////
     private static bool PassesMaxHp(ReadOnlySpan<byte> payload, Character character)
     {
-        long expectedMaxHp = character.MaxHP!.Value;
+        ulong expectedMaxHp = character.MaxHP!.Value;
 
         for (int offset = 0; offset + 4 <= payload.Length; offset++)
         {
-            long value = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(offset));
+            ulong value = BinaryPrimitives.ReadUInt64LittleEndian(payload.Slice(offset));
             if (value == expectedMaxHp)
             {
                 return true;

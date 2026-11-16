@@ -87,8 +87,8 @@ public class HandleHpUpdate : OpcodeHandler
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
             SpawnId spawnId = (SpawnId)_extractor.GetUIntAt(_playerIdSlot);
-            uint wireMaxHP = _extractor.GetUIntAt(_maxHPSlot);
-            uint wireCurrentHP = _extractor.GetUIntAt(_currentHPSlot);
+            ulong wireMaxHP = _extractor.GetUInt64At(_maxHPSlot);
+            long wireCurrentHP = _extractor.GetInt64At(_currentHPSlot);
 
             if (metadata.Session == null)
             {
@@ -124,7 +124,7 @@ public class HandleHpUpdate : OpcodeHandler
             }
 
             character.MaxHP = wireMaxHP + (uint)wornHP;
-            character.CurrentHP = wireCurrentHP + (uint)wornHP;
+            character.CurrentHP = wireCurrentHP + wornHP;
             DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleZoneToClient: '" + character.Name
                 + "' reported to itself, worn HP bonus " + wornHP + " added: current " + character.CurrentHP
                 + ", max " + character.MaxHP, LogLevel.Trace);
@@ -151,7 +151,7 @@ public class HandleHpUpdate : OpcodeHandler
         FieldDisplayNode root = new FieldDisplayNode();
         ZoneId zoneId = GlassContext.SessionRegistry.ZoneFromMetadata(metadata);
         string characterName = "Unknown";
-        uint currentHP = 0;
+        long currentHP = 0;
 
         try
         {
@@ -160,14 +160,14 @@ public class HandleHpUpdate : OpcodeHandler
             SpawnId playerId = (SpawnId) _extractor.GetUIntAt(_playerIdSlot);
             characterName = ZoneRepository.Instance.LookupSpawnName(zoneId, playerId);
 
-            currentHP = _extractor.GetUIntAt(_currentHPSlot);
-            uint maxHP = _extractor.GetUIntAt(_maxHPSlot);
+            currentHP = _extractor.GetInt64At(_currentHPSlot);
+            ulong maxHP = _extractor.GetUInt64At(_maxHPSlot);
 
             FieldNodes.AddLabeledNode(_extractor, _playerIdSlot, "Spawn: " + characterName + " (" +
                     playerId + ", 0x" + playerId.Value.ToString("X4") + ")", root);
 
-            FieldNodes.AddUIntNode(_extractor, _currentHPSlot, "Current HP", root, "D");
-            FieldNodes.AddUIntNode(_extractor, _maxHPSlot, "Max HP", root, "D");
+            FieldNodes.AddInt64Node(_extractor, _currentHPSlot, "Current HP", root, "D");
+            FieldNodes.AddUInt64Node(_extractor, _maxHPSlot, "Max HP", root, "D");
         }
         finally
         {

@@ -255,6 +255,8 @@ public partial class MainWindow : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
     {
+        GlassContext.KeyboardManager.UnloadProfile();
+        GlassContext.KeyboardManager.Shutdown();
         GlassContext.BufferPool.LogStatistics();
 
         DebugLog.Write(LogChannel.InferenceDebug, "Inference application closing", LogLevel.Trace);

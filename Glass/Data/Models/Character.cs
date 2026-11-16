@@ -56,9 +56,9 @@ public class Character
 
     public uint? Level { get; set; }
     public uint? PracticePoints { get; set; }
-    public uint? CurrentHP { get; set; }
+    public long? CurrentHP { get; set; }
     public ZoneId CurrentZone { get; set; }
-    public uint? MaxHP { get; set; }
+    public ulong? MaxHP { get; set; }
     public uint? CurrentMana { get; set; }
     public uint? MaxMana { get; set; }
     public uint? Strength { get; set; }
