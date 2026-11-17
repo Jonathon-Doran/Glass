@@ -86,31 +86,43 @@ public class HandleDamage : OpcodeHandler
         }
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // HandleZoneToClient
-    //
-    // Processes zone-to-client traffic
-    //
-    // data:      The application payload
-    // metadata:  Packet metadata (timestamp, source/dest)
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
-        uint targetId;
-        uint attackerId;
-
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
             if (!rootGate.Exists)
             {
-                DebugLog.Write(LogChannel.Opcodes, "HandleDeath:  No RootGate", LogLevel.Error);
+                DebugLog.Write(LogChannel.Opcodes, "HandleDamage.HandleZoneToClient: no root gate", LogLevel.Error);
                 return;
             }
 
-            targetId = _extractor.GetUIntAt(_targetId_Slot);
-            attackerId = _extractor.GetUIntAt(_attackerId_Slot);
+            SpawnId targetId = (SpawnId)_extractor.GetUIntAt(_targetId_Slot);
+            SpawnId attackerId = (SpawnId)_extractor.GetUIntAt(_attackerId_Slot);
+            uint damage = _extractor.GetUIntAt(_damage_Slot);
+            uint flags = _extractor.GetUIntAt(_flags_Slot);
+            SpellId spellId = (SpellId)_extractor.GetUIntAt(_spellId_Slot);
+            uint skillId = _extractor.GetUIntAt(_skill_Slot);
 
+            if (metadata.Session == null)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleDamage.HandleZoneToClient: no session for target "
+                    + targetId + "; not recorded", LogLevel.Warn);
+                return;
+            }
+
+            ZoneId zoneId = metadata.Session.ZoneId;
+            string targetName = ZoneRepository.Instance.LookupSpawnName(zoneId, targetId);
+            string attackerName = ZoneRepository.Instance.LookupSpawnName(zoneId, attackerId);
+
+            DebugLog.Write(LogChannel.Opcodes, "HandleDamage.HandleZoneToClient: " + attackerName + " hit "
+                + targetName + " for " + damage + ", flags 0x" + flags.ToString("X2") + ", spell " + spellId
+                + ", skill 0x" + skillId.ToString("X4"), LogLevel.Trace);
+
+            DebugLog.Write(LogChannel.DataLogging, "DMG," + metadata.MessageId + ","
+                + metadata.Timestamp.ToString("HH:mm:ss.fff") + "," + targetName + "," + attackerName + ","
+                + metadata.CharacterName + "," + damage + ",0x" + flags.ToString("X2") + "," + spellId
+                + ",0x" + skillId.ToString("X4"), LogLevel.Info);
         }
         finally
         {

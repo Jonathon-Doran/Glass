@@ -123,8 +123,6 @@ public partial class MainWindow : Window
         DebugLog.Route(LogChannel.Pipes, LogSink.GlassDebugLogfile);
         DebugLog.Route(LogChannel.Video, LogSink.GlassDebugLogfile);
         DebugLog.Route(LogChannel.Sessions, LogSink.GlassDebugLogfile);
-        DebugLog.Route(LogChannel.Profiles, LogSink.GlassDebugLogfile);
-        // DebugLog.Route(LogChannel.Input, LogSink.GlassDebugLogfile);
         DebugLog.Route(LogChannel.Database, LogSink.GlassDebugLogfile);
         DebugLog.Route(LogChannel.LowNetwork, LogSink.GlassDebugLogfile);
         DebugLog.Route(LogChannel.Network, LogSink.GlassDebugLogfile);
@@ -132,22 +130,23 @@ public partial class MainWindow : Window
         DebugLog.Route(LogChannel.Opcodes, LogSink.GlassDebugLogfile);
         DebugLog.Route(LogChannel.Inference, LogSink.GlassDebugLogfile);
 
-        GlassDebugLogHandler memoryLogHandler = new GlassDebugLogHandler("memory.log");
-        DebugLog.AddHandler(LogSink.Aux1LogFile, memoryLogHandler);
-        DebugLog.Route(LogChannel.Memory, LogSink.Aux1LogFile);
+        GlassDebugLogHandler aux1Handler = new GlassDebugLogHandler("datalog.log");
+        DebugLog.AddHandler(LogSink.Aux1LogFile, aux1Handler);
+        DebugLog.Route(LogChannel.DataLogging, LogSink.Aux1LogFile);
 
-        GlassDebugLogHandler inputLogHandler = new GlassDebugLogHandler("input.log");
-        DebugLog.AddHandler(LogSink.Aux3LogFile, inputLogHandler);
-        DebugLog.Route(LogChannel.Input, LogSink.Aux3LogFile);
-        DebugLog.Route(LogChannel.Profiles, LogSink.Aux3LogFile);
+        GlassDebugLogHandler aux2Handler = new GlassDebugLogHandler("lowNetwork.log");
+        DebugLog.AddHandler(LogSink.Aux2LogFile, aux2Handler);
+      //  DebugLog.Route(LogChannel.LowNetwork, LogSink.Aux2LogFile);
 
-        GlassDebugLogHandler lowNetLogHandler = new GlassDebugLogHandler("lowNetwork.log");
-        DebugLog.AddHandler(LogSink.Aux2LogFile, lowNetLogHandler);
-        DebugLog.Route(LogChannel.LowNetwork, LogSink.Aux2LogFile);
+        GlassDebugLogHandler aux3Handler = new GlassDebugLogHandler("input.log");
+        DebugLog.AddHandler(LogSink.Aux3LogFile, aux3Handler);
+      //  DebugLog.Route(LogChannel.Input, LogSink.Aux3LogFile);
+      //  DebugLog.Route(LogChannel.Profiles, LogSink.Aux3LogFile);
 
-        GlassConsoleLogHandler glassConsoleLogHandler = new GlassConsoleLogHandler(ConsoleOutput, ConsoleScroller);
-        DebugLog.AddHandler(LogSink.GlassConsole, glassConsoleLogHandler);
-        DebugLog.Route(LogChannel.General, LogSink.GlassConsole);
+        GlassConsoleLogHandler aux4Handler = new GlassConsoleLogHandler(ConsoleOutput, ConsoleScroller);
+        DebugLog.AddHandler(LogSink.GlassConsole, aux4Handler);
+        // DebugLog.Route(LogChannel.General, LogSink.GlassConsole);
+
         DebugLog.SetMinimumLevel(LogLevel.Trace);
 
         DebugLog.Write(LogChannel.General, "MainWindow: logging initialized", LogLevel.Trace);

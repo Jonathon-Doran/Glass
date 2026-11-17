@@ -34,6 +34,7 @@ public enum LogChannel
     Reference,
     Inventory,
     UI,
+    DataLogging,
     Count
 }
 

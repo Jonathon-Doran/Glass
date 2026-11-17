@@ -161,10 +161,9 @@ public partial class MainWindow : Window
         DebugLog.AddHandler(LogSink.InferenceDebugTab, debugTabHandler);
         DebugLog.Route(LogChannel.InferenceDebug, LogSink.InferenceDebugTab);
 
-        GlassDebugLogHandler aux1Handler = new GlassDebugLogHandler("input.log");
+        GlassDebugLogHandler aux1Handler = new GlassDebugLogHandler("data.log");
         DebugLog.AddHandler(LogSink.Aux1LogFile, aux1Handler);
-        DebugLog.Route(LogChannel.Input, LogSink.Aux1LogFile);
-        DebugLog.Route(LogChannel.Profiles, LogSink.Aux1LogFile);
+        DebugLog.Route(LogChannel.DataLogging, LogSink.Aux1LogFile);
 
         GlassDebugLogHandler aux2Handler = new GlassDebugLogHandler("ui.log");
         DebugLog.AddHandler(LogSink.Aux2LogFile, aux2Handler);
