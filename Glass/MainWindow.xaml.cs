@@ -468,7 +468,6 @@ public partial class MainWindow : Window
 
             default:
                 DebugLog.Write(LogChannel.Console, $"Unknown command: {parts[0]}", LogLevel.Info);
-                DebugLog.Write(LogChannel.Console, "flags:  show the debug log flags", LogLevel.Info);
                 DebugLog.Write(LogChannel.Console, "screenshot <slot>:  save a screenshot from the designated slot next frame", LogLevel.Info);
                 DebugLog.Write(LogChannel.Console, "debugnextframe:  generic debug action for GlassVideo to occur next frame only", LogLevel.Info);
                 break;
