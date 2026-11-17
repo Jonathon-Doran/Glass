@@ -1,8 +1,9 @@
 ﻿using Glass.Core.Logging;
+using Glass.Core.Signals;
 using Glass.Data.Models;
 using Glass.Data.Repositories;
-using Glass.Network.Protocol;
 using Glass.Network.Capture;
+using Glass.Network.Protocol;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -21,6 +22,9 @@ public class ProfileManager
     private ProfileRepository? _activeProfile;
     private readonly HashSet<int> _definedSlots = new();
 
+    private const string UcsKeepaliveCommandName = "UCS Keepalive";
+    private const uint UcsKeepaliveIntervalMs = 15000;
+    private const int AllGroupTarget = 2;
     ///////////////////////////////////////////////////////////////////////////////////////////
     // ActiveProfile
     //
@@ -44,6 +48,7 @@ public class ProfileManager
     public void ClearActiveProfile()
     {
         DebugLog.Write(LogChannel.Profiles, "ProfileManager.ClearActiveProfile: clearing active profile", LogLevel.Trace);
+        GlassContext.SignalBus.Unsubscribe<SignalSessionAdded>(OnSessionAdded);
         GlassContext.KeyboardManager.UnloadProfile();
         _activeProfile = null;
         _definedSlots.Clear();
@@ -119,6 +124,7 @@ public class ProfileManager
         GlassContext.ISXGlassPipe.Send("new_profile");
         PushCommandState();
         PushRelayGroupState(profile.GetId());
+        GlassContext.SignalBus.Subscribe<SignalSessionAdded>(OnSessionAdded);
 
         int layoutId = profile.GetLayoutId() ?? 0;
         if (layoutId != 0)
@@ -174,6 +180,75 @@ public class ProfileManager
 
         DebugLog.Write(LogChannel.Profiles, "ProfileManager.LaunchCharacters: sent launch for "
             + slots.Count + " slots", LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // StartUcsKeepalive
+    //
+    // Starts the UCS keepalive in ISXGlass: the command named by UcsKeepaliveCommandName is
+    // repeated on the All group at UcsKeepaliveIntervalMs, round robin, so one client at a
+    // time sends it.  When no command has that name, nothing is started.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void StartUcsKeepalive()
+    {
+        Command? keepalive = FindUcsKeepaliveCommand();
+        if (keepalive == null)
+        {
+            DebugLog.Write(LogChannel.ISXGlass, "ProfileManager.StartUcsKeepalive: no keepalive command, not started.",
+                LogLevel.Warn);
+            return;
+        }
+
+        string message = "cmd_repeat_start " + keepalive.Id + " " + AllGroupTarget + " "
+            + UcsKeepaliveIntervalMs + " 1";
+        GlassContext.ISXGlassPipe.Send(message);
+        DebugLog.Write(LogChannel.ISXGlass, "ProfileManager.StartUcsKeepalive: sent " + message, LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // StopUcsKeepalive
+    //
+    // Stops the UCS keepalive repeat on the All group in ISXGlass.  When no keepalive command
+    // is defined, nothing is sent.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public void StopUcsKeepalive()
+    {
+        Command? keepalive = FindUcsKeepaliveCommand();
+        if (keepalive == null)
+        {
+            DebugLog.Write(LogChannel.ISXGlass, "ProfileManager.StopUcsKeepalive: no keepalive command, nothing stopped.",
+                LogLevel.Warn);
+            return;
+        }
+
+        string message = "cmd_repeat_stop " + keepalive.Id + " " + AllGroupTarget;
+        GlassContext.ISXGlassPipe.Send(message);
+        DebugLog.Write(LogChannel.ISXGlass, "ProfileManager.StopUcsKeepalive: sent " + message, LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // FindUcsKeepaliveCommand
+    //
+    // Looks up the command named by UcsKeepaliveCommandName in the database.
+    //
+    // Returns:  The command, or null when no command has that name.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private Command? FindUcsKeepaliveCommand()
+    {
+        CommandGateway commandGateway = new CommandGateway();
+        List<Command> commands = commandGateway.GetAllCommands();
+        Command? keepalive = commands.FirstOrDefault(c => c.Name == UcsKeepaliveCommandName);
+
+        if (keepalive == null)
+        {
+            DebugLog.Write(LogChannel.ISXGlass, "ProfileManager.FindUcsKeepaliveCommand: no command named '"
+                + UcsKeepaliveCommandName + "'.", LogLevel.Warn);
+            return null;
+        }
+
+        DebugLog.Write(LogChannel.ISXGlass, "ProfileManager.FindUcsKeepaliveCommand: '" + UcsKeepaliveCommandName
+            + "' is commandId=" + keepalive.Id, LogLevel.Trace);
+        return keepalive;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -482,6 +557,57 @@ public class ProfileManager
                 DebugLog.Write(LogChannel.ISXGlass, "ProfileManager.HandleISXGlassMessage: unhandled message: " + msg, LogLevel.Trace);
                 break;
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // OnSessionAdded
+    //
+    // Handles SignalSessionAdded.  When every character in the active profile has entered a
+    // zone, starts the UCS keepalive.  ISXGlass ignores a start for a repeat that is already
+    // running, so the start is sent on each signal once all characters are in.
+    //
+    // signal:  The signal naming the character whose session was identified.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void OnSessionAdded(SignalSessionAdded signal)
+    {
+        DebugLog.Write(LogChannel.Profiles, "ProfileManager.OnSessionAdded: " + signal.CharacterName
+            + " entered a zone.", LogLevel.Trace);
+
+        if (_activeProfile == null)
+        {
+            DebugLog.Write(LogChannel.Profiles, "ProfileManager.OnSessionAdded: no active profile, keepalive not started.",
+                LogLevel.Trace);
+            return;
+        }
+
+        if (GlassContext.SessionRegistry == null)
+        {
+            DebugLog.Write(LogChannel.Profiles, "ProfileManager.OnSessionAdded: no session registry, keepalive not started.",
+                LogLevel.Warn);
+            return;
+        }
+
+        foreach (SlotAssignment slot in _activeProfile.GetSlots())
+        {
+            Character? character = CharacterRepository.Instance.GetByDatabaseId(slot.DatabaseId);
+            if (character == null)
+            {
+                DebugLog.Write(LogChannel.Profiles, "ProfileManager.OnSessionAdded: no character for id="
+                    + slot.DatabaseId + ", keepalive not started.", LogLevel.Warn);
+                return;
+            }
+
+            if (!GlassContext.SessionRegistry.IsCharacterIdentified(character.Name))
+            {
+                DebugLog.Write(LogChannel.Profiles, "ProfileManager.OnSessionAdded: " + character.Name
+                    + " not yet in a zone, keepalive not started.", LogLevel.Trace);
+                return;
+            }
+        }
+
+        DebugLog.Write(LogChannel.Profiles, "ProfileManager.OnSessionAdded: all profile characters are in a zone.",
+            LogLevel.Trace);
+        StartUcsKeepalive();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

@@ -16,6 +16,7 @@ namespace Glass.Core.Logging;
 public enum LogChannel
 {
     General,
+    Console,
     ISXGlass,
     Pipes,
     Video,

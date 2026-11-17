@@ -325,6 +325,40 @@ public class SessionRegistry
             LogLevel.Warn);
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // IsCharacterIdentified
+    //
+    // Reports whether the named character's session has been identified from network traffic,
+    // meaning the character has entered a zone.
+    //
+    // characterName:  The character to look up.
+    //
+    // Returns:  True when a session for the character has a known session id; false when the
+    //           character has no session or has not yet been identified.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public bool IsCharacterIdentified(string characterName)
+    {
+        lock (_lock)
+        {
+            foreach (KeyValuePair<string, SessionEntry> pair in _sessions)
+            {
+                if (pair.Value.CharacterName != characterName)
+                {
+                    continue;
+                }
+
+                bool identified = pair.Value.Id.Exists;
+                DebugLog.Write(LogChannel.Sessions, "SessionRegistry.IsCharacterIdentified: " + characterName
+                    + " on " + pair.Key + " identified=" + identified, LogLevel.Trace);
+                return identified;
+            }
+        }
+
+        DebugLog.Write(LogChannel.Sessions, "SessionRegistry.IsCharacterIdentified: no session for "
+            + characterName, LogLevel.Trace);
+        return false;
+    }
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // OnPcapReplayFinished
     //

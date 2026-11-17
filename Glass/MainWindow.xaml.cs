@@ -143,9 +143,8 @@ public partial class MainWindow : Window
       //  DebugLog.Route(LogChannel.Input, LogSink.Aux3LogFile);
       //  DebugLog.Route(LogChannel.Profiles, LogSink.Aux3LogFile);
 
-        GlassConsoleLogHandler aux4Handler = new GlassConsoleLogHandler(ConsoleOutput, ConsoleScroller);
-        DebugLog.AddHandler(LogSink.GlassConsole, aux4Handler);
-        // DebugLog.Route(LogChannel.General, LogSink.GlassConsole);
+        GlassConsoleLogHandler consoleHandler = new GlassConsoleLogHandler(ConsoleOutput, ConsoleScroller);
+        DebugLog.AddHandler(LogSink.GlassConsole, consoleHandler);
 
         DebugLog.SetMinimumLevel(LogLevel.Trace);
 
@@ -420,17 +419,16 @@ public partial class MainWindow : Window
                 {
                     if (parts.Length < 2)
                     {
-                        DebugLog.Write(LogChannel.Video, "Usage: /screenshot <slotId>", LogLevel.Info);
+                        DebugLog.Write(LogChannel.Console, "Usage: /screenshot <slotId>", LogLevel.Info);
                         break;
                     }
                     if (!int.TryParse(parts[1], out int slotId))
                     {
-                        DebugLog.Write(LogChannel.Video, "screenshot: invalid slot id.", LogLevel.Warn);
+                        DebugLog.Write(LogChannel.Console, "screenshot: invalid slot id.", LogLevel.Warn);
                         break;
                     }
-                    DebugLog.Write(LogChannel.Video, $"HandleLocalCommand: screenshot slotId={slotId}.", LogLevel.Trace);
                     GlassContext.GlassVideoPipe.Send($"screenshot {slotId}");
-                    DebugLog.Write(LogChannel.Video, $"Screenshot requested for slot {slotId}.", LogLevel.Trace);
+                    DebugLog.Write(LogChannel.Console, $"Screenshot requested for slot {slotId}.", LogLevel.Trace);
                     break;
                 }
 
@@ -446,11 +444,33 @@ public partial class MainWindow : Window
                 StopMovementExperiment();
                 break;
 
+            case "ucs":
+                {
+                    if (parts.Length == 2)
+                    {
+                        if (parts[1].ToLower() == "on")
+                        {
+                            GlassContext.ProfileManager.StartUcsKeepalive();
+                            return;
+                        }
+                        else if (parts[1].ToLower() == "off")
+                        {
+                            GlassContext.ProfileManager.StopUcsKeepalive();
+                            return;
+                        }
+
+                    }
+
+                    DebugLog.Write(LogChannel.Console, "HandleLocalCommand: usage: /ucs {on,off}", LogLevel.Info);
+
+                    break;
+                }
+
             default:
-                DebugLog.Write(LogChannel.Input, $"Unknown command: {parts[0]}", LogLevel.Info);
-                DebugLog.Write(LogChannel.Input, "flags:  show the debug log flags", LogLevel.Info);
-                DebugLog.Write(LogChannel.Input, "screenshot <slot>:  save a screenshot from the designated slot next frame", LogLevel.Info);
-                DebugLog.Write(LogChannel.Input, "debugnextframe:  generic debug action for GlassVideo to occur next frame only", LogLevel.Info);
+                DebugLog.Write(LogChannel.Console, $"Unknown command: {parts[0]}", LogLevel.Info);
+                DebugLog.Write(LogChannel.Console, "flags:  show the debug log flags", LogLevel.Info);
+                DebugLog.Write(LogChannel.Console, "screenshot <slot>:  save a screenshot from the designated slot next frame", LogLevel.Info);
+                DebugLog.Write(LogChannel.Console, "debugnextframe:  generic debug action for GlassVideo to occur next frame only", LogLevel.Info);
                 break;
         }
     }
