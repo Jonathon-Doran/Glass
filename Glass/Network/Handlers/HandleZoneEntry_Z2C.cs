@@ -32,15 +32,21 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
 
     private readonly SlotId _isPlayer_Slot;
     private readonly SlotId _type_Slot;
+    private readonly SlotId _bitmap_Slot;
     private readonly SlotId _unknown_1_Slot;
     private readonly SlotId _unknown_2_Slot;
-    private readonly SlotId _C_Slot;
+    private readonly SlotId _numQuads_Slot;
     private readonly SlotId _quadsGate_Slot;
     private readonly SlotId _A_Slot;
     private readonly SlotId _model_Slot;
+    private readonly SlotId _walkSpeed_Slot;
+    private readonly SlotId _runSpeed_Slot;
     private readonly SlotId _class_Slot;
     private readonly SlotId _lastname_Slot;
-    private readonly SlotId _ownerId_Slot;
+    private readonly SlotId _unknown_4_Slot;
+    private readonly SlotId _unknown_5_Slot;
+    private readonly SlotId _unknown_6_Slot;
+    private readonly SlotId _petOwner_Slot;
 
     private readonly SlotId _quad_Unknown_Slot;
 
@@ -75,15 +81,21 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         _id_Slot = _registry.IndexOfField(_collectionHandle, "character_id");
         _isPlayer_Slot = _registry.IndexOfField(_collectionHandle, "is_player");
         _type_Slot = _registry.IndexOfField(_collectionHandle, "Type");
+        _bitmap_Slot = _registry.IndexOfField(_collectionHandle, "Bitmap");
         _unknown_1_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_1");
         _unknown_2_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_2");
-        _C_Slot = _registry.IndexOfField(_collectionHandle, "C");
+        _unknown_4_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_4");
+        _unknown_5_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_5");
+        _unknown_6_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_6");
+        _numQuads_Slot = _registry.IndexOfField(_collectionHandle, "NumQuads");
         _A_Slot = _registry.IndexOfField(_collectionHandle, "A");
         _model_Slot = _registry.IndexOfField(_collectionHandle, "Model");
+        _walkSpeed_Slot = _registry.IndexOfField(_collectionHandle, "WalkSpeed");
+        _runSpeed_Slot = _registry.IndexOfField(_collectionHandle, "RunSpeed");
         _class_Slot = _registry.IndexOfField(_collectionHandle, "Class");
 
         _lastname_Slot = _registry.IndexOfField(_collectionHandle, "LastName");
-        _ownerId_Slot = _registry.IndexOfField(_collectionHandle, "owner_id");
+        _petOwner_Slot = _registry.IndexOfField(_collectionHandle, "PetOwner");
 
         // Quads slots
         _quad_Unknown_Slot = _registry.IndexOfField(quadCollection, "Unknown");
@@ -92,12 +104,14 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandlePacket
     //
-    // Processes zone-to-client OP_ZoneEntry.  Players are not stored as spawns.  The receiving
+    // Processes zone-to-client OP_ZoneEntry.  A spawn whose Type is above 2 (the known values
+    // are 0 player, 1 NPC, 2 corpse) is written to the Specimens channel with its whole payload
+    // in hex, then processed as usual.  Owned spawns are recorded as companions.  The receiving
     // character's own zone entries are counted on its session, and the character is placed in
     // the zone under the spawn id of the second one; zone entries for any other player are not
-    // used.  Every other spawn is recorded under the receiving character's zone: its mob type
-    // is looked up or created by zone and base name, and the spawn record is created on first
-    // sight and refreshed with the decoded field values on every sight.
+    // used.  Only spawns of Type 1 are recorded as mobs, under the receiving character's zone:
+    // the mob type is looked up or created by zone and base name, and the spawn record is
+    // created on first sight and refreshed with the decoded field values on every sight.
     // A spawn first seen after the receiving session is established is marked as a spawn point.
     // Note that spawns in dynamic zones are not recorded.
     //
@@ -106,6 +120,9 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public override void HandlePacket(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
+        const uint SpawnTypeNpc = 1;   // 0 is a player, 2 is a corpse
+        const uint SpawnTypeHighestKnown = 2;
+
         Character? character = metadata.Character;
 
         if (character == null)
@@ -157,13 +174,23 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             unknown1 = _extractor.GetFloatAt(_unknown_1_Slot);
             unknown2 = _extractor.GetUIntAt(_unknown_2_Slot);
             unknown3 = _extractor.GetFloatAt(_unknown_3_Slot);
-            C = _extractor.GetUIntAt(_C_Slot);
+            C = _extractor.GetUIntAt(_numQuads_Slot);
             lastName = _extractor.GetStringAt(_lastname_Slot);
-            ownerId = _extractor.GetUIntAt(_ownerId_Slot);
+            ownerId = _extractor.GetUIntAt(_petOwner_Slot);
         }
         finally
         {
             _extractor.Release();
+        }
+
+        // Keep any spawn of an unknown type for later inspection
+        if (type > SpawnTypeHighestKnown)
+        {
+            DebugLog.Write(LogChannel.Specimens, "HandleZoneEntry_Z2C: unknown Type " + type + " at "
+                + metadata.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff") + "Z, message " + metadata.MessageId
+                + ", receiver '" + character.Name + "', zoneId=" + zoneId + ", spawnId=0x"
+                + spawnId.ToString("X4") + ", name '" + name + "', " + data.Length + " bytes: "
+                + Convert.ToHexString(data), LogLevel.Warn);
         }
 
         // Owned spawns are companions, not mobs
@@ -236,6 +263,14 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
                     + character.Name + "' spawnId=0x" + spawnId.ToString("X4") + " is provisional; not placed.",
                     LogLevel.Trace);
             }
+            return;
+        }
+
+        // Only NPCs are recorded as mobs; players and corpses are not
+        if (type != SpawnTypeNpc)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: '" + name + "' spawnId=0x"
+                + spawnId.ToString("X4") + " has Type " + type + ", not an NPC; not recorded.", LogLevel.Trace);
             return;
         }
 
@@ -368,7 +403,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
 
             FieldNodes.AddLabeledNode(_extractor, _spawnId_Slot, "Spawn: " + spawnName + " (" +
                     spawnId + ", 0x" + spawnId.Value.ToString("X4") + ")", root);
-            FieldNodes.AddUIntNode(_extractor, _id_Slot, "Persistent ID", root, "X");
+            FieldNodes.AddUIntNode(_extractor, _id_Slot, "Character ID", root, "X");
 
             string name = FieldNodes.AddStringNode(_extractor, _name_Slot, "Name", root);
             FieldNodes.AddUIntNode(_extractor, _level_Slot, "Level", root, "D");
@@ -378,11 +413,18 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             FieldNodes.AddLabeledNode(_extractor, _model_Slot, "Model: " + ModelName + " (" + modelId + ")", root);
 
             FieldNodes.AddUIntNode(_extractor, _class_Slot, "Class", root, "D");
-            FieldNodes.AddUIntNode(_extractor, _isPlayer_Slot, "Player", root, "D");
+            FieldNodes.AddBooleanNode(_extractor, _isPlayer_Slot, "Player", root);
+            FieldNodes.AddUIntNode(_extractor, _type_Slot, "Type", root, "D");
+            FieldNodes.AddUIntNode(_extractor, _bitmap_Slot, "Bitmap", root, "X8");
             FieldNodes.AddFloatNode(_extractor, _unknown_1_Slot, "Unknown 1", root, "F2");
             FieldNodes.AddUIntNode(_extractor, _unknown_2_Slot, "Unknown 2", root, "?");
-            FieldNodes.AddFloatNode(_extractor, _unknown_3_Slot, "Unknown 3", root, "?");
-            FieldNodes.AddUIntNode(_extractor, _C_Slot, "C", root, "D");
+            FieldNodes.AddFloatNode(_extractor, _unknown_3_Slot, "Unknown 3", root);
+            FieldNodes.AddUIntNode(_extractor, _unknown_4_Slot, "Unknown 4", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_5_Slot, "Unknown 5", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_6_Slot, "Unknown 6", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _numQuads_Slot, "Num Quads", root, "D");
+            FieldNodes.AddFloatNode(_extractor, _walkSpeed_Slot, "Walk Speed", root, "F2");
+            FieldNodes.AddFloatNode(_extractor, _runSpeed_Slot, "Run Speed", root, "F2");
 
             uint bagCount = _extractor.BagCount(quadsGate);
             for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
@@ -396,7 +438,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             _extractor.EnterGate(rootGate, 0);
             FieldNodes.AddUIntNode(_extractor, _A_Slot, "A", root, "D");
             FieldNodes.AddStringNode(_extractor, _lastname_Slot, "Lastname", root);
-            FieldNodes.AddUIntNode(_extractor, _ownerId_Slot, "Owner Spawn ID", root);
+            FieldNodes.AddUIntNode(_extractor, _petOwner_Slot, "Owner Spawn ID", root);
         }
         finally
         {

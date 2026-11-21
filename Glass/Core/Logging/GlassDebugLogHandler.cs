@@ -8,8 +8,8 @@ namespace Glass.Core.Logging;
 // GlassDebugLogHandler
 //
 // Writes log messages to the glass.log file in the Logs folder under the
-// solution directory.  Manages its own StreamWriter and lock.  The file is
-// created or overwritten on construction and flushed on every write.
+// solution directory.  Manages its own StreamWriter and lock.  The file is created if missing,
+// then appended to or overwritten on construction as requested, and flushed on every write
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class GlassDebugLogHandler : IHandleLogMessages
 {
@@ -19,12 +19,14 @@ public class GlassDebugLogHandler : IHandleLogMessages
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // GlassDebugLogHandler (constructor)
     //
-    // Opens the glass.log file for writing.  Creates the Logs directory if
-    // it does not exist.  Overwrites any existing file.
+    // Opens the named log file in the Logs folder for writing.  Creates the Logs directory if
+    // it does not exist.  When append is true, writes are added to the end of any existing file;
+    // otherwise any existing file is overwritten.
     //
     // basename:  The base name of the file.  Should be placed in the Logs directory.
+    // append:    True to keep the file's existing contents, false to overwrite them.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    public GlassDebugLogHandler(string basename)
+    public GlassDebugLogHandler(string basename, bool append = false)
     {
         string solutionDirectory = FindSolutionDirectory();
         string logsDirectory = Path.Combine(solutionDirectory, "Logs");
@@ -32,8 +34,11 @@ public class GlassDebugLogHandler : IHandleLogMessages
 
         string logPath = Path.Combine(logsDirectory, basename);
 
-        _writer = new StreamWriter(logPath, append: false);
+        _writer = new StreamWriter(logPath, append);
         _writer.AutoFlush = true;
+
+        DebugLog.Write(LogChannel.General, "GlassDebugLogHandler: opened '" + logPath + "', "
+            + (append ? "appending" : "overwriting") + ".", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

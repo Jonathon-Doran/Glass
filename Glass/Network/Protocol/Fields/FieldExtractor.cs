@@ -619,6 +619,7 @@ public class FieldExtractor
                     }
                 case FieldEncoding.Gate:
                     {
+                        SetCursor(effectiveBitOffset);
                         GateHandle gateHandle = ExpandMultiplicity(definition.Gate, bagHandle, payload);
                         String gateName = GateNameOf(gateHandle);
 

@@ -10,8 +10,8 @@ namespace Glass.Data.Repositories;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // MobSightingGateway
 //
-// Database interface for the MobSightings table, one row per observed spawn instance.  Rows are only ever
-// inserted.  Timestamps are stored as ISO 8601 text.
+// Database interface for the MobSightings table, one row per observed spawn instance.  Timestamps are stored as ISO 8601 text.
+// Existing sightings may have their last observation time updated, but are not otherwise changed.
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 public class MobSightingGateway
 {
@@ -47,10 +47,15 @@ public class MobSightingGateway
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // InsertAll
     //
-    // Inserts one MobSightings row per given Spawn in a single transaction.  A spawn whose MobId is None
-    // is skipped and logged at Warn.  A spawn point's spawn position is written to the spawn coordinate
-    // columns; a spawn with no spawn position writes NULL there.  A failure rolls the transaction back,
-    // leaving no rows from this call.
+    // Records one MobSightings row per given Spawn in a single transaction.  A row is inserted only when no row
+    // exists with the same mob id, zone id, position, level, spawn point flag, and spawn position.  When such a
+    // row exists, its observed time is advanced to the spawn's observed time if that is later; otherwise the row
+    // is left unchanged.  Spawn coordinates are compared with IS so that NULL matches NULL.  Observed times are
+    // compared as ISO 8601 text, which orders correctly because every value is written in the same UTC format.
+    //
+    // A spawn whose MobId is None is skipped and logged at Warn.  A spawn point's spawn position is written to
+    // the spawn coordinate columns; a spawn with no spawn position writes NULL there.  A failure rolls the
+    // transaction back, leaving no changes from this call.
     //
     // A spawn in a dynamic zone is not written.
     //
@@ -73,26 +78,52 @@ public class MobSightingGateway
         using SqliteTransaction tx = conn.BeginTransaction();
         try
         {
-            using SqliteCommand cmd = conn.CreateCommand();
-            cmd.Transaction = tx;
-            cmd.CommandText = @"
+            using SqliteCommand findCmd = conn.CreateCommand();
+            findCmd.Transaction = tx;
+            findCmd.CommandText = @"
+                SELECT id
+                FROM MobSightings
+                WHERE mob_id = @mob_id AND zone_id = @zone_id
+                  AND x = @x AND y = @y AND z = @z AND level = @level
+                  AND is_spawn_point = @is_spawn_point
+                  AND spawn_x IS @spawn_x AND spawn_y IS @spawn_y AND spawn_z IS @spawn_z
+                LIMIT 1";
+            SqliteParameter mobIdParam = findCmd.Parameters.Add("@mob_id", SqliteType.Integer);
+            SqliteParameter zoneIdParam = findCmd.Parameters.Add("@zone_id", SqliteType.Integer);
+            SqliteParameter xParam = findCmd.Parameters.Add("@x", SqliteType.Real);
+            SqliteParameter yParam = findCmd.Parameters.Add("@y", SqliteType.Real);
+            SqliteParameter zParam = findCmd.Parameters.Add("@z", SqliteType.Real);
+            SqliteParameter levelParam = findCmd.Parameters.Add("@level", SqliteType.Integer);
+            SqliteParameter isSpawnPointParam = findCmd.Parameters.Add("@is_spawn_point", SqliteType.Integer);
+            SqliteParameter spawnXParam = findCmd.Parameters.Add("@spawn_x", SqliteType.Real);
+            SqliteParameter spawnYParam = findCmd.Parameters.Add("@spawn_y", SqliteType.Real);
+            SqliteParameter spawnZParam = findCmd.Parameters.Add("@spawn_z", SqliteType.Real);
+
+            using SqliteCommand insertCmd = conn.CreateCommand();
+            insertCmd.Transaction = tx;
+            insertCmd.CommandText = @"
                 INSERT INTO MobSightings (mob_id, zone_id, x, y, z, level, observed,
                                           is_spawn_point, spawn_x, spawn_y, spawn_z)
                 VALUES (@mob_id, @zone_id, @x, @y, @z, @level, @observed,
                         @is_spawn_point, @spawn_x, @spawn_y, @spawn_z)";
-            SqliteParameter mobIdParam = cmd.Parameters.Add("@mob_id", SqliteType.Integer);
-            SqliteParameter zoneIdParam = cmd.Parameters.Add("@zone_id", SqliteType.Integer);
-            SqliteParameter xParam = cmd.Parameters.Add("@x", SqliteType.Real);
-            SqliteParameter yParam = cmd.Parameters.Add("@y", SqliteType.Real);
-            SqliteParameter zParam = cmd.Parameters.Add("@z", SqliteType.Real);
-            SqliteParameter levelParam = cmd.Parameters.Add("@level", SqliteType.Integer);
-            SqliteParameter observedParam = cmd.Parameters.Add("@observed", SqliteType.Text);
-            SqliteParameter isSpawnPointParam = cmd.Parameters.Add("@is_spawn_point", SqliteType.Integer);
-            SqliteParameter spawnXParam = cmd.Parameters.Add("@spawn_x", SqliteType.Real);
-            SqliteParameter spawnYParam = cmd.Parameters.Add("@spawn_y", SqliteType.Real);
-            SqliteParameter spawnZParam = cmd.Parameters.Add("@spawn_z", SqliteType.Real);
+            foreach (SqliteParameter findParam in findCmd.Parameters)
+            {
+                insertCmd.Parameters.Add(findParam.ParameterName, findParam.SqliteType);
+            }
+            SqliteParameter insertObservedParam = insertCmd.Parameters.Add("@observed", SqliteType.Text);
+
+            using SqliteCommand updateCmd = conn.CreateCommand();
+            updateCmd.Transaction = tx;
+            updateCmd.CommandText = @"
+                UPDATE MobSightings
+                SET observed = @observed
+                WHERE id = @id AND observed < @observed";
+            SqliteParameter updateIdParam = updateCmd.Parameters.Add("@id", SqliteType.Integer);
+            SqliteParameter updateObservedParam = updateCmd.Parameters.Add("@observed", SqliteType.Text);
 
             uint inserted = 0;
+            uint updated = 0;
+            uint unchanged = 0;
             uint skipped = 0;
             uint spawnPoints = 0;
 
@@ -108,6 +139,9 @@ public class MobSightingGateway
 
                 if (ZoneRepository.IsDynamicZone(spawn.ZoneId))
                 {
+                    DebugLog.Write(LogChannel.Database, "MobSightingGateway.InsertAll: zoneId=" + spawn.ZoneId
+                        + " is a dynamic zone, spawnId=0x" + spawn.SpawnId.Value.ToString("X4") + " not written.",
+                        LogLevel.Trace);
                     continue;
                 }
 
@@ -117,7 +151,6 @@ public class MobSightingGateway
                 yParam.Value = spawn.Y;
                 zParam.Value = spawn.Z;
                 levelParam.Value = spawn.Level;
-                observedParam.Value = spawn.Observed.ToString("o");
                 isSpawnPointParam.Value = spawn.IsSpawnPoint ? 1 : 0;
 
                 if (spawn.SpawnPosition != null)
@@ -140,18 +173,58 @@ public class MobSightingGateway
                     }
                 }
 
+                string observedText = spawn.Observed.ToString("o");
+
+                object? existingId = findCmd.ExecuteScalar();
+                if ((existingId != null) && (existingId != DBNull.Value))
+                {
+                    long rowId = (long)existingId;
+                    updateIdParam.Value = rowId;
+                    updateObservedParam.Value = observedText;
+
+                    int rowsChanged = updateCmd.ExecuteNonQuery();
+                    if (rowsChanged == 1)
+                    {
+                        updated++;
+                        DebugLog.Write(LogChannel.Database, "MobSightingGateway.InsertAll: row id=" + rowId
+                            + " matches mobId=" + spawn.MobId + " zoneId=" + spawn.ZoneId + " spawnId=0x"
+                            + spawn.SpawnId.Value.ToString("X4") + ", observed advanced to " + observedText + ".",
+                            LogLevel.Trace);
+                    }
+                    else
+                    {
+                        unchanged++;
+                        DebugLog.Write(LogChannel.Database, "MobSightingGateway.InsertAll: row id=" + rowId
+                            + " matches mobId=" + spawn.MobId + " zoneId=" + spawn.ZoneId + " spawnId=0x"
+                            + spawn.SpawnId.Value.ToString("X4") + " and is observed at or after " + observedText
+                            + ", unchanged.", LogLevel.Trace);
+                    }
+                    continue;
+                }
+
+                foreach (SqliteParameter findParam in findCmd.Parameters)
+                {
+                    insertCmd.Parameters[findParam.ParameterName].Value = findParam.Value;
+                }
+                insertObservedParam.Value = observedText;
+
+                insertCmd.ExecuteNonQuery();
+                inserted++;
+
                 if (spawn.IsSpawnPoint)
                 {
                     spawnPoints++;
                 }
 
-                cmd.ExecuteNonQuery();
-                inserted++;
+                DebugLog.Write(LogChannel.Database, "MobSightingGateway.InsertAll: inserted mobId=" + spawn.MobId
+                    + " zoneId=" + spawn.ZoneId + " spawnId=0x" + spawn.SpawnId.Value.ToString("X4")
+                    + " observed " + observedText + ".", LogLevel.Trace);
             }
 
             tx.Commit();
-            DebugLog.Write(LogChannel.Database, "MobSightingGateway.InsertAll: committed " + inserted + " rows ("
-                + spawnPoints + " spawn points), " + skipped + " skipped.", LogLevel.Trace);
+            DebugLog.Write(LogChannel.Database, "MobSightingGateway.InsertAll: committed " + inserted + " inserted ("
+                + spawnPoints + " spawn points), " + updated + " advanced, " + unchanged + " unchanged, "
+                + skipped + " skipped.", LogLevel.Trace);
             return inserted;
         }
         catch (Exception ex)

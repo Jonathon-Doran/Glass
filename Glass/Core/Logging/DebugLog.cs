@@ -36,6 +36,8 @@ public enum LogChannel
     Inventory,
     UI,
     DataLogging,
+    Healing,
+    Specimens,
     Count
 }
 
@@ -59,6 +61,7 @@ public enum LogSink
     Aux3LogFile,
     Aux4LogFile,
     InferenceDebugLogfile,
+    SpecimenLogfile,
     Count
 }
 

@@ -66,4 +66,8 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Agents\Healing\" />
+  </ItemGroup>
+
 </Project>
