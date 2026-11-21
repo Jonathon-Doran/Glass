@@ -1642,164 +1642,200 @@ public class FieldExtractor
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // EvaluatePredicate
     //
-    // Evaluates the predicate against its source slot in the given bag.  The source slot
-    // must hold an integer type; any other type means the gating field is absent or
-    // mistyped, which is a schema or extraction integrity violation and halts the process
-    // via FailFast with the failure details preserved in the Fields log channel.
+    // Evaluates the predicate against its source slot in the given bag, then inverts the
+    // result when the predicate is negated.  The source slot must hold an integer type; any
+    // other type means the gating field is absent or mistyped, which is a schema or
+    // extraction integrity violation and halts the process via FailFast with the failure
+    // details preserved in the Fields log channel.
     //
     // bag:        The bag containing the predicate's source slot.
     // predicate:  The predicate to evaluate.
     //
-    // Returns:    The predicate result.  Does not return if the source slot is not an
-    //             integer type.
+    // Returns:    The predicate result, after negation.  Does not return if the source slot
+    //             is not an integer type.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private bool EvaluatePredicate(FieldBag bag, FieldPredicate predicate)
     {
         FieldType sourceType = bag.GetTypeAt(predicate.SourceSlot);
+
+        bool result;
         if (sourceType == FieldType.UInt)
         {
             uint sourceValue = bag.GetUIntAt(predicate.SourceSlot);
-            return EvaluateUnsigned(sourceValue, predicate);
+            result = EvaluateInteger(sourceValue, false, predicate);
         }
-        if (sourceType == FieldType.Int)
+        else if (sourceType == FieldType.Int)
         {
             int sourceValue = bag.GetIntAt(predicate.SourceSlot);
-            return EvaluateSigned(sourceValue, predicate);
+            result = EvaluateInteger(sourceValue, true, predicate);
         }
-        string message = "FieldExtractor.EvaluatePredicate: source slot " + predicate.SourceSlot
-            + " has type " + sourceType + ", which is not an integer the predicate can test; "
-            + "the gating field is absent or mistyped, packet or schema is broken -- aborting";
-        DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
-            + Environment.StackTrace, LogLevel.Error);
-        Environment.FailFast(message);
-        return false;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // EvaluateUnsigned
-    //
-    // Applies the predicate's operator to an unsigned source value, comparing against the
-    // unsigned operand.  BitmaskNonZero tests the raw bits; the ordered operators compare
-    // unsigned magnitude.
-    //
-    // Parameters:
-    //   sourceValue  - The source field's value, read as unsigned.
-    //   predicate    - The resolved predicate carrying the operator and unsigned operand.
-    //
-    // Returns:
-    //   true when the comparison holds, false otherwise.  Fail-fasts on an unhandled operator.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private bool EvaluateUnsigned(uint sourceValue, FieldPredicate predicate)
-    {
-        bool result;
-        switch (predicate.Op)
+        else
         {
-            case PredicateOp.BitmaskNonZero:
-                result = (sourceValue & predicate.Operand) != 0u;
-                break;
+            string message = "FieldExtractor.EvaluatePredicate: source slot " + predicate.SourceSlot
+                + " has type " + sourceType + ", which is not an integer the predicate can test; "
+                + "the gating field is absent or mistyped, packet or schema is broken -- aborting";
+            DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                + Environment.StackTrace, LogLevel.Error);
+            Environment.FailFast(message);
+            return false;
+        }
 
-            case PredicateOp.Equal:
-                result = sourceValue == predicate.Operand;
-                break;
-
-            case PredicateOp.NotEqual:
-                result = sourceValue != predicate.Operand;
-                break;
-
-            case PredicateOp.Greater:
-                result = sourceValue > predicate.Operand;
-                break;
-
-            case PredicateOp.GreaterOrEqual:
-                result = sourceValue >= predicate.Operand;
-                break;
-
-            case PredicateOp.Less:
-                result = sourceValue < predicate.Operand;
-                break;
-
-            case PredicateOp.LessOrEqual:
-                result = sourceValue <= predicate.Operand;
-                break;
-
-            default:
-                {
-                    string message = "FieldExtractor.EvaluateUnsigned: unhandled predicate op '"
-                        + predicate.Op + "' -- broken predicate definition, aborting";
-
-                    DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
-                        + Environment.StackTrace, LogLevel.Error);
-
-                    Environment.FailFast(message);
-                    result = false;
-                    break;
-                }
+        if (predicate.Negated == true)
+        {
+            result = !result;
         }
 
         return result;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // EvaluateSigned
+    // OperandValue
     //
-    // Applies the predicate's operator to a signed source value, comparing against the signed
-    // operand.  BitmaskNonZero tests the raw bits, reinterpreted as unsigned for the mask, so
-    // a sign-extended source does not turn a narrow mask into a match on the extension bits;
-    // the ordered operators compare signed magnitude.
+    // Converts one predicate operand to an Int128 for comparison against an integer source.
+    // A 32-bit operand (UInt or Int) is read by its raw 32 bits in the source's signedness: as
+    // uint against an unsigned source and as int against a signed source, so a literal of -1
+    // matches an unsigned source value of 0xFFFFFFFF.  A 64-bit operand (UInt64 or Int64) is
+    // read in its own signedness and compares by value.
     //
     // Parameters:
-    //   sourceValue  - The source field's value, read as signed.
-    //   predicate    - The resolved predicate carrying the operator and both operand views.
+    //   operand         - The operand to convert.
+    //   sourceIsSigned  - true when the source field is signed, false when it is unsigned.
     //
     // Returns:
-    //   true when the comparison holds, false otherwise.  Fail-fasts on an unhandled operator.
+    //   The operand's value as an Int128.  Does not return for an operand that is not an
+    //   integer kind.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private bool EvaluateSigned(int sourceValue, FieldPredicate predicate)
+    private Int128 OperandValue(PredicateOperand operand, bool sourceIsSigned)
     {
+        if ((operand.Kind == PredicateOperandKind.UInt) || (operand.Kind == PredicateOperandKind.Int))
+        {
+            uint rawBits = unchecked((uint)operand.Bits);
+            if (sourceIsSigned == true)
+            {
+                return unchecked((int)rawBits);
+            }
+            return rawBits;
+        }
+
+        if (operand.Kind == PredicateOperandKind.UInt64)
+        {
+            return operand.Bits;
+        }
+
+        if (operand.Kind == PredicateOperandKind.Int64)
+        {
+            return unchecked((long)operand.Bits);
+        }
+
+        string message = "FieldExtractor.OperandValue: operand of kind " + operand.Kind
+            + " is not an integer and cannot be compared with an integer source -- "
+            + "broken predicate definition, aborting";
+
+        DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+            + Environment.StackTrace, LogLevel.Error);
+
+        Environment.FailFast(message);
+        return 0;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // EvaluateInteger
+    //
+    // Applies the predicate's operator to an integer source value, comparing against the
+    // predicate's operands converted for the source's signedness.  Every operator other than
+    // In tests the first operand.  BitmaskNonZero is satisfied when (source & operand) is
+    // non-zero and applies only to an unsigned source.  Equal, NotEqual, Greater,
+    // GreaterOrEqual, Less, and LessOrEqual compare by value.  In is satisfied when the source
+    // equals any one of the operands.  Negation is not applied here.
+    //
+    // Parameters:
+    //   sourceValue     - The source field's value, widened to Int128.
+    //   sourceIsSigned  - true when the source field is signed, false when it is unsigned.
+    //   predicate       - The resolved predicate carrying the operator and operands.
+    //
+    // Returns:
+    //   true when the comparison holds, false otherwise.  Does not return when the predicate
+    //   has no operands, applies & to a signed source, or carries an unhandled operator.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private bool EvaluateInteger(Int128 sourceValue, bool sourceIsSigned, FieldPredicate predicate)
+    {
+        PredicateOperand[]? operands = predicate.Operands;
+        if ((operands == null) || (operands.Length == 0))
+        {
+            string message = "FieldExtractor.EvaluateInteger: predicate op '" + predicate.Op
+                + "' has no operands -- broken predicate definition, aborting";
+
+            DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                + Environment.StackTrace, LogLevel.Error);
+
+            Environment.FailFast(message);
+            return false;
+        }
+
+        if (predicate.Op == PredicateOp.In)
+        {
+            for (int operandIndex = 0; operandIndex < operands.Length; operandIndex++)
+            {
+                if (sourceValue == OperandValue(operands[operandIndex], sourceIsSigned))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        Int128 operandValue = OperandValue(operands[0], sourceIsSigned);
+
         bool result;
         switch (predicate.Op)
         {
             case PredicateOp.BitmaskNonZero:
                 {
-                    string message = "FieldExtractor.EvaluateSigned: BitmaskNonZero applied to a "
-                        + "signed source field; a bitmask test requires an unsigned field -- "
-                        + "broken schema definition, aborting";
+                    if (sourceIsSigned == true)
+                    {
+                        string message = "FieldExtractor.EvaluateInteger: BitmaskNonZero applied to a "
+                            + "signed source field; a bitmask test requires an unsigned field -- "
+                            + "broken schema definition, aborting";
 
-                    DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
-                        + Environment.StackTrace, LogLevel.Error);
+                        DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                            + Environment.StackTrace, LogLevel.Error);
 
-                    Environment.FailFast(message);
-                    result = false;
+                        Environment.FailFast(message);
+                        result = false;
+                        break;
+                    }
+
+                    result = (sourceValue & operandValue) != 0;
                     break;
                 }
 
             case PredicateOp.Equal:
-                result = sourceValue == predicate.SignedOperand;
+                result = sourceValue == operandValue;
                 break;
 
             case PredicateOp.NotEqual:
-                result = sourceValue != predicate.SignedOperand;
+                result = sourceValue != operandValue;
                 break;
 
             case PredicateOp.Greater:
-                result = sourceValue > predicate.SignedOperand;
+                result = sourceValue > operandValue;
                 break;
 
             case PredicateOp.GreaterOrEqual:
-                result = sourceValue >= predicate.SignedOperand;
+                result = sourceValue >= operandValue;
                 break;
 
             case PredicateOp.Less:
-                result = sourceValue < predicate.SignedOperand;
+                result = sourceValue < operandValue;
                 break;
 
             case PredicateOp.LessOrEqual:
-                result = sourceValue <= predicate.SignedOperand;
+                result = sourceValue <= operandValue;
                 break;
 
             default:
                 {
-                    string message = "FieldExtractor.EvaluateSigned: unhandled predicate op '"
+                    string message = "FieldExtractor.EvaluateInteger: unhandled predicate op '"
                         + predicate.Op + "' -- broken predicate definition, aborting";
 
                     DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine

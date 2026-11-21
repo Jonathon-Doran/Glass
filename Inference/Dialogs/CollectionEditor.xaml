@@ -208,8 +208,11 @@
                                         VerticalAlignment="Center"
                                         Margin="0,0,8,0" />
                                     <TextBox Grid.Column="1"
-                                        MinWidth="120"
-                                        HorizontalAlignment="Center"
+                                        MinWidth="400"
+                                        MaxWidth="700"
+                                        HorizontalAlignment="Left"
+                                        TextWrapping="Wrap"
+                                        AcceptsReturn="False"
                                         BorderThickness="0"
                                         Background="Transparent"
                                         Text="{Binding predicate, UpdateSourceTrigger=PropertyChanged}" />

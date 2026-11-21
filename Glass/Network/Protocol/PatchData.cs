@@ -1169,6 +1169,22 @@ public class PatchData
                 Environment.FailFast(message);
             }
 
+            FieldEncoding sourceEncoding = definitions[sourceSlot.Index].Encoding;
+            bool operandsFit = OperandsFitSource(sourceEncoding, predicate, entry.OwnerFieldName);
+            if (operandsFit == false)
+            {
+                string message = "PatchData.ResolvePredicates: collection '"
+                    + GetCollectionNameFromIndex(index) + "' field '" + entry.OwnerFieldName
+                    + "' predicate '" + entry.RawPredicate + "' does not fit source field '"
+                    + sourceName + "' encoding " + sourceEncoding + " for patchLevel=" + PatchLevel
+                    + " -- broken patch definition, aborting";
+
+                DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                    + Environment.StackTrace, LogLevel.Error);
+
+                Environment.FailFast(message);
+            }
+
             predicate.SourceSlot = sourceSlot;
 
             // This is a local reference, so mutates the stored structure in place.
@@ -1568,24 +1584,32 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////
     // ParsePredicate
     //
-    // Parses a raw predicate string of the form "name OP operand" into its three parts: the
-    // source field name on the left, the comparison operator, and the unsigned operand on the
-    // right.  The operator is matched longest-first so a two-character operator is not split
-    // into a one-character one.  The operand is read as hexadecimal when prefixed with 0x or
-    // 0X, otherwise as decimal.  Whitespace around any part is optional and trimmed.
+    // Parses a raw predicate string into its source field name and a FieldPredicate holding
+    // the operator, negation, and typed operands.  Two forms are accepted, each optionally
+    // preceded by ! to negate the result:
     //
-    // Op and operand are final once parsed; the source name still requires resolution to a
-    // slot index by the caller.  This method performs no resolution and reads no payload.
+    //   name OP literal      OP is one of == != >= <= > < &, with one literal operand.
+    //   name in [list]       The bracketed list holds one or more literals or low..high
+    //                        integer ranges, separated by commas.
+    //
+    // Two-character operators are matched before one-character ones so a two-character
+    // operator is not split.  The operator and bracket searches stop at the first double
+    // quote, so text inside a string literal is never read as an operator or a list.
+    // Whitespace around any part is optional and trimmed.
+    //
+    // The source name still requires resolution to a slot by the caller.  This method
+    // performs no resolution and reads no payload.
     //
     // Parameters:
     //   raw         - The raw predicate string from the PacketField predicate column.
     //   sourceName  - Receives the trimmed source field name on success, empty on failure.
-    //   op          - Receives the parsed PredicateOp on success, None on failure.
-    //   operand     - Receives the parsed operand on success, 0 on failure.
+    //   predicate   - Receives the parsed operator, negation, and operands on success,
+    //                 default on failure.
     //
     // Returns:
-    //   true when the string parsed into all three parts; false when the operator is missing
-    //   or unrecognized, the source name is empty, or the operand is not a valid number.
+    //   true when the string parsed; false when the string is empty, the operator is missing
+    //   or unrecognized, the source name is empty, the in keyword is malformed, or an operand
+    //   or operand list fails to parse.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private bool ParsePredicate(string raw, out string sourceName, out FieldPredicate predicate)
     {
@@ -1594,15 +1618,86 @@ public class PatchData
 
         if (raw == null)
         {
-            DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: null predicate string, parse failed", LogLevel.Warn);
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: null predicate string, parse failed",
+                LogLevel.Warn);
             return false;
         }
 
         string trimmed = raw.Trim();
         if (trimmed.Length == 0)
         {
-            DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: empty predicate string, parse failed", LogLevel.Warn);
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: empty predicate string, parse failed",
+                LogLevel.Warn);
             return false;
+        }
+
+        bool negated = false;
+        if (trimmed[0] == '!')
+        {
+            negated = true;
+            trimmed = trimmed.Substring(1).Trim();
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: leading ! in '" + raw.Trim()
+                + "', predicate negated", LogLevel.Trace);
+
+            if (trimmed.Length == 0)
+            {
+                DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: nothing follows ! in '"
+                    + raw.Trim() + "', parse failed", LogLevel.Warn);
+                return false;
+            }
+        }
+
+        int firstQuote = trimmed.IndexOf('"');
+        string searchRegion;
+        if (firstQuote >= 0)
+        {
+            searchRegion = trimmed.Substring(0, firstQuote);
+        }
+        else
+        {
+            searchRegion = trimmed;
+        }
+
+        int bracketIndex = searchRegion.IndexOf('[');
+        if (bracketIndex >= 0)
+        {
+            string head = trimmed.Substring(0, bracketIndex).TrimEnd();
+            bool hasInKeyword = (head.Length > 2)
+                && (head.EndsWith("in", StringComparison.Ordinal) == true)
+                && (char.IsWhiteSpace(head[head.Length - 3]) == true);
+            if (hasInKeyword == false)
+            {
+                DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: list in '" + trimmed
+                    + "' is not preceded by 'name in', parse failed", LogLevel.Warn);
+                return false;
+            }
+
+            string inSourceName = head.Substring(0, head.Length - 2).Trim();
+            if (inSourceName.Length == 0)
+            {
+                DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: empty source name in '"
+                    + trimmed + "', parse failed", LogLevel.Warn);
+                return false;
+            }
+
+            PredicateOperand[] listOperands;
+            bool listParsed = ParseOperandList(trimmed.Substring(bracketIndex), out listOperands);
+            if (listParsed == false)
+            {
+                DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: operand list in '" + trimmed
+                    + "' failed to parse", LogLevel.Warn);
+                return false;
+            }
+
+            sourceName = inSourceName;
+            predicate.Op = PredicateOp.In;
+            predicate.Negated = negated;
+            predicate.Operands = listOperands;
+
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: parsed '" + raw.Trim()
+                + "' to source='" + sourceName + "' op=In negated=" + negated + " operands="
+                + listOperands.Length, LogLevel.Trace);
+            return true;
         }
 
         string operatorToken = "";
@@ -1611,7 +1706,7 @@ public class PatchData
         string[] twoCharOperators = new string[] { "==", "!=", ">=", "<=" };
         for (int candidateIndex = 0; candidateIndex < twoCharOperators.Length; candidateIndex++)
         {
-            int foundIndex = trimmed.IndexOf(twoCharOperators[candidateIndex], StringComparison.Ordinal);
+            int foundIndex = searchRegion.IndexOf(twoCharOperators[candidateIndex], StringComparison.Ordinal);
             if (foundIndex >= 0)
             {
                 operatorToken = twoCharOperators[candidateIndex];
@@ -1625,7 +1720,7 @@ public class PatchData
             string[] oneCharOperators = new string[] { ">", "<", "&" };
             for (int candidateIndex = 0; candidateIndex < oneCharOperators.Length; candidateIndex++)
             {
-                int foundIndex = trimmed.IndexOf(oneCharOperators[candidateIndex], StringComparison.Ordinal);
+                int foundIndex = searchRegion.IndexOf(oneCharOperators[candidateIndex], StringComparison.Ordinal);
                 if (foundIndex >= 0)
                 {
                     operatorToken = oneCharOperators[candidateIndex];
@@ -1695,55 +1790,479 @@ public class PatchData
             return false;
         }
 
-        uint parsedOperand;
-        int parsedSignedOperand;
-
-        if (rightPart.StartsWith("0x", StringComparison.OrdinalIgnoreCase) == true)
+        PredicateOperand singleOperand;
+        bool operandParsed = ParseOperand(rightPart, out singleOperand);
+        if (operandParsed == false)
         {
-            string hexDigits = rightPart.Substring(2);
-            bool hexParsed = uint.TryParse(hexDigits, System.Globalization.NumberStyles.HexNumber,
-                System.Globalization.CultureInfo.InvariantCulture, out parsedOperand);
-            if (hexParsed == false)
-            {
-                DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: hex operand '" + rightPart
-                    + "' in '" + trimmed + "' is not a valid 32-bit value, parse failed", LogLevel.Warn);
-                return false;
-            }
-            parsedSignedOperand = unchecked((int)parsedOperand);
-        }
-        else if (rightPart.StartsWith("-", StringComparison.Ordinal) == true)
-        {
-            bool signedParsed = int.TryParse(rightPart, System.Globalization.NumberStyles.Integer,
-                System.Globalization.CultureInfo.InvariantCulture, out parsedSignedOperand);
-            if (signedParsed == false)
-            {
-                DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: signed operand '" + rightPart
-                    + "' in '" + trimmed + "' is not a valid 32-bit signed value, parse failed", LogLevel.Warn);
-                return false;
-            }
-            parsedOperand = unchecked((uint)parsedSignedOperand);
-        }
-        else
-        {
-            bool unsignedParsed = uint.TryParse(rightPart, System.Globalization.NumberStyles.Integer,
-                System.Globalization.CultureInfo.InvariantCulture, out parsedOperand);
-            if (unsignedParsed == false)
-            {
-                DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: operand '" + rightPart
-                    + "' in '" + trimmed + "' is not a valid unsigned number, parse failed", LogLevel.Warn);
-                return false;
-            }
-            parsedSignedOperand = unchecked((int)parsedOperand);
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: operand '" + rightPart
+                + "' in '" + trimmed + "' failed to parse", LogLevel.Warn);
+            return false;
         }
 
         sourceName = leftPart;
         predicate.Op = parsedOp;
-        predicate.Operand = parsedOperand;
-        predicate.SignedOperand = parsedSignedOperand;
+        predicate.Negated = negated;
+        predicate.Operands = new PredicateOperand[] { singleOperand };
 
-/*        DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: parsed '" + trimmed
-            + "' to source='" + sourceName + "' op=" + predicate.Op + " operand=" + predicate.Operand
-            + " signedOperand=" + predicate.SignedOperand);*/
+        DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicate: parsed '" + raw.Trim()
+            + "' to source='" + sourceName + "' op=" + parsedOp + " negated=" + negated
+            + " operandKind=" + singleOperand.Kind, LogLevel.Trace);
+        return true;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ParseOperand
+    //
+    // Parses one predicate constant into a typed PredicateOperand.  The literal's form selects
+    // its kind: text in double quotes is a String; a value prefixed with 0x or 0X is
+    // hexadecimal and unsigned; a value containing a decimal point is a Double; a value with a
+    // leading minus sign is signed; any other value is unsigned decimal.  An integer that fits
+    // in 32 bits is stored as the 32-bit kind (UInt or Int), otherwise as the 64-bit kind
+    // (UInt64 or Int64).  Whitespace around the literal is trimmed.
+    //
+    // Parameters:
+    //   literal  - The text of one constant from the predicate string.
+    //   operand  - Receives the parsed operand on success, default on failure.
+    //
+    // Returns:
+    //   true when the literal parsed; false when it is empty, an unterminated string, or not
+    //   a valid number of its form.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private bool ParseOperand(string literal, out PredicateOperand operand)
+    {
+        operand = default;
+
+        string trimmed = literal.Trim();
+        if (trimmed.Length == 0)
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParseOperand: empty literal, parse failed",
+                LogLevel.Warn);
+            return false;
+        }
+
+        if (trimmed[0] == '"')
+        {
+            if ((trimmed.Length < 2) || (trimmed[trimmed.Length - 1] != '"'))
+            {
+                DebugLog.Write(LogChannel.Fields, "PatchData.ParseOperand: unterminated string literal '"
+                    + trimmed + "', parse failed", LogLevel.Warn);
+                return false;
+            }
+
+            operand.Kind = PredicateOperandKind.String;
+            operand.Bits = 0;
+            operand.Text = trimmed.Substring(1, trimmed.Length - 2);
+
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParseOperand: '" + trimmed
+                + "' parsed as String", LogLevel.Trace);
+            return true;
+        }
+
+        if (trimmed.StartsWith("0x", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            string hexDigits = trimmed.Substring(2);
+            ulong hexValue;
+            bool hexParsed = ulong.TryParse(hexDigits, System.Globalization.NumberStyles.HexNumber,
+                System.Globalization.CultureInfo.InvariantCulture, out hexValue);
+            if (hexParsed == false)
+            {
+                DebugLog.Write(LogChannel.Fields, "PatchData.ParseOperand: hex literal '" + trimmed
+                    + "' is not a valid 64-bit value, parse failed", LogLevel.Warn);
+                return false;
+            }
+
+            if (hexValue <= uint.MaxValue)
+            {
+                operand.Kind = PredicateOperandKind.UInt;
+            }
+            else
+            {
+                operand.Kind = PredicateOperandKind.UInt64;
+            }
+            operand.Bits = hexValue;
+            operand.Text = null;
+
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParseOperand: '" + trimmed + "' parsed as "
+                + operand.Kind, LogLevel.Trace);
+            return true;
+        }
+
+        if (trimmed.Contains('.') == true)
+        {
+            double doubleValue;
+            bool doubleParsed = double.TryParse(trimmed, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out doubleValue);
+            if (doubleParsed == false)
+            {
+                DebugLog.Write(LogChannel.Fields, "PatchData.ParseOperand: floating literal '" + trimmed
+                    + "' is not a valid double, parse failed", LogLevel.Warn);
+                return false;
+            }
+
+            operand.Kind = PredicateOperandKind.Double;
+            operand.Bits = unchecked((ulong)BitConverter.DoubleToInt64Bits(doubleValue));
+            operand.Text = null;
+
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParseOperand: '" + trimmed
+                + "' parsed as Double", LogLevel.Trace);
+            return true;
+        }
+
+        if (trimmed[0] == '-')
+        {
+            long signedValue;
+            bool signedParsed = long.TryParse(trimmed, System.Globalization.NumberStyles.AllowLeadingSign,
+                System.Globalization.CultureInfo.InvariantCulture, out signedValue);
+            if (signedParsed == false)
+            {
+                DebugLog.Write(LogChannel.Fields, "PatchData.ParseOperand: signed literal '" + trimmed
+                    + "' is not a valid 64-bit signed value, parse failed", LogLevel.Warn);
+                return false;
+            }
+
+            if (signedValue >= int.MinValue)
+            {
+                operand.Kind = PredicateOperandKind.Int;
+                operand.Bits = unchecked((uint)(int)signedValue);
+            }
+            else
+            {
+                operand.Kind = PredicateOperandKind.Int64;
+                operand.Bits = unchecked((ulong)signedValue);
+            }
+            operand.Text = null;
+
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParseOperand: '" + trimmed + "' parsed as "
+                + operand.Kind, LogLevel.Trace);
+            return true;
+        }
+
+        ulong unsignedValue;
+        bool unsignedParsed = ulong.TryParse(trimmed, System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture, out unsignedValue);
+        if (unsignedParsed == false)
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParseOperand: literal '" + trimmed
+                + "' is not a valid unsigned number, parse failed", LogLevel.Warn);
+            return false;
+        }
+
+        if (unsignedValue <= uint.MaxValue)
+        {
+            operand.Kind = PredicateOperandKind.UInt;
+        }
+        else
+        {
+            operand.Kind = PredicateOperandKind.UInt64;
+        }
+        operand.Bits = unsignedValue;
+        operand.Text = null;
+
+        DebugLog.Write(LogChannel.Fields, "PatchData.ParseOperand: '" + trimmed + "' parsed as "
+            + operand.Kind, LogLevel.Trace);
+        return true;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ParseOperandList
+    //
+    // Parses the bracketed operand list of an in predicate, such as "[1..12, 128, 130]", into
+    // an array of typed operands.  After trimming, the list must begin with '[' and end with
+    // ']', and holds one or more elements separated by commas.  Commas inside double quotes
+    // do not separate elements.  An element is either a single literal or an integer range
+    // written low..high, which expands to every integer from low to high inclusive.  A
+    // quoted element is always a single literal.  Operands appear in the order written, with
+    // each range expanded in ascending order.
+    //
+    // Parameters:
+    //   listText  - The bracketed list text from the predicate string.
+    //   operands  - Receives the parsed operands on success, an empty array on failure.
+    //
+    // Returns:
+    //   true when every element parsed; false when the brackets are missing, a quote is
+    //   unterminated, an element is empty or fails to parse, or a range has a non-integer
+    //   end, an end outside the signed 64-bit range, or a low end above its high end.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private bool ParseOperandList(string listText, out PredicateOperand[] operands)
+    {
+        operands = Array.Empty<PredicateOperand>();
+
+        string trimmed = listText.Trim();
+        if ((trimmed.Length < 2) || (trimmed[0] != '[') || (trimmed[trimmed.Length - 1] != ']'))
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParseOperandList: list '" + trimmed
+                + "' is not enclosed in brackets, parse failed", LogLevel.Warn);
+            return false;
+        }
+
+        string inner = trimmed.Substring(1, trimmed.Length - 2);
+
+        List<string> elements = new List<string>();
+        bool insideQuotes = false;
+        int elementStart = 0;
+        for (int charIndex = 0; charIndex < inner.Length; charIndex++)
+        {
+            char current = inner[charIndex];
+            if (current == '"')
+            {
+                insideQuotes = !insideQuotes;
+            }
+            else if ((current == ',') && (insideQuotes == false))
+            {
+                elements.Add(inner.Substring(elementStart, charIndex - elementStart));
+                elementStart = charIndex + 1;
+            }
+        }
+        elements.Add(inner.Substring(elementStart));
+
+        if (insideQuotes == true)
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParseOperandList: list '" + trimmed
+                + "' has an unterminated string, parse failed", LogLevel.Warn);
+            return false;
+        }
+
+        List<PredicateOperand> parsed = new List<PredicateOperand>();
+
+        for (int elementIndex = 0; elementIndex < elements.Count; elementIndex++)
+        {
+            string element = elements[elementIndex].Trim();
+            if (element.Length == 0)
+            {
+                DebugLog.Write(LogChannel.Fields, "PatchData.ParseOperandList: list '" + trimmed
+                    + "' has an empty element at position " + elementIndex + ", parse failed",
+                    LogLevel.Warn);
+                return false;
+            }
+
+            int rangeIndex = -1;
+            if (element[0] != '"')
+            {
+                rangeIndex = element.IndexOf("..", StringComparison.Ordinal);
+            }
+
+            if (rangeIndex < 0)
+            {
+                PredicateOperand single;
+                bool singleParsed = ParseOperand(element, out single);
+                if (singleParsed == false)
+                {
+                    DebugLog.Write(LogChannel.Fields, "PatchData.ParseOperandList: element '" + element
+                        + "' in list '" + trimmed + "' failed to parse", LogLevel.Warn);
+                    return false;
+                }
+
+                parsed.Add(single);
+                continue;
+            }
+
+            string[] endTexts = new string[] { element.Substring(0, rangeIndex), element.Substring(rangeIndex + 2) };
+            long[] endValues = new long[2];
+
+            for (int endIndex = 0; endIndex < 2; endIndex++)
+            {
+                PredicateOperand endOperand;
+                bool endParsed = ParseOperand(endTexts[endIndex], out endOperand);
+                if (endParsed == false)
+                {
+                    DebugLog.Write(LogChannel.Fields, "PatchData.ParseOperandList: range '" + element
+                        + "' has an end that failed to parse", LogLevel.Warn);
+                    return false;
+                }
+
+                if (endOperand.Kind == PredicateOperandKind.UInt)
+                {
+                    endValues[endIndex] = (long)endOperand.Bits;
+                }
+                else if (endOperand.Kind == PredicateOperandKind.Int)
+                {
+                    endValues[endIndex] = unchecked((int)(uint)endOperand.Bits);
+                }
+                else if (endOperand.Kind == PredicateOperandKind.Int64)
+                {
+                    endValues[endIndex] = unchecked((long)endOperand.Bits);
+                }
+                else if (endOperand.Kind == PredicateOperandKind.UInt64)
+                {
+                    if (endOperand.Bits > long.MaxValue)
+                    {
+                        DebugLog.Write(LogChannel.Fields, "PatchData.ParseOperandList: range '" + element
+                            + "' has an end above the signed 64-bit range, parse failed", LogLevel.Warn);
+                        return false;
+                    }
+                    endValues[endIndex] = (long)endOperand.Bits;
+                }
+                else
+                {
+                    DebugLog.Write(LogChannel.Fields, "PatchData.ParseOperandList: range '" + element
+                        + "' has a non-integer end of kind " + endOperand.Kind + ", parse failed",
+                        LogLevel.Warn);
+                    return false;
+                }
+            }
+
+            if (endValues[0] > endValues[1])
+            {
+                DebugLog.Write(LogChannel.Fields, "PatchData.ParseOperandList: range '" + element
+                    + "' has its low end above its high end, parse failed", LogLevel.Warn);
+                return false;
+            }
+
+            for (long rangeValue = endValues[0]; ; rangeValue++)
+            {
+                string valueText = rangeValue.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                PredicateOperand rangeOperand;
+                bool rangeParsed = ParseOperand(valueText, out rangeOperand);
+                if (rangeParsed == false)
+                {
+                    DebugLog.Write(LogChannel.Fields, "PatchData.ParseOperandList: range '" + element
+                        + "' value " + valueText + " failed to parse", LogLevel.Error);
+                    return false;
+                }
+
+                parsed.Add(rangeOperand);
+
+                if (rangeValue == endValues[1])
+                {
+                    break;
+                }
+            }
+
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParseOperandList: range '" + element
+                + "' expanded from " + endValues[0] + " to " + endValues[1], LogLevel.Trace);
+        }
+
+        operands = parsed.ToArray();
+
+        DebugLog.Write(LogChannel.Fields, "PatchData.ParseOperandList: list '" + trimmed
+            + "' parsed to " + operands.Length + " operand(s)", LogLevel.Trace);
+        return true;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // OperandsFitSource
+    //
+    // Checks that a parsed predicate's operator and every one of its operands can be applied
+    // to a source field of the given encoding.  The rules, by source encoding:
+    //
+    //   UInt, Int, UInt64, Int64, UIntMsb, UIntMasked, SignMagnitudeLsb, SignMagnitudeMsb,
+    //   OptSignMagnitudeMsb:  every operand must be an integer kind (UInt, Int, UInt64,
+    //   Int64).  Every operator is allowed, except that & is allowed only on the unsigned
+    //   encodings UInt, UInt64, UIntMsb, and UIntMasked.
+    //
+    //   Float, Double:  every operand must be an integer kind or Double.  Every operator
+    //   except & is allowed.
+    //
+    //   StringNullTerminated, StringLengthPrefixed:  every operand must be String, and the
+    //   operator must be ==, !=, or in.
+    //
+    //   Any other encoding:  no rule is applied; the predicate is accepted and a warning is
+    //   logged.
+    //
+    // Parameters:
+    //   sourceEncoding  - The encoding of the field the predicate tests.
+    //   predicate       - The parsed predicate whose operator and operands to check.
+    //   ownerName       - The predicated field's name, used in log messages.
+    //
+    // Returns:
+    //   true when the operator and every operand fit the source encoding, or when no rule
+    //   applies to the encoding; false otherwise.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private bool OperandsFitSource(FieldEncoding sourceEncoding, FieldPredicate predicate, string ownerName)
+    {
+        if (predicate.Operands == null)
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.OperandsFitSource: field '" + ownerName
+                + "' predicate has no operands", LogLevel.Error);
+            return false;
+        }
+
+        bool isIntegerSource = (sourceEncoding == FieldEncoding.UInt)
+            || (sourceEncoding == FieldEncoding.Int)
+            || (sourceEncoding == FieldEncoding.UInt64)
+            || (sourceEncoding == FieldEncoding.Int64)
+            || (sourceEncoding == FieldEncoding.UIntMsb)
+            || (sourceEncoding == FieldEncoding.UIntMasked)
+            || (sourceEncoding == FieldEncoding.SignMagnitudeLsb)
+            || (sourceEncoding == FieldEncoding.SignMagnitudeMsb)
+            || (sourceEncoding == FieldEncoding.OptSignMagnitudeMsb);
+
+        bool isFloatingSource = (sourceEncoding == FieldEncoding.Float)
+            || (sourceEncoding == FieldEncoding.Double);
+
+        bool isStringSource = (sourceEncoding == FieldEncoding.StringNullTerminated)
+            || (sourceEncoding == FieldEncoding.StringLengthPrefixed);
+
+        if ((isIntegerSource == false) && (isFloatingSource == false) && (isStringSource == false))
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.OperandsFitSource: field '" + ownerName
+                + "' predicate source encoding " + sourceEncoding
+                + " has no operand rule, accepting", LogLevel.Warn);
+            return true;
+        }
+
+        bool isUnsignedSource = (sourceEncoding == FieldEncoding.UInt)
+            || (sourceEncoding == FieldEncoding.UInt64)
+            || (sourceEncoding == FieldEncoding.UIntMsb)
+            || (sourceEncoding == FieldEncoding.UIntMasked);
+
+        if ((predicate.Op == PredicateOp.BitmaskNonZero) && (isUnsignedSource == false))
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.OperandsFitSource: field '" + ownerName
+                + "' predicate uses & on source encoding " + sourceEncoding
+                + ", which is not unsigned", LogLevel.Warn);
+            return false;
+        }
+
+        if (isStringSource == true)
+        {
+            bool stringOpAllowed = (predicate.Op == PredicateOp.Equal)
+                || (predicate.Op == PredicateOp.NotEqual)
+                || (predicate.Op == PredicateOp.In);
+            if (stringOpAllowed == false)
+            {
+                DebugLog.Write(LogChannel.Fields, "PatchData.OperandsFitSource: field '" + ownerName
+                    + "' predicate operator " + predicate.Op + " is not allowed on string source encoding "
+                    + sourceEncoding, LogLevel.Warn);
+                return false;
+            }
+        }
+
+        for (int operandIndex = 0; operandIndex < predicate.Operands.Length; operandIndex++)
+        {
+            PredicateOperandKind kind = predicate.Operands[operandIndex].Kind;
+
+            bool isIntegerOperand = (kind == PredicateOperandKind.UInt)
+                || (kind == PredicateOperandKind.Int)
+                || (kind == PredicateOperandKind.UInt64)
+                || (kind == PredicateOperandKind.Int64);
+
+            bool operandFits;
+            if (isIntegerSource == true)
+            {
+                operandFits = isIntegerOperand;
+            }
+            else if (isFloatingSource == true)
+            {
+                operandFits = (isIntegerOperand == true) || (kind == PredicateOperandKind.Double);
+            }
+            else
+            {
+                operandFits = (kind == PredicateOperandKind.String);
+            }
+
+            if (operandFits == false)
+            {
+                DebugLog.Write(LogChannel.Fields, "PatchData.OperandsFitSource: field '" + ownerName
+                    + "' predicate operand " + operandIndex + " of kind " + kind
+                    + " does not fit source encoding " + sourceEncoding, LogLevel.Warn);
+                return false;
+            }
+        }
+
+        DebugLog.Write(LogChannel.Fields, "PatchData.OperandsFitSource: field '" + ownerName
+            + "' predicate op=" + predicate.Op + " with " + predicate.Operands.Length
+            + " operand(s) fits source encoding " + sourceEncoding, LogLevel.Trace);
         return true;
     }
 }
