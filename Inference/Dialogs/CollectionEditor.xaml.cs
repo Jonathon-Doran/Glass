@@ -1502,6 +1502,80 @@ public partial class CollectionEditor : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // RenumberButton_Click
+    //
+    // Renumbers every row in the collection with sequence numbers starting at 10 and stepping
+    // by 10, keeping the current order.  Rows that have a sequence number are ordered by it,
+    // with ties kept in table order.  Rows with no sequence number follow, in table order.
+    // Deleted rows are skipped.  No-op when no collection is loaded.
+    //
+    // sender:  The Renumber button.
+    // e:       Standard event args; not inspected.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void RenumberButton_Click(object sender, RoutedEventArgs e)
+    {
+        const int renumberStart = 10;
+        const int renumberStep = 10;
+
+        if (_fieldsTable == null)
+        {
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.RenumberButton_Click: "
+                + "no collection loaded, ignoring", LogLevel.Warn);
+            return;
+        }
+
+        DataTable table = _fieldsTable;
+
+        List<int> sequencedIndexes = new List<int>();
+        List<int> unsequencedIndexes = new List<int>();
+        for (int rowIndex = 0; rowIndex < table.Rows.Count; rowIndex++)
+        {
+            DataRow row = table.Rows[rowIndex];
+            if (row.RowState == DataRowState.Deleted)
+            {
+                continue;
+            }
+
+            if (row["sequence"] == DBNull.Value)
+            {
+                unsequencedIndexes.Add(rowIndex);
+            }
+            else
+            {
+                sequencedIndexes.Add(rowIndex);
+            }
+        }
+
+        sequencedIndexes.Sort((int a, int b) =>
+        {
+            int sequenceA = Convert.ToInt32(table.Rows[a]["sequence"]);
+            int sequenceB = Convert.ToInt32(table.Rows[b]["sequence"]);
+            if (sequenceA != sequenceB)
+            {
+                return sequenceA.CompareTo(sequenceB);
+            }
+            return a.CompareTo(b);
+        });
+
+        int next = renumberStart;
+        for (int listIndex = 0; listIndex < sequencedIndexes.Count; listIndex++)
+        {
+            table.Rows[sequencedIndexes[listIndex]]["sequence"] = next;
+            next = next + renumberStep;
+        }
+
+        for (int listIndex = 0; listIndex < unsequencedIndexes.Count; listIndex++)
+        {
+            table.Rows[unsequencedIndexes[listIndex]]["sequence"] = next;
+            next = next + renumberStep;
+        }
+
+        DebugLog.Write(LogChannel.Fields, "CollectionEditor.RenumberButton_Click: "
+            + "renumbered " + sequencedIndexes.Count + " sequenced and " + unsequencedIndexes.Count
+            + " unsequenced row(s) from " + renumberStart + " by " + renumberStep, LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // SetStatus
     //
     // Sets the status bar text to the given message.  Null or empty clears the bar.

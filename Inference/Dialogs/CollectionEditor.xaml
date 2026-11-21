@@ -97,6 +97,11 @@
                             Content="Predicate"
                             Width="80"
                             Click="TogglePredicateButton_Click" />
+                    <Button x:Name="RenumberButton"
+                            Content="Renumber"
+                            Width="90"
+                            Margin="16,0,0,0"
+                            Click="RenumberButton_Click" />
                 </StackPanel>
 
                 <DataGrid x:Name="FieldsGrid"
