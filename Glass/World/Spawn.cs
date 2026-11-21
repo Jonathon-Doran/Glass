@@ -27,7 +27,7 @@ public class Spawn
     public int Race;
     public DateTime Observed;
     public uint A;
-    public uint PersistentId;
+    public ulong CharacterId;
     public uint IsPlayer;
     public uint Type;
     public float Unknown1;

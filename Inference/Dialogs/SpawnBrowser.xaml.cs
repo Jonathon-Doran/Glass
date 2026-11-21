@@ -296,7 +296,7 @@ public class SpawnBrowserRow
         }
 
         A = spawn.A;
-        PersistentId = "0x" + spawn.PersistentId.ToString("X");
+        PersistentId = "0x" + spawn.CharacterId.ToString("X");
         IsPlayer = spawn.IsPlayer;
         Type = spawn.Type;
         Unknown1 = spawn.Unknown1.ToString("F2");

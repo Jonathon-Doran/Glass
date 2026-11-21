@@ -7,6 +7,7 @@ using Glass.Network.Protocol.Fields;
 using Glass.World;
 using System;
 using System.Buffers.Binary;
+using System.Printing;
 using System.Security.Policy;
 using System.Text;
 
@@ -27,26 +28,44 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
     private readonly SlotId _name_Slot;
     private readonly SlotId _spawnId_Slot;
     private readonly SlotId _level_Slot;
-    private readonly SlotId _unknown_3_Slot;
-    private readonly SlotId _id_Slot;
-
-    private readonly SlotId _isPlayer_Slot;
+    private readonly SlotId _unknown_23A_Slot;
+    private readonly SlotId _unknown_11D4_Slot;
+    private readonly SlotId _characterId_Slot;
     private readonly SlotId _type_Slot;
     private readonly SlotId _bitmap_Slot;
-    private readonly SlotId _unknown_1_Slot;
-    private readonly SlotId _unknown_2_Slot;
+    private readonly SlotId _presenceFlags_Slot;
+    private readonly SlotId _unknown_27A_Slot;
+    private readonly SlotId _unknown_13D4_Slot;
     private readonly SlotId _numQuads_Slot;
     private readonly SlotId _quadsGate_Slot;
-    private readonly SlotId _A_Slot;
-    private readonly SlotId _model_Slot;
+    private readonly SlotId _unknown_4E_Slot;
+    private readonly SlotId _unknown_FC5_Slot;
+    private readonly SlotId _unknown_FC6_Slot;
+    private readonly SlotId _unknown_FC7_Slot;
+    private readonly SlotId _unknown_1F9_Slot;
+    private readonly SlotId _unknown_FC9_Slot;
+    private readonly SlotId _unknown_FCA_Slot;
+    private readonly SlotId _unknown_1044_Slot;
+    private readonly SlotId _unknown_209_Slot;
+    private readonly SlotId _unknown_104C_Slot;
+    private readonly SlotId _unknown_1F8_Slot;
+    private readonly SlotId _unknown_FC1_Slot;
+    private readonly SlotId _unknown_FC2_Slot;
+    private readonly SlotId _unknown_FC3_Slot;
+    private readonly SlotId _spawnSize_Slot;
+    private readonly SlotId _unknown_FC4_Slot;
     private readonly SlotId _walkSpeed_Slot;
     private readonly SlotId _runSpeed_Slot;
+    private readonly SlotId _model_Slot;
+    private readonly SlotId _unknown_255_Slot;
+    private readonly SlotId _unknown_91_Slot;
+    private readonly SlotId _unknown_bb_Slot;
     private readonly SlotId _class_Slot;
+    private readonly SlotId _unknown_9F_Slot;
+    private readonly SlotId _unknown_bA_Slot;
+    private readonly SlotId _unknown_9C_Slot;
+    private readonly SlotId _unknown_409_Slot;
     private readonly SlotId _lastname_Slot;
-    private readonly SlotId _unknown_4_Slot;
-    private readonly SlotId _unknown_5_Slot;
-    private readonly SlotId _unknown_6_Slot;
-    private readonly SlotId _petOwner_Slot;
 
     private readonly SlotId _quad_Unknown_Slot;
 
@@ -77,25 +96,39 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         _name_Slot = _registry.IndexOfField(_collectionHandle, "name");
         _spawnId_Slot = _registry.IndexOfField(_collectionHandle, "spawn_id");
         _level_Slot = _registry.IndexOfField(_collectionHandle, "level");
-        _unknown_3_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_3");
-        _id_Slot = _registry.IndexOfField(_collectionHandle, "character_id");
-        _isPlayer_Slot = _registry.IndexOfField(_collectionHandle, "is_player");
+        _unknown_23A_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_23A");
+        _unknown_11D4_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_11D4");
+        _characterId_Slot = _registry.IndexOfField(_collectionHandle, "character_id");
         _type_Slot = _registry.IndexOfField(_collectionHandle, "Type");
         _bitmap_Slot = _registry.IndexOfField(_collectionHandle, "Bitmap");
-        _unknown_1_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_1");
-        _unknown_2_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_2");
-        _unknown_4_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_4");
-        _unknown_5_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_5");
-        _unknown_6_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_6");
+        _unknown_27A_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_27A");
+        _unknown_13D4_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_13D4");
         _numQuads_Slot = _registry.IndexOfField(_collectionHandle, "NumQuads");
-        _A_Slot = _registry.IndexOfField(_collectionHandle, "A");
-        _model_Slot = _registry.IndexOfField(_collectionHandle, "Model");
+        _unknown_FC5_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_FC5");
+        _unknown_FC6_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_FC6");
+        _unknown_1F9_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_1F9");
+        _unknown_FC7_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_FC7");
+        _unknown_FC9_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_FC9");
+        _unknown_FCA_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_FCA");
+        _unknown_1044_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_1044");
+        _unknown_209_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_209");
+        _unknown_104C_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_104C");
+        _unknown_1F8_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_1F8");
+        _unknown_FC2_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_FC2");
+        _unknown_FC3_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_FC3");
+        _spawnSize_Slot = _registry.IndexOfField(_collectionHandle, "Spawn_Size");
         _walkSpeed_Slot = _registry.IndexOfField(_collectionHandle, "WalkSpeed");
         _runSpeed_Slot = _registry.IndexOfField(_collectionHandle, "RunSpeed");
+        _model_Slot = _registry.IndexOfField(_collectionHandle, "Model");
+        _unknown_255_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_255");
+        _unknown_bb_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_bb");
         _class_Slot = _registry.IndexOfField(_collectionHandle, "Class");
-
+        _unknown_9F_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_9F");
+        _unknown_bA_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_bA");
+        _unknown_9C_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_9C");
+        _unknown_409_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_409");
         _lastname_Slot = _registry.IndexOfField(_collectionHandle, "LastName");
-        _petOwner_Slot = _registry.IndexOfField(_collectionHandle, "PetOwner");
+
 
         // Quads slots
         _quad_Unknown_Slot = _registry.IndexOfField(quadCollection, "Unknown");
@@ -135,15 +168,13 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         string name;
         uint spawnId;
         uint level;
-        uint characterId;
-        uint A;
+        ulong characterId;
         uint model;
         uint mobClass;
-        uint isPlayer;
         uint type;
-        float unknown1;
-        uint unknown2;
-        float unknown3;
+        float unknown27A;
+        uint unknown13D4;
+        uint unknown23A;
         uint C;
         string lastName;
         uint ownerId;
@@ -165,18 +196,18 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             name = _extractor.GetStringAt(_name_Slot);
             spawnId = _extractor.GetUIntAt(_spawnId_Slot);
             level = _extractor.GetUIntAt(_level_Slot);
-            characterId = _extractor.GetUIntAt(_id_Slot);
-            A = _extractor.GetUIntAt(_A_Slot);
+            characterId = _extractor.GetUInt64At(_characterId_Slot);
+
             model = _extractor.GetUIntAt(_model_Slot);
             mobClass = _extractor.GetUIntAt(_class_Slot);
-            isPlayer = _extractor.GetUIntAt(_isPlayer_Slot);
+
             type = _extractor.GetUIntAt(_type_Slot);
-            unknown1 = _extractor.GetFloatAt(_unknown_1_Slot);
-            unknown2 = _extractor.GetUIntAt(_unknown_2_Slot);
-            unknown3 = _extractor.GetFloatAt(_unknown_3_Slot);
+            unknown27A = _extractor.GetFloatAt(_unknown_27A_Slot);
+            unknown13D4 = _extractor.GetUIntAt(_unknown_13D4_Slot);
+            unknown23A = _extractor.GetUIntAt(_unknown_23A_Slot);
             C = _extractor.GetUIntAt(_numQuads_Slot);
             lastName = _extractor.GetStringAt(_lastname_Slot);
-            ownerId = _extractor.GetUIntAt(_petOwner_Slot);
+            ownerId = 0;
         }
         finally
         {
@@ -338,13 +369,11 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         // We have the spawn by reference from above, so fill in the data
         spawn.Name = name;
         spawn.Level = (ushort)level;
-        spawn.A = A;
-        spawn.PersistentId = characterId;
-        spawn.IsPlayer = isPlayer;
+        spawn.CharacterId = characterId;
         spawn.Type = type;
-        spawn.Unknown1 = unknown1;
-        spawn.Unknown2 = unknown2;
-        spawn.Unknown3 = unknown3;
+        spawn.Unknown1 = unknown27A;
+        spawn.Unknown2 = unknown13D4;
+        spawn.Unknown3 = unknown23A;
         spawn.C = C;
         spawn.Model = model;
         spawn.Class = mobClass;
@@ -403,7 +432,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
 
             FieldNodes.AddLabeledNode(_extractor, _spawnId_Slot, "Spawn: " + spawnName + " (" +
                     spawnId + ", 0x" + spawnId.Value.ToString("X4") + ")", root);
-            FieldNodes.AddUIntNode(_extractor, _id_Slot, "Character ID", root, "X");
+            FieldNodes.AddUInt64Node(_extractor, _characterId_Slot, "Character ID", root, "X");
 
             string name = FieldNodes.AddStringNode(_extractor, _name_Slot, "Name", root);
             FieldNodes.AddUIntNode(_extractor, _level_Slot, "Level", root, "D");
@@ -413,15 +442,12 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             FieldNodes.AddLabeledNode(_extractor, _model_Slot, "Model: " + ModelName + " (" + modelId + ")", root);
 
             FieldNodes.AddUIntNode(_extractor, _class_Slot, "Class", root, "D");
-            FieldNodes.AddBooleanNode(_extractor, _isPlayer_Slot, "Player", root);
+
             FieldNodes.AddUIntNode(_extractor, _type_Slot, "Type", root, "D");
             FieldNodes.AddUIntNode(_extractor, _bitmap_Slot, "Bitmap", root, "X8");
-            FieldNodes.AddFloatNode(_extractor, _unknown_1_Slot, "Unknown 1", root, "F2");
-            FieldNodes.AddUIntNode(_extractor, _unknown_2_Slot, "Unknown 2", root, "?");
-            FieldNodes.AddFloatNode(_extractor, _unknown_3_Slot, "Unknown 3", root);
-            FieldNodes.AddUIntNode(_extractor, _unknown_4_Slot, "Unknown 4", root, "?");
-            FieldNodes.AddUIntNode(_extractor, _unknown_5_Slot, "Unknown 5", root, "?");
-            FieldNodes.AddUIntNode(_extractor, _unknown_6_Slot, "Unknown 6", root, "?");
+            FieldNodes.AddFloatNode(_extractor, _unknown_27A_Slot, "Unknown 27A", root, "F2");
+            FieldNodes.AddUIntNode(_extractor, _unknown_13D4_Slot, "Unknown 13D4", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_23A_Slot, "Unknown 23A", root);
             FieldNodes.AddUIntNode(_extractor, _numQuads_Slot, "Num Quads", root, "D");
             FieldNodes.AddFloatNode(_extractor, _walkSpeed_Slot, "Walk Speed", root, "F2");
             FieldNodes.AddFloatNode(_extractor, _runSpeed_Slot, "Run Speed", root, "F2");
@@ -435,10 +461,9 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
 
                 FieldNodes.AddUIntNode(_extractor, _quad_Unknown_Slot, "Unknown", quadNode, "?");
             }
+       //    FieldNodes.AddStringNode(_extractor, _lastname_Slot, "Lastname", root);
+
             _extractor.EnterGate(rootGate, 0);
-            FieldNodes.AddUIntNode(_extractor, _A_Slot, "A", root, "D");
-            FieldNodes.AddStringNode(_extractor, _lastname_Slot, "Lastname", root);
-            FieldNodes.AddUIntNode(_extractor, _petOwner_Slot, "Owner Spawn ID", root);
         }
         finally
         {

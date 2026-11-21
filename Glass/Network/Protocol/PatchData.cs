@@ -672,7 +672,8 @@ public class PatchData
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // LoadFields
     //
-    // Reads the PacketField rows for the collection at the given opcodeHandle, ordered by bit_offset,
+    // Reads the PacketField rows for the collection at the given opcodeHandle, ordered by sequence
+    // with unsequenced rows last and the row id breaking ties,
     // builds their FieldDefinition array,  and resolves relative
     // anchors.  A collection with no PacketField rows leaves the entry null.
     //
@@ -697,7 +698,7 @@ public class PatchData
                     + " WHERE patch_date = @patchDate"
                     + " AND server_type = @serverType"
                     + " AND collection_name = @collectionName"
-                    + " ORDER BY bit_offset";
+                    + " ORDER BY sequence IS NULL, sequence, id";
         cmd.Parameters.AddWithValue("@patchDate", PatchLevel.PatchDate);
         cmd.Parameters.AddWithValue("@serverType", PatchLevel.ServerType);
         cmd.Parameters.AddWithValue("@collectionName", collectionName);
@@ -821,7 +822,9 @@ public class PatchData
     // Reorders collections so that every relative field appears after the field it
     // anchors on, then resolves each anchor name to a slot index and writes it into
     // FieldDefinition.RelativeToSlot.  The ordering is produced by Kahn's algorithm over the
-    // name-anchor graph and handles chains of any depth.
+    // name-anchor graph and handles chains of any depth.  Among the fields whose anchors are
+    // already placed, the one loaded first is placed next, so the load order is kept wherever
+    // the anchors allow.
     //
     // _pendingRelativeNames supplies the anchor name for each field
     //
@@ -896,12 +899,12 @@ public class PatchData
             inDegree[edgeIndex] = inDegree[edgeIndex] + 1;
         }
 
-        Queue<int> ready = new Queue<int>();
+        PriorityQueue<int, int> ready = new PriorityQueue<int, int>();
         for (int readyIndex = 0; readyIndex < definitionCount; readyIndex++)
         {
             if (inDegree[readyIndex] == 0)
             {
-                ready.Enqueue(readyIndex);
+                ready.Enqueue(readyIndex, readyIndex);
             }
         }
 
@@ -918,7 +921,7 @@ public class PatchData
                 inDegree[dependentIndex] = inDegree[dependentIndex] - 1;
                 if (inDegree[dependentIndex] == 0)
                 {
-                    ready.Enqueue(dependentIndex);
+                    ready.Enqueue(dependentIndex, dependentIndex);
                 }
             }
         }
