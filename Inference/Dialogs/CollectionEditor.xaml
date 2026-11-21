@@ -12,10 +12,22 @@
     <Window.Resources>
         <uiconv:StringToVisibilityConverter x:Key="StringToVisibility" />
         <uiconv:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+        <uiconv:RelativeToBrushConverter x:Key="RelativeToBrush" />
+        <uiconv:AnchorMatchConverter x:Key="AnchorMatch" />
         <Style x:Key="NoDetailChromeRowStyle" TargetType="DataGridRow">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="DetailsVisibility"
                 Value="{Binding any_detail, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+        </Style>
+        <Style x:Key="AlternatingRowHeaderStyle"
+               TargetType="DataGridRowHeader"
+               BasedOn="{StaticResource {x:Type DataGridRowHeader}}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding (ItemsControl.AlternationIndex), RelativeSource={RelativeSource AncestorType=DataGridRow}}"
+                             Value="1">
+                    <Setter Property="Background" Value="#FFDA70D6" />
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
     </Window.Resources>
 
@@ -45,8 +57,18 @@
                        Margin="0,0,8,0" />
             <ComboBox x:Name="CollectionComboBox"
                       Width="280"
-                      Margin="0,0,16,0"
+                      Margin="0,0,8,0"
                       SelectionChanged="CollectionComboBox_SelectionChanged" />
+            <Button x:Name="NewCollectionButton"
+                    Content="New"
+                    Width="80"
+                    Margin="0,0,8,0"
+                    Click="NewCollectionButton_Click" />
+            <Button x:Name="DeleteCollectionButton"
+                    Content="Delete"
+                    Width="80"
+                    Margin="0,0,16,0"
+                    Click="DeleteCollectionButton_Click" />
 
             <TextBlock Text="Name:"
                        VerticalAlignment="Center"
@@ -54,12 +76,6 @@
             <TextBox x:Name="CollectionNameTextBox"
                      Width="240"
                      Margin="0,0,16,0" />
-
-            <Button x:Name="ClearButton"
-                    Content="Clear"
-                    Width="80"
-                    Margin="0,0,8,0"
-                    Click="ClearButton_Click" />
         </StackPanel>
 
         <!-- =========================================================================== -->
@@ -110,7 +126,9 @@
                           CanUserDeleteRows="False"
                           HeadersVisibility="All"
                           SelectionMode="Single"
+                          AlternationCount="2"
                           RowStyle="{StaticResource NoDetailChromeRowStyle}"
+                          RowHeaderStyle="{StaticResource AlternatingRowHeaderStyle}"
                           VerticalAlignment="Top">
                     <DataGrid.ContextMenu>
                         <ContextMenu>
@@ -128,7 +146,25 @@
                             Width="80" />
                         <DataGridTextColumn Header="Name"
                             Binding="{Binding field_name}"
-                            Width="*" />
+                            Width="*">
+                            <DataGridTextColumn.CellStyle>
+                                <Style TargetType="DataGridCell"
+                                       BasedOn="{StaticResource {x:Type DataGridCell}}">
+                                    <Style.Triggers>
+                                        <DataTrigger Value="True">
+                                            <DataTrigger.Binding>
+                                                <MultiBinding Converter="{StaticResource AnchorMatch}" Mode="OneWay">
+                                                    <Binding Path="field_name" />
+                                                    <Binding Path="SelectedItem.relative_to"
+                                                             RelativeSource="{RelativeSource AncestorType=DataGrid}" />
+                                                </MultiBinding>
+                                            </DataTrigger.Binding>
+                                            <Setter Property="Background" Value="#FF8A6D00" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGridTextColumn.CellStyle>
+                        </DataGridTextColumn>
                         <DataGridTextColumn Header="Bit Offset"
                             Binding="{Binding bit_offset}"
                             Width="80" />
@@ -146,58 +182,79 @@
 
                     <DataGrid.RowDetailsTemplate>
                         <DataTemplate>
-                            <StackPanel Orientation="Horizontal"
-                                        Margin="24,2,8,6">
-                                <!-- Relative To -->
-                                <Grid Margin="0,0,16,0">
-                                    <Grid.Visibility>
-                                        <MultiBinding Converter="{StaticResource StringToVisibility}" Mode="OneWay">
-                                            <Binding Path="relative_to" />
-                                            <Binding Path="show_relative_to" />
-                                        </MultiBinding>
-                                    </Grid.Visibility>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0"
-                                        Text="Relative To:"
-                                        VerticalAlignment="Center"
-                                        Margin="0,0,8,0" />
-                                    <TextBox Grid.Column="1"
-                                        MinWidth="120"
-                                        HorizontalAlignment="Left"
-                                        BorderThickness="0"
-                                        Background="Transparent"
-                                        Text="{Binding relative_to, UpdateSourceTrigger=PropertyChanged}" />
-                                </Grid>
+                            <StackPanel Orientation="Vertical"
+                                        Margin="105,2,8,6">
+                                <StackPanel Orientation="Horizontal">
+                                    <!-- Relative To -->
+                                    <Grid Margin="0,0,16,0">
+                                        <Grid.Visibility>
+                                            <MultiBinding Converter="{StaticResource StringToVisibility}" Mode="OneWay">
+                                                <Binding Path="relative_to" />
+                                                <Binding Path="show_relative_to" />
+                                            </MultiBinding>
+                                        </Grid.Visibility>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0"
+                                            Text="Relative To:"
+                                            VerticalAlignment="Center"
+                                            Margin="0,0,8,0" />
+                                        <TextBox Grid.Column="1"
+                                            MinWidth="120"
+                                            HorizontalAlignment="Left"
+                                            BorderThickness="0"
+                                            Text="{Binding relative_to, UpdateSourceTrigger=PropertyChanged}">
+                                            <TextBox.Style>
+                                                <Style TargetType="TextBox"
+                                                       BasedOn="{StaticResource {x:Type TextBox}}">
+                                                    <Setter Property="Background" Value="Transparent" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=DataGridRow}}"
+                                                                     Value="True">
+                                                            <Setter Property="Background" Value="#FF8A6D00" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBox.Style>
+                                            <TextBox.Foreground>
+                                                <MultiBinding Converter="{StaticResource RelativeToBrush}" Mode="OneWay">
+                                                    <Binding Path="relative_to" />
+                                                    <Binding Path="ItemsSource" RelativeSource="{RelativeSource AncestorType=DataGrid}" />
+                                                    <Binding Path="FieldNamesVersion" RelativeSource="{RelativeSource AncestorType=Window}" />
+                                                </MultiBinding>
+                                            </TextBox.Foreground>
+                                        </TextBox>
+                                    </Grid>
 
-                                <!-- Gate -->
-                                <Grid Margin="0,0,16,0">
-                                    <Grid.Visibility>
-                                        <MultiBinding Converter="{StaticResource StringToVisibility}" Mode="OneWay">
-                                            <Binding Path="gate" />
-                                            <Binding Path="show_gate" />
-                                        </MultiBinding>
-                                    </Grid.Visibility>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0"
-                                        Text="Gate:"
-                                        VerticalAlignment="Center"
-                                        Margin="0,0,8,0" />
-                                    <ComboBox Grid.Column="1"
-                                        MinWidth="120"
-                                        HorizontalAlignment="Left"
-                                        IsEditable="True"
-                                        ItemsSource="{Binding KnownGateNames, RelativeSource={RelativeSource AncestorType=Window}}"
-                                        Text="{Binding gate, UpdateSourceTrigger=PropertyChanged}" />
-                                </Grid>
+                                    <!-- Gate -->
+                                    <Grid Margin="0,0,16,0">
+                                        <Grid.Visibility>
+                                            <MultiBinding Converter="{StaticResource StringToVisibility}" Mode="OneWay">
+                                                <Binding Path="gate" />
+                                                <Binding Path="show_gate" />
+                                            </MultiBinding>
+                                        </Grid.Visibility>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0"
+                                            Text="Gate:"
+                                            VerticalAlignment="Center"
+                                            Margin="0,0,8,0" />
+                                        <ComboBox Grid.Column="1"
+                                            MinWidth="120"
+                                            HorizontalAlignment="Left"
+                                            IsEditable="True"
+                                            ItemsSource="{Binding KnownGateNames, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            Text="{Binding gate, UpdateSourceTrigger=PropertyChanged}" />
+                                    </Grid>
+                                </StackPanel>
 
                                 <!-- Predicate -->
-                                <Grid Margin="0,0,16,0">
+                                <Grid Margin="0,2,0,0">
                                     <Grid.Visibility>
                                         <MultiBinding Converter="{StaticResource StringToVisibility}" Mode="OneWay">
                                             <Binding Path="predicate" />
@@ -206,7 +263,7 @@
                                     </Grid.Visibility>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0"
                                         Text="Predicate:"
@@ -221,7 +278,6 @@
                                         BorderThickness="0"
                                         Background="Transparent"
                                         Text="{Binding predicate, UpdateSourceTrigger=PropertyChanged}" />
-
                                 </Grid>
                             </StackPanel>
                         </DataTemplate>

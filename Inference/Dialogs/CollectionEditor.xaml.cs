@@ -53,6 +53,15 @@ public partial class CollectionEditor : Window
     private string _loadedCollectionName = string.Empty;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // _problemPending
+    //
+    // True when a problem has been reported to the status bar and not yet cleared.  Set by
+    // SetProblem.  Cleared when validation of the fields completes with no problem found.  While
+    // true, no changes are written to the database.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private bool _problemPending = false;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // KnownGateNames
     //
     // The name of every Gate row in the selected patch level, ordered by name, bound as the
@@ -63,25 +72,29 @@ public partial class CollectionEditor : Window
     public ObservableCollection<string> KnownGateNames { get; } = new ObservableCollection<string>();
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // CollectionDropdownItem
+    // FieldNamesVersionProperty
     //
-    // Item bound to the collection combobox.  Carries the collection name for real rows.  When
-    // IsSentinel is true the item represents the "(New collection...)" entry: CollectionName is
-    // empty and ToString returns the sentinel label so the combobox displays it in place of a name.
+    // Dependency property backing FieldNamesVersion.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private class CollectionDropdownItem
+    public static readonly DependencyProperty FieldNamesVersionProperty = DependencyProperty.Register(
+        nameof(FieldNamesVersion), typeof(uint), typeof(CollectionEditor), new PropertyMetadata(0u));
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // FieldNamesVersion
+    //
+    // A counter that changes whenever the set of field names in the fields table changes: a name
+    // edited, a row added, or a row deleted.  Bound into each row's relative-to color so the color
+    // is recomputed when another row's name changes.  The value itself carries no meaning.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public uint FieldNamesVersion
     {
-        public string CollectionName { get; set; } = string.Empty;
-        public bool IsSentinel { get; set; }
-
-        public override string ToString()
+        get
         {
-            if (IsSentinel == true)
-            {
-                return "(New collection...)";
-            }
-
-            return CollectionName;
+            return (uint)GetValue(FieldNamesVersionProperty);
+        }
+        set
+        {
+            SetValue(FieldNamesVersionProperty, value);
         }
     }
 
@@ -158,14 +171,13 @@ public partial class CollectionEditor : Window
     // PopulateCollectionDropdown
     //
     // Reads the FieldCollection names for the given patch level, sorted, and binds them to the
-    // collection combobox as CollectionDropdownItem instances.  Appends a sentinel item labeled
-    // "(New collection...)" so the user can choose to create a new collection.
+    // collection combobox.
     //
     // patchLevel:  The patch level whose collection names to load.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void PopulateCollectionDropdown(PatchLevel patchLevel)
     {
-        List<CollectionDropdownItem> items = new List<CollectionDropdownItem>();
+        List<string> names = new List<string>();
 
         using (SqliteCommand cmd = _connection.CreateCommand())
         {
@@ -180,22 +192,14 @@ public partial class CollectionEditor : Window
             using SqliteDataReader reader = cmd.ExecuteReader();
             while (reader.Read() == true)
             {
-                CollectionDropdownItem item = new CollectionDropdownItem();
-                item.CollectionName = reader.GetString(0);
-                item.IsSentinel = false;
-                items.Add(item);
+                names.Add(reader.GetString(0));
             }
         }
 
-        CollectionDropdownItem sentinel = new CollectionDropdownItem();
-        sentinel.CollectionName = string.Empty;
-        sentinel.IsSentinel = true;
-        items.Add(sentinel);
-
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.PopulateCollectionDropdown: "
-            + (items.Count - 1) + " collection(s) plus sentinel for patchLevel=" + patchLevel, LogLevel.Trace);
+            + names.Count + " collection(s) for patchLevel=" + patchLevel, LogLevel.Trace);
 
-        CollectionComboBox.ItemsSource = items;
+        CollectionComboBox.ItemsSource = names;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -251,11 +255,17 @@ public partial class CollectionEditor : Window
     // or its toggle is true.  The any_detail column is view-only and is true when any second-line
     // editor shows for the row; it drives the row's details visibility so a row with no second-line
     // editor reserves no space.  The save path does not read these columns.
+    //
+    // The table's column-changed, row-changed, and row-deleted events are attached so that a field
+    // name edit, a row add, or a row delete increments FieldNamesVersion.
+    //
+    // Returns:
+    //   The new, empty fields table.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private DataTable CreateFieldsTable()
     {
         DataTable table = new DataTable();
-        DataColumn idColumn = table.Columns.Add("id", typeof(uint));
+        DataColumn idColumn = table.Columns.Add("id", typeof(long));
         idColumn.AutoIncrement = true;
         idColumn.AutoIncrementSeed = -1;
         idColumn.AutoIncrementStep = -1;
@@ -278,6 +288,13 @@ public partial class CollectionEditor : Window
 
         DataColumn anyDetailColumn = table.Columns.Add("any_detail", typeof(bool));
         anyDetailColumn.DefaultValue = false;
+
+        table.ColumnChanged += FieldsTable_ColumnChanged;
+        table.RowChanged += FieldsTable_RowChanged;
+        table.RowDeleted += FieldsTable_RowDeleted;
+
+        DebugLog.Write(LogChannel.Fields, "CollectionEditor.CreateFieldsTable: table created, "
+            + "field name change handlers attached", LogLevel.Trace);
 
         return table;
     }
@@ -308,6 +325,68 @@ public partial class CollectionEditor : Window
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.RecomputeAnyDetail: field='"
             + (row["field_name"] as string ?? string.Empty) + "' relativeTo=" + relativeToShows
             + " gate=" + gateShows + " predicate=" + predicateShows + " anyDetail=" + anyDetail, LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // FieldsTable_ColumnChanged
+    //
+    // Handles a column value change in the fields table.  When the changed column is field_name,
+    // increments FieldNamesVersion so relative-to colors are recomputed.  Changes to any other
+    // column are ignored.
+    //
+    // sender:  The fields table.
+    // e:       Identifies the changed row and column.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void FieldsTable_ColumnChanged(object sender, DataColumnChangeEventArgs e)
+    {
+        if (e.Column == null || e.Column.ColumnName != "field_name")
+        {
+            return;
+        }
+
+        FieldNamesVersion = FieldNamesVersion + 1;
+
+        DebugLog.Write(LogChannel.Fields, "CollectionEditor.FieldsTable_ColumnChanged: field_name now '"
+            + (e.ProposedValue as string ?? string.Empty) + "', FieldNamesVersion=" + FieldNamesVersion, LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // FieldsTable_RowChanged
+    //
+    // Handles a row change in the fields table.  When the action is an add, increments
+    // FieldNamesVersion so relative-to colors are recomputed.  Other actions are ignored.
+    //
+    // sender:  The fields table.
+    // e:       Identifies the changed row and the action.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void FieldsTable_RowChanged(object sender, DataRowChangeEventArgs e)
+    {
+        if (e.Action != DataRowAction.Add)
+        {
+            return;
+        }
+
+        FieldNamesVersion = FieldNamesVersion + 1;
+
+        DebugLog.Write(LogChannel.Fields, "CollectionEditor.FieldsTable_RowChanged: row added, FieldNamesVersion="
+            + FieldNamesVersion, LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // FieldsTable_RowDeleted
+    //
+    // Handles a row deletion in the fields table.  Increments FieldNamesVersion so relative-to
+    // colors are recomputed.
+    //
+    // sender:  The fields table.
+    // e:       Identifies the deleted row; not inspected.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void FieldsTable_RowDeleted(object sender, DataRowChangeEventArgs e)
+    {
+        FieldNamesVersion = FieldNamesVersion + 1;
+
+        DebugLog.Write(LogChannel.Fields, "CollectionEditor.FieldsTable_RowDeleted: row deleted, FieldNamesVersion="
+            + FieldNamesVersion, LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -443,11 +522,8 @@ public partial class CollectionEditor : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // CollectionComboBox_SelectionChanged
     //
-    // Fires when the collection selection changes.  For a real collection item, puts its name in
-    // the name box, records it as the loaded collection, and loads its fields into the grid.  For
-    // the sentinel item, blanks the name box, clears the loaded-collection name and the grid, and
-    // seeds an empty fields table the user can type rows into, then focuses the name box so the
-    // user can name the new collection.
+    // Fires when the collection selection changes.  Puts the selected collection's name in the
+    // name box, records it as the loaded collection, and loads its fields into the grid.
     //
     // sender:  The collection combobox.
     // e:       Standard selection-changed event args; not inspected.
@@ -469,47 +545,33 @@ public partial class CollectionEditor : Window
         }
 
         PatchLevel patchLevel = (PatchLevel)PatchLevelComboBox.SelectedItem;
-        CollectionDropdownItem item = (CollectionDropdownItem)CollectionComboBox.SelectedItem;
+        string collectionName = (string)CollectionComboBox.SelectedItem;
 
-        if (item.IsSentinel == true)
-        {
-            _loadedCollectionName = string.Empty;
-            CollectionNameTextBox.Text = string.Empty;
-
-            _fieldsTable = CreateFieldsTable();
-            FieldsGrid.ItemsSource = _fieldsTable.DefaultView;
-
-            CollectionNameTextBox.Focus();
-
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.CollectionComboBox_SelectionChanged: "
-                + "sentinel selected, armed for new collection, form cleared", LogLevel.Trace);
-            return;
-        }
-
-        _loadedCollectionName = item.CollectionName;
-        CollectionNameTextBox.Text = item.CollectionName;
+        _loadedCollectionName = collectionName;
+        CollectionNameTextBox.Text = collectionName;
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.CollectionComboBox_SelectionChanged: "
-            + "patchLevel=" + patchLevel + " collection=" + item.CollectionName, LogLevel.Trace);
+            + "patchLevel=" + patchLevel + " collection=" + collectionName, LogLevel.Trace);
 
-        LoadFieldsTable(patchLevel, item.CollectionName);
+        LoadFieldsTable(patchLevel, collectionName);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // ClearButton_Click
+    // NewCollectionButton_Click
     //
     // Resets the editor to the empty state for entering a new collection.  Clears the collection
-    // selection and name box, clears the loaded-collection name, and replaces the fields table with
-    // a fresh empty one bound to the grid.  No-op when no patch level is selected.
+    // selection and name box, clears the loaded-collection name, replaces the fields table with a
+    // fresh empty one bound to the grid, and focuses the name box so the new collection can be
+    // named.  No-op when no patch level is selected.
     //
-    // sender:  The Clear button.
+    // sender:  The New button.
     // e:       Standard event args; not inspected.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void ClearButton_Click(object sender, RoutedEventArgs e)
+    private void NewCollectionButton_Click(object sender, RoutedEventArgs e)
     {
         if (PatchLevelComboBox.SelectedItem == null)
         {
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.ClearButton_Click: "
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.NewCollectionButton_Click: "
                 + "no patch level selected, ignoring", LogLevel.Trace);
             return;
         }
@@ -521,7 +583,92 @@ public partial class CollectionEditor : Window
         _fieldsTable = CreateFieldsTable();
         FieldsGrid.ItemsSource = _fieldsTable.DefaultView;
 
-        DebugLog.Write(LogChannel.Fields, "CollectionEditor.ClearButton_Click: cleared to empty state", LogLevel.Trace);
+        CollectionNameTextBox.Focus();
+
+        DebugLog.Write(LogChannel.Fields, "CollectionEditor.NewCollectionButton_Click: "
+            + "cleared to empty state for a new collection", LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // DeleteCollectionButton_Click
+    //
+    // Deletes the loaded collection and its fields from the database.  Refused, with the reason
+    // reported through SetProblem, when no saved collection is loaded or when any Gate row uses the
+    // collection as its child collection; the refusal names those gates.  Otherwise asks for
+    // confirmation, then deletes within a single transaction.  A database failure rolls back,
+    // leaving the database unchanged, and is reported through SetProblem.  After a successful
+    // delete the collection dropdown is refreshed and the editor is left with no collection loaded.
+    //
+    // sender:  The Delete button.
+    // e:       Standard event args; not inspected.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void DeleteCollectionButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (PatchLevelComboBox.SelectedItem == null)
+        {
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.DeleteCollectionButton_Click: "
+                + "no patch level selected, ignoring", LogLevel.Warn);
+            return;
+        }
+
+        if (_loadedCollectionName.Length == 0)
+        {
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.DeleteCollectionButton_Click: "
+                + "no saved collection loaded, not deleting", LogLevel.Trace);
+            SetProblem("No saved collection is loaded to delete.");
+            return;
+        }
+
+        PatchLevel patchLevel = (PatchLevel)PatchLevelComboBox.SelectedItem;
+        string collectionName = _loadedCollectionName;
+
+        List<string> gateNames = FindGatesUsingCollection(patchLevel, collectionName);
+        if (gateNames.Count > 0)
+        {
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.DeleteCollectionButton_Click: "
+                + "collection '" + collectionName + "' used by " + gateNames.Count
+                + " gate(s), not deleting", LogLevel.Trace);
+            SetProblem("Collection '" + collectionName + "' is used by gate(s): "
+                + string.Join(", ", gateNames) + ".  Delete those first.");
+            return;
+        }
+
+        MessageBoxResult answer = MessageBox.Show(this,
+            "Delete collection '" + collectionName + "' and all of its fields?  This cannot be undone.",
+            "Delete Collection", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes)
+        {
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.DeleteCollectionButton_Click: "
+                + "delete of '" + collectionName + "' declined", LogLevel.Trace);
+            return;
+        }
+
+        using SqliteTransaction tx = _connection.BeginTransaction();
+
+        try
+        {
+            DeleteCollection(tx, patchLevel, collectionName);
+            tx.Commit();
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.DeleteCollectionButton_Click: "
+                + "delete of '" + collectionName + "' committed", LogLevel.Trace);
+        }
+        catch (Exception ex)
+        {
+            tx.Rollback();
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.DeleteCollectionButton_Click: rolled back, "
+                + ex.GetType().Name + ": " + ex.Message, LogLevel.Error);
+            SetProblem("Delete failed: " + ex.Message);
+            return;
+        }
+
+        PopulateCollectionDropdown(patchLevel);
+        CollectionNameTextBox.Text = string.Empty;
+        _loadedCollectionName = string.Empty;
+        _fieldsTable = null;
+        FieldsGrid.ItemsSource = null;
+
+        DebugLog.Write(LogChannel.Fields, "CollectionEditor.DeleteCollectionButton_Click: "
+            + "editor cleared after delete of '" + collectionName + "'", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -619,15 +766,15 @@ public partial class CollectionEditor : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // SaveButton_Click
     //
-    // Persists pending changes to the database inside a single transaction.  Either every change
-    // commits or none does.  Ensures the FieldCollection row exists under the name in the name box,
-    // renaming it and cascading the new name through PacketField.collection_name, gate encodings,
-    // and Gate rows when the name differs from the loaded name; then walks the fields table
-    // and writes its INSERT/UPDATE/DELETE statements.
+    // Validates the collection and, when no problem is pending, persists pending changes to the
+    // database inside a single transaction.  Either every change commits or none does.
     //
-    // A malformed predicate string aborts the save with a message and rolls the transaction back,
-    // leaving the database unchanged.
-    //  
+    // A blank collection name or a failed field validation is reported to the status bar through
+    // SetProblem and nothing is written.  Otherwise the FieldCollection row is made to match the
+    // name in the name box, renaming it when the name differs from the loaded name, and the fields
+    // table's INSERT/UPDATE/DELETE statements are written.  A database failure rolls the transaction
+    // back, leaving the database unchanged, and is reported through SetProblem.
+    //
     // After a successful commit the collection dropdown is refreshed so a new or renamed collection
     // appears, and the saved collection is reselected.
     //
@@ -647,8 +794,16 @@ public partial class CollectionEditor : Window
         if (newName.Length == 0)
         {
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.SaveButton_Click: "
-                + "empty collection name, ignoring", LogLevel.Trace);
-            SetStatus("Collection name is required.");
+                + "empty collection name, not saving", LogLevel.Trace);
+            SetProblem("Collection name is required.");
+            return;
+        }
+
+        ValidateFields();
+        if (_problemPending == true)
+        {
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.SaveButton_Click: "
+                + "problem pending after validation, not saving", LogLevel.Trace);
             return;
         }
 
@@ -660,7 +815,6 @@ public partial class CollectionEditor : Window
 
         try
         {
-            ValidateFields();
             ApplyCollectionName(tx, patchLevel, newName);
             SaveFieldsTable(tx, patchLevel, newName);
             tx.Commit();
@@ -670,26 +824,18 @@ public partial class CollectionEditor : Window
         {
             tx.Rollback();
             DebugLog.Write(LogChannel.Fields, "CollectionEditor.SaveButton_Click: rolled back, "
-                + ex.GetType().Name + ": " + ex.Message, LogLevel.Trace);
-            SetStatus("Save failed: " + ex.Message);
+                + ex.GetType().Name + ": " + ex.Message, LogLevel.Error);
+            SetProblem("Save failed: " + ex.Message);
             return;
         }
 
         _loadedCollectionName = newName;
 
         PopulateCollectionDropdown(patchLevel);
+        CollectionComboBox.SelectedItem = newName;
 
-        if (CollectionComboBox.ItemsSource is List<CollectionDropdownItem> items)
-        {
-            foreach (CollectionDropdownItem candidate in items)
-            {
-                if (candidate.IsSentinel == false && candidate.CollectionName == newName)
-                {
-                    CollectionComboBox.SelectedItem = candidate;
-                    break;
-                }
-            }
-        }
+        DebugLog.Write(LogChannel.Fields, "CollectionEditor.SaveButton_Click: reselected collection '"
+            + newName + "'", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -852,16 +998,12 @@ public partial class CollectionEditor : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // RenameCollection
     //
-    // Renames a FieldCollection and cascades the new name through every table that references the
-    // old name, all within the caller's transaction and scoped to the patch level:
+    // Renames a FieldCollection and cascades the new name through every column that refers to a
+    // collection by name, all within the caller's transaction and scoped to the patch level:
     //
     //   FieldCollection.name              oldName -> newName
     //   PacketField.collection_name       oldName -> newName   (the collection's own fields)
-    //   PacketField.encoding              Gate_oldName -> Gate_newName   (fields gating into it)
-    //   Gate.name                 Gate_oldName -> Gate_newName
-    //   Gate.child_collection     oldName -> newName
-    //
-    // After this runs no row in the patch references the old name.
+    //   Gate.child_collection             oldName -> newName   (gates that select the collection)
     //
     // tx:          The transaction within which the writes run.
     // patchLevel:  The patch level whose rows to update.
@@ -900,8 +1042,111 @@ public partial class CollectionEditor : Window
             cmd.ExecuteNonQuery();
         }
 
+        int gatesUpdated;
+        using (SqliteCommand cmd = _connection.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = "UPDATE Gate"
+                + " SET child_collection = @newName"
+                + " WHERE patch_date = @patchDate"
+                + " AND server_type = @serverType"
+                + " AND child_collection = @oldName";
+            cmd.Parameters.AddWithValue("@newName", newName);
+            cmd.Parameters.AddWithValue("@patchDate", patchLevel.PatchDate);
+            cmd.Parameters.AddWithValue("@serverType", patchLevel.ServerType);
+            cmd.Parameters.AddWithValue("@oldName", oldName);
+            gatesUpdated = cmd.ExecuteNonQuery();
+        }
+
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.RenameCollection: renamed '" + oldName
-            + "' to '" + newName, LogLevel.Trace);
+            + "' to '" + newName + "', " + gatesUpdated + " gate(s) updated", LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // FindGatesUsingCollection
+    //
+    // Returns the name of every Gate row in the patch level whose child_collection is the given
+    // collection, ordered by name.
+    //
+    // patchLevel:      The patch level whose Gate rows to search.
+    // collectionName:  The collection name to look for in child_collection.
+    //
+    // Returns:
+    //   The matching gate names; empty when no gate uses the collection.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private List<string> FindGatesUsingCollection(PatchLevel patchLevel, string collectionName)
+    {
+        List<string> gateNames = new List<string>();
+
+        using (SqliteCommand cmd = _connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT name"
+                + " FROM Gate"
+                + " WHERE patch_date = @patchDate"
+                + " AND server_type = @serverType"
+                + " AND child_collection = @collectionName"
+                + " ORDER BY name";
+            cmd.Parameters.AddWithValue("@patchDate", patchLevel.PatchDate);
+            cmd.Parameters.AddWithValue("@serverType", patchLevel.ServerType);
+            cmd.Parameters.AddWithValue("@collectionName", collectionName);
+
+            using SqliteDataReader reader = cmd.ExecuteReader();
+            while (reader.Read() == true)
+            {
+                gateNames.Add(reader.GetString(0));
+            }
+        }
+
+        DebugLog.Write(LogChannel.Fields, "CollectionEditor.FindGatesUsingCollection: "
+            + gateNames.Count + " gate(s) use collection '" + collectionName + "' in patchLevel="
+            + patchLevel, LogLevel.Trace);
+
+        return gateNames;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // DeleteCollection
+    //
+    // Deletes a collection from the patch level within the given transaction: every PacketField
+    // row whose collection_name is the collection, then the FieldCollection row itself.
+    //
+    // tx:              The transaction within which the deletes run.
+    // patchLevel:      The patch level the collection belongs to.
+    // collectionName:  The name of the collection to delete.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void DeleteCollection(SqliteTransaction tx, PatchLevel patchLevel, string collectionName)
+    {
+        int fieldsDeleted;
+        using (SqliteCommand cmd = _connection.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = "DELETE FROM PacketField"
+                + " WHERE patch_date = @patchDate"
+                + " AND server_type = @serverType"
+                + " AND collection_name = @collectionName";
+            cmd.Parameters.AddWithValue("@patchDate", patchLevel.PatchDate);
+            cmd.Parameters.AddWithValue("@serverType", patchLevel.ServerType);
+            cmd.Parameters.AddWithValue("@collectionName", collectionName);
+            fieldsDeleted = cmd.ExecuteNonQuery();
+        }
+
+        int collectionsDeleted;
+        using (SqliteCommand cmd = _connection.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = "DELETE FROM FieldCollection"
+                + " WHERE patch_date = @patchDate"
+                + " AND server_type = @serverType"
+                + " AND name = @collectionName";
+            cmd.Parameters.AddWithValue("@patchDate", patchLevel.PatchDate);
+            cmd.Parameters.AddWithValue("@serverType", patchLevel.ServerType);
+            cmd.Parameters.AddWithValue("@collectionName", collectionName);
+            collectionsDeleted = cmd.ExecuteNonQuery();
+        }
+
+        DebugLog.Write(LogChannel.Fields, "CollectionEditor.DeleteCollection: collection '"
+            + collectionName + "' in patchLevel=" + patchLevel + ", " + fieldsDeleted
+            + " field row(s) and " + collectionsDeleted + " collection row(s) deleted", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -1017,24 +1262,32 @@ public partial class CollectionEditor : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ValidateFields
     //
-    // Validates the field rows before any save write runs.  Three checks, each throwing on the
-    // first failure so the save aborts and rolls back:
+    // Validates the field rows before any save write runs.  Checks, stopping at the first failure:
     //
-    //   1. Every predicate's source field names a field present in the grid.
-    //   2. Every Times gate's count field names a field present in the grid.
-    //   3. The fields form no dependency cycle, where a field depends on its relative-to anchor
+    //   1. Every field has a non-blank name.
+    //   2. Every field has an encoding or a gate.
+    //   3. Every predicate's source field names a field present in the grid.
+    //   4. Every relative-to anchor names a field present in the grid.
+    //   5. The fields form no dependency cycle, where a field depends on its relative-to anchor
     //      and on its predicate source.  Detected by Kahn's algorithm over the dependency graph.
     //
-    // Rows marked for deletion are excluded from every check.  Field names are compared exactly.
+    // Rows marked for deletion are excluded from every check.  Field names are compared exactly;
+    // the relative-to value is trimmed before comparison.  The first failure is reported through
+    // SetProblem.  When every check passes, _problemPending is cleared and the status bar is
+    // cleared.  When no fields table is loaded there is nothing to check and validation succeeds.
     //
-    // Throws:
-    //   InvalidOperationException describing the first reference or cycle failure found.
+    // Returns:
+    //   True when every check passed; false when a problem was reported.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private void ValidateFields()
+    private bool ValidateFields()
     {
         if (_fieldsTable == null)
         {
-            return;
+            _problemPending = false;
+            SetStatus(string.Empty);
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.ValidateFields: no fields table, "
+                + "nothing to validate", LogLevel.Trace);
+            return true;
         }
 
         List<DataRow> liveRows = new List<DataRow>();
@@ -1055,7 +1308,7 @@ public partial class CollectionEditor : Window
             indexByName[name] = rowIndex;
         }
 
-        // Check 1 and 2: predicate sources and gate count fields name present fields.
+        // Checks 1 through 4: names, encodings, predicate sources, and relative-to anchors.
         for (int rowIndex = 0; rowIndex < liveRows.Count; rowIndex++)
         {
             DataRow row = liveRows[rowIndex];
@@ -1063,7 +1316,10 @@ public partial class CollectionEditor : Window
 
             if (ownName.Trim().Length == 0)
             {
-                throw new InvalidOperationException("A field has a blank name. All fields must have a name.");
+                DebugLog.Write(LogChannel.Fields, "CollectionEditor.ValidateFields: blank field name "
+                    + "at live row " + rowIndex, LogLevel.Trace);
+                SetProblem("A field has a blank name.  All fields must have a name.");
+                return false;
             }
 
             string? gateRaw = row["gate"] as string;
@@ -1074,9 +1330,10 @@ public partial class CollectionEditor : Window
 
             if (hasGate == false && hasEncoding == false)
             {
-                SetStatus("Field '" + ownName + "' has no encoding, aborting save");
-                throw new InvalidOperationException("Field '" + ownName
-                    + "' has no encoding and no gate.");
+                DebugLog.Write(LogChannel.Fields, "CollectionEditor.ValidateFields: field '"
+                    + ownName + "' has no encoding and no gate", LogLevel.Trace);
+                SetProblem("Field '" + ownName + "' has no encoding and no gate.");
+                return false;
             }
 
             string? predicateRaw = row["predicate"] as string;
@@ -1085,18 +1342,37 @@ public partial class CollectionEditor : Window
                 string sourceName = ExtractPredicateSourceName(predicateRaw);
                 if (sourceName.Length == 0)
                 {
-                    throw new InvalidOperationException("Field '" + ownName
-                        + "' has an invalid predicate: '" + predicateRaw + "'");
+                    DebugLog.Write(LogChannel.Fields, "CollectionEditor.ValidateFields: field '"
+                        + ownName + "' predicate '" + predicateRaw + "' has no source", LogLevel.Trace);
+                    SetProblem("Field '" + ownName + "' has an invalid predicate: '" + predicateRaw + "'");
+                    return false;
                 }
                 if (indexByName.ContainsKey(sourceName) == false)
                 {
-                    throw new InvalidOperationException("Field '" + ownName
-                        + "' predicate references unknown field '" + sourceName + "'");
+                    DebugLog.Write(LogChannel.Fields, "CollectionEditor.ValidateFields: field '"
+                        + ownName + "' predicate source '" + sourceName + "' not in grid", LogLevel.Trace);
+                    SetProblem("Field '" + ownName + "' predicate references unknown field '"
+                        + sourceName + "'");
+                    return false;
+                }
+            }
+
+            string? relativeToRaw = row["relative_to"] as string;
+            if (string.IsNullOrWhiteSpace(relativeToRaw) == false)
+            {
+                string anchorName = relativeToRaw.Trim();
+                if (indexByName.ContainsKey(anchorName) == false)
+                {
+                    DebugLog.Write(LogChannel.Fields, "CollectionEditor.ValidateFields: field '"
+                        + ownName + "' relative-to anchor '" + anchorName + "' not in grid", LogLevel.Trace);
+                    SetProblem("Field '" + ownName + "' is relative to unknown field '"
+                        + anchorName + "'");
+                    return false;
                 }
             }
         }
 
-        // Check 3: no dependency cycle over relative-to and predicate-source edges.
+        // Check 5: no dependency cycle over relative-to and predicate-source edges.
         int fieldCount = liveRows.Count;
         int[] inDegree = new int[fieldCount];
         List<int>[] dependents = new List<int>[fieldCount];
@@ -1109,7 +1385,11 @@ public partial class CollectionEditor : Window
         {
             DataRow row = liveRows[rowIndex];
 
-            AddDependencyEdge(row["relative_to"] as string, rowIndex, indexByName, inDegree, dependents);
+            string? relativeToRaw = row["relative_to"] as string;
+            if (string.IsNullOrWhiteSpace(relativeToRaw) == false)
+            {
+                AddDependencyEdge(relativeToRaw.Trim(), rowIndex, indexByName, inDegree, dependents);
+            }
 
             string? predicateRaw = row["predicate"] as string;
             if (string.IsNullOrWhiteSpace(predicateRaw) == false)
@@ -1162,25 +1442,31 @@ public partial class CollectionEditor : Window
                 }
             }
 
-            throw new InvalidOperationException("Fields form a dependency cycle: " + cyclic);
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.ValidateFields: dependency cycle among "
+                + cyclic, LogLevel.Trace);
+            SetProblem("Fields form a dependency cycle: " + cyclic);
+            return false;
         }
 
+        _problemPending = false;
+        SetStatus(string.Empty);
+
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.ValidateFields: " + fieldCount
-            + " field(s) validated, no reference or cycle errors", LogLevel.Trace);
+            + " field(s) validated, no problems, problem flag cleared", LogLevel.Trace);
+        return true;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // AddDependencyEdge
     //
-    // Adds one edge to the dependency graph built by ValidateFields: the field at dependentIndex
-    // depends on the field named by dependencyName.  The edge increments the dependent's in-degree
-    // and records it under the dependency, so Kahn's algorithm releases the dependent only after
-    // the dependency is resolved.
+    // Adds one edge to a field dependency graph: the field at dependentIndex depends on the field
+    // named by dependencyName.  The edge increments the dependent's in-degree and records it under
+    // the dependency, so Kahn's algorithm releases the dependent only after the dependency is
+    // resolved.
     //
-    // A null, empty, or unknown dependency name adds no edge.  An unknown name is not an error
-    // here: predicate sources are checked for existence before the graph is built, and a missing
-    // relative-to anchor is left for the load path to handle, so the graph only links fields that
-    // are present.
+    // A null, empty, or unknown dependency name adds no edge.  Predicate sources and relative-to
+    // anchors are checked for existence before the graph is built, so the graph only links fields
+    // that are present.
     //
     // dependencyName:  The name of the field this field depends on (an anchor or a predicate source).
     // dependentIndex:  The index of the depending field in the live-rows list.
@@ -1573,6 +1859,23 @@ public partial class CollectionEditor : Window
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.RenumberButton_Click: "
             + "renumbered " + sequencedIndexes.Count + " sequenced and " + unsequencedIndexes.Count
             + " unsequenced row(s) from " + renumberStart + " by " + renumberStep, LogLevel.Trace);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // SetProblem
+    //
+    // Reports a problem with the collection being edited.  Replaces the status bar text with the
+    // message and sets _problemPending so changes are not written until validation succeeds.
+    //
+    // message:  The problem description shown on the status bar.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void SetProblem(string message)
+    {
+        _problemPending = true;
+        SetStatus(message);
+
+        DebugLog.Write(LogChannel.Fields, "CollectionEditor.SetProblem: problem pending, '"
+            + message + "'", LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
