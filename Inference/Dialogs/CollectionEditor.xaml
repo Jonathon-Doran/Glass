@@ -12,7 +12,7 @@
     <Window.Resources>
         <uiconv:StringToVisibilityConverter x:Key="StringToVisibility" />
         <uiconv:BoolToVisibilityConverter x:Key="BoolToVisibility" />
-        <uiconv:RelativeToBrushConverter x:Key="RelativeToBrush" />
+        <uiconv:AnchorFoundConverter x:Key="AnchorFound" />
         <uiconv:AnchorMatchConverter x:Key="AnchorMatch" />
         <Style x:Key="NoDetailChromeRowStyle" TargetType="DataGridRow">
             <Setter Property="Background" Value="Transparent" />
@@ -206,25 +206,38 @@
                                             HorizontalAlignment="Left"
                                             BorderThickness="0"
                                             Text="{Binding relative_to, UpdateSourceTrigger=PropertyChanged}">
+                                            <TextBox.Tag>
+                                                <MultiBinding Converter="{StaticResource AnchorFound}" Mode="OneWay">
+                                                    <Binding Path="relative_to" />
+                                                    <Binding Path="ItemsSource" RelativeSource="{RelativeSource AncestorType=DataGrid}" />
+                                                    <Binding Path="FieldNamesVersion" RelativeSource="{RelativeSource AncestorType=Window}" />
+                                                </MultiBinding>
+                                            </TextBox.Tag>
                                             <TextBox.Style>
                                                 <Style TargetType="TextBox"
                                                        BasedOn="{StaticResource {x:Type TextBox}}">
                                                     <Setter Property="Background" Value="Transparent" />
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=DataGridRow}}"
+                                                        <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}"
                                                                      Value="True">
-                                                            <Setter Property="Background" Value="#FF8A6D00" />
+                                                            <Setter Property="Foreground" Value="#FF4CD964" />
                                                         </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}"
+                                                                     Value="False">
+                                                            <Setter Property="Foreground" Value="#FFFF5C5C" />
+                                                        </DataTrigger>
+                                                        <MultiDataTrigger>
+                                                            <MultiDataTrigger.Conditions>
+                                                                <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=DataGridRow}}"
+                                                                           Value="True" />
+                                                                <Condition Binding="{Binding Tag, RelativeSource={RelativeSource Self}}"
+                                                                           Value="True" />
+                                                            </MultiDataTrigger.Conditions>
+                                                            <Setter Property="Background" Value="#FF8A6D00" />
+                                                        </MultiDataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </TextBox.Style>
-                                            <TextBox.Foreground>
-                                                <MultiBinding Converter="{StaticResource RelativeToBrush}" Mode="OneWay">
-                                                    <Binding Path="relative_to" />
-                                                    <Binding Path="ItemsSource" RelativeSource="{RelativeSource AncestorType=DataGrid}" />
-                                                    <Binding Path="FieldNamesVersion" RelativeSource="{RelativeSource AncestorType=Window}" />
-                                                </MultiBinding>
-                                            </TextBox.Foreground>
                                         </TextBox>
                                     </Grid>
 

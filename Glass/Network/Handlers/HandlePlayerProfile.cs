@@ -332,14 +332,16 @@ public class HandlePlayerProfile : OpcodeHandler
             }
 
             name = _extractor.GetStringAt(_nameSlot);
-            uint playerClass = _extractor.GetUIntAt(_playerClassSlot);
+            EQClass playerClass = (EQClass) _extractor.GetUIntAt(_playerClassSlot);
             ZoneId zoneId = (ZoneId) _extractor.GetUIntAt(_zoneIdSlot);
             String zoneName = ZoneRepository.Instance.GetZoneName(zoneId);
 
             FieldNodes.AddStringNode(_extractor, _nameSlot, "Name", root);
             FieldNodes.AddUIntNode(_extractor, _characterIdSlot, "Character ID", root);
             FieldNodes.AddUIntNode(_extractor, _levelSlot, "Level", root, "D");
-            FieldNodes.AddLabeledNode(_extractor, _playerClassSlot, "Class: " + GetClassName(playerClass), root);
+
+            FieldNodes.AddLabeledNode(_extractor, _playerClassSlot, "Class: " + playerClass.ToDisplayString() + "(0x" +
+                    playerClass.ToString("X") + ")", root);
             FieldNodes.AddLabeledNode(_extractor, _zoneIdSlot, "Zone: " + zoneName + 
                     " (" + zoneId + ")", root);
 
@@ -511,47 +513,6 @@ public class HandlePlayerProfile : OpcodeHandler
         {
             parent.AddChild(buffsRoot);
         }
-    }
-
-    private static readonly Dictionary<uint, string> ClassNames = new Dictionary<uint, string>()
-    {
-        { 0, "None" },
-        { 1, "Warrior" },
-        { 2, "Cleric" },
-        { 3, "Paladin" },
-        { 4, "Ranger" },
-        { 5, "ShadowKnight" },
-        { 6, "Druid" },
-        { 7, "Monk" },
-        { 8, "Bard" },
-        { 9, "Rogue" },
-        {10, "Shaman" },
-        {11, "Necromancer" },
-        {12, "Wizard" },
-        {13, "Magician" },
-        {14, "Enchanter" },
-        {15, "Beastlord" },
-        {16, "Berserker" }
-    };
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // GetClassName
-    //
-    // Looks up a class name by its byte value. Returns a descriptive string for unknown values
-    // rather than throwing — an unknown class id should log and continue, not crash.
-    //
-    // classId:    The class ID to query
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public static string GetClassName(uint classId)
-    {
-        if (ClassNames.TryGetValue(classId, out string? name))
-        {
-            return name;
-        }
-
-        DebugLog.Write(LogChannel.Opcodes, $"[GetClassName] classId=0x{classId:X2} not in map, returning 'Unknown'",
-            LogLevel.Trace);
-        return $"Unknown(0x{classId:X2})";
     }
 }
 

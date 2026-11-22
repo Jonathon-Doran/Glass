@@ -776,7 +776,8 @@ public partial class CollectionEditor : Window
     // back, leaving the database unchanged, and is reported through SetProblem.
     //
     // After a successful commit the collection dropdown is refreshed so a new or renamed collection
-    // appears, and the saved collection is reselected.
+    // appears, the saved collection is reselected, and its fields are reloaded from the database so
+    // the grid holds no pending changes and every row carries its database id.
     //
     // sender:  The Save button.
     // e:       Standard event args; not inspected.
@@ -833,8 +834,9 @@ public partial class CollectionEditor : Window
 
         PopulateCollectionDropdown(patchLevel);
         CollectionComboBox.SelectedItem = newName;
+        LoadFieldsTable(patchLevel, newName);
 
-        DebugLog.Write(LogChannel.Fields, "CollectionEditor.SaveButton_Click: reselected collection '"
+        DebugLog.Write(LogChannel.Fields, "CollectionEditor.SaveButton_Click: reselected and reloaded collection '"
             + newName + "'", LogLevel.Trace);
     }
 
@@ -1213,62 +1215,17 @@ public partial class CollectionEditor : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // ExtractPredicateSourceName
-    //
-    // Returns the source field name from a predicate string — the operand to the left of the
-    // comparison operator.  The operator itself is not needed for validation, only the field the
-    // predicate reads, so this splits on the first operator character and returns the trimmed
-    // left side.  The recognized operator characters are '=', '!', '>', '<', and '&', matching the
-    // predicate grammar's operators.
-    //
-    // An empty or operator-less string yields the empty string, which the caller treats as "no
-    // resolvable source" and reports as an invalid predicate.
-    //
-    // Parameters:
-    //   predicate  - The raw predicate string from a field's predicate cell.
-    //
-    // Returns:
-    //   The trimmed source field name, or the empty string when none can be extracted.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private string ExtractPredicateSourceName(string predicate)
-    {
-        if (predicate == null)
-        {
-            return string.Empty;
-        }
-
-        string trimmed = predicate.Trim();
-        if (trimmed.Length == 0)
-        {
-            return string.Empty;
-        }
-
-        char[] operatorChars = new char[] { '=', '!', '>', '<', '&' };
-        int operatorIndex = trimmed.IndexOfAny(operatorChars);
-        if (operatorIndex <= 0)
-        {
-            DebugLog.Write(LogChannel.Fields, "CollectionEditor.ExtractPredicateSourceName: '"
-                + trimmed + "' has no operator or no left operand, returning empty", LogLevel.Warn);
-            return string.Empty;
-        }
-
-        string sourceName = trimmed.Substring(0, operatorIndex).Trim();
-
-        DebugLog.Write(LogChannel.Fields, "CollectionEditor.ExtractPredicateSourceName: '"
-            + trimmed + "' -> source '" + sourceName + "'", LogLevel.Trace);
-        return sourceName;
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // ValidateFields
     //
     // Validates the field rows before any save write runs.  Checks, stopping at the first failure:
     //
-    //   1. Every field has a non-blank name.
-    //   2. Every field has an encoding or a gate.
-    //   3. Every predicate's source field names a field present in the grid.
-    //   4. Every relative-to anchor names a field present in the grid.
-    //   5. The fields form no dependency cycle, where a field depends on its relative-to anchor
+    //   1. No two fields share a non-blank name.
+    //   2. Every field has a non-blank name.
+    //   3. Every field has an encoding or a gate.
+    //   4. Every predicate parses under the patch data predicate grammar, and its source field
+    //      names a field present in the grid.
+    //   5. Every relative-to anchor names a field present in the grid.
+    //   6. The fields form no dependency cycle, where a field depends on its relative-to anchor
     //      and on its predicate source.  Detected by Kahn's algorithm over the dependency graph.
     //
     // Rows marked for deletion are excluded from every check.  Field names are compared exactly;
@@ -1301,18 +1258,30 @@ public partial class CollectionEditor : Window
             liveRows.Add(row);
         }
 
+        // Check 1: no duplicate non-blank names.
         Dictionary<string, int> indexByName = new Dictionary<string, int>(liveRows.Count);
         for (int rowIndex = 0; rowIndex < liveRows.Count; rowIndex++)
         {
             string name = liveRows[rowIndex]["field_name"] as string ?? string.Empty;
+            if (name.Trim().Length > 0 && indexByName.ContainsKey(name) == true)
+            {
+                DebugLog.Write(LogChannel.Fields, "CollectionEditor.ValidateFields: field name '"
+                    + name + "' used more than once", LogLevel.Trace);
+                SetProblem("Field name '" + name + "' is used by more than one field.");
+                return false;
+            }
             indexByName[name] = rowIndex;
         }
 
-        // Checks 1 through 4: names, encodings, predicate sources, and relative-to anchors.
+        // Source field name of each row's predicate, empty when the row has none.
+        string[] predicateSources = new string[liveRows.Count];
+
+        // Checks 2 through 5: names, encodings, predicates, and relative-to anchors.
         for (int rowIndex = 0; rowIndex < liveRows.Count; rowIndex++)
         {
             DataRow row = liveRows[rowIndex];
             string ownName = row["field_name"] as string ?? string.Empty;
+            predicateSources[rowIndex] = string.Empty;
 
             if (ownName.Trim().Length == 0)
             {
@@ -1339,11 +1308,13 @@ public partial class CollectionEditor : Window
             string? predicateRaw = row["predicate"] as string;
             if (string.IsNullOrWhiteSpace(predicateRaw) == false)
             {
-                string sourceName = ExtractPredicateSourceName(predicateRaw);
-                if (sourceName.Length == 0)
+                string sourceName;
+                FieldPredicate parsedPredicate;
+                bool parsed = PatchData.ParsePredicate(predicateRaw, out sourceName, out parsedPredicate);
+                if (parsed == false)
                 {
                     DebugLog.Write(LogChannel.Fields, "CollectionEditor.ValidateFields: field '"
-                        + ownName + "' predicate '" + predicateRaw + "' has no source", LogLevel.Trace);
+                        + ownName + "' predicate '" + predicateRaw + "' does not parse", LogLevel.Trace);
                     SetProblem("Field '" + ownName + "' has an invalid predicate: '" + predicateRaw + "'");
                     return false;
                 }
@@ -1355,6 +1326,7 @@ public partial class CollectionEditor : Window
                         + sourceName + "'");
                     return false;
                 }
+                predicateSources[rowIndex] = sourceName;
             }
 
             string? relativeToRaw = row["relative_to"] as string;
@@ -1372,7 +1344,7 @@ public partial class CollectionEditor : Window
             }
         }
 
-        // Check 5: no dependency cycle over relative-to and predicate-source edges.
+        // Check 6: no dependency cycle over relative-to and predicate-source edges.
         int fieldCount = liveRows.Count;
         int[] inDegree = new int[fieldCount];
         List<int>[] dependents = new List<int>[fieldCount];
@@ -1391,12 +1363,7 @@ public partial class CollectionEditor : Window
                 AddDependencyEdge(relativeToRaw.Trim(), rowIndex, indexByName, inDegree, dependents);
             }
 
-            string? predicateRaw = row["predicate"] as string;
-            if (string.IsNullOrWhiteSpace(predicateRaw) == false)
-            {
-                string sourceName = ExtractPredicateSourceName(predicateRaw);
-                AddDependencyEdge(sourceName, rowIndex, indexByName, inDegree, dependents);
-            }
+            AddDependencyEdge(predicateSources[rowIndex], rowIndex, indexByName, inDegree, dependents);
         }
 
         Queue<int> ready = new Queue<int>();
@@ -1497,12 +1464,15 @@ public partial class CollectionEditor : Window
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // SaveFieldsTable
     //
-    // Walks the changed rows in the fields table and issues PacketField INSERT/UPDATE/DELETE
-    // statements according to each row's RowState, all within the caller's transaction.  Inserted
-    // and updated rows carry collectionName as their collection_name; their encoding is resolved by
-    // ResolveFieldEncoding, which returns a scalar encoding or a "Gate_<child>" name and upserts the
-    // gate's Gate row when the field is gated.  The sequence, relative_to, and predicate columns are
-    // written as null when their cell is blank.  No-op when the table is null or has no changes.
+    // Writes the changed rows in the fields table to PacketField within the caller's transaction,
+    // in three passes: every DELETE, then every UPDATE, then every INSERT, so a field name released
+    // by a delete is free before an update or insert uses it.  Inserted and updated rows carry
+    // collectionName as their collection_name, and their encoding is resolved by
+    // ResolveFieldEncoding.  The relative_to and predicate columns are written as null when their
+    // cell is blank.  No-op when the table is null or has no changes.
+    //
+    // A statement that fails is rethrown as an InvalidOperationException naming the action and the
+    // field; an update also names the field's original name.
     //
     // tx:              The transaction within which the writes run.
     // patchLevel:      The patch level the fields belong to.
@@ -1512,12 +1482,16 @@ public partial class CollectionEditor : Window
     {
         if (_fieldsTable == null)
         {
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.SaveFieldsTable: no fields table, "
+                + "nothing to write", LogLevel.Trace);
             return;
         }
 
         DataTable? changes = _fieldsTable.GetChanges();
         if (changes == null)
         {
+            DebugLog.Write(LogChannel.Fields, "CollectionEditor.SaveFieldsTable: no changes, "
+                + "nothing to write", LogLevel.Trace);
             return;
         }
 
@@ -1525,73 +1499,131 @@ public partial class CollectionEditor : Window
         uint updated = 0;
         uint deleted = 0;
 
+        // Pass 1: deletes.
         foreach (DataRow row in changes.Rows)
         {
-            if (row.RowState == DataRowState.Deleted)
+            if (row.RowState != DataRowState.Deleted)
             {
-                uint id = Convert.ToUInt32(row["id", DataRowVersion.Original]);
-                using SqliteCommand cmd = _connection.CreateCommand();
-                cmd.Transaction = tx;
-                cmd.CommandText = "DELETE FROM PacketField WHERE id = @id";
-                cmd.Parameters.AddWithValue("@id", id);
-                cmd.ExecuteNonQuery();
-                deleted = deleted + 1;
+                continue;
             }
-            else if (row.RowState == DataRowState.Added)
-            {
-                string encoding = ResolveFieldEncoding(patchLevel, row);
 
-                using SqliteCommand cmd = _connection.CreateCommand();
-                cmd.Transaction = tx;
-                cmd.CommandText = "INSERT INTO PacketField"
-                    + " (patch_date, server_type, collection_name, field_name, sequence, bit_offset,"
-                    + " bit_length, encoding, divisor, relative_to, predicate)"
-                    + " VALUES (@patchDate, @serverType, @collectionName, @fieldName, @sequence, @bitOffset,"
-                    + " @bitLength, @encoding, @divisor, @relativeTo, @predicate)";
-                cmd.Parameters.AddWithValue("@patchDate", patchLevel.PatchDate);
-                cmd.Parameters.AddWithValue("@serverType", patchLevel.ServerType);
-                cmd.Parameters.AddWithValue("@collectionName", collectionName);
-                cmd.Parameters.AddWithValue("@fieldName", row["field_name"]);
-                cmd.Parameters.AddWithValue("@sequence", row["sequence"]);
-                cmd.Parameters.AddWithValue("@bitOffset", row["bit_offset"]);
-                cmd.Parameters.AddWithValue("@bitLength", row["bit_length"]);
-                cmd.Parameters.AddWithValue("@encoding", encoding);
-                cmd.Parameters.AddWithValue("@divisor", row["divisor"]);
-                cmd.Parameters.AddWithValue("@relativeTo", NullableCell(row, "relative_to"));
-                cmd.Parameters.AddWithValue("@predicate", NullableCell(row, "predicate"));
-                cmd.ExecuteNonQuery();
-                inserted = inserted + 1;
-            }
-            else if (row.RowState == DataRowState.Modified)
-            {
-                string encoding = ResolveFieldEncoding(patchLevel, row);
+            uint id = Convert.ToUInt32(row["id", DataRowVersion.Original]);
+            string fieldName = row["field_name", DataRowVersion.Original] as string ?? string.Empty;
 
-                using SqliteCommand cmd = _connection.CreateCommand();
-                cmd.Transaction = tx;
-                cmd.CommandText = "UPDATE PacketField"
-                    + " SET collection_name = @collectionName,"
-                    + "     field_name = @fieldName,"
-                    + "     sequence = @sequence,"
-                    + "     bit_offset = @bitOffset,"
-                    + "     bit_length = @bitLength,"
-                    + "     encoding = @encoding,"
-                    + "     divisor = @divisor,"
-                    + "     relative_to = @relativeTo,"
-                    + "     predicate = @predicate"
-                    + " WHERE id = @id";
-                cmd.Parameters.AddWithValue("@id", row["id"]);
-                cmd.Parameters.AddWithValue("@collectionName", collectionName);
-                cmd.Parameters.AddWithValue("@fieldName", row["field_name"]);
-                cmd.Parameters.AddWithValue("@sequence", row["sequence"]);
-                cmd.Parameters.AddWithValue("@bitOffset", row["bit_offset"]);
-                cmd.Parameters.AddWithValue("@bitLength", row["bit_length"]);
-                cmd.Parameters.AddWithValue("@encoding", encoding);
-                cmd.Parameters.AddWithValue("@divisor", row["divisor"]);
-                cmd.Parameters.AddWithValue("@relativeTo", NullableCell(row, "relative_to"));
-                cmd.Parameters.AddWithValue("@predicate", NullableCell(row, "predicate"));
+            using SqliteCommand cmd = _connection.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = "DELETE FROM PacketField WHERE id = @id";
+            cmd.Parameters.AddWithValue("@id", id);
+
+            try
+            {
                 cmd.ExecuteNonQuery();
-                updated = updated + 1;
             }
+            catch (SqliteException ex)
+            {
+                DebugLog.Write(LogChannel.Fields, "CollectionEditor.SaveFieldsTable: delete of field '"
+                    + fieldName + "' failed, " + ex.Message, LogLevel.Error);
+                throw new InvalidOperationException("delete of field '" + fieldName + "' failed: "
+                    + ex.Message, ex);
+            }
+
+            deleted = deleted + 1;
+        }
+
+        // Pass 2: updates.
+        foreach (DataRow row in changes.Rows)
+        {
+            if (row.RowState != DataRowState.Modified)
+            {
+                continue;
+            }
+
+            string fieldName = row["field_name"] as string ?? string.Empty;
+            string originalName = row["field_name", DataRowVersion.Original] as string ?? string.Empty;
+            string encoding = ResolveFieldEncoding(patchLevel, row);
+
+            using SqliteCommand cmd = _connection.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = "UPDATE PacketField"
+                + " SET collection_name = @collectionName,"
+                + "     field_name = @fieldName,"
+                + "     sequence = @sequence,"
+                + "     bit_offset = @bitOffset,"
+                + "     bit_length = @bitLength,"
+                + "     encoding = @encoding,"
+                + "     divisor = @divisor,"
+                + "     relative_to = @relativeTo,"
+                + "     predicate = @predicate"
+                + " WHERE id = @id";
+            cmd.Parameters.AddWithValue("@id", row["id"]);
+            cmd.Parameters.AddWithValue("@collectionName", collectionName);
+            cmd.Parameters.AddWithValue("@fieldName", row["field_name"]);
+            cmd.Parameters.AddWithValue("@sequence", row["sequence"]);
+            cmd.Parameters.AddWithValue("@bitOffset", row["bit_offset"]);
+            cmd.Parameters.AddWithValue("@bitLength", row["bit_length"]);
+            cmd.Parameters.AddWithValue("@encoding", encoding);
+            cmd.Parameters.AddWithValue("@divisor", row["divisor"]);
+            cmd.Parameters.AddWithValue("@relativeTo", NullableCell(row, "relative_to"));
+            cmd.Parameters.AddWithValue("@predicate", NullableCell(row, "predicate"));
+
+            try
+            {
+                cmd.ExecuteNonQuery();
+            }
+            catch (SqliteException ex)
+            {
+                DebugLog.Write(LogChannel.Fields, "CollectionEditor.SaveFieldsTable: update of field '"
+                    + fieldName + "' (was '" + originalName + "') failed, " + ex.Message, LogLevel.Error);
+                throw new InvalidOperationException("update of field '" + fieldName + "' (was '"
+                    + originalName + "') failed: " + ex.Message, ex);
+            }
+
+            updated = updated + 1;
+        }
+
+        // Pass 3: inserts.
+        foreach (DataRow row in changes.Rows)
+        {
+            if (row.RowState != DataRowState.Added)
+            {
+                continue;
+            }
+
+            string fieldName = row["field_name"] as string ?? string.Empty;
+            string encoding = ResolveFieldEncoding(patchLevel, row);
+
+            using SqliteCommand cmd = _connection.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = "INSERT INTO PacketField"
+                + " (patch_date, server_type, collection_name, field_name, sequence, bit_offset,"
+                + " bit_length, encoding, divisor, relative_to, predicate)"
+                + " VALUES (@patchDate, @serverType, @collectionName, @fieldName, @sequence, @bitOffset,"
+                + " @bitLength, @encoding, @divisor, @relativeTo, @predicate)";
+            cmd.Parameters.AddWithValue("@patchDate", patchLevel.PatchDate);
+            cmd.Parameters.AddWithValue("@serverType", patchLevel.ServerType);
+            cmd.Parameters.AddWithValue("@collectionName", collectionName);
+            cmd.Parameters.AddWithValue("@fieldName", row["field_name"]);
+            cmd.Parameters.AddWithValue("@sequence", row["sequence"]);
+            cmd.Parameters.AddWithValue("@bitOffset", row["bit_offset"]);
+            cmd.Parameters.AddWithValue("@bitLength", row["bit_length"]);
+            cmd.Parameters.AddWithValue("@encoding", encoding);
+            cmd.Parameters.AddWithValue("@divisor", row["divisor"]);
+            cmd.Parameters.AddWithValue("@relativeTo", NullableCell(row, "relative_to"));
+            cmd.Parameters.AddWithValue("@predicate", NullableCell(row, "predicate"));
+
+            try
+            {
+                cmd.ExecuteNonQuery();
+            }
+            catch (SqliteException ex)
+            {
+                DebugLog.Write(LogChannel.Fields, "CollectionEditor.SaveFieldsTable: insert of field '"
+                    + fieldName + "' failed, " + ex.Message, LogLevel.Error);
+                throw new InvalidOperationException("insert of field '" + fieldName + "' failed: "
+                    + ex.Message, ex);
+            }
+
+            inserted = inserted + 1;
         }
 
         DebugLog.Write(LogChannel.Fields, "CollectionEditor.SaveFieldsTable: collection='"

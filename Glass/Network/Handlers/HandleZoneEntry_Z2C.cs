@@ -59,14 +59,52 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
     private readonly SlotId _model_Slot;
     private readonly SlotId _unknown_255_Slot;
     private readonly SlotId _unknown_91_Slot;
-    private readonly SlotId _unknown_bb_Slot;
+    private readonly SlotId _guildID_Slot;
     private readonly SlotId _class_Slot;
     private readonly SlotId _unknown_9F_Slot;
     private readonly SlotId _unknown_bA_Slot;
     private readonly SlotId _unknown_9C_Slot;
     private readonly SlotId _unknown_409_Slot;
     private readonly SlotId _lastname_Slot;
+    private readonly SlotId _unknown_20AC_Slot;
+    private readonly SlotId _unknown_22A_Slot;
+    private readonly SlotId _petOwner_Slot;
+    private readonly SlotId _unknown_93_Slot;
+    private readonly SlotId _unknown_16C_Slot;
+    private readonly SlotId _unknown_C2_Slot;
+    private readonly SlotId _unknown_4F_Slot;
+    private readonly SlotId _unknown_3b_Slot;
+    private readonly SlotId _unknown_38_Slot;
+    private readonly SlotId _unknown_37_Slot;
+    private readonly SlotId _mob12_Slot;
+    private readonly SlotId _unknown_FF_Block_1_Slot;
+    private readonly SlotId _unknown_FF_Block_2_Slot;
+    private readonly SlotId _colorTable_Slot;
+    private readonly SlotId _appearance_0_Slot;
+    private readonly SlotId _appearance_1_Slot;
+    private readonly SlotId _appearance_2_Slot;
+    private readonly SlotId _appearance_3_Slot;
+    private readonly SlotId _appearance_4_Slot;
+    private readonly SlotId _appearance_5_Slot;
+    private readonly SlotId _appearance_6_Slot;
+    private readonly SlotId _appearance_7_Slot;
+    private readonly SlotId _appearance_8_Slot;
+    private readonly SlotId _24ByteBlock_Slot;
+    private readonly SlotId _titlePrefix_Slot;
+    private readonly SlotId _titleSuffix_Slot;
+    private readonly SlotId _unknown_To730_Slot;
+    private readonly SlotId _unknown_To68_Slot;
+    private readonly SlotId _unknown_3b4_Slot;
+    private readonly SlotId _unknown_118_Slot;
+    private readonly SlotId _unknown_C5_Slot;
+    private readonly SlotId _unknown_90_Slot;
+    private readonly SlotId _activeMercenary_Slot;
+    private readonly SlotId _mercenaryOwner_Slot;
+    private readonly SlotId _birthday_Slot;
+    private readonly SlotId _unknown_264_Slot;
+    private readonly SlotId _unknown_Counter_Slot;
 
+    // slots for Gates
     private readonly SlotId _quad_Unknown_Slot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -101,9 +139,11 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         _characterId_Slot = _registry.IndexOfField(_collectionHandle, "character_id");
         _type_Slot = _registry.IndexOfField(_collectionHandle, "Type");
         _bitmap_Slot = _registry.IndexOfField(_collectionHandle, "Bitmap");
+        _presenceFlags_Slot = _registry.IndexOfField(_collectionHandle, "PresenceFlags");
         _unknown_27A_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_27A");
         _unknown_13D4_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_13D4");
         _numQuads_Slot = _registry.IndexOfField(_collectionHandle, "NumQuads");
+        _unknown_4E_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_4E");
         _unknown_FC5_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_FC5");
         _unknown_FC6_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_FC6");
         _unknown_1F9_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_1F9");
@@ -114,21 +154,61 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         _unknown_209_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_209");
         _unknown_104C_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_104C");
         _unknown_1F8_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_1F8");
+        _unknown_FC1_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_FC1");
         _unknown_FC2_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_FC2");
         _unknown_FC3_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_FC3");
+        _unknown_FC4_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_FC4");
         _spawnSize_Slot = _registry.IndexOfField(_collectionHandle, "Spawn_Size");
         _walkSpeed_Slot = _registry.IndexOfField(_collectionHandle, "WalkSpeed");
         _runSpeed_Slot = _registry.IndexOfField(_collectionHandle, "RunSpeed");
         _model_Slot = _registry.IndexOfField(_collectionHandle, "Model");
         _unknown_255_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_255");
-        _unknown_bb_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_bb");
+        _unknown_91_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_91");
+        _guildID_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_bb");
         _class_Slot = _registry.IndexOfField(_collectionHandle, "Class");
         _unknown_9F_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_9F");
         _unknown_bA_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_bA");
         _unknown_9C_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_9C");
         _unknown_409_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_409");
         _lastname_Slot = _registry.IndexOfField(_collectionHandle, "LastName");
+        _unknown_20AC_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_20AC");
+        _unknown_22A_Slot = _registry.IndexOfField(_collectionHandle, "Boolean_22A");
+        _petOwner_Slot = _registry.IndexOfField(_collectionHandle, "Pet_Owner");
+        _unknown_93_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_93");
+        _unknown_16C_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_16C");
+        _unknown_C2_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_C2");
+        _unknown_4F_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_4F");
+        _unknown_3b_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_3b");
+        _unknown_38_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_38");
+        _unknown_37_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_37");
+        _mob12_Slot = _registry.IndexOfField(_collectionHandle, "Mob12");
+        _unknown_FF_Block_1_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_FF_Block_1");
+        _unknown_FF_Block_2_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_FF_Block_2");
 
+        _colorTable_Slot = _registry.IndexOfField(_collectionHandle, "ColorTable");
+        _appearance_0_Slot = _registry.IndexOfField(_collectionHandle, "AppearanceSlot_0");
+        _appearance_1_Slot = _registry.IndexOfField(_collectionHandle, "AppearanceSlot_1");
+        _appearance_2_Slot = _registry.IndexOfField(_collectionHandle, "AppearanceSlot_2");
+        _appearance_3_Slot = _registry.IndexOfField(_collectionHandle, "AppearanceSlot_3");
+        _appearance_4_Slot = _registry.IndexOfField(_collectionHandle, "AppearanceSlot_4");
+        _appearance_5_Slot = _registry.IndexOfField(_collectionHandle, "AppearanceSlot_5");
+        _appearance_6_Slot = _registry.IndexOfField(_collectionHandle, "AppearanceSlot_6");
+        _appearance_7_Slot = _registry.IndexOfField(_collectionHandle, "AppearanceSlot_7");
+        _appearance_8_Slot = _registry.IndexOfField(_collectionHandle, "AppearanceSlot_8");
+        _24ByteBlock_Slot = _registry.IndexOfField(_collectionHandle, "24ByteBlock");
+        _titlePrefix_Slot = _registry.IndexOfField(_collectionHandle, "Title_Prefix");
+        _titleSuffix_Slot = _registry.IndexOfField(_collectionHandle, "Title_Suffix");
+        _unknown_To730_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_To730");
+        _unknown_To68_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_To68");
+        _unknown_3b4_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_3b4");
+        _unknown_118_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_118");
+        _unknown_C5_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_C5");
+        _unknown_90_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_90");
+        _activeMercenary_Slot = _registry.IndexOfField(_collectionHandle, "Active_Mercenary");
+        _mercenaryOwner_Slot = _registry.IndexOfField(_collectionHandle, "Mercenary_Owner");
+        _birthday_Slot = _registry.IndexOfField(_collectionHandle, "Birthday");
+        _unknown_264_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_264");
+        _unknown_Counter_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_Counter");
 
         // Quads slots
         _quad_Unknown_Slot = _registry.IndexOfField(quadCollection, "Unknown");
@@ -384,7 +464,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Describe
     //
-    // Extracts OP_Death against the active patch and builds a display tree: a root node for
+    // Extracts OP_ZoneEntry against the active patch and builds a display tree: a root node for
     // the collection with one leaf child per field each carrying its payload byte range.
     //
     // data:      The application payload
@@ -422,36 +502,108 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             if (! quadsGate.Exists)
             {
                 DebugLog.Write(LogChannel.Opcodes,
-                    "HandleZoneEntry: quads gate slot present but not gate", LogLevel.Warn);
+                    "HandleZoneEntry: quads gate slot present but not gate", LogLevel.Error);
                 root.Text = "ZoneEntry";
                 return root;
             }
 
             SpawnId spawnId = (SpawnId) _extractor.GetUIntAt(_spawnId_Slot);
+            EQClass classId = (EQClass)_extractor.GetUIntAt(_class_Slot);
+
             spawnName = ZoneRepository.Instance.LookupSpawnName(zoneId, spawnId);
 
-            FieldNodes.AddLabeledNode(_extractor, _spawnId_Slot, "Spawn: " + spawnName + " (" +
+            string name = FieldNodes.AddStringNode(_extractor, _name_Slot, "Name", root);
+            FieldNodes.AddStringNode(_extractor, _lastname_Slot, "Lastname", root);
+            FieldNodes.AddUIntNode(_extractor, _level_Slot, "Level", root, "D");
+
+            FieldNodes.AddLabeledNode(_extractor, _class_Slot, "Class: " + classId.ToDisplayString() + " (0x" +
+                classId.ToString("X") + ")", root);
+
+            FieldNodes.AddLabeledNode(_extractor, _spawnId_Slot, "Entity: " + spawnName + " (" +
                     spawnId + ", 0x" + spawnId.Value.ToString("X4") + ")", root);
             FieldNodes.AddUInt64Node(_extractor, _characterId_Slot, "Character ID", root, "X");
-
-            string name = FieldNodes.AddStringNode(_extractor, _name_Slot, "Name", root);
-            FieldNodes.AddUIntNode(_extractor, _level_Slot, "Level", root, "D");
+            FieldNodes.AddUInt64Node(_extractor, _guildID_Slot, "Guild ID", root);
+            FieldNodes.AddFloatNode(_extractor, _spawnSize_Slot, "Spawn Size", root, "F2");
+            FieldNodes.AddFloatNode(_extractor, _walkSpeed_Slot, "Walk Speed", root, "F2");
+            FieldNodes.AddFloatNode(_extractor, _runSpeed_Slot, "Run Speed", root, "F2");
 
             uint modelId = _extractor.GetUIntAt(_model_Slot);
             string ModelName = DbStringGateway.Instance.LookupString(DbStringType.ModelName, modelId);
             FieldNodes.AddLabeledNode(_extractor, _model_Slot, "Model: " + ModelName + " (" + modelId + ")", root);
 
-            FieldNodes.AddUIntNode(_extractor, _class_Slot, "Class", root, "D");
-
             FieldNodes.AddUIntNode(_extractor, _type_Slot, "Type", root, "D");
-            FieldNodes.AddUIntNode(_extractor, _bitmap_Slot, "Bitmap", root, "X8");
+            FieldNodes.AddBinaryNode(_extractor, _bitmap_Slot, "Bitmap", root);
+            FieldNodes.AddBinaryNode(_extractor, _presenceFlags_Slot, "Presence", root);
+            FieldNodes.AddUIntNode(_extractor, _petOwner_Slot, "Pet Owner", root);
+            FieldNodes.AddUIntNode(_extractor, _mercenaryOwner_Slot, "Mercenary Owner", root);
+            FieldNodes.AddUIntNode(_extractor, _activeMercenary_Slot, "Active Mercenary", root);
+            FieldNodes.AddUIntNode(_extractor, _birthday_Slot, "Birthday", root);
+            if (_extractor.IsPresent(_titlePrefix_Slot) == true)
+            {
+                FieldNodes.AddStringNode(_extractor, _titlePrefix_Slot, "Title Prefix", root);
+            }
+            else
+            {
+                FieldNodes.AddLabeledNode(_extractor, _titlePrefix_Slot, "Title Prefix: None", root);
+            }
+            if (_extractor.IsPresent(_titleSuffix_Slot) == true)
+            {
+                FieldNodes.AddStringNode(_extractor, _titleSuffix_Slot, "Title Suffix", root);
+            }
+            else
+            {
+                FieldNodes.AddLabeledNode(_extractor, _titleSuffix_Slot, "Title Suffix: None", root);
+            }
+
+            // The various Unknown fields
+            FieldNodes.AddUIntNode(_extractor, _unknown_23A_Slot, "Unknown 23A", root);
+            FieldNodes.AddFloatNode(_extractor, _unknown_11D4_Slot, "Unknown 11D4", root);
             FieldNodes.AddFloatNode(_extractor, _unknown_27A_Slot, "Unknown 27A", root, "F2");
             FieldNodes.AddUIntNode(_extractor, _unknown_13D4_Slot, "Unknown 13D4", root, "?");
-            FieldNodes.AddUIntNode(_extractor, _unknown_23A_Slot, "Unknown 23A", root);
-            FieldNodes.AddUIntNode(_extractor, _numQuads_Slot, "Num Quads", root, "D");
-            FieldNodes.AddFloatNode(_extractor, _walkSpeed_Slot, "Walk Speed", root, "F2");
-            FieldNodes.AddFloatNode(_extractor, _runSpeed_Slot, "Run Speed", root, "F2");
+            FieldNodes.AddUIntNode(_extractor, _unknown_4E_Slot, "Unknown 4E", root, "?");
 
+            FieldNodes.AddUIntNode(_extractor, _unknown_FC1_Slot, "Unknown FC1", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_FC2_Slot, "Unknown FC2", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_FC3_Slot, "Unknown FC3", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_FC4_Slot, "Unknown FC4", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_FC5_Slot, "Unknown FC5", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_FC6_Slot, "Unknown FC6", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_FC7_Slot, "Unknown FC7", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_FC9_Slot, "Unknown FC9", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_FCA_Slot, "Unknown FCA", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_1F8_Slot, "Unknown 1F8", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_1F9_Slot, "Unknown 1F9", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_1044_Slot, "Unknown 1044", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_209_Slot, "Unknown 209", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_104C_Slot, "Unknown 104C", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_255_Slot, "Unknown 255", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_91_Slot, "Unknown 91", root, "?");
+
+            FieldNodes.AddUIntNode(_extractor, _unknown_9F_Slot, "Unknown 9F", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_bA_Slot, "Unknown bA", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_9C_Slot, "Unknown 9C", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_409_Slot, "Unknown 409", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_20AC_Slot, "Unknown 20AC", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_22A_Slot, "Boolean 22A", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_93_Slot, "Unknown 93", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_16C_Slot, "Unknown 16C", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_C2_Slot, "Unknown C2", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_4F_Slot, "Unknown 4F", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_3b_Slot, "Unknown 3b", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_38_Slot, "Unknown 38", root, "?");
+            FieldNodes.AddUInt64Node(_extractor, _unknown_37_Slot, "Unknown 37", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_FF_Block_1_Slot, "Unknown FF Block1", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_FF_Block_2_Slot, "Unknown FF Block2", root, "?");
+
+            FieldNodes.AddUIntNode(_extractor, _unknown_To730_Slot, "Unknown To730", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_To68_Slot, "Unknown To68", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_3b4_Slot, "Unknown 3b4", root, "?");
+            FieldNodes.AddStringNode(_extractor, _unknown_118_Slot, "Unknown 118", root);
+            FieldNodes.AddIntNode(_extractor, _unknown_C5_Slot, "Unknown C5", root, "?");
+            FieldNodes.AddIntNode(_extractor, _unknown_90_Slot, "Unknown 90", root, "?");
+            FieldNodes.AddUIntNode(_extractor, _unknown_264_Slot, "Unknown 264", root, "?");
+
+            FieldNodes.AddUIntNode(_extractor, _numQuads_Slot, "Num Quads", root, "D");
             uint bagCount = _extractor.BagCount(quadsGate);
             for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
             {
@@ -460,10 +612,89 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
                 root.AddChild(quadNode);
 
                 FieldNodes.AddUIntNode(_extractor, _quad_Unknown_Slot, "Unknown", quadNode, "?");
+                _extractor.EnterGate(rootGate, 0);
             }
-       //    FieldNodes.AddStringNode(_extractor, _lastname_Slot, "Lastname", root);
 
-            _extractor.EnterGate(rootGate, 0);
+            if (_extractor.IsPresent(_mob12_Slot) == true)
+            {
+                FieldDisplayNode mobDataSubtree = new FieldDisplayNode("Mob Data");
+                root.AddChild(mobDataSubtree);
+
+                ReadOnlySpan<uint> unknownMobData = _extractor.GetUIntSpanAt(_mob12_Slot);
+                for (int index = 0; index < unknownMobData.Length; index++)
+                {
+                    FieldNodes.AddLabeledNode(_extractor, _mob12_Slot, "Value " + index + ": 0x" + unknownMobData[index].ToString("X4"),
+                        mobDataSubtree);
+                }
+                _extractor.EnterGate(rootGate, 0);
+            }
+
+            if (_extractor.IsPresent(_colorTable_Slot) == true)
+            {
+                FieldDisplayNode colorSubtree = new FieldDisplayNode("Visible Slot Colors");
+                root.AddChild(colorSubtree);
+
+                ReadOnlySpan<uint> colorData = _extractor.GetUIntSpanAt(_colorTable_Slot);
+                for (int index = 0; index < colorData.Length; index++)
+                {
+                    FieldNodes.AddLabeledNode(_extractor, _colorTable_Slot, "Value " + index + ": 0x" + colorData[index].ToString("X4"),
+                        colorSubtree);
+                }
+                _extractor.EnterGate(rootGate, 0);
+            }
+
+            FieldDisplayNode appearanceTree = new FieldDisplayNode("Appearance Table");
+
+            uint appearanceSlotsFound = 0;
+            if (_extractor.IsPresent(_appearance_0_Slot) == true)
+            {
+                Describe_AppearanceSlot(_appearance_0_Slot, "Slot 0", appearanceTree);
+                appearanceSlotsFound++;
+            }
+            if (_extractor.IsPresent(_appearance_1_Slot) == true)
+            {
+                Describe_AppearanceSlot(_appearance_1_Slot, "Slot 1", appearanceTree);
+                appearanceSlotsFound++;
+            }
+            if (_extractor.IsPresent(_appearance_2_Slot) == true)
+            {
+                Describe_AppearanceSlot(_appearance_2_Slot, "Slot 2", appearanceTree);
+                appearanceSlotsFound++;
+            }
+            if (_extractor.IsPresent(_appearance_3_Slot) == true)
+            {
+                Describe_AppearanceSlot(_appearance_3_Slot, "Slot 3", appearanceTree);
+                appearanceSlotsFound++;
+            }
+            if (_extractor.IsPresent(_appearance_4_Slot) == true)
+            {
+                Describe_AppearanceSlot(_appearance_4_Slot, "Slot 4", appearanceTree);
+                appearanceSlotsFound++;
+            }
+            if (_extractor.IsPresent(_appearance_5_Slot) == true)
+            {
+                Describe_AppearanceSlot(_appearance_5_Slot, "Slot 5", appearanceTree);
+                appearanceSlotsFound++;
+            }
+            if (_extractor.IsPresent(_appearance_6_Slot) == true)
+            {
+                Describe_AppearanceSlot(_appearance_6_Slot, "Slot 6", appearanceTree);
+                appearanceSlotsFound++;
+            }
+            if (_extractor.IsPresent(_appearance_7_Slot) == true)
+            {
+                Describe_AppearanceSlot(_appearance_7_Slot, "Slot 7", appearanceTree);
+                appearanceSlotsFound++;
+            }
+            if (_extractor.IsPresent(_appearance_8_Slot) == true)
+            {
+                Describe_AppearanceSlot(_appearance_8_Slot, "Slot 8", appearanceTree);
+                appearanceSlotsFound++;
+            }
+            if (appearanceSlotsFound > 0)
+            {
+                root.AddChild(appearanceTree);
+            }
         }
         finally
         {
@@ -474,6 +705,19 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         return root;
     }
     
+   void Describe_AppearanceSlot(SlotId slot, string label, FieldDisplayNode parent)
+    {
+        FieldDisplayNode subtree = new FieldDisplayNode(label);
+        parent.AddChild(subtree);
+
+        ReadOnlySpan<uint> slotData = _extractor.GetUIntSpanAt(slot);
+        for (int index = 0; index < slotData.Length; index++)
+        {
+            FieldNodes.AddLabeledNode(_extractor, _colorTable_Slot, "Value " + index + ": 0x" + slotData[index].ToString("X4"),
+                subtree);
+        }
+    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // BaseNameOf
     //

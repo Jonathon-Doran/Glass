@@ -3,6 +3,7 @@ using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
 using System.Configuration;
+using System.Text;
 
 namespace Glass.Network.Handlers;
 
@@ -166,6 +167,69 @@ public static class FieldNodes
         FieldDisplayNode newNode = new FieldDisplayNode(label + ": " + valueString);
         newNode.AddByteRange(extractor.GetByteRangeFor(slotId));
         parent.AddChild(newNode);
+        return value;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // AddBinaryNode
+    //
+    // Reads an unsigned field and adds a display node showing its value in binary.  The number of
+    // digits is the field's wire bit length.  Digits run from the most significant bit to the
+    // least, with a space between each group of four counted from the least significant bit.  When
+    // the bit length is zero or greater than 32 the value cannot be shown in binary; an error node
+    // is added in its place.
+    //
+    // extractor:  The extractor holding the decoded field.
+    // slotId:     The slot of the field to display.
+    // label:      The label shown before the value.
+    // parent:     The node the new node is added under.
+    //
+    // Returns:
+    //   The field's value.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public static uint AddBinaryNode(FieldExtractor extractor, SlotId slotId, string label,
+        FieldDisplayNode parent)
+    {
+        uint value = extractor.GetUIntAt(slotId);
+        uint bitLength = extractor.GetBitLengthOf(slotId);
+
+        if (bitLength == 0 || bitLength > 32)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldNodes.AddBinaryNode: '" + label + "' bit length "
+                + bitLength + " cannot be shown in binary", LogLevel.Error);
+            FieldDisplayNode errorNode = new FieldDisplayNode(label + ": bit length " + bitLength
+                + " cannot be shown in binary");
+            errorNode.AddByteRange(extractor.GetByteRangeFor(slotId));
+            parent.AddChild(errorNode);
+            return value;
+        }
+
+        StringBuilder digits = new StringBuilder("0b ");
+        for (uint remaining = bitLength; remaining > 0; remaining--)
+        {
+            uint bitIndex = remaining - 1;
+            uint bit = (value >> (int)bitIndex) & 1u;
+            if (bit == 1u)
+            {
+                digits.Append('1');
+            }
+            else
+            {
+                digits.Append('0');
+            }
+
+            if (bitIndex % 4u == 0u && bitIndex != 0u)
+            {
+                digits.Append(' ');
+            }
+        }
+
+        FieldDisplayNode newNode = new FieldDisplayNode(label + ": " + digits.ToString());
+        newNode.AddByteRange(extractor.GetByteRangeFor(slotId));
+        parent.AddChild(newNode);
+
+        DebugLog.Write(LogChannel.Fields, "FieldNodes.AddBinaryNode: '" + label + "' shown as "
+            + bitLength + " bit(s)", LogLevel.Trace);
         return value;
     }
 

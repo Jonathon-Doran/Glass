@@ -1614,7 +1614,7 @@ public class PatchData
     //   or unrecognized, the source name is empty, the in keyword is malformed, or an operand
     //   or operand list fails to parse.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private bool ParsePredicate(string raw, out string sourceName, out FieldPredicate predicate)
+    public static bool ParsePredicate(string raw, out string sourceName, out FieldPredicate predicate)
     {
         sourceName = "";
         predicate = default;
@@ -1831,7 +1831,7 @@ public class PatchData
     //   true when the literal parsed; false when it is empty, an unterminated string, or not
     //   a valid number of its form.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private bool ParseOperand(string literal, out PredicateOperand operand)
+    private static bool ParseOperand(string literal, out PredicateOperand operand)
     {
         operand = default;
 
@@ -1986,7 +1986,7 @@ public class PatchData
     //   unterminated, an element is empty or fails to parse, or a range has a non-integer
     //   end, an end outside the signed 64-bit range, or a low end above its high end.
     ///////////////////////////////////////////////////////////////////////////////////////////
-    private bool ParseOperandList(string listText, out PredicateOperand[] operands)
+    private static bool ParseOperandList(string listText, out PredicateOperand[] operands)
     {
         operands = Array.Empty<PredicateOperand>();
 

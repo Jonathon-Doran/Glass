@@ -16,51 +16,20 @@ using System.Windows.Media;
 namespace Inference.UI;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// RelativeToBrushConverter
+// AnchorFoundConverter
 //
-// Converts a field's relative-to anchor into a foreground brush for the collection editor.  The
-// anchor is trimmed and compared exactly against the field_name of every row in the bound
-// DataView.  A match yields green; no match, or a blank anchor, yields red.  The third bound value
-// is a version number that changes whenever field names change; it is not read, and exists so the
-// binding re-evaluates when another row's name changes.
+// Decides whether a field's relative-to anchor names a field in the collection editor's grid.
+// The anchor is trimmed and compared exactly against the field_name of every row in the bound
+// DataView.  A blank anchor is never found.  The third bound value is a version number that
+// changes whenever field names change; it is not read, and exists so the binding re-evaluates
+// when another row's name changes.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class RelativeToBrushConverter : IMultiValueConverter
+public class AnchorFoundConverter : IMultiValueConverter
 {
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // FoundBrush
-    //
-    // Foreground used when the anchor names a field in the view.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private static readonly SolidColorBrush FoundBrush = CreateFrozenBrush(Color.FromRgb(0x4C, 0xD9, 0x64));
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // MissingBrush
-    //
-    // Foreground used when the anchor is blank or names no field in the view.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private static readonly SolidColorBrush MissingBrush = CreateFrozenBrush(Color.FromRgb(0xFF, 0x5C, 0x5C));
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // CreateFrozenBrush
-    //
-    // Creates a solid brush of the given color and freezes it so it can be shared across bindings.
-    //
-    // color:  The brush color.
-    //
-    // Returns:
-    //   The frozen brush.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    private static SolidColorBrush CreateFrozenBrush(Color color)
-    {
-        SolidColorBrush brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
-    }
-
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Convert
     //
-    // Maps an anchor name and a fields view to a foreground brush.
+    // Maps an anchor name and a fields view to whether the anchor names a field in the view.
     //
     // values:      [0] the row's relative_to value (string or DBNull), [1] the fields DataView,
     //              [2] the field names version number; not read.
@@ -69,23 +38,23 @@ public class RelativeToBrushConverter : IMultiValueConverter
     // culture:     The culture; not inspected.
     //
     // Returns:
-    //   The found brush when the trimmed anchor exactly matches a field_name in the view, the
-    //   missing brush otherwise.
+    //   True when the trimmed anchor exactly matches a field_name in the view; false when the
+    //   anchor is blank, no view is bound, or no field matches.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
     {
         string? anchorRaw = values[0] as string;
         if (string.IsNullOrWhiteSpace(anchorRaw) == true)
         {
-            DebugLog.Write(LogChannel.Fields, "RelativeToBrushConverter.Convert: blank anchor, missing", LogLevel.Trace);
-            return MissingBrush;
+            DebugLog.Write(LogChannel.Fields, "AnchorFoundConverter.Convert: blank anchor, not found", LogLevel.Trace);
+            return false;
         }
 
         DataView? view = values[1] as DataView;
         if (view == null)
         {
-            DebugLog.Write(LogChannel.Fields, "RelativeToBrushConverter.Convert: no fields view bound, missing", LogLevel.Trace);
-            return MissingBrush;
+            DebugLog.Write(LogChannel.Fields, "AnchorFoundConverter.Convert: no fields view bound, not found", LogLevel.Trace);
+            return false;
         }
 
         string anchorName = anchorRaw.Trim();
@@ -95,21 +64,21 @@ public class RelativeToBrushConverter : IMultiValueConverter
             string fieldName = rowView["field_name"] as string ?? string.Empty;
             if (fieldName == anchorName)
             {
-                DebugLog.Write(LogChannel.Fields, "RelativeToBrushConverter.Convert: anchor '"
+                DebugLog.Write(LogChannel.Fields, "AnchorFoundConverter.Convert: anchor '"
                     + anchorName + "' found", LogLevel.Trace);
-                return FoundBrush;
+                return true;
             }
         }
 
-        DebugLog.Write(LogChannel.Fields, "RelativeToBrushConverter.Convert: anchor '"
+        DebugLog.Write(LogChannel.Fields, "AnchorFoundConverter.Convert: anchor '"
             + anchorName + "' not found", LogLevel.Trace);
-        return MissingBrush;
+        return false;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ConvertBack
     //
-    // Not supported.  The converter is one-way; a brush is never written back to the sources.
+    // Not supported.  The converter is one-way; a result is never written back to the sources.
     //
     // value:       The bound value; not inspected.
     // targetTypes: The binding target types; not inspected.
@@ -121,8 +90,8 @@ public class RelativeToBrushConverter : IMultiValueConverter
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
     {
-        DebugLog.Write(LogChannel.Fields, "RelativeToBrushConverter.ConvertBack: not supported, throwing", LogLevel.Error);
-        throw new NotSupportedException("RelativeToBrushConverter is one-way.");
+        DebugLog.Write(LogChannel.Fields, "AnchorFoundConverter.ConvertBack: not supported, throwing", LogLevel.Error);
+        throw new NotSupportedException("AnchorFoundConverter is one-way.");
     }
 }
 
