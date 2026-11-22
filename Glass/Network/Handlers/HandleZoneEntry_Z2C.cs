@@ -103,9 +103,11 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
     private readonly SlotId _birthday_Slot;
     private readonly SlotId _unknown_264_Slot;
     private readonly SlotId _unknown_Counter_Slot;
+    private readonly SlotId _variableQuadsGate_Slot;
 
     // slots for Gates
     private readonly SlotId _quad_Unknown_Slot;
+    private readonly SlotId _variableQuads_Slot;
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // HandleZoneEntry_Z2C (constructor)
@@ -128,9 +130,11 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         _collectionHandle = _registry.GetCollectionHandle(_patchLevel, "OP_ZoneEntryV1");
         _top_level_gate = _registry.GetOpcodeGateDefinition(_opcodeHandled);
         _quadsGate_Slot = _registry.IndexOfField(_collectionHandle, "Quads_Gate");
-
+        _variableQuadsGate_Slot = _registry.IndexOfField(_collectionHandle, "Variable_Quads");
         CollectionHandle quadCollection = _registry.GetCollectionHandle(_patchLevel, "ZoneEntry_Quads");
+        CollectionHandle variableQuadsCollect = _registry.GetCollectionHandle(_patchLevel, "ZoneEntry_4Quads");
 
+        // Root collection fields
         _name_Slot = _registry.IndexOfField(_collectionHandle, "name");
         _spawnId_Slot = _registry.IndexOfField(_collectionHandle, "spawn_id");
         _level_Slot = _registry.IndexOfField(_collectionHandle, "level");
@@ -184,7 +188,6 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         _mob12_Slot = _registry.IndexOfField(_collectionHandle, "Mob12");
         _unknown_FF_Block_1_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_FF_Block_1");
         _unknown_FF_Block_2_Slot = _registry.IndexOfField(_collectionHandle, "Unknown_FF_Block_2");
-
         _colorTable_Slot = _registry.IndexOfField(_collectionHandle, "ColorTable");
         _appearance_0_Slot = _registry.IndexOfField(_collectionHandle, "AppearanceSlot_0");
         _appearance_1_Slot = _registry.IndexOfField(_collectionHandle, "AppearanceSlot_1");
@@ -212,6 +215,9 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
 
         // Quads slots
         _quad_Unknown_Slot = _registry.IndexOfField(quadCollection, "Unknown");
+
+        // 4Quads
+        _variableQuads_Slot = _registry.IndexOfField(variableQuadsCollect, "Values");
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -288,6 +294,17 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             C = _extractor.GetUIntAt(_numQuads_Slot);
             lastName = _extractor.GetStringAt(_lastname_Slot);
             ownerId = 0;
+
+            uint bitmap = _extractor.GetUIntAt(_bitmap_Slot);
+            uint presence = _extractor.GetUIntAt(_presenceFlags_Slot);
+
+/*
+            DebugLog.Write(LogChannel.DataLogging, "Flags:  message " + metadata.MessageId + "," 
+                + metadata.Timestamp.ToString("HH:mm:ss.fff") + "," + name + "," +
+                " Bitmap: 0x" + bitmap.ToString("X8") + ", Presence: 0x" +
+                presence.ToString("X2") + ", Model: 0x" + model.ToString("X4") +
+                ", Type: 0x" + type.ToString("X2"), LogLevel.Info);
+*/
         }
         finally
         {
@@ -507,6 +524,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
                 return root;
             }
 
+
             SpawnId spawnId = (SpawnId) _extractor.GetUIntAt(_spawnId_Slot);
             EQClass classId = (EQClass)_extractor.GetUIntAt(_class_Slot);
 
@@ -623,10 +641,9 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
                 ReadOnlySpan<uint> unknownMobData = _extractor.GetUIntSpanAt(_mob12_Slot);
                 for (int index = 0; index < unknownMobData.Length; index++)
                 {
-                    FieldNodes.AddLabeledNode(_extractor, _mob12_Slot, "Value " + index + ": 0x" + unknownMobData[index].ToString("X4"),
+                    FieldNodes.AddLabeledNode(_extractor, _mob12_Slot, "Value " + index + ": 0x" + unknownMobData[index].ToString("X8"),
                         mobDataSubtree);
                 }
-                _extractor.EnterGate(rootGate, 0);
             }
 
             if (_extractor.IsPresent(_colorTable_Slot) == true)
@@ -637,11 +654,11 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
                 ReadOnlySpan<uint> colorData = _extractor.GetUIntSpanAt(_colorTable_Slot);
                 for (int index = 0; index < colorData.Length; index++)
                 {
-                    FieldNodes.AddLabeledNode(_extractor, _colorTable_Slot, "Value " + index + ": 0x" + colorData[index].ToString("X4"),
+                    FieldNodes.AddLabeledNode(_extractor, _colorTable_Slot, "Value " + index + ": 0x" + colorData[index].ToString("X8"),
                         colorSubtree);
                 }
-                _extractor.EnterGate(rootGate, 0);
             }
+
 
             FieldDisplayNode appearanceTree = new FieldDisplayNode("Appearance Table");
 
@@ -694,6 +711,50 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             if (appearanceSlotsFound > 0)
             {
                 root.AddChild(appearanceTree);
+            }
+
+            if (_extractor.IsPresent(_24ByteBlock_Slot) == true)
+            {
+                FieldDisplayNode subtree = new FieldDisplayNode("24 Byte Block");
+                root.AddChild(subtree);
+
+                ReadOnlySpan<uint> blockData = _extractor.GetUIntSpanAt(_24ByteBlock_Slot);
+                for (int index = 0; index < blockData.Length; index++)
+                {
+                    FieldNodes.AddLabeledNode(_extractor, _24ByteBlock_Slot, "Value " + index + ": 0x" + blockData[index].ToString("X8"),
+                        subtree);
+                }
+            }
+
+            FieldNodes.AddUIntNode(_extractor, _unknown_Counter_Slot, "Counter", root, "D");
+
+            if (_extractor.IsPresent(_variableQuadsGate_Slot) == true)
+            {
+
+                GateHandle varQuadsGate = _extractor.GetGateAt(_variableQuadsGate_Slot);
+                uint numRecords = _extractor.BagCount(varQuadsGate);
+
+#if false
+                // only create subtree if we have bags
+                if (bagCount > 0)
+                {
+                    FieldDisplayNode varQuadsTree = new FieldDisplayNode("Variable Quads");
+                    root.AddChild(varQuadsTree);
+
+                    for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
+                    {
+                        _extractor.EnterGate(varQuadsGate, bagIndex);
+
+                        ReadOnlySpan<uint> blockData = _extractor.GetUIntSpanAt(_variableQuads_Slot);
+                        for (int index = 0; index < blockData.Length; index++)
+                        {
+                            FieldNodes.AddLabeledNode(_extractor, _variableQuads_Slot, "Value " + index + ": 0x" + blockData[index].ToString("X8"),
+                                varQuadsTree);
+                        }
+                    }
+                    _extractor.EnterGate(rootGate, 0);
+                }
+#endif
             }
         }
         finally

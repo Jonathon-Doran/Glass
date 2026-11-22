@@ -119,12 +119,14 @@ public class HandleDamage : OpcodeHandler
                 + targetName + " for " + damage + ", flags 0x" + flags.ToString("X2") + ", spell " + spellId
                 + ", skill 0x" + skillId.ToString("X4"), LogLevel.Trace);
 
+/*
             DebugLog.Write(LogChannel.DataLogging, "DMG," + metadata.MessageId + ","
                 + metadata.Timestamp.ToString("HH:mm:ss.fff") + "," + zoneId + ","
                 + "0x" + targetId.Value.ToString("X4") + "," + targetName + ","
                 + "0x" + attackerId.Value.ToString("X4") + "," + attackerName + ","
                 + metadata.CharacterName + "," + (int)damage + ",0x" + flags.ToString("X2") + "," + spellId
                 + ",0x" + skillId.ToString("X4"), LogLevel.Info);
+*/
         }
         finally
         {

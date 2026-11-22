@@ -157,13 +157,19 @@
             </Grid.ColumnDefinitions>
 
             <DockPanel Grid.Column="0">
-                <TextBlock DockPanel.Dock="Top" Text="Fields" FontWeight="SemiBold" Margin="8,4,8,2"/>
+                <TextBlock DockPanel.Dock="Top" 
+                           Text="Fields" 
+                           FontWeight="SemiBold" 
+                           Margin="8,4,8,2"/>
                 <TreeView x:Name="FieldTree"
                           Margin="8,0,4,8"
+                          Padding="0,0,0,18"
                           BorderThickness="0"
                           PreviewKeyDown="FieldTree_PreviewKeyDown"
                           Background="Transparent"
                           PreviewMouseMove="FieldTree_MouseMove" 
+                          ui:ScrollViewerHelper.AutoHideScrollBars="False"
+                          ScrollViewer.HorizontalScrollBarVisibility="Visible"
                           PreviewMouseLeftButtonDown="FieldTree_PreviewMouseLeftButtonDown"
                           PreviewMouseLeftButtonUp="FieldTree_PreviewMouseLeftButtonUp"
                           ItemContainerStyle="{StaticResource TightTreeViewItem}">
