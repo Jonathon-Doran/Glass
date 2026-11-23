@@ -280,7 +280,7 @@ public class InferMovementHistory : IInferOpcodes
                     + "' is a gate reference, record is not fixed-size", LogLevel.Warn);
                 return false;
             }
-            if (field.Predicate.Op != PredicateOp.None)
+            if (field.Predicate.Steps != null)
             {
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "InferMovementHistory.TryComputeRecordByteSize: field '" + field.Name

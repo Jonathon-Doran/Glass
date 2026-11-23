@@ -1222,11 +1222,12 @@ public partial class CollectionEditor : Window
     //   1. No two fields share a non-blank name.
     //   2. Every field has a non-blank name.
     //   3. Every field has an encoding or a gate.
-    //   4. Every predicate parses under the patch data predicate grammar, and its source field
-    //      names a field present in the grid.
+    //   4. Every predicate parses under the patch data predicate expression grammar, and every
+    //      source field named by its comparisons is present in the grid.
     //   5. Every relative-to anchor names a field present in the grid.
     //   6. The fields form no dependency cycle, where a field depends on its relative-to anchor
-    //      and on its predicate source.  Detected by Kahn's algorithm over the dependency graph.
+    //      and on every source field of its predicate.  Detected by Kahn's algorithm over
+    //      the dependency graph.
     //
     // Rows marked for deletion are excluded from every check.  Field names are compared exactly;
     // the relative-to value is trimmed before comparison.  The first failure is reported through
@@ -1273,15 +1274,15 @@ public partial class CollectionEditor : Window
             indexByName[name] = rowIndex;
         }
 
-        // Source field name of each row's predicate, empty when the row has none.
-        string[] predicateSources = new string[liveRows.Count];
+        // Source field names of each row's predicate comparisons, empty when the row has none.
+        List<string>[] predicateSources = new List<string>[liveRows.Count];
 
         // Checks 2 through 5: names, encodings, predicates, and relative-to anchors.
         for (int rowIndex = 0; rowIndex < liveRows.Count; rowIndex++)
         {
             DataRow row = liveRows[rowIndex];
             string ownName = row["field_name"] as string ?? string.Empty;
-            predicateSources[rowIndex] = string.Empty;
+            predicateSources[rowIndex] = new List<string>();
 
             if (ownName.Trim().Length == 0)
             {
@@ -1308,9 +1309,8 @@ public partial class CollectionEditor : Window
             string? predicateRaw = row["predicate"] as string;
             if (string.IsNullOrWhiteSpace(predicateRaw) == false)
             {
-                string sourceName;
-                FieldPredicate parsedPredicate;
-                bool parsed = PatchData.ParsePredicate(predicateRaw, out sourceName, out parsedPredicate);
+                PredicateProgram parsedProgram;
+                bool parsed = PatchData.ParsePredicateExpression(predicateRaw, out parsedProgram);
                 if (parsed == false)
                 {
                     DebugLog.Write(LogChannel.Fields, "CollectionEditor.ValidateFields: field '"
@@ -1318,15 +1318,32 @@ public partial class CollectionEditor : Window
                     SetProblem("Field '" + ownName + "' has an invalid predicate: '" + predicateRaw + "'");
                     return false;
                 }
-                if (indexByName.ContainsKey(sourceName) == false)
+
+                string?[] sourceNames = parsedProgram.SourceNames!;
+                for (int stepIndex = 0; stepIndex < sourceNames.Length; stepIndex++)
                 {
-                    DebugLog.Write(LogChannel.Fields, "CollectionEditor.ValidateFields: field '"
-                        + ownName + "' predicate source '" + sourceName + "' not in grid", LogLevel.Trace);
-                    SetProblem("Field '" + ownName + "' predicate references unknown field '"
-                        + sourceName + "'");
-                    return false;
+                    string? sourceName = sourceNames[stepIndex];
+                    if (sourceName == null)
+                    {
+                        continue;
+                    }
+
+                    if (indexByName.ContainsKey(sourceName) == false)
+                    {
+                        DebugLog.Write(LogChannel.Fields, "CollectionEditor.ValidateFields: field '"
+                            + ownName + "' predicate source '" + sourceName + "' not in grid",
+                            LogLevel.Trace);
+                        SetProblem("Field '" + ownName + "' predicate references unknown field '"
+                            + sourceName + "'");
+                        return false;
+                    }
+
+                    predicateSources[rowIndex].Add(sourceName);
                 }
-                predicateSources[rowIndex] = sourceName;
+
+                DebugLog.Write(LogChannel.Fields, "CollectionEditor.ValidateFields: field '"
+                    + ownName + "' predicate '" + predicateRaw + "' names "
+                    + predicateSources[rowIndex].Count + " source field(s)", LogLevel.Trace);
             }
 
             string? relativeToRaw = row["relative_to"] as string;
@@ -1363,7 +1380,11 @@ public partial class CollectionEditor : Window
                 AddDependencyEdge(relativeToRaw.Trim(), rowIndex, indexByName, inDegree, dependents);
             }
 
-            AddDependencyEdge(predicateSources[rowIndex], rowIndex, indexByName, inDegree, dependents);
+            List<string> rowSources = predicateSources[rowIndex];
+            for (int sourceIndex = 0; sourceIndex < rowSources.Count; sourceIndex++)
+            {
+                AddDependencyEdge(rowSources[sourceIndex], rowIndex, indexByName, inDegree, dependents);
+            }
         }
 
         Queue<int> ready = new Queue<int>();

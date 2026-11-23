@@ -20,12 +20,12 @@
 // names the child collection and the multiplicity rule.  GateDefinitionHandle.None means the field
 // is an ordinary scalar, not a gate reference.
 //
-// Predicate is the field-level presence condition.  When its Op is PredicateOp.None the field is
-// unconditionally present and the extractor decodes it without evaluating any condition.  When Op
-// is any other value the field is decoded only when the predicate holds against an earlier field's
-// value in the same collection; otherwise the slot is left empty.  The predicate's SourceSlot is
-// resolved from a field name to a slot index at load time, the same way RelativeToSlot and gate
-// count fields are resolved.
+// Predicate is the field-level presence condition.  When its Steps is null the field is
+// unconditionally present and the extractor decodes it without evaluating any condition.
+// Otherwise the field is decoded only when the program's comparisons, combined by its And, Or,
+// and Not steps, hold against earlier fields' values in the same collection; otherwise the slot
+// is left empty.  Each Comparison step's SourceSlot is resolved from a field name to a slot
+// index at load time, the same way RelativeToSlot and gate count fields are resolved.
 //
 // ByteCount is the fixed size in bytes of a Blob-typed field.  Zero for all other field types.
 //
@@ -42,6 +42,6 @@ public struct FieldDefinition
     public FieldEncoding Encoding;
     public uint ByteCount;
     public GateDefinitionHandle Gate;
-    public FieldPredicate Predicate;
+    public PredicateProgram Predicate;
     public uint Sequence;
 }

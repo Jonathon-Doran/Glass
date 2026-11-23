@@ -90,3 +90,61 @@ public struct FieldPredicate
     public bool Negated;
     public PredicateOperand[]? Operands;
 }
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+// PredicateStepKind
+//
+// The action one step of a predicate program performs during postfix evaluation.
+//
+// None is the default value (zero) and marks a step that was never set.  Comparison
+// evaluates the step's comparison and pushes its result.  And and Or pop two results and
+// push their conjunction or disjunction.  Not pops one result and pushes its inverse.
+///////////////////////////////////////////////////////////////////////////////////////////////
+public enum PredicateStepKind
+{
+    None = 0,
+    Comparison,
+    And,
+    Or,
+    Not
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+// PredicateStep
+//
+// One step of a predicate program.  Kind selects the action.  Comparison holds the test
+// applied when Kind is Comparison and is default for every other kind.
+///////////////////////////////////////////////////////////////////////////////////////////////
+public struct PredicateStep
+{
+    public PredicateStepKind Kind;
+    public FieldPredicate Comparison;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+// PredicateProgram
+//
+// Field-level presence condition built from one or more comparisons joined by And, Or, and
+// Not, stored in postfix order.  Evaluation walks Steps from first to last with a stack of
+// results; the single result left on the stack decides whether the field is present.
+//
+// Steps is null when the field carries no predicate and is unconditionally present.  A
+// predicate written as a single comparison is a program of one Comparison step.
+//
+// MaxDepth is the greatest number of results the stack holds at any point while Steps is
+// walked, so evaluation can size its stack once before the walk.  It is zero when Steps is
+// null.
+//
+// SourceNames is parallel to Steps: an entry holds the source field name of a Comparison
+// step, and is null for an And, Or, or Not step.  The names are what a Comparison's
+// SourceSlot is resolved from.  SourceNames is null when Steps is null.
+//
+// This is static policy known before any packet arrives; it reads no payload and performs
+// no decode.
+///////////////////////////////////////////////////////////////////////////////////////////////
+public struct PredicateProgram
+{
+    public PredicateStep[]? Steps;
+    public uint MaxDepth;
+    public string?[]? SourceNames;
+}

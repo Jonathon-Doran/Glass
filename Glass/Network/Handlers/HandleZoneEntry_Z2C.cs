@@ -298,13 +298,13 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             uint bitmap = _extractor.GetUIntAt(_bitmap_Slot);
             uint presence = _extractor.GetUIntAt(_presenceFlags_Slot);
 
-/*
+
             DebugLog.Write(LogChannel.DataLogging, "Flags:  message " + metadata.MessageId + "," 
                 + metadata.Timestamp.ToString("HH:mm:ss.fff") + "," + name + "," +
                 " Bitmap: 0x" + bitmap.ToString("X8") + ", Presence: 0x" +
                 presence.ToString("X2") + ", Model: 0x" + model.ToString("X4") +
                 ", Type: 0x" + type.ToString("X2"), LogLevel.Info);
-*/
+
         }
         finally
         {
@@ -734,7 +734,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
                 GateHandle varQuadsGate = _extractor.GetGateAt(_variableQuadsGate_Slot);
                 uint numRecords = _extractor.BagCount(varQuadsGate);
 
-#if false
+
                 // only create subtree if we have bags
                 if (bagCount > 0)
                 {
@@ -754,7 +754,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
                     }
                     _extractor.EnterGate(rootGate, 0);
                 }
-#endif
+
             }
         }
         finally

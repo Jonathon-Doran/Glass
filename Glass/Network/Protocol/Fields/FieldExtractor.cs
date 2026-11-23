@@ -430,9 +430,9 @@ public class FieldExtractor
                     + " byteLength=" + (definition.BitLength / 8u), LogLevel.Trace);
             }
 
-            if (definition.Predicate.Op != PredicateOp.None)
+            if (definition.Predicate.Steps != null)
             {
-                if (EvaluatePredicate(bag, definition.Predicate) == false)
+                if (EvaluatePredicateProgram(bag, definition.Predicate) == false)
                 {
                     resolvedEndBits[(int)definitionIndex] = localStartBit;
                     DebugLog.Write(LogChannel.Fields, "FieldExtractor.ExtractCollection: field '"
@@ -1638,6 +1638,151 @@ public class FieldExtractor
             + (byteCount / 4u) + " elements", LogLevel.Trace);
         return byteCount;
     }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // EvaluatePredicateProgram
+    //
+    // Evaluates a predicate program against the given bag by walking its steps in postfix
+    // order with a stack of results sized to the program's maximum depth.  A Comparison step
+    // evaluates its comparison and pushes the result.  And and Or pop two results and push
+    // their conjunction or disjunction.  Not inverts the result on top of the stack.  Every
+    // Comparison step is evaluated; there is no short-circuit.
+    //
+    // A program with null steps carries no predicate and holds.  A program whose steps do not
+    // fit its maximum depth, pop from an empty stack, carry an unknown kind, or leave other
+    // than one result is a broken predicate definition and halts the process via FailFast
+    // with the failure details preserved in the Fields log channel.
+    //
+    // bag:      The bag containing the source slots of the program's comparisons.
+    // program:  The resolved predicate program to evaluate.
+    //
+    // Returns:  The program's result.  Does not return when the program is broken.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private bool EvaluatePredicateProgram(FieldBag bag, PredicateProgram program)
+    {
+        PredicateStep[]? steps = program.Steps;
+        if (steps == null)
+        {
+            DebugLog.Write(LogChannel.Fields, "FieldExtractor.EvaluatePredicateProgram: no steps, "
+                + "predicate holds", LogLevel.Trace);
+            return true;
+        }
+
+        if (program.MaxDepth == 0)
+        {
+            string message = "FieldExtractor.EvaluatePredicateProgram: program of " + steps.Length
+                + " step(s) has maximum depth 0 -- broken predicate definition, aborting";
+            DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                + Environment.StackTrace, LogLevel.Error);
+            Environment.FailFast(message);
+            return false;
+        }
+
+        Span<bool> results = stackalloc bool[(int)program.MaxDepth];
+        uint depth = 0;
+
+        for (int stepIndex = 0; stepIndex < steps.Length; stepIndex++)
+        {
+            PredicateStepKind kind = steps[stepIndex].Kind;
+
+            if (kind == PredicateStepKind.Comparison)
+            {
+                if (depth >= program.MaxDepth)
+                {
+                    string message = "FieldExtractor.EvaluatePredicateProgram: step " + stepIndex
+                        + " pushes past maximum depth " + program.MaxDepth
+                        + " -- broken predicate definition, aborting";
+                    DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                        + Environment.StackTrace, LogLevel.Error);
+                    Environment.FailFast(message);
+                    return false;
+                }
+
+                bool comparisonResult = EvaluatePredicate(bag, steps[stepIndex].Comparison);
+                results[(int)depth] = comparisonResult;
+                depth++;
+
+                DebugLog.Write(LogChannel.Fields, "FieldExtractor.EvaluatePredicateProgram: step "
+                    + stepIndex + " Comparison on slot " + steps[stepIndex].Comparison.SourceSlot
+                    + " is " + comparisonResult + ", depth now " + depth, LogLevel.Trace);
+            }
+            else if ((kind == PredicateStepKind.And) || (kind == PredicateStepKind.Or))
+            {
+                if (depth < 2)
+                {
+                    string message = "FieldExtractor.EvaluatePredicateProgram: step " + stepIndex
+                        + " " + kind + " needs 2 results but the stack holds " + depth
+                        + " -- broken predicate definition, aborting";
+                    DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                        + Environment.StackTrace, LogLevel.Error);
+                    Environment.FailFast(message);
+                    return false;
+                }
+
+                bool right = results[(int)(depth - 1)];
+                bool left = results[(int)(depth - 2)];
+                bool combined;
+                if (kind == PredicateStepKind.And)
+                {
+                    combined = left && right;
+                }
+                else
+                {
+                    combined = left || right;
+                }
+
+                depth--;
+                results[(int)(depth - 1)] = combined;
+
+                DebugLog.Write(LogChannel.Fields, "FieldExtractor.EvaluatePredicateProgram: step "
+                    + stepIndex + " " + kind + " of " + left + " and " + right + " is " + combined
+                    + ", depth now " + depth, LogLevel.Trace);
+            }
+            else if (kind == PredicateStepKind.Not)
+            {
+                if (depth < 1)
+                {
+                    string message = "FieldExtractor.EvaluatePredicateProgram: step " + stepIndex
+                        + " Not on an empty stack -- broken predicate definition, aborting";
+                    DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                        + Environment.StackTrace, LogLevel.Error);
+                    Environment.FailFast(message);
+                    return false;
+                }
+
+                bool inverted = !results[(int)(depth - 1)];
+                results[(int)(depth - 1)] = inverted;
+
+                DebugLog.Write(LogChannel.Fields, "FieldExtractor.EvaluatePredicateProgram: step "
+                    + stepIndex + " Not gives " + inverted + ", depth now " + depth, LogLevel.Trace);
+            }
+            else
+            {
+                string message = "FieldExtractor.EvaluatePredicateProgram: step " + stepIndex
+                    + " has unknown kind " + kind + " -- broken predicate definition, aborting";
+                DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                    + Environment.StackTrace, LogLevel.Error);
+                Environment.FailFast(message);
+                return false;
+            }
+        }
+
+        if (depth != 1)
+        {
+            string message = "FieldExtractor.EvaluatePredicateProgram: program of " + steps.Length
+                + " step(s) leaves " + depth + " result(s) instead of 1 -- broken predicate "
+                + "definition, aborting";
+            DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                + Environment.StackTrace, LogLevel.Error);
+            Environment.FailFast(message);
+            return false;
+        }
+
+        DebugLog.Write(LogChannel.Fields, "FieldExtractor.EvaluatePredicateProgram: program of "
+            + steps.Length + " step(s) is " + results[0], LogLevel.Trace);
+        return results[0];
+    }
+
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // EvaluatePredicate

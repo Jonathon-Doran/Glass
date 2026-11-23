@@ -139,6 +139,56 @@ public class PatchData
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    // PredicateTokenKind
+    //
+    // The kind of one token produced when a predicate expression is split.  Comparison is the
+    // text of a single comparison.  Open and Close are parentheses.  And and Or are the && and
+    // || operators.  Not is a ! that applies to a parenthesized group.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private enum PredicateTokenKind
+    {
+        None = 0,
+        Comparison,
+        Open,
+        Close,
+        And,
+        Or,
+        Not
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // PredicateToken
+    //
+    // One token of a predicate expression.  Text holds the trimmed comparison text when Kind is
+    // Comparison, and the operator or parenthesis characters for every other kind.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private struct PredicateToken
+    {
+        public PredicateTokenKind Kind;
+        public string Text;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // PredicateParseState
+    //
+    // Working state shared by every level of one predicate expression parse.  Tokens is the
+    // split expression and Position is the index of the next token to read.  Steps and
+    // SourceNames receive the program in postfix order, parallel to each other: a Comparison
+    // step's entry in SourceNames is its source field name, and an operator step's entry is
+    // null.  Depth is the number of results the evaluation stack would hold after the steps
+    // emitted so far, and MaxDepth is the greatest value Depth has reached.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private sealed class PredicateParseState
+    {
+        public List<PredicateToken> Tokens = new List<PredicateToken>();
+        public int Position;
+        public List<PredicateStep> Steps = new List<PredicateStep>();
+        public List<string?> SourceNames = new List<string?>();
+        public uint Depth;
+        public uint MaxDepth;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     // OpcodeRecord
     //
     // Everything loaded for one PatchOpcode row, stored at its OpcodeHandle in _opcodes.
@@ -1066,17 +1116,19 @@ public class PatchData
     // Resolves each pending predicate for the given collection against its finalized field
     // array.  Run after ResolveRelativeAnchors has reordered the array, so every source and
     // owner name resolves against the order the extractor will see.  For each pending entry
-    // the raw string is parsed into op and operand, the source field name is childCollection to a
-    // slot index, and the result is written onto the owner field's Predicate.
+    // the raw string is parsed into a predicate program, the source field name of every
+    // Comparison step is resolved to a slot index, and the program is written onto the owner
+    // field's Predicate.
     //
     // The owner is located by name because the reorder invalidated the read-loop position.
     // The write indexes the backing array directly so it lands on the stored struct rather
     // than a copy.
     //
-    // A predicate string that fails to parse, a source name not present in the collection,
-    // or an owner name not present in the collection is a broken patch definition: the
-    // failure is logged with a stack trace and the process is terminated, since a field
-    // whose presence depends on an unresolvable predicate must never decode.
+    // A predicate string that fails to parse, an owner name not present in the collection, or
+    // a Comparison whose source name is not present in the collection, is not decoded before
+    // the owner, or has operands that do not fit the source's encoding is a broken patch
+    // definition: the failure is logged with a stack trace and the process is terminated,
+    // since a field whose presence depends on an unresolvable predicate must never decode.
     //
     // Parameters:
     //   index  - The index of the Collection whose pending predicates to resolve.
@@ -1111,9 +1163,8 @@ public class PatchData
         {
             PendingFieldPredicate entry = pending[pendingIndex];
 
-            string sourceName;
-            FieldPredicate predicate;
-            bool parsed = ParsePredicate(entry.RawPredicate, out sourceName, out predicate);
+            PredicateProgram program;
+            bool parsed = ParsePredicateExpression(entry.RawPredicate, out program);
             if (parsed == false)
             {
                 string message = "PatchData.ResolvePredicates: collection '"
@@ -1126,22 +1177,6 @@ public class PatchData
 
                 Environment.FailFast(message);
             }
-
-            SlotId sourceSlot = IndexOfField(index, sourceName);
-            if (sourceSlot.Exists == false)
-            {
-                string message = "PatchData.ResolvePredicates: collection '"
-                    + GetCollectionNameFromIndex(index) + "' field '" + entry.OwnerFieldName
-                    + "' predicate '" + entry.RawPredicate + "' names source field '"
-                    + sourceName + "' not present in the collection for patchLevel=" + PatchLevel
-                    + " -- broken patch definition, aborting";
-
-                DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
-                    + Environment.StackTrace, LogLevel.Error);
-
-                Environment.FailFast(message);
-            }
-
 
             SlotId ownerSlot = IndexOfField(index, entry.OwnerFieldName);
             if (ownerSlot.Exists == false)
@@ -1157,41 +1192,96 @@ public class PatchData
                 Environment.FailFast(message);
             }
 
-            if (! SlotDefinedBefore(sourceSlot, ownerSlot))
+            PredicateStep[] steps = program.Steps!;
+            string?[] sourceNames = program.SourceNames!;
+            uint comparisonCount = 0;
+
+            for (int stepIndex = 0; stepIndex < steps.Length; stepIndex++)
             {
-                string message = "PatchData.ResolvePredicates: collection '"
+                if (steps[stepIndex].Kind != PredicateStepKind.Comparison)
+                {
+                    continue;
+                }
+
+                string? sourceName = sourceNames[stepIndex];
+                if (sourceName == null)
+                {
+                    string message = "PatchData.ResolvePredicates: collection '"
+                        + GetCollectionNameFromIndex(index) + "' field '" + entry.OwnerFieldName
+                        + "' predicate '" + entry.RawPredicate + "' step " + stepIndex
+                        + " is a Comparison with no source name for patchLevel=" + PatchLevel
+                        + " -- broken predicate program, aborting";
+
+                    DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                        + Environment.StackTrace, LogLevel.Error);
+
+                    Environment.FailFast(message);
+                }
+
+                SlotId sourceSlot = IndexOfField(index, sourceName);
+                if (sourceSlot.Exists == false)
+                {
+                    string message = "PatchData.ResolvePredicates: collection '"
+                        + GetCollectionNameFromIndex(index) + "' field '" + entry.OwnerFieldName
+                        + "' predicate '" + entry.RawPredicate + "' names source field '"
+                        + sourceName + "' not present in the collection for patchLevel=" + PatchLevel
+                        + " -- broken patch definition, aborting";
+
+                    DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                        + Environment.StackTrace, LogLevel.Error);
+
+                    Environment.FailFast(message);
+                }
+
+                if (!SlotDefinedBefore(sourceSlot, ownerSlot))
+                {
+                    string message = "PatchData.ResolvePredicates: collection '"
+                        + GetCollectionNameFromIndex(index) + "' field '" + entry.OwnerFieldName
+                        + "' (slot " + ownerSlot + ") predicate '" + entry.RawPredicate
+                        + "' names source field '" + sourceName + "' at slot " + sourceSlot
+                        + ", which is not decoded before the gated field for patchLevel=" + PatchLevel
+                        + " -- broken patch definition, aborting";
+
+                    DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                        + Environment.StackTrace, LogLevel.Error);
+
+                    Environment.FailFast(message);
+                }
+
+                FieldEncoding sourceEncoding = definitions[sourceSlot.Index].Encoding;
+                bool operandsFit = OperandsFitSource(sourceEncoding, steps[stepIndex].Comparison,
+                    entry.OwnerFieldName);
+                if (operandsFit == false)
+                {
+                    string message = "PatchData.ResolvePredicates: collection '"
+                        + GetCollectionNameFromIndex(index) + "' field '" + entry.OwnerFieldName
+                        + "' predicate '" + entry.RawPredicate + "' does not fit source field '"
+                        + sourceName + "' encoding " + sourceEncoding + " for patchLevel=" + PatchLevel
+                        + " -- broken patch definition, aborting";
+
+                    DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
+                        + Environment.StackTrace, LogLevel.Error);
+
+                    Environment.FailFast(message);
+                }
+
+                // Array element access, so this mutates the stored step in place.
+                steps[stepIndex].Comparison.SourceSlot = sourceSlot;
+                comparisonCount++;
+
+                DebugLog.Write(LogChannel.Fields, "PatchData.ResolvePredicates: collection '"
                     + GetCollectionNameFromIndex(index) + "' field '" + entry.OwnerFieldName
-                    + "' (slot " + ownerSlot + ") predicate '" + entry.RawPredicate
-                    + "' names source field '" + sourceName + "' at slot " + sourceSlot
-                    + ", which is not decoded before the gated field for patchLevel=" + PatchLevel
-                    + " -- broken patch definition, aborting";
-
-                DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
-                    + Environment.StackTrace, LogLevel.Error);
-
-                Environment.FailFast(message);
+                    + "' step " + stepIndex + " source '" + sourceName + "' resolved to slot "
+                    + sourceSlot, LogLevel.Trace);
             }
-
-            FieldEncoding sourceEncoding = definitions[sourceSlot.Index].Encoding;
-            bool operandsFit = OperandsFitSource(sourceEncoding, predicate, entry.OwnerFieldName);
-            if (operandsFit == false)
-            {
-                string message = "PatchData.ResolvePredicates: collection '"
-                    + GetCollectionNameFromIndex(index) + "' field '" + entry.OwnerFieldName
-                    + "' predicate '" + entry.RawPredicate + "' does not fit source field '"
-                    + sourceName + "' encoding " + sourceEncoding + " for patchLevel=" + PatchLevel
-                    + " -- broken patch definition, aborting";
-
-                DebugLog.WriteMultiline(LogChannel.Fields, message + Environment.NewLine
-                    + Environment.StackTrace, LogLevel.Error);
-
-                Environment.FailFast(message);
-            }
-
-            predicate.SourceSlot = sourceSlot;
 
             // This is a local reference, so mutates the stored structure in place.
-            definitions[ownerSlot.Index].Predicate = predicate;
+            definitions[ownerSlot.Index].Predicate = program;
+
+            DebugLog.Write(LogChannel.Fields, "PatchData.ResolvePredicates: collection '"
+                + GetCollectionNameFromIndex(index) + "' field '" + entry.OwnerFieldName
+                + "' predicate '" + entry.RawPredicate + "' resolved with " + comparisonCount
+                + " comparison(s) in " + steps.Length + " step(s)", LogLevel.Trace);
         }
     }
 
@@ -2266,6 +2356,476 @@ public class PatchData
         DebugLog.Write(LogChannel.Fields, "PatchData.OperandsFitSource: field '" + ownerName
             + "' predicate op=" + predicate.Op + " with " + predicate.Operands.Length
             + " operand(s) fits source encoding " + sourceEncoding, LogLevel.Trace);
+        return true;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // TokenizePredicate
+    //
+    // Splits a predicate expression into tokens.  Parentheses, &&, and || are structural
+    // tokens.  A ! is a Not token only when the next character other than whitespace is an
+    // opening parenthesis; any other ! is left in the comparison text, where it negates a
+    // single comparison or forms the != operator.  A single & or | is left in the comparison
+    // text.  Text between structural tokens is trimmed and emitted as one Comparison token
+    // when it is not empty.
+    //
+    // Text inside double quotes and inside [ ] lists is never read as a structural token, so a
+    // string literal or an operand list may hold any of these characters.
+    //
+    // This method checks only quoting and bracket balance.  Parenthesis balance, operator
+    // placement, and the comparison text itself are not checked here.
+    //
+    // Parameters:
+    //   raw     - The predicate expression text.
+    //   tokens  - Receives the tokens in the order they appear.  Cleared before use.
+    //
+    // Returns:
+    //   true when the text was split into one or more tokens; false when the text is null,
+    //   holds an unterminated string literal, holds an unbalanced [ or ], or yields no tokens.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static bool TokenizePredicate(string raw, List<PredicateToken> tokens)
+    {
+        tokens.Clear();
+
+        if (raw == null)
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.TokenizePredicate: null predicate string, "
+                + "tokenize failed", LogLevel.Warn);
+            return false;
+        }
+
+        int position = 0;
+        int comparisonStart = 0;
+        bool inQuote = false;
+        uint bracketDepth = 0;
+
+        while (true)
+        {
+            bool atEnd = (position >= raw.Length);
+            PredicateTokenKind structuralKind = PredicateTokenKind.None;
+            int structuralWidth = 0;
+
+            if (atEnd == true)
+            {
+                if (inQuote == true)
+                {
+                    DebugLog.Write(LogChannel.Fields, "PatchData.TokenizePredicate: unterminated string "
+                        + "literal in '" + raw + "', tokenize failed", LogLevel.Warn);
+                    return false;
+                }
+
+                if (bracketDepth > 0)
+                {
+                    DebugLog.Write(LogChannel.Fields, "PatchData.TokenizePredicate: " + bracketDepth
+                        + " unclosed [ in '" + raw + "', tokenize failed", LogLevel.Warn);
+                    return false;
+                }
+            }
+            else
+            {
+                char current = raw[position];
+
+                if (inQuote == true)
+                {
+                    if (current == '"')
+                    {
+                        inQuote = false;
+                    }
+                    position++;
+                    continue;
+                }
+
+                if (current == '"')
+                {
+                    inQuote = true;
+                    position++;
+                    continue;
+                }
+
+                if (current == '[')
+                {
+                    bracketDepth++;
+                    position++;
+                    continue;
+                }
+
+                if (current == ']')
+                {
+                    if (bracketDepth == 0)
+                    {
+                        DebugLog.Write(LogChannel.Fields, "PatchData.TokenizePredicate: ] without "
+                            + "matching [ at position " + position + " in '" + raw
+                            + "', tokenize failed", LogLevel.Warn);
+                        return false;
+                    }
+                    bracketDepth--;
+                    position++;
+                    continue;
+                }
+
+                if (bracketDepth > 0)
+                {
+                    position++;
+                    continue;
+                }
+
+                bool hasNext = (position + 1 < raw.Length);
+
+                if (current == '(')
+                {
+                    structuralKind = PredicateTokenKind.Open;
+                    structuralWidth = 1;
+                }
+                else if (current == ')')
+                {
+                    structuralKind = PredicateTokenKind.Close;
+                    structuralWidth = 1;
+                }
+                else if ((current == '&') && (hasNext == true) && (raw[position + 1] == '&'))
+                {
+                    structuralKind = PredicateTokenKind.And;
+                    structuralWidth = 2;
+                }
+                else if ((current == '|') && (hasNext == true) && (raw[position + 1] == '|'))
+                {
+                    structuralKind = PredicateTokenKind.Or;
+                    structuralWidth = 2;
+                }
+                else if (current == '!')
+                {
+                    int lookahead = position + 1;
+                    while ((lookahead < raw.Length) && (char.IsWhiteSpace(raw[lookahead]) == true))
+                    {
+                        lookahead++;
+                    }
+
+                    if ((lookahead < raw.Length) && (raw[lookahead] == '('))
+                    {
+                        structuralKind = PredicateTokenKind.Not;
+                        structuralWidth = 1;
+                    }
+                }
+
+                if (structuralKind == PredicateTokenKind.None)
+                {
+                    position++;
+                    continue;
+                }
+            }
+
+            string comparisonText = raw.Substring(comparisonStart, position - comparisonStart).Trim();
+            if (comparisonText.Length > 0)
+            {
+                PredicateToken comparisonToken;
+                comparisonToken.Kind = PredicateTokenKind.Comparison;
+                comparisonToken.Text = comparisonText;
+                tokens.Add(comparisonToken);
+
+                DebugLog.Write(LogChannel.Fields, "PatchData.TokenizePredicate: comparison '"
+                    + comparisonText + "'", LogLevel.Trace);
+            }
+
+            if (atEnd == true)
+            {
+                break;
+            }
+
+            PredicateToken structuralToken;
+            structuralToken.Kind = structuralKind;
+            structuralToken.Text = raw.Substring(position, structuralWidth);
+            tokens.Add(structuralToken);
+
+            DebugLog.Write(LogChannel.Fields, "PatchData.TokenizePredicate: " + structuralKind
+                + " at position " + position, LogLevel.Trace);
+
+            position = position + structuralWidth;
+            comparisonStart = position;
+        }
+
+        if (tokens.Count == 0)
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.TokenizePredicate: no tokens in '" + raw
+                + "', tokenize failed", LogLevel.Warn);
+            return false;
+        }
+
+        DebugLog.Write(LogChannel.Fields, "PatchData.TokenizePredicate: '" + raw + "' split into "
+            + tokens.Count + " token(s)", LogLevel.Trace);
+        return true;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ParsePredicateGroup
+    //
+    // Parses one level of a predicate expression, starting at the parse state's position, and
+    // emits its steps in postfix order.  A level is one or more operands separated by && or
+    // ||.  An operand is a comparison, a parenthesized group, or ! followed by a parenthesized
+    // group.  A parenthesized group is parsed by a recursive call for the level inside it.
+    //
+    // Every operator within one level must be the same: a level that mixes && and || is
+    // rejected, so the grouping of mixed operators is always stated by parentheses.  Operators
+    // within a level are applied left to right.
+    //
+    // Parsing stops without consuming the token at a ) or at the end of the tokens.  Checking
+    // that the stop point is the right one belongs to the level that opened the group.
+    //
+    // Each comparison's text is parsed by ParsePredicate, which supplies the comparison and
+    // its source field name.
+    //
+    // Parameters:
+    //   state  - The shared parse state.  Its position is advanced past every token consumed,
+    //            and its steps, source names, depth, and maximum depth are updated for every
+    //            step emitted.
+    //
+    // Returns:
+    //   true when the level parsed; false when an operand is missing or malformed, a
+    //   comparison fails to parse, a group is not closed, or && and || are mixed.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private static bool ParsePredicateGroup(PredicateParseState state)
+    {
+        PredicateStepKind groupOperator = PredicateStepKind.None;
+        PredicateStepKind pendingOperator = PredicateStepKind.None;
+        bool expectOperand = true;
+
+        while (state.Position < state.Tokens.Count)
+        {
+            PredicateToken token = state.Tokens[state.Position];
+
+            if (expectOperand == false)
+            {
+                if (token.Kind == PredicateTokenKind.Close)
+                {
+                    DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicateGroup: ) at token "
+                        + state.Position + " ends the level", LogLevel.Trace);
+                    break;
+                }
+
+                PredicateStepKind operatorKind;
+                if (token.Kind == PredicateTokenKind.And)
+                {
+                    operatorKind = PredicateStepKind.And;
+                }
+                else if (token.Kind == PredicateTokenKind.Or)
+                {
+                    operatorKind = PredicateStepKind.Or;
+                }
+                else
+                {
+                    DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicateGroup: expected &&, ||, "
+                        + "or ) at token " + state.Position + " but found " + token.Kind + " '"
+                        + token.Text + "', parse failed", LogLevel.Warn);
+                    return false;
+                }
+
+                if (groupOperator == PredicateStepKind.None)
+                {
+                    groupOperator = operatorKind;
+                }
+                else if (groupOperator != operatorKind)
+                {
+                    DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicateGroup: && and || mixed "
+                        + "at token " + state.Position + " without parentheses, parse failed",
+                        LogLevel.Warn);
+                    return false;
+                }
+
+                pendingOperator = operatorKind;
+                state.Position++;
+                expectOperand = true;
+                continue;
+            }
+
+            bool negateOperand = false;
+            if (token.Kind == PredicateTokenKind.Not)
+            {
+                negateOperand = true;
+                state.Position++;
+
+                if ((state.Position >= state.Tokens.Count)
+                    || (state.Tokens[state.Position].Kind != PredicateTokenKind.Open))
+                {
+                    DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicateGroup: ! at token "
+                        + (state.Position - 1) + " is not followed by (, parse failed", LogLevel.Warn);
+                    return false;
+                }
+
+                token = state.Tokens[state.Position];
+            }
+
+            if (token.Kind == PredicateTokenKind.Comparison)
+            {
+                string sourceName;
+                FieldPredicate comparison;
+                bool parsed = ParsePredicate(token.Text, out sourceName, out comparison);
+                if (parsed == false)
+                {
+                    DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicateGroup: comparison '"
+                        + token.Text + "' at token " + state.Position + " failed to parse",
+                        LogLevel.Warn);
+                    return false;
+                }
+
+                PredicateStep comparisonStep;
+                comparisonStep.Kind = PredicateStepKind.Comparison;
+                comparisonStep.Comparison = comparison;
+                state.Steps.Add(comparisonStep);
+                state.SourceNames.Add(sourceName);
+
+                state.Depth++;
+                if (state.Depth > state.MaxDepth)
+                {
+                    state.MaxDepth = state.Depth;
+                }
+
+                DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicateGroup: emitted Comparison '"
+                    + token.Text + "' as step " + (state.Steps.Count - 1) + ", depth now "
+                    + state.Depth, LogLevel.Trace);
+
+                state.Position++;
+            }
+            else if (token.Kind == PredicateTokenKind.Open)
+            {
+                int openPosition = state.Position;
+                state.Position++;
+
+                DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicateGroup: ( at token "
+                    + openPosition + " opens a group", LogLevel.Trace);
+
+                if (ParsePredicateGroup(state) == false)
+                {
+                    DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicateGroup: group opened at "
+                        + "token " + openPosition + " failed to parse", LogLevel.Warn);
+                    return false;
+                }
+
+                if ((state.Position >= state.Tokens.Count)
+                    || (state.Tokens[state.Position].Kind != PredicateTokenKind.Close))
+                {
+                    DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicateGroup: group opened at "
+                        + "token " + openPosition + " is not closed, parse failed", LogLevel.Warn);
+                    return false;
+                }
+
+                DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicateGroup: ) at token "
+                    + state.Position + " closes the group opened at token " + openPosition,
+                    LogLevel.Trace);
+
+                state.Position++;
+            }
+            else
+            {
+                DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicateGroup: expected a "
+                    + "comparison or ( at token " + state.Position + " but found " + token.Kind
+                    + " '" + token.Text + "', parse failed", LogLevel.Warn);
+                return false;
+            }
+
+            if (negateOperand == true)
+            {
+                PredicateStep notStep = default;
+                notStep.Kind = PredicateStepKind.Not;
+                state.Steps.Add(notStep);
+                state.SourceNames.Add(null);
+
+                DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicateGroup: emitted Not as step "
+                    + (state.Steps.Count - 1) + ", depth now " + state.Depth, LogLevel.Trace);
+            }
+
+            if (pendingOperator != PredicateStepKind.None)
+            {
+                PredicateStep operatorStep = default;
+                operatorStep.Kind = pendingOperator;
+                state.Steps.Add(operatorStep);
+                state.SourceNames.Add(null);
+                state.Depth--;
+
+                DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicateGroup: emitted "
+                    + pendingOperator + " as step " + (state.Steps.Count - 1) + ", depth now "
+                    + state.Depth, LogLevel.Trace);
+
+                pendingOperator = PredicateStepKind.None;
+            }
+
+            expectOperand = false;
+        }
+
+        if (expectOperand == true)
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicateGroup: level ends at token "
+                + state.Position + " where a comparison or ( was expected, parse failed",
+                LogLevel.Warn);
+            return false;
+        }
+
+        DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicateGroup: level parsed, stopped at "
+            + "token " + state.Position, LogLevel.Trace);
+        return true;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ParsePredicateExpression
+    //
+    // Parses a raw predicate expression into a PredicateProgram in postfix order.  The
+    // expression is one or more comparisons joined by && and ||, grouped by parentheses, with
+    // ! applying to a parenthesized group.  Each comparison uses the form ParsePredicate
+    // accepts.  && and || may not be mixed within one level without parentheses.  A single
+    // comparison with no operators yields a program of one Comparison step.
+    //
+    // The program's source names still require resolution to slots by the caller.  This
+    // method performs no resolution and reads no payload.
+    //
+    // Parameters:
+    //   raw      - The raw predicate string from the PacketField predicate column.
+    //   program  - Receives the parsed program on success, default on failure.
+    //
+    // Returns:
+    //   true when the expression parsed; false when it fails to split into tokens, any level
+    //   fails to parse, a ) has no matching (, or the steps do not reduce to a single result.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    public static bool ParsePredicateExpression(string raw, out PredicateProgram program)
+    {
+        program = default;
+
+        PredicateParseState state = new PredicateParseState();
+
+        if (TokenizePredicate(raw, state.Tokens) == false)
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicateExpression: '" + raw
+                + "' failed to split into tokens", LogLevel.Warn);
+            return false;
+        }
+
+        if (ParsePredicateGroup(state) == false)
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicateExpression: '" + raw
+                + "' failed to parse", LogLevel.Warn);
+            return false;
+        }
+
+        if (state.Position < state.Tokens.Count)
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicateExpression: '" + raw
+                + "' has " + state.Tokens[state.Position].Kind + " '"
+                + state.Tokens[state.Position].Text + "' at token " + state.Position
+                + " with no matching (, parse failed", LogLevel.Warn);
+            return false;
+        }
+
+        if (state.Depth != 1)
+        {
+            DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicateExpression: '" + raw
+                + "' leaves " + state.Depth + " result(s) on the stack instead of 1, parse failed",
+                LogLevel.Error);
+            return false;
+        }
+
+        program.Steps = state.Steps.ToArray();
+        program.MaxDepth = state.MaxDepth;
+        program.SourceNames = state.SourceNames.ToArray();
+
+        DebugLog.Write(LogChannel.Fields, "PatchData.ParsePredicateExpression: parsed '" + raw
+            + "' to " + program.Steps.Length + " step(s), max depth " + program.MaxDepth,
+            LogLevel.Trace);
         return true;
     }
 }
