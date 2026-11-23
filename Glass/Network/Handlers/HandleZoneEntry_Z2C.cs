@@ -261,7 +261,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         float unknown27A;
         uint unknown13D4;
         uint unknown23A;
-        uint C;
+        uint NumQuads;
         string lastName;
         uint ownerId;
 
@@ -291,19 +291,42 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             unknown27A = _extractor.GetFloatAt(_unknown_27A_Slot);
             unknown13D4 = _extractor.GetUIntAt(_unknown_13D4_Slot);
             unknown23A = _extractor.GetUIntAt(_unknown_23A_Slot);
-            C = _extractor.GetUIntAt(_numQuads_Slot);
+            NumQuads = _extractor.GetUIntAt(_numQuads_Slot);
             lastName = _extractor.GetStringAt(_lastname_Slot);
-            ownerId = 0;
-
+            uint petOwner = _extractor.GetUIntAt(_petOwner_Slot);
+            uint mercenaryOwner = _extractor.GetUIntAt(_mercenaryOwner_Slot);
             uint bitmap = _extractor.GetUIntAt(_bitmap_Slot);
             uint presence = _extractor.GetUIntAt(_presenceFlags_Slot);
 
+            if ((petOwner != 0) && (mercenaryOwner != 0))
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C.HandlePacket: '" + name
+                    + "' spawnId=0x" + spawnId.ToString("X4") + " has both pet owner 0x"
+                    + petOwner.ToString("X4") + " and mercenary owner 0x"
+                    + mercenaryOwner.ToString("X4") + "; using the pet owner.", LogLevel.Warn);
+            }
 
+            if (petOwner != 0)
+            {
+                ownerId = petOwner;
+            }
+            else
+            {
+                ownerId = mercenaryOwner;
+            }
+
+            DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C.HandlePacket: '" + name
+                + "' spawnId=0x" + spawnId.ToString("X4") + " pet owner 0x" + petOwner.ToString("X4")
+                + ", mercenary owner 0x" + mercenaryOwner.ToString("X4") + ", owner 0x"
+                + ownerId.ToString("X4"), LogLevel.Trace);
+
+            /*
             DebugLog.Write(LogChannel.DataLogging, "Flags:  message " + metadata.MessageId + "," 
                 + metadata.Timestamp.ToString("HH:mm:ss.fff") + "," + name + "," +
                 " Bitmap: 0x" + bitmap.ToString("X8") + ", Presence: 0x" +
                 presence.ToString("X2") + ", Model: 0x" + model.ToString("X4") +
                 ", Type: 0x" + type.ToString("X2"), LogLevel.Info);
+            */
 
         }
         finally
@@ -471,7 +494,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         spawn.Unknown1 = unknown27A;
         spawn.Unknown2 = unknown13D4;
         spawn.Unknown3 = unknown23A;
-        spawn.C = C;
+        spawn.C = NumQuads;
         spawn.Model = model;
         spawn.Class = mobClass;
         spawn.LastName = lastName;

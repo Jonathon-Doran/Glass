@@ -61,6 +61,7 @@ public class MobRepository
     // database, which assigns its Id, and is then indexed by id and under its zone by base name.  A record
     // whose zone and base name are already cached is rejected, nothing is written, and the cached record's
     // id is returned.  A record the database refuses is rejected and MobId.None is returned.
+    // A mount is never written: nothing is inserted or cached and MobId.None is returned.
     //
     // mobType:  The record to create.  Id must be None; ZoneId, BaseName and every other field are set by
     //           the caller.
@@ -69,6 +70,13 @@ public class MobRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public MobId Create(MobType mobType)
     {
+        if (IsMountName(mobType.BaseName) == true)
+        {
+            DebugLog.Write(LogChannel.Database, "MobRepository.Create: zoneId=" + mobType.ZoneId + " base name '"
+                + mobType.BaseName + "' is a mount, nothing written.", LogLevel.Trace);
+            return MobId.None;
+        }
+
         if (!_typesByZone.TryGetValue(mobType.ZoneId, out Dictionary<string, MobType>? zoneTypes))
         {
             zoneTypes = new Dictionary<string, MobType>();
@@ -255,13 +263,41 @@ public class MobRepository
         return true;
     }
 
-   
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // IsMountName
+    //
+    // Reports whether a spawn or mob type name is a mount's.  Mounts carry no owner field, so the name is the only
+    // marker: a mount's name contains the `s_Mount suffix that follows the rider's name.  A null name is not a
+    // mount.
+    //
+    // name:  The spawn name or base name to test.
+    //
+    // Returns true when the name is a mount's, false otherwise.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private static bool IsMountName(string? name)
+    {
+        if (name == null)
+        {
+            DebugLog.Write(LogChannel.Database, "MobRepository.IsMountName: null name, not a mount.", LogLevel.Trace);
+            return false;
+        }
+
+        bool mount = name.Contains("`s_Mount", StringComparison.Ordinal);
+        if (mount == true)
+        {
+            DebugLog.Write(LogChannel.Database, "MobRepository.IsMountName: '" + name + "' is a mount.", LogLevel.Trace);
+        }
+
+        return mount;
+    }
+
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // SaveZoneMobs
     //
     // Persists mob info for a zone.  Every Spawn held under the zone is written as a sighting,
     // every cached MobType referenced by those spawns is written back.
     // A zone id that is None or has no table does nothing.
+    // Mounts are not written: a mount spawn contributes no sighting and its type is not written back.
     //
     // zoneId:  The zone being left.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -279,7 +315,22 @@ public class MobRepository
             return;
         }
 
-        List<Spawn> spawns = new List<Spawn>(zoneSpawns.Values);
+        List<Spawn> spawns = new List<Spawn>(zoneSpawns.Count);
+        uint mountsSkipped = 0;
+        foreach (Spawn candidate in zoneSpawns.Values)
+        {
+            if (IsMountName(candidate.Name) == true)
+            {
+                mountsSkipped++;
+                continue;
+            }
+
+            spawns.Add(candidate);
+        }
+
+        DebugLog.Write(LogChannel.Database, "MobRepository.SaveZoneMobs: zoneId=" + zoneId + " skipped " + mountsSkipped
+            + " mount(s), " + spawns.Count + " spawn(s) to write.", LogLevel.Trace);
+
         uint sightings = MobSightingGateway.Instance.InsertAll(spawns);
 
         HashSet<MobId> touched = new HashSet<MobId>();
