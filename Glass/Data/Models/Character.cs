@@ -31,7 +31,7 @@ public class ZonePlacement
     }
 }
 
-public class Character
+public class Character : Entity
 {
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // CharacterId
@@ -57,7 +57,6 @@ public class Character
     public uint? Level { get; set; }
     public uint? PracticePoints { get; set; }
     public long? CurrentHP { get; set; }
-    public ZoneId CurrentZone { get; set; }
     public ulong? MaxHP { get; set; }
     public uint? CurrentMana { get; set; }
     public uint? MaxMana { get; set; }
@@ -78,7 +77,6 @@ public class Character
     public float? ZPos { get; set; }
     public float? Heading { get; set; }         // in degrees
 
-    public SpawnId SpawnId { get; set; }
     public SpellId[] SpellBook { get; set; } = Array.Empty<SpellId>();
     public SpellId[] SpellGems { get; set; } = Array.Empty<SpellId>();
 

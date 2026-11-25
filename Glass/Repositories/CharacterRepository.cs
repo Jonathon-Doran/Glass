@@ -2,6 +2,7 @@
 using Glass.Core.Logging;
 using Glass.Data;
 using Glass.Data.Models;
+using Glass.World;
 using Microsoft.Data.Sqlite;
 using System;
 using System.Collections.Generic;
@@ -176,8 +177,8 @@ public class CharacterRepository
     // to have been opened with the canonical SELECT used by Load. Caller is responsible for
     // advancing the reader (this method does not call Read()).
     //
-    // Persisted fields are populated from the reader. Ephemeral fields (SpawnId) remain null.
-    // Nullable persisted columns produce null property values when the database column is NULL.
+    // Persisted fields are populated from the reader. Ephemeral fields (SpawnId) remain None.  The character
+    // is issued a new Character EntityId for this run.
     //
     // reader:  The reader positioned on a row to convert.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -210,8 +211,9 @@ public class CharacterRepository
             Silver = reader.IsDBNull(19) ? null : (ulong?)reader.GetInt64(19),
             Copper = reader.IsDBNull(20) ? null : (ulong?)reader.GetInt64(20),
 
-            CurrentZone = reader.IsDBNull(21) ? ZoneId.None : (ZoneId) (uint)reader.GetInt32(21),
-            CharacterId = reader.IsDBNull(22) ? CharacterId.None : (CharacterId)(uint)reader.GetInt64(22)
+            ZoneId = reader.IsDBNull(21) ? ZoneId.None : (ZoneId) (uint)reader.GetInt32(21),
+            CharacterId = reader.IsDBNull(22) ? CharacterId.None : (CharacterId)(uint)reader.GetInt64(22),
+            EntityId = EntityRepository.Instance.IssueId(EntityType.Character)
         };
 
         return character;
@@ -221,7 +223,8 @@ public class CharacterRepository
     // Add
     //
     // Inserts a new character into the database and updates the in-memory cache.  Note that most fields
-    // are initially null and will be set via the network.
+    // are initially null and will be set via the network.    
+    // A character with no EntityId is issued a new Character EntityId for this run.
     //
     // character:  The character to add.
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -239,6 +242,17 @@ public class CharacterRepository
         cmd.Parameters.AddWithValue("@progression", character.Progression ? 1 : 0);
 
         character.DatabaseId = (DatabaseId) Convert.ToUInt32(cmd.ExecuteScalar());
+
+        if (character.EntityId.Exists == false)
+        {
+            character.EntityId = EntityRepository.Instance.IssueId(EntityType.Character);
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.Database, "CharacterRepository.Add: '" + character.Name
+                + "' already has entityId=" + character.EntityId + ", kept.", LogLevel.Trace);
+        }
+
         _characters.Add(character);
         _charactersByDatabaseId[(DatabaseId) (uint) character.DatabaseId] = character;
 
@@ -322,7 +336,7 @@ public void Save(DatabaseId databaseId)
     cmd.Parameters.AddWithValue("@gold",     character.Gold.HasValue     ? character.Gold.Value     : DBNull.Value);
     cmd.Parameters.AddWithValue("@silver",   character.Silver.HasValue   ? character.Silver.Value   : DBNull.Value);
     cmd.Parameters.AddWithValue("@copper",   character.Copper.HasValue   ? character.Copper.Value   : DBNull.Value);
-    cmd.Parameters.AddWithValue("@currentZone", character.CurrentZone.Exists ? character.CurrentZone.Value : DBNull.Value);
+    cmd.Parameters.AddWithValue("@currentZone", character.ZoneId.Exists ? character.ZoneId.Value : DBNull.Value);
     cmd.Parameters.AddWithValue("@characterId", character.CharacterId.Exists ? character.CharacterId.Value : DBNull.Value);
     cmd.Parameters.AddWithValue("@id", character.DatabaseId.Value);
 
@@ -408,12 +422,12 @@ public void Save(DatabaseId databaseId)
             return;
         }
 
-        if (character.CurrentZone.Exists && character.SpawnId.Exists)
+        if (character.ZoneId.Exists && character.SpawnId.Exists)
         {
             SpawnId oldSpawnId = character.SpawnId;
-            ZoneId oldZoneId = character.CurrentZone;
+            ZoneId oldZoneId = character.ZoneId;
 
-            if (_charactersByZoneSpawn.TryGetValue(character.CurrentZone, out Dictionary<SpawnId, Character>? oldTable)
+            if (_charactersByZoneSpawn.TryGetValue(character.ZoneId, out Dictionary<SpawnId, Character>? oldTable)
                 && oldTable.TryGetValue(oldSpawnId, out Character? indexed)
                 && ReferenceEquals(indexed, character))
             {
@@ -430,7 +444,7 @@ public void Save(DatabaseId databaseId)
         }
 
         // Update character values and then put them in the cache
-        character.CurrentZone = zoneId;
+        character.ZoneId = zoneId;
         character.SpawnId = spawnId;
 
         if (!_charactersByZoneSpawn.TryGetValue(zoneId, out Dictionary<SpawnId, Character>? zoneTable))

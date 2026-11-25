@@ -264,6 +264,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         uint NumQuads;
         string lastName;
         uint ownerId;
+        EntityType companionType = EntityType.None;
 
         ZoneId zoneId = metadata.Session.ZoneId;
 
@@ -309,16 +310,22 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             if (petOwner != 0)
             {
                 ownerId = petOwner;
+                companionType = EntityType.Pet;
+            }
+            else if (mercenaryOwner != 0)
+            {
+                ownerId = mercenaryOwner;
+                companionType = EntityType.Mercenary;
             }
             else
             {
-                ownerId = mercenaryOwner;
+                ownerId = 0;
             }
 
             DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C.HandlePacket: '" + name
                 + "' spawnId=0x" + spawnId.ToString("X4") + " pet owner 0x" + petOwner.ToString("X4")
                 + ", mercenary owner 0x" + mercenaryOwner.ToString("X4") + ", owner 0x"
-                + ownerId.ToString("X4"), LogLevel.Trace);
+                + ownerId.ToString("X4") + ", companion type " + companionType, LogLevel.Trace);
 
             /*
             DebugLog.Write(LogChannel.DataLogging, "Flags:  message " + metadata.MessageId + "," 
@@ -353,7 +360,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
                 companion = new Companion();
                 companion.ZoneId = zoneId;
                 companion.SpawnId = companionSpawnId;
-                if (CompanionRepository.Instance.AddCompanion(companion) == false)
+                if (CompanionRepository.Instance.AddCompanion(companion, companionType) == false)
                 {
                     DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: companion '" + name + "' spawnId=0x"
                         + spawnId.ToString("X4") + " not stored.", LogLevel.Error);

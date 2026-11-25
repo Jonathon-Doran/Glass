@@ -12,11 +12,9 @@ using Glass.Core.Logging;
 using Glass.Network.Protocol;
 using Glass.World;
 
-public class Spawn
+public class Spawn : Entity
 {
     public MobId MobId;
-    public ZoneId ZoneId;
-    public SpawnId SpawnId;
     public string? Name;
     public Position? CurrentPosition = null;
     public float X;

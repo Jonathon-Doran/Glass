@@ -114,6 +114,7 @@ public class MobRepository
     // Stores the given Spawn record under its zone and spawn id.  The inner dictionary for the record's
     // zone is created on first use.  If the zone already holds a record for the spawn id, no record is
     // stored and the existing record is left unchanged.
+    // A stored record with no EntityId is issued a new Mob EntityId for this run.
     //
     // spawn:  The record to add.  ZoneId, SpawnId, MobId, and any known field values are set by the caller.
     //
@@ -135,10 +136,20 @@ public class MobRepository
             return false;
         }
 
+        if (spawn.EntityId.Exists == false)
+        {
+            spawn.EntityId = EntityRepository.Instance.IssueId(EntityType.Mob);
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.Database, "MobRepository.AddSpawn: zoneId=" + spawn.ZoneId + " spawnId="
+                + spawn.SpawnId + " already has entityId=" + spawn.EntityId + ", kept.", LogLevel.Trace);
+        }
+
         zoneSpawns[spawn.SpawnId] = spawn;
 
         DebugLog.Write(LogChannel.Database, "MobRepository.AddSpawn: added zoneId=" + spawn.ZoneId + " spawnId=" + spawn.SpawnId
-            + " mobId=" + spawn.MobId + " name=" + (spawn.Name ?? "null"), LogLevel.Trace);
+            + " entityId=" + spawn.EntityId + " mobId=" + spawn.MobId + " name=" + (spawn.Name ?? "null"), LogLevel.Trace);
         return true;
     }
 

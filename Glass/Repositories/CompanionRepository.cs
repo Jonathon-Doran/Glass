@@ -54,13 +54,15 @@ public class CompanionRepository
     //
     // Stores a companion under its zone and spawn id.  The table for the companion's zone is created on
     // first use.  A companion whose zone id or spawn id is None is rejected, and a zone that already holds
-    // a companion under the spawn id keeps the existing one; in either case nothing is stored.
+    // a companion under the spawn id keeps the existing one; in either case nothing is stored.  A stored
+    // companion with no EntityId is issued a new EntityId of the given type for this run.
     //
     // companion:  The companion to store.  ZoneId, SpawnId and any known field values are set by the caller.
+    // type:       The kind of companion, used as the type of an issued EntityId.
     //
     // Returns true if the companion was stored, false if it was rejected.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public bool AddCompanion(Companion companion)
+    public bool AddCompanion(Companion companion, EntityType type)
     {
         if ((companion.ZoneId.Exists == false) || (companion.SpawnId.Exists == false))
         {
@@ -86,11 +88,21 @@ public class CompanionRepository
             return false;
         }
 
+        if (companion.EntityId.Exists == false)
+        {
+            companion.EntityId = EntityRepository.Instance.IssueId(type);
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.Database, "CompanionRepository.AddCompanion: '" + companion.Name
+                + "' already has entityId=" + companion.EntityId + ", kept.", defaultLoglevel);
+        }
+
         zoneCompanions[companion.SpawnId] = companion;
 
         DebugLog.Write(LogChannel.Database, "CompanionRepository.AddCompanion: stored '" + companion.Name
-            + "' at zoneId=" + companion.ZoneId + " spawnId=" + companion.SpawnId + ", owner spawnId="
-            + companion.OwnerSpawnId + ".", defaultLoglevel);
+            + "' at zoneId=" + companion.ZoneId + " spawnId=" + companion.SpawnId + ", entityId="
+            + companion.EntityId + ", owner spawnId=" + companion.OwnerSpawnId + ".", defaultLoglevel);
         return true;
     }
 

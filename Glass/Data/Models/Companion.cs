@@ -1,4 +1,5 @@
-﻿namespace Glass.Data.Models;
+﻿using Glass.World;
+namespace Glass.Data.Models;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // Companion
@@ -14,10 +15,8 @@
 //
 // Companions are held for the run only and are never stored in the database.
 ///////////////////////////////////////////////////////////////////////////////////////////////
-public class Companion
+public class Companion : Entity
 {
-    public ZoneId ZoneId;
-    public SpawnId SpawnId;
     public string Name = string.Empty;
     public ushort Level;
     public uint Class;

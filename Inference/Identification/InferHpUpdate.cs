@@ -228,12 +228,17 @@ public class InferHpUpdate : IInferOpcodes
 
         for (int offset = 0; offset + 4 <= payload.Length; offset++)
         {
-            ulong value = BinaryPrimitives.ReadUInt64LittleEndian(payload.Slice(offset));
+            uint value = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(offset));
             if (value == expectedMaxHp)
             {
+                DebugLog.Write(LogChannel.InferenceDebug, "InferHpUpdate.PassesMaxHp: '" + character.Name
+                    + "' max HP " + expectedMaxHp + " found at offset " + offset, LogLevel.Trace);
                 return true;
             }
         }
+
+        DebugLog.Write(LogChannel.InferenceDebug, "InferHpUpdate.PassesMaxHp: '" + character.Name
+            + "' max HP " + expectedMaxHp + " not found in " + payload.Length + " bytes", LogLevel.Trace);
         return false;
     }
 

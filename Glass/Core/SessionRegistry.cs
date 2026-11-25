@@ -261,7 +261,7 @@ public class SessionRegistry
                 + "mapped to a character.", LogLevel.Warn);
             return ZoneId.None;
         }
-        return character.CurrentZone;
+        return character.ZoneId;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
