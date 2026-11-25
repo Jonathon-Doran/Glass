@@ -211,7 +211,8 @@ public class InferRaidGeneral : IInferOpcodes
     //
     // Tests whether a payload begins with the raid header: a 32-bit little-endian subtype
     // below SubtypeLimit, immediately followed by the name of a known character and a null
-    // byte.
+    // byte.  Names are compared without regard to ASCII letter case, since the server can
+    // send a name in a case other than the character's own.
     //
     // payload:     The bytes to test.
     // characters:  The known characters.
@@ -250,7 +251,7 @@ public class InferRaidGeneral : IInferOpcodes
             {
                 continue;
             }
-            if (payload.Slice(SubtypeLength, name.Length).SequenceEqual(name))
+            if (System.Text.Ascii.EqualsIgnoreCase(payload.Slice(SubtypeLength, name.Length), name))
             {
                 subtype = value;
                 named = characters[nameIndex];

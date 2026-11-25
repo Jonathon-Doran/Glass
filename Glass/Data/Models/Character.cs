@@ -47,7 +47,6 @@ public class Character : Entity
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public CharacterId CharacterId { get; set; } = CharacterId.None;
 
-    public string Name { get; set; } = string.Empty;
     public EQClass Class { get; set; }
     public int AccountId { get; set; }
     public bool Progression { get; set; }
@@ -56,8 +55,6 @@ public class Character : Entity
 
     public uint? Level { get; set; }
     public uint? PracticePoints { get; set; }
-    public long? CurrentHP { get; set; }
-    public ulong? MaxHP { get; set; }
     public uint? CurrentMana { get; set; }
     public uint? MaxMana { get; set; }
     public uint? Strength { get; set; }

@@ -1488,9 +1488,10 @@ public class HandleInventory : OpcodeHandler
     private void AddEvolvingItem(GateHandle itemGate, uint itemIndex, FieldDisplayNode parent)
     {
         SlotId evolvingSlot = GlassContext.PatchRegistry.IndexOfField(_extractor.CollectionOf(), "EvolvingItem");
+
+        // Skip items that are not evolving
         if (_extractor.IsPresent(evolvingSlot) == false)
         {
-            DebugLog.Write(LogChannel.Opcodes, "AddEvolvingItem: no EvolvingItem present", LogLevel.Warn);
             return;
         }
 

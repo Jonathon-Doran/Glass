@@ -514,8 +514,8 @@ public class IdentificationSummary
     // is at or above the floor, when exactly one proposal reaches the floor, every assignment
     // of it has a wire value, no two assignments share a wire value or opcode name, and no
     // assignment would conflict with an existing acceptance.  Otherwise nothing is accepted.
-    // An acceptance, or the reason one was prevented after the floor test passed, is added
-    // to the result's messages.
+    // The reason an acceptance was prevented after the floor test passed is added to the
+    // result's messages.
     //
     // result:  The handler result.
     // floor:   The minimum joint posterior for automatic acceptance.
@@ -590,7 +590,6 @@ public class IdentificationSummary
             AcceptedOpcodes.Instance.Accept(assignment.Opcode.Value, assignment.OpcodeName);
         }
 
-        result.Messages.Add("auto-accepted at floor " + floor.ToString("F2"));
         DebugLog.Write(LogChannel.InferenceDebug,
             "IdentificationSummary.AutoAccept: " + result.GroupLabel + " accepted "
             + proposal.Assignments.Count + " assignments, posterior " + proposal.Confidence.ToString("F3"),
@@ -605,10 +604,10 @@ public class IdentificationSummary
     // group of more than one line is set off by a blank line before and after it, and is
     // written as a header giving the group label, group key, group confidence and run number,
     // followed by the group evidence and messages once, then each member indented with its
-    // opcode name, wire value, whether it is accepted, outcome and confidence, and its own
-    // evidence beneath it when present.  A group of one line is written as that line's opcode
-    // name, wire value, whether it is accepted, outcome, confidence and run number, followed
-    // by its evidence and messages on separate indented lines when present.
+    // opcode name, wire value, whether it is accepted or rejected, outcome and confidence, and
+    // its own evidence beneath it when present.  A group of one line is written as that line's
+    // opcode name, wire value, whether it is accepted or rejected, outcome, confidence and run
+    // number, followed by its evidence and messages on separate indented lines when present.
     //
     // Returns:  The summary text.
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -662,7 +661,7 @@ public class IdentificationSummary
 
                 text.AppendLine("    " + line.OpcodeName
                     + "  wire " + wireText
-                    + "  accepted " + (line.Checked ? "yes" : "no")
+                    + (line.Checked ? "  accepted" : "  rejected")
                     + "  outcome " + line.Outcome
                     + "  confidence " + line.Confidence.ToString("F2"));
                 if (line.Evidence.Length > 0)
@@ -680,7 +679,7 @@ public class IdentificationSummary
 
             text.AppendLine(line.OpcodeName
                 + "  wire " + wireText
-                + "  accepted " + (line.Checked ? "yes" : "no")
+                + (line.Checked ? "  accepted" : "  rejected")
                 + "  outcome " + line.Outcome
                 + "  confidence " + line.Confidence.ToString("F2")
                 + "  run " + line.RunNumber);
@@ -700,6 +699,7 @@ public class IdentificationSummary
             defaultLoglevel);
         return text.ToString();
     }
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Clear
     //

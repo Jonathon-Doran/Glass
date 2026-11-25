@@ -165,9 +165,9 @@ public partial class MainWindow : Window
         DebugLog.AddHandler(LogSink.Aux1LogFile, aux1Handler);
         DebugLog.Route(LogChannel.DataLogging, LogSink.Aux1LogFile);
 
-        GlassDebugLogHandler aux2Handler = new GlassDebugLogHandler("ui.log");
+        GlassDebugLogHandler aux2Handler = new GlassDebugLogHandler("opcodes.log");
         DebugLog.AddHandler(LogSink.Aux2LogFile, aux2Handler);
-        DebugLog.Route(LogChannel.UI, LogSink.Aux2LogFile);
+        DebugLog.Route(LogChannel.Opcodes, LogSink.Aux2LogFile);
 
         GlassDebugLogHandler aux3LogHandler = new GlassDebugLogHandler("fields.log");
         DebugLog.AddHandler(LogSink.Aux3LogFile, aux3LogHandler);
@@ -3078,10 +3078,15 @@ public partial class MainWindow : Window
                 segments.Add(new CharacterTextSegment("0x" + placement.SpawnId.Value.ToString("X4"), true));
                 segments.Add(new CharacterTextSegment(Environment.NewLine, false));
 
-                List<Companion> companions = CompanionRepository.Instance.GetZoneCompanions(placement.ZoneId);
-                for (int companionIndex = 0; companionIndex < companions.Count; companionIndex++)
+                List<EntityId> zoneEntityIds = ZoneRepository.Instance.GetZoneEntityIds(placement.ZoneId);
+                for (int idIndex = 0; idIndex < zoneEntityIds.Count; idIndex++)
                 {
-                    Companion companion = companions[companionIndex];
+                    Companion? companion = EntityRepository.Instance.Lookup(zoneEntityIds[idIndex]) as Companion;
+                    if (companion == null)
+                    {
+                        continue;
+                    }
+
                     if (companion.OwnerSpawnId != placement.SpawnId)
                     {
                         continue;

@@ -1,5 +1,6 @@
 ﻿using Glass.Core.Logging;
 using Glass.Data.Models;
+using Glass.World;
 using System.Collections.Generic;
 using System.Numerics;
 
@@ -16,7 +17,10 @@ public class ZoneRepository
 
     private readonly Dictionary<ZoneId, string> _zoneNames;
     private readonly Dictionary<ZoneId, uint> _sessionCounts;
+    private readonly Dictionary<ZoneId, Dictionary<SpawnId, EntityId>> _entityIdsByZoneSpawn;
+
     private const uint DynamicZoneThreshold = 1000000;
+    private const LogLevel defaultLoglevel = LogLevel.Trace;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Instance
@@ -43,6 +47,7 @@ public class ZoneRepository
     private ZoneRepository()
     {
         _sessionCounts = new Dictionary<ZoneId, uint>();
+        _entityIdsByZoneSpawn = new Dictionary<ZoneId, Dictionary<SpawnId, EntityId>>();
 
         _zoneNames = new Dictionary<ZoneId, string>()
         {
@@ -326,7 +331,7 @@ public class ZoneRepository
             { (ZoneId) 394, "Crescent Reach" }
         };
         DebugLog.Write(LogChannel.Database, "ZoneRepository: singleton instance created with "
-            + _zoneNames.Count + " zone names.", LogLevel.Trace);
+            + _zoneNames.Count + " zone names.", defaultLoglevel);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -344,7 +349,7 @@ public class ZoneRepository
         zoneIds.Sort((ZoneId left, ZoneId right) => left.Value.CompareTo(right.Value));
 
         DebugLog.Write(LogChannel.Database, "ZoneRepository.GetZoneIds: returning " + zoneIds.Count
-            + " zone ids.", LogLevel.Trace);
+            + " zone ids.", defaultLoglevel);
 
         return zoneIds;
     }
@@ -374,83 +379,346 @@ public class ZoneRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // LookupSpawnName
     //
-    // Resolves a spawn id within a zone to a display name.  The characters placed in the zone are checked
-    // first, then the zone's mob spawns, then the zone's companions.  A zone id that is None, or a spawn id
-    // matching none of them, yields "<unknown>".
+    // Resolves a spawn id within a zone to a display name.  A spawn id of 0 refers to nothing and yields "None".
+    // Otherwise the entity holding the spawn id in the zone supplies the name; an entity whose name is empty yields
+    // "<unnamed>", and a spawn id with no entity, or a zone id that is None, yields "<unknown>".
     //
     // zoneId:   The zone the spawn id is valid in.
     // spawnId:  The server assigned spawn id within that zone.
     //
-    // Returns the spawn's name, or "<unknown>" when the spawn id is not known in that zone.
+    // Returns the spawn's name, "None", "<unnamed>", or "<unknown>".
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public string LookupSpawnName(ZoneId zoneId, SpawnId spawnId)
     {
-        if (zoneId.Exists == false)
+        // A spawn id of 0 refers to nothing, such as a cleared target
+        if (spawnId.Value == 0)
         {
-            DebugLog.Write(LogChannel.Opcodes, "ZoneRepository.LookupSpawnName: zoneId is None for spawnId="
-                + spawnId, LogLevel.Trace);
+            DebugLog.Write(LogChannel.Opcodes, "ZoneRepository.LookupSpawnName: zoneId=" + zoneId
+                + " spawnId is 0, name is None.", defaultLoglevel);
+            return "None";
+        }
+
+        Entity? entity = LookupEntity(zoneId, spawnId);
+        if (entity == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "ZoneRepository.LookupSpawnName: zoneId=" + zoneId + " spawnId="
+                + spawnId + " has no entity, name is <unknown>.", defaultLoglevel);
             return "<unknown>";
         }
 
-        // Return the name from the character repo if found
-        Character? character = CharacterRepository.Instance.GetBySpawnId(zoneId, spawnId);
-        if (character != null)
+        if (entity.Name.Length == 0)
         {
-            return character.Name;
+            DebugLog.Write(LogChannel.Opcodes, "ZoneRepository.LookupSpawnName: zoneId=" + zoneId + " spawnId="
+                + spawnId + " entityId=" + entity.EntityId + " has an empty name, name is <unnamed>.",
+                defaultLoglevel);
+            return "<unnamed>";
         }
 
-        // Otherwise search the mob repo
-        if (MobRepository.Instance.TryGetBySpawnId(zoneId, spawnId, out Spawn? spawn))
-        {
-            return spawn.Name ?? "<unnamed>";
-        }
+        return entity.Name;
+    }
 
-        // Otherwise search the companion repo
-        if (CompanionRepository.Instance.TryGetCompanion(zoneId, spawnId, out Companion? companion))
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // LookupEntity
+    //
+    // Resolves a spawn id within a zone to the entity holding it: the spawn id is converted to the EntityId placed
+    // there, and the entity is found by that EntityId.  A zone id that is None, a spawn id of 0, or a spawn id with no
+    // placement in the zone yields null.
+    //
+    // zoneId:   The zone the spawn id is valid in.
+    // spawnId:  The server assigned spawn id within that zone.
+    //
+    // Returns the entity holding the spawn id in that zone, or null when there is none.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public Entity? LookupEntity(ZoneId zoneId, SpawnId spawnId)
+    {
+        if (zoneId.Exists == false)
         {
-            return companion.Name;
+            DebugLog.Write(LogChannel.Opcodes, "ZoneRepository.LookupEntity: zoneId is None for spawnId=" + spawnId
+                + ", no entity.", defaultLoglevel);
+            return null;
         }
 
         // A spawn id of 0 refers to nothing, such as a cleared target
         if (spawnId.Value == 0)
         {
-            return "None";
+            DebugLog.Write(LogChannel.Opcodes, "ZoneRepository.LookupEntity: zoneId=" + zoneId
+                + " spawnId is 0, no entity.", defaultLoglevel);
+            return null;
         }
 
-        DebugLog.Write(LogChannel.Opcodes, "ZoneRepository.LookupSpawnName: zoneId=" + zoneId + " spawnId="
-            + spawnId + " is not a known character, mob or companion.", LogLevel.Trace);
-        return "<unknown>";
+        EntityId entityId = ResolveEntityId(zoneId, spawnId);
+        if (entityId.Exists == false)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "ZoneRepository.LookupEntity: zoneId=" + zoneId + " spawnId=" + spawnId
+                + " has no placement, no entity.", defaultLoglevel);
+            return null;
+        }
+
+        Entity? entity = EntityRepository.Instance.Lookup(entityId);
+        if (entity == null)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "ZoneRepository.LookupEntity: zoneId=" + zoneId + " spawnId=" + spawnId
+                + " is placed as entityId=" + entityId + ", but no entity has that id.", LogLevel.Warn);
+            return null;
+        }
+
+        DebugLog.Write(LogChannel.Opcodes, "ZoneRepository.LookupEntity: zoneId=" + zoneId + " spawnId=" + spawnId
+            + " is '" + entity.Name + "' entityId=" + entityId + ".", defaultLoglevel);
+        return entity;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // GetZoneEntityIds
+    //
+    // Returns the EntityIds placed in the given zone, read from the placement table.  The list is a new copy on every
+    // call, in no particular order.  A zone id that is None or has no placements yields an empty list.
+    //
+    // zoneId:  The zone whose placed EntityIds are returned.
+    //
+    // Returns a new list of the zone's placed EntityIds; empty when there are none.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public List<EntityId> GetZoneEntityIds(ZoneId zoneId)
+    {
+        List<EntityId> entityIds = new List<EntityId>();
+
+        if (!zoneId.Exists)
+        {
+            DebugLog.Write(LogChannel.Database, "ZoneRepository.GetZoneEntityIds: zoneId is None.", LogLevel.Warn);
+            return entityIds;
+        }
+
+        if (!_entityIdsByZoneSpawn.TryGetValue(zoneId, out Dictionary<SpawnId, EntityId>? placements))
+        {
+            DebugLog.Write(LogChannel.Database, "ZoneRepository.GetZoneEntityIds: zoneId=" + zoneId
+                + " has no placements.", defaultLoglevel);
+            return entityIds;
+        }
+
+        entityIds.AddRange(placements.Values);
+
+        DebugLog.Write(LogChannel.Database, "ZoneRepository.GetZoneEntityIds: zoneId=" + zoneId + " returning "
+            + entityIds.Count + " entityIds.", defaultLoglevel);
+        return entityIds;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // GetZoneEntityIds
+    //
+    // Returns the EntityIds of the given type placed in the given zone, read from the placement table.  The list is a
+    // new copy on every call, in no particular order.  A zone id that is None or has no placements of the type yields
+    // an empty list.
+    //
+    // zoneId:  The zone whose placed EntityIds are returned.
+    // type:    The entity type to return.
+    //
+    // Returns a new list of the zone's placed EntityIds of the type; empty when there are none.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public List<EntityId> GetZoneEntityIds(ZoneId zoneId, EntityType type)
+    {
+        List<EntityId> entityIds = new List<EntityId>();
+
+        if (!zoneId.Exists)
+        {
+            DebugLog.Write(LogChannel.Database, "ZoneRepository.GetZoneEntityIds: zoneId is None, type=" + type + ".",
+                LogLevel.Warn);
+            return entityIds;
+        }
+
+        if (!_entityIdsByZoneSpawn.TryGetValue(zoneId, out Dictionary<SpawnId, EntityId>? placements))
+        {
+            DebugLog.Write(LogChannel.Database, "ZoneRepository.GetZoneEntityIds: zoneId=" + zoneId
+                + " has no placements, type=" + type + ".", defaultLoglevel);
+            return entityIds;
+        }
+
+        foreach (EntityId entityId in placements.Values)
+        {
+            if (entityId.Type == type)
+            {
+                entityIds.Add(entityId);
+            }
+        }
+
+        DebugLog.Write(LogChannel.Database, "ZoneRepository.GetZoneEntityIds: zoneId=" + zoneId + " returning "
+            + entityIds.Count + " of " + placements.Count + " entityIds of type " + type + ".", defaultLoglevel);
+        return entityIds;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // PlaceEntity
+    //
+    // Records that the entity with the given EntityId holds the given spawn id in the given zone.  The zone's table is
+    // created on first use.  A spawn id already held by another entity in that zone is reassigned to this one, since
+    // the server reuses spawn ids.  A zone id that is None, a spawn id that is None or 0, or an EntityId that is None
+    // is rejected and nothing is recorded.
+    //
+    // zoneId:    The zone the spawn id is valid in.
+    // spawnId:   The server assigned spawn id within that zone.
+    // entityId:  The entity holding the spawn id.
+    //
+    // Returns true when the placement was recorded, false when it was rejected.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public bool PlaceEntity(ZoneId zoneId, SpawnId spawnId, EntityId entityId)
+    {
+        if ((zoneId.Exists == false) || (spawnId.Exists == false) || (spawnId.Value == 0) || (entityId.Exists == false))
+        {
+            DebugLog.Write(LogChannel.Database, "ZoneRepository.PlaceEntity: zoneId=" + zoneId + " spawnId=" + spawnId
+                + " entityId=" + entityId + " is not a valid placement, not recorded.", LogLevel.Error);
+            return false;
+        }
+
+        if (_entityIdsByZoneSpawn.TryGetValue(zoneId, out Dictionary<SpawnId, EntityId>? zoneTable) == false)
+        {
+            zoneTable = new Dictionary<SpawnId, EntityId>();
+            _entityIdsByZoneSpawn[zoneId] = zoneTable;
+            DebugLog.Write(LogChannel.Database, "ZoneRepository.PlaceEntity: created placement table for zoneId="
+                + zoneId + ".", defaultLoglevel);
+        }
+
+        if (zoneTable.TryGetValue(spawnId, out EntityId previous) && (previous != entityId))
+        {
+            DebugLog.Write(LogChannel.Database, "ZoneRepository.PlaceEntity: zoneId=" + zoneId + " spawnId=" + spawnId
+                + " reassigned from entityId=" + previous + " to " + entityId + ".", defaultLoglevel);
+        }
+
+        zoneTable[spawnId] = entityId;
+        DebugLog.Write(LogChannel.Database, "ZoneRepository.PlaceEntity: zoneId=" + zoneId + " spawnId=" + spawnId
+            + " is entityId=" + entityId + ".", defaultLoglevel);
+        return true;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // RemovePlacement
+    //
+    // Removes the record that the given entity holds the given spawn id in the given zone.  Nothing is removed when
+    // the spawn id is not recorded in that zone, or is recorded for a different entity.  A zone table left empty is
+    // removed.
+    //
+    // zoneId:    The zone the spawn id is valid in.
+    // spawnId:   The server assigned spawn id within that zone.
+    // entityId:  The entity expected to hold the spawn id.
+    //
+    // Returns true when the placement was removed, false otherwise.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public bool RemovePlacement(ZoneId zoneId, SpawnId spawnId, EntityId entityId)
+    {
+        if (_entityIdsByZoneSpawn.TryGetValue(zoneId, out Dictionary<SpawnId, EntityId>? zoneTable) == false)
+        {
+            DebugLog.Write(LogChannel.Database, "ZoneRepository.RemovePlacement: zoneId=" + zoneId
+                + " has no placement table, nothing removed for entityId=" + entityId + ".", defaultLoglevel);
+            return false;
+        }
+
+        if (zoneTable.TryGetValue(spawnId, out EntityId held) == false)
+        {
+            DebugLog.Write(LogChannel.Database, "ZoneRepository.RemovePlacement: zoneId=" + zoneId + " spawnId="
+                + spawnId + " is not recorded, nothing removed for entityId=" + entityId + ".", defaultLoglevel);
+            return false;
+        }
+
+        if (held != entityId)
+        {
+            DebugLog.Write(LogChannel.Database, "ZoneRepository.RemovePlacement: zoneId=" + zoneId + " spawnId="
+                + spawnId + " is held by entityId=" + held + ", not " + entityId + ", nothing removed.",
+                defaultLoglevel);
+            return false;
+        }
+
+        zoneTable.Remove(spawnId);
+        if (zoneTable.Count == 0)
+        {
+            _entityIdsByZoneSpawn.Remove(zoneId);
+        }
+
+        DebugLog.Write(LogChannel.Database, "ZoneRepository.RemovePlacement: zoneId=" + zoneId + " spawnId=" + spawnId
+            + " entityId=" + entityId + " removed, " + zoneTable.Count + " placements left in the zone.",
+            defaultLoglevel);
+        return true;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // ClearZonePlacements
+    //
+    // Removes every placement recorded for the given zone.  The entities themselves are not affected.  A zone id that
+    // is None, or a zone with no placement table, removes nothing.
+    //
+    // zoneId:  The zone whose placements are removed.
+    //
+    // Returns the number of placements removed.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public uint ClearZonePlacements(ZoneId zoneId)
+    {
+        if (zoneId.Exists == false)
+        {
+            DebugLog.Write(LogChannel.Database, "ZoneRepository.ClearZonePlacements: zoneId is None, nothing removed.",
+                LogLevel.Warn);
+            return 0;
+        }
+
+        if (_entityIdsByZoneSpawn.TryGetValue(zoneId, out Dictionary<SpawnId, EntityId>? zoneTable) == false)
+        {
+            DebugLog.Write(LogChannel.Database, "ZoneRepository.ClearZonePlacements: zoneId=" + zoneId
+                + " has no placement table, nothing removed.", defaultLoglevel);
+            return 0;
+        }
+
+        uint removed = (uint)zoneTable.Count;
+        _entityIdsByZoneSpawn.Remove(zoneId);
+
+        DebugLog.Write(LogChannel.Database, "ZoneRepository.ClearZonePlacements: zoneId=" + zoneId + " removed "
+            + removed + " placements.", defaultLoglevel);
+        return removed;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // ResolveEntityId
+    //
+    // Finds the EntityId of the entity holding the given spawn id in the given zone.
+    //
+    // zoneId:   The zone the spawn id is valid in.
+    // spawnId:  The server assigned spawn id within that zone.
+    //
+    // Returns the EntityId, or EntityId.None when no entity holds the spawn id in that zone.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public EntityId ResolveEntityId(ZoneId zoneId, SpawnId spawnId)
+    {
+        if ((_entityIdsByZoneSpawn.TryGetValue(zoneId, out Dictionary<SpawnId, EntityId>? zoneTable))
+            && (zoneTable.TryGetValue(spawnId, out EntityId entityId)))
+        {
+            DebugLog.Write(LogChannel.Database, "ZoneRepository.ResolveEntityId: zoneId=" + zoneId + " spawnId="
+                + spawnId + " is entityId=" + entityId + ".", defaultLoglevel);
+            return entityId;
+        }
+
+        DebugLog.Write(LogChannel.Database, "ZoneRepository.ResolveEntityId: zoneId=" + zoneId + " spawnId=" + spawnId
+            + " has no entity.", defaultLoglevel);
+        return EntityId.None;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // IsKnownSpawn
     //
-    // Tests whether a spawn id is currently known in a zone, as a character placed in the zone, one of the
-    // zone's mob spawns, or one of the zone's companions.  A zone id that is None is never known.
+    // Tests whether a spawn id is currently held by an entity in a zone.  A zone id that is None, or a spawn id of
+    // 0, is never known.
     //
     // zoneId:   The zone the spawn id is valid in.
     // spawnId:  The server assigned spawn id within that zone.
     //
-    // Returns true when the spawn id is a known character, mob or companion in that zone.
+    // Returns true when an entity holds the spawn id in that zone, false otherwise.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public bool IsKnownSpawn(ZoneId zoneId, SpawnId spawnId)
     {
-        if (!zoneId.Exists)
+        Entity? entity = LookupEntity(zoneId, spawnId);
+        if (entity == null)
         {
+            DebugLog.Write(LogChannel.Opcodes, "ZoneRepository.IsKnownSpawn: zoneId=" + zoneId + " spawnId="
+                + spawnId + " is not known.", defaultLoglevel);
             return false;
         }
 
-        if (CharacterRepository.Instance.GetBySpawnId(zoneId, spawnId) != null)
-        {
-            return true;
-        }
-
-        if (MobRepository.Instance.TryGetBySpawnId(zoneId, spawnId, out Spawn? spawn))
-        {
-            return true;
-        }
-
-        return CompanionRepository.Instance.TryGetCompanion(zoneId, spawnId, out Companion? companion);
+        DebugLog.Write(LogChannel.Opcodes, "ZoneRepository.IsKnownSpawn: zoneId=" + zoneId + " spawnId=" + spawnId
+            + " is known as entityId=" + entity.EntityId + ".", defaultLoglevel);
+        return true;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -478,7 +746,7 @@ public class ZoneRepository
         _sessionCounts[zoneId] = count;
 
         DebugLog.Write(LogChannel.Sessions, "ZoneRepository.SessionEntered: zoneId=" + zoneId + " now " + count
-            + " sessions.", LogLevel.Trace);
+            + " sessions.", defaultLoglevel);
         return count;
     }
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -520,7 +788,7 @@ public class ZoneRepository
         }
 
         DebugLog.Write(LogChannel.Database, "ZoneRepository.SessionsLeft: zoneId=" + zoneId + " now " + count
-            + " sessions.", LogLevel.Trace);
+            + " sessions.", defaultLoglevel);
         return count;
     }
 

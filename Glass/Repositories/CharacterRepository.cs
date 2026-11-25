@@ -22,12 +22,13 @@ namespace Glass.Data.Repositories;
 public class CharacterRepository
 {
     private static CharacterRepository? _instance = null;
+    private const LogLevel defaultLoglevel = LogLevel.Trace;
 
     private readonly List<Character> _characters;
     private readonly Dictionary<DatabaseId, Character> _charactersByDatabaseId;
     private readonly Dictionary<CharacterId, Character> _charactersByCharacterId;
     private readonly Dictionary<string, CharacterId> _characterIdsByName;
-    private readonly Dictionary<ZoneId, Dictionary<SpawnId, Character>> _charactersByZoneSpawn;
+    private readonly Dictionary<EntityId, Character> _charactersByEntityId;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Instance
@@ -60,15 +61,13 @@ public class CharacterRepository
         _charactersByCharacterId = new Dictionary<CharacterId, Character>();
         _characterIdsByName = new Dictionary<string, CharacterId>();
         _charactersByDatabaseId = new Dictionary<DatabaseId, Character>();
-        _charactersByZoneSpawn = new Dictionary<ZoneId, Dictionary<SpawnId, Character>>();
-        DebugLog.Write(LogChannel.Database, "CharacterRepository: singleton instance created with empty caches.", LogLevel.Trace);
+        _charactersByEntityId = new Dictionary<EntityId, Character>();
+
+        DebugLog.Write(LogChannel.Database, "CharacterRepository: singleton instance created with empty caches.", defaultLoglevel);
     }
 
     // Returns all cached characters.
     public IReadOnlyList<Character> GetAll() => _characters.AsReadOnly();
-
-    // Returns the character with the given name, or null if not found.
-    public Character? GetByName(string name) => _characters.FirstOrDefault(c => c.Name == name);
 
     // Returns all characters belonging to the given account.
     public IReadOnlyList<Character> GetByAccount(int accountId) =>
@@ -145,7 +144,18 @@ public class CharacterRepository
             Character character = ReadCharacterRow(reader);
             _characters.Add(character);
             _charactersByDatabaseId[(DatabaseId) (uint) character.DatabaseId] = character;
-            DebugLog.Write(LogChannel.General, "Loaded character " + character.Name, LogLevel.Trace);
+            if (character.EntityId.Exists)
+            {
+                _charactersByEntityId[character.EntityId] = character;
+            }
+            else
+            {
+                DebugLog.Write(LogChannel.Database, "CharacterRepository.Load: '" + character.Name
+                    + "' has no entityId, not added to the dictionary keyed by EntityId.", LogLevel.Warn);
+            }
+
+
+            DebugLog.Write(LogChannel.General, "Loaded character " + character.Name, defaultLoglevel);
 
             if (character.CharacterId.Exists)
             {
@@ -160,12 +170,12 @@ public class CharacterRepository
                 _characterIdsByName[character.Name] = character.CharacterId;
 
                 DebugLog.Write(LogChannel.Database, "CharacterRepository.Load: indexed '" + character.Name
-                    + "' by characterId=" + character.CharacterId, LogLevel.Trace);
+                    + "' by characterId=" + character.CharacterId, defaultLoglevel);
             }
             else
             {
                 DebugLog.Write(LogChannel.Database, "CharacterRepository.Load: '" + character.Name
-                    + "' has no character id, not indexed by character id", LogLevel.Trace);
+                    + "' has no character id, not indexed by character id", defaultLoglevel);
             }
         }
     }
@@ -195,7 +205,7 @@ public class CharacterRepository
 
             Level = reader.IsDBNull(6) ? null : (uint?)reader.GetInt32(6),
             PracticePoints = reader.IsDBNull(7) ? null : (uint?)reader.GetInt32(7),
-            MaxHP = reader.IsDBNull(8) ? null : (uint?)reader.GetInt32(8),
+            MaxHP = reader.IsDBNull(8) ? 0UL : (ulong)reader.GetInt64(8),
             MaxMana = reader.IsDBNull(9) ? null : (uint?)reader.GetInt32(9),
 
             Strength = reader.IsDBNull(10) ? null : (uint?)reader.GetInt32(10),
@@ -224,7 +234,8 @@ public class CharacterRepository
     //
     // Inserts a new character into the database and updates the in-memory cache.  Note that most fields
     // are initially null and will be set via the network.    
-    // A character with no EntityId is issued a new Character EntityId for this run.
+    // A character with no EntityId is issued a new Character EntityId for this run.  Every added character that
+    // has an EntityId is also added to the dictionary keyed by EntityId.
     //
     // character:  The character to add.
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -250,105 +261,142 @@ public class CharacterRepository
         else
         {
             DebugLog.Write(LogChannel.Database, "CharacterRepository.Add: '" + character.Name
-                + "' already has entityId=" + character.EntityId + ", kept.", LogLevel.Trace);
+                + "' already has entityId=" + character.EntityId + ", kept.", defaultLoglevel);
         }
 
         _characters.Add(character);
         _charactersByDatabaseId[(DatabaseId) (uint) character.DatabaseId] = character;
 
+        if (character.EntityId.Exists)
+        {
+            _charactersByEntityId[character.EntityId] = character;
+        }
+        else
+        {
+            DebugLog.Write(LogChannel.Database, "CharacterRepository.Add: '" + character.Name
+                + "' has no entityId, not added to the dictionary keyed by EntityId.", LogLevel.Warn);
+        }
+
         DebugLog.Write(LogChannel.Database, "CharacterRepository.Add: added character="
             + character.Name + " id=" + character.DatabaseId
             + " server=" + character.Server
             + " class=" + character.Class
-            + " accountId=" + character.AccountId, LogLevel.Trace);
+            + " accountId=" + character.AccountId, defaultLoglevel);
     }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Save
-//
-// Persists the cached character's full row to the database. The cache is the source of truth;
-// callers mutate the cached Character reference directly and call Save to persist.
-//
-// Called by:
-//   - Profile Editor flows after the user edits a cached character.
-//   - Session disconnect handler to capture packet-sourced state at session end.
-//
-// characterId:  The persistent Glass character id of the character to save.
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-public void Save(DatabaseId databaseId)
-{
-    if (!_charactersByDatabaseId.TryGetValue(databaseId, out Character? character))
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Save
+    //
+    // Persists the cached character's full row to the database. The cache is the source of truth;
+    // callers mutate the cached Character reference directly and call Save to persist.
+    //
+    // Called by:
+    //   - Profile Editor flows after the user edits a cached character.
+    //   - Session disconnect handler to capture packet-sourced state at session end.
+    //
+    // characterId:  The persistent Glass character id of the character to save.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void Save(DatabaseId databaseId)
     {
-        DebugLog.Write(LogChannel.Database, $"CharacterRepository.Save: databaseId={databaseId} not in cache, ignoring.", LogLevel.Warn);
-        return;
+        if (!_charactersByDatabaseId.TryGetValue(databaseId, out Character? character))
+        {
+            DebugLog.Write(LogChannel.Database, $"CharacterRepository.Save: databaseId={databaseId} not in cache, ignoring.", LogLevel.Warn);
+            return;
+        }
+
+        using SqliteConnection conn = Database.Instance.Connect();
+        conn.Open();
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            UPDATE Characters SET
+                name = @name,
+                class = @class,
+                account_id = @accountId,
+                server = @server,
+                progression = @progression,
+                level = @level,
+                practice_points = @practicePoints,
+                max_hp = @maxHp,
+                max_mana = @maxMana,
+                strength = @strength,
+                stamina = @stamina,
+                charisma = @charisma,
+                dexterity = @dexterity,
+                intelligence = @intelligence,
+                agility = @agility,
+                wisdom = @wisdom,
+                platinum = @platinum,
+                gold = @gold,
+                silver = @silver,
+                copper = @copper,
+                current_zone = @currentZone,
+                character_id = @characterId
+            WHERE id = @id";
+
+        cmd.Parameters.AddWithValue("@name", character.Name);
+        cmd.Parameters.AddWithValue("@class", (int)character.Class);
+        cmd.Parameters.AddWithValue("@accountId", character.AccountId);
+        cmd.Parameters.AddWithValue("@server", character.Server);
+        cmd.Parameters.AddWithValue("@progression", character.Progression ? 1 : 0);
+
+        cmd.Parameters.AddWithValue("@level",          character.Level.HasValue          ? character.Level.Value          : DBNull.Value);
+        cmd.Parameters.AddWithValue("@practicePoints", character.PracticePoints.HasValue ? character.PracticePoints.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@maxHp",          character.MaxHP != 0              ? character.MaxHP                : DBNull.Value);
+        cmd.Parameters.AddWithValue("@maxMana",        character.MaxMana.HasValue        ? character.MaxMana.Value        : DBNull.Value);
+
+        cmd.Parameters.AddWithValue("@strength",     character.Strength.HasValue     ? character.Strength.Value     : DBNull.Value);
+        cmd.Parameters.AddWithValue("@stamina",      character.Stamina.HasValue      ? character.Stamina.Value      : DBNull.Value);
+        cmd.Parameters.AddWithValue("@charisma",     character.Charisma.HasValue     ? character.Charisma.Value     : DBNull.Value);
+        cmd.Parameters.AddWithValue("@dexterity",    character.Dexterity.HasValue    ? character.Dexterity.Value    : DBNull.Value);
+        cmd.Parameters.AddWithValue("@intelligence", character.Intelligence.HasValue ? character.Intelligence.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@agility",      character.Agility.HasValue      ? character.Agility.Value      : DBNull.Value);
+        cmd.Parameters.AddWithValue("@wisdom",       character.Wisdom.HasValue       ? character.Wisdom.Value       : DBNull.Value);
+
+        cmd.Parameters.AddWithValue("@platinum", character.Platinum.HasValue ? character.Platinum.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@gold",     character.Gold.HasValue     ? character.Gold.Value     : DBNull.Value);
+        cmd.Parameters.AddWithValue("@silver",   character.Silver.HasValue   ? character.Silver.Value   : DBNull.Value);
+        cmd.Parameters.AddWithValue("@copper",   character.Copper.HasValue   ? character.Copper.Value   : DBNull.Value);
+        cmd.Parameters.AddWithValue("@currentZone", character.ZoneId.Exists ? character.ZoneId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@characterId", character.CharacterId.Exists ? character.CharacterId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@id", character.DatabaseId.Value);
+
+        cmd.ExecuteNonQuery();
+
+        DebugLog.Write(LogChannel.Database, "CharacterRepository.Save: persisted character record " + character.DatabaseId
+            + " name=" + character.Name
+            + " class=" + character.Class
+            + " level=" + (character.Level?.ToString() ?? "null")
+            + " maxHp=" + character.MaxHP
+            + " maxMana=" + (character.MaxMana?.ToString() ?? "null"), defaultLoglevel);
     }
 
-    using SqliteConnection conn = Database.Instance.Connect();
-    conn.Open();
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // GetByName
+    //
+    // Finds the loaded character with the given name.  Names are compared without regard to letter case, since the
+    // server can send a name in a case other than the character's own.
+    //
+    // name:  The character name to look up.
+    //
+    // Returns the character, or null when no loaded character has that name.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public Character? GetByName(string name)
+    {
+        Character? character = _characters.FirstOrDefault(c => string.Equals(c.Name, name,
+            StringComparison.OrdinalIgnoreCase));
 
-    using SqliteCommand cmd = conn.CreateCommand();
-    cmd.CommandText = @"
-        UPDATE Characters SET
-            name = @name,
-            class = @class,
-            account_id = @accountId,
-            server = @server,
-            progression = @progression,
-            level = @level,
-            practice_points = @practicePoints,
-            max_hp = @maxHp,
-            max_mana = @maxMana,
-            strength = @strength,
-            stamina = @stamina,
-            charisma = @charisma,
-            dexterity = @dexterity,
-            intelligence = @intelligence,
-            agility = @agility,
-            wisdom = @wisdom,
-            platinum = @platinum,
-            gold = @gold,
-            silver = @silver,
-            copper = @copper,
-            current_zone = @currentZone,
-            character_id = @characterId
-        WHERE id = @id";
+        if (character == null)
+        {
+            DebugLog.Write(LogChannel.Database, "CharacterRepository.GetByName: no character named '" + name + "'.",
+                defaultLoglevel);
+            return null;
+        }
 
-    cmd.Parameters.AddWithValue("@name", character.Name);
-    cmd.Parameters.AddWithValue("@class", (int)character.Class);
-    cmd.Parameters.AddWithValue("@accountId", character.AccountId);
-    cmd.Parameters.AddWithValue("@server", character.Server);
-    cmd.Parameters.AddWithValue("@progression", character.Progression ? 1 : 0);
-
-    cmd.Parameters.AddWithValue("@level",          character.Level.HasValue          ? character.Level.Value          : DBNull.Value);
-    cmd.Parameters.AddWithValue("@practicePoints", character.PracticePoints.HasValue ? character.PracticePoints.Value : DBNull.Value);
-    cmd.Parameters.AddWithValue("@maxHp",          character.MaxHP.HasValue          ? character.MaxHP.Value          : DBNull.Value);
-    cmd.Parameters.AddWithValue("@maxMana",        character.MaxMana.HasValue        ? character.MaxMana.Value        : DBNull.Value);
-
-    cmd.Parameters.AddWithValue("@strength",     character.Strength.HasValue     ? character.Strength.Value     : DBNull.Value);
-    cmd.Parameters.AddWithValue("@stamina",      character.Stamina.HasValue      ? character.Stamina.Value      : DBNull.Value);
-    cmd.Parameters.AddWithValue("@charisma",     character.Charisma.HasValue     ? character.Charisma.Value     : DBNull.Value);
-    cmd.Parameters.AddWithValue("@dexterity",    character.Dexterity.HasValue    ? character.Dexterity.Value    : DBNull.Value);
-    cmd.Parameters.AddWithValue("@intelligence", character.Intelligence.HasValue ? character.Intelligence.Value : DBNull.Value);
-    cmd.Parameters.AddWithValue("@agility",      character.Agility.HasValue      ? character.Agility.Value      : DBNull.Value);
-    cmd.Parameters.AddWithValue("@wisdom",       character.Wisdom.HasValue       ? character.Wisdom.Value       : DBNull.Value);
-
-    cmd.Parameters.AddWithValue("@platinum", character.Platinum.HasValue ? character.Platinum.Value : DBNull.Value);
-    cmd.Parameters.AddWithValue("@gold",     character.Gold.HasValue     ? character.Gold.Value     : DBNull.Value);
-    cmd.Parameters.AddWithValue("@silver",   character.Silver.HasValue   ? character.Silver.Value   : DBNull.Value);
-    cmd.Parameters.AddWithValue("@copper",   character.Copper.HasValue   ? character.Copper.Value   : DBNull.Value);
-    cmd.Parameters.AddWithValue("@currentZone", character.ZoneId.Exists ? character.ZoneId.Value : DBNull.Value);
-    cmd.Parameters.AddWithValue("@characterId", character.CharacterId.Exists ? character.CharacterId.Value : DBNull.Value);
-    cmd.Parameters.AddWithValue("@id", character.DatabaseId.Value);
-
-    cmd.ExecuteNonQuery();
-
-    DebugLog.Write(LogChannel.Database, "CharacterRepository.Save: persisted character record " + character.DatabaseId
-        + " name=" + character.Name
-        + " class=" + character.Class
-        + " level=" + (character.Level?.ToString() ?? "null")
-        + " maxHp=" + (character.MaxHP?.ToString() ?? "null")
-        + " maxMana=" + (character.MaxMana?.ToString() ?? "null"), LogLevel.Trace);
-}
+        DebugLog.Write(LogChannel.Database, "CharacterRepository.GetByName: '" + name + "' is '" + character.Name
+            + "' databaseId=" + character.DatabaseId + ".", defaultLoglevel);
+        return character;
+    }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // GetByDatabaseId
@@ -367,7 +415,7 @@ public void Save(DatabaseId databaseId)
         }
 
         DebugLog.Write(LogChannel.Database, "CharacterRepository.GetByDatabaseId: no cached character for databaseId="
-            + databaseId, LogLevel.Trace);
+            + databaseId, defaultLoglevel);
         return null;
     }
 
@@ -388,17 +436,41 @@ public void Save(DatabaseId databaseId)
         }
 
         DebugLog.Write(LogChannel.Database, "CharacterRepository.GetByCharacterId: no cached character for characterId="
-            + characterId, LogLevel.Trace);
+            + characterId, defaultLoglevel);
+        return null;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // GetByEntityId
+    //
+    // Finds the cached Character with the given EntityId.
+    //
+    // entityId:  The EntityId of the character.
+    //
+    // Returns the cached Character, or null when no cached character has that EntityId.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public Character? GetByEntityId(EntityId entityId)
+    {
+        if (_charactersByEntityId.TryGetValue(entityId, out Character? character))
+        {
+            DebugLog.Write(LogChannel.Database, "CharacterRepository.GetByEntityId: entityId=" + entityId + " is '"
+                + character.Name + "'.", defaultLoglevel);
+            return character;
+        }
+
+        DebugLog.Write(LogChannel.Database, "CharacterRepository.GetByEntityId: no cached character for entityId="
+            + entityId + ".", defaultLoglevel);
         return null;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // SetZoneSpawn
     //
-    // Places the packet's character in its session's zone under a spawn id.  The character's previous placement,
-    // read from its current zone and spawn id, is removed from the index first; the new zone and spawn id are then
-    // assigned to the character and indexed, and the placement is recorded on the character for the packet's
-    // session.  A packet with no character, or a zone id or spawn id that is None, is rejected and nothing changes.
+    // Places the packet's character in its session's zone under a spawn id.  The character's previous placement, read
+    // from its current zone and spawn id, is removed from the zone repository first.  The new zone and spawn id are then
+    // assigned to the character, placed in the zone repository under the character's EntityId, and recorded on the
+    // character for the packet's session.  A packet with no character, or a zone id or spawn id that is None, is
+    // rejected and nothing changes.
     //
     // spawnId:   The server assigned spawn id within the zone.
     // metadata:  The packet's metadata, carrying the character and its zone session.
@@ -424,38 +496,25 @@ public void Save(DatabaseId databaseId)
 
         if (character.ZoneId.Exists && character.SpawnId.Exists)
         {
-            SpawnId oldSpawnId = character.SpawnId;
-            ZoneId oldZoneId = character.ZoneId;
-
-            if (_charactersByZoneSpawn.TryGetValue(character.ZoneId, out Dictionary<SpawnId, Character>? oldTable)
-                && oldTable.TryGetValue(oldSpawnId, out Character? indexed)
-                && ReferenceEquals(indexed, character))
-            {
-                // Remove the character from the cache, delete the Zone cache if it is now empty
-                //oldTable.Remove(oldSpawnId);
-                if (oldTable.Count == 0)
-                {
-                    _charactersByZoneSpawn.Remove(oldZoneId);
-                }
-
-                DebugLog.Write(LogChannel.Database, "CharacterRepository.SetZoneSpawn: removed '" + character.Name
-                    + "' from zoneId=" + oldZoneId + " spawnId=" + oldSpawnId, LogLevel.Trace);
-            }
+            ZoneRepository.Instance.RemovePlacement(character.ZoneId, character.SpawnId, character.EntityId);
+            DebugLog.Write(LogChannel.Database, "CharacterRepository.SetZoneSpawn: removed '" + character.Name
+                + "' entityId=" + character.EntityId + " from zoneId=" + character.ZoneId + " spawnId="
+                + character.SpawnId, LogLevel.Trace);
         }
 
-        // Update character values and then put them in the cache
         character.ZoneId = zoneId;
         character.SpawnId = spawnId;
 
-        if (!_charactersByZoneSpawn.TryGetValue(zoneId, out Dictionary<SpawnId, Character>? zoneTable))
+        if (ZoneRepository.Instance.PlaceEntity(zoneId, spawnId, character.EntityId))
         {
-            zoneTable = new Dictionary<SpawnId, Character>();
-            _charactersByZoneSpawn[zoneId] = zoneTable;
+            DebugLog.Write(LogChannel.Database, "CharacterRepository.SetZoneSpawn: '" + character.Name + "' entityId="
+                + character.EntityId + " placed at zoneId=" + zoneId + " spawnId=" + spawnId, LogLevel.Trace);
         }
-
-        zoneTable[spawnId] = character;
-        DebugLog.Write(LogChannel.Database, "CharacterRepository.SetZoneSpawn: '" + character.Name + "' placed at zoneId="
-            + zoneId + " spawnId=" + spawnId, LogLevel.Trace);
+        else
+        {
+            DebugLog.Write(LogChannel.Database, "CharacterRepository.SetZoneSpawn: '" + character.Name + "' entityId="
+                + character.EntityId + " was not placed at zoneId=" + zoneId + " spawnId=" + spawnId, LogLevel.Warn);
+        }
 
         character.SetZonePlacement(new ZonePlacement(zoneId, metadata.Session.SessionId, spawnId));
     }
@@ -473,30 +532,7 @@ public void Save(DatabaseId databaseId)
         }
 
         DebugLog.Write(LogChannel.Database, "CharacterRepository.ClearZonePlacements: cleared placements on "
-            + _characters.Count + " characters", LogLevel.Trace);
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // GetBySpawnId
-    //
-    // Returns the cached Character placed in the given zone under the given spawn id.
-    //
-    // zoneId:   The zone the spawn id is valid in.
-    // spawnId:  The server assigned spawn id within that zone.
-    //
-    // Returns:  The cached Character, or null if none is placed there.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public Character? GetBySpawnId(ZoneId zoneId, SpawnId spawnId)
-    {
-        if (_charactersByZoneSpawn.TryGetValue(zoneId, out Dictionary<SpawnId, Character>? zoneTable)
-            && zoneTable.TryGetValue(spawnId, out Character? character))
-        {
-            return character;
-        }
-
-        DebugLog.Write(LogChannel.Database, "CharacterRepository.GetBySpawnId: no character at zoneId=" + zoneId
-            + " spawnId=" + spawnId, LogLevel.Trace);
-        return null;
+            + _characters.Count + " characters", defaultLoglevel);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -518,7 +554,7 @@ public void Save(DatabaseId databaseId)
 
         characterId = CharacterId.None;
         DebugLog.Write(LogChannel.Database, "CharacterRepository.TryGetCharacterIdByName: no character id for '"
-            + name + "'.", LogLevel.Trace);
+            + name + "'.", defaultLoglevel);
         return false;
     }
 }

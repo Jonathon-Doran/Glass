@@ -196,7 +196,7 @@ public class InferNpcMoveUpdate : IInferOpcodes
 
             ushort rawSpawnId = BinaryPrimitives.ReadUInt16BigEndian(payload);
             SpawnId spawnId = (SpawnId)(uint)rawSpawnId;
-            if (MobRepository.Instance.TryGetBySpawnId(session.ZoneId, spawnId, out Spawn? spawn))
+            if (ZoneRepository.Instance.LookupEntity(session.ZoneId, spawnId) is Spawn)
             {
                 matched++;
             }

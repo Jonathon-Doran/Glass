@@ -42,7 +42,8 @@ public class ProfileManager
     ///////////////////////////////////////////////////////////////////////////////////////////
     // ClearActiveProfile
     //
-    // Clears the active profile and resets the defined slots. Called when all
+    // Clears the active profile and resets the defined slots.  The keyboard pages are
+    // unloaded and keyboard input is stopped until the next profile launch.  Called when all
     // sessions have disconnected.
     ///////////////////////////////////////////////////////////////////////////////////////////
     public void ClearActiveProfile()
@@ -50,6 +51,7 @@ public class ProfileManager
         DebugLog.Write(LogChannel.Profiles, "ProfileManager.ClearActiveProfile: clearing active profile", LogLevel.Trace);
         GlassContext.SignalBus.Unsubscribe<SignalSessionAdded>(OnSessionAdded);
         GlassContext.KeyboardManager.UnloadProfile();
+        GlassContext.KeyboardManager.Stop();
         _activeProfile = null;
         _definedSlots.Clear();
     }
@@ -60,8 +62,8 @@ public class ProfileManager
     // Launches all characters in the specified profile through ISXGlass.  A different profile
     // is refused while one is active.  Live packet capture is started first when none is
     // running; if it cannot start, nothing is launched.  When no profile is active, loads the
-    // profile, its characters and its keyboard pages and bindings, and sends the layout to
-    // GlassVideo before launching.  When the specified profile is already the active one,
+    // profile, its characters and its keyboard pages and bindings, starts keyboard input, and
+    // sends the layout to GlassVideo before launching.  When the specified profile is already the active one,
     // only the launch commands are sent again; ISXGlass skips sessions that are already
     // running, so only missing sessions start.
     //
@@ -116,6 +118,7 @@ public class ProfileManager
         _activeProfile = profile;
         _definedSlots.Clear();
         GlassContext.KeyboardManager.LoadProfile(profile.GetId());
+        GlassContext.KeyboardManager.Start();
 
         DebugLog.Write(LogChannel.ISXGlass, "ProfileManager.LaunchProfile: launching profile '" + profileName
             + "' with " + slots.Count + " characters", LogLevel.Trace);

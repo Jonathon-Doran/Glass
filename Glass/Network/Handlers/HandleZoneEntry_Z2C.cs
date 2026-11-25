@@ -22,6 +22,7 @@ namespace Glass.Network.Handlers;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class HandleZoneEntry_Z2C : OpcodeHandler
 {
+    private const LogLevel defaultLoglevel = LogLevel.Trace;
     private readonly CollectionHandle _collectionHandle;
     private readonly GateDefinitionHandle _top_level_gate;
 
@@ -307,10 +308,11 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
                     + mercenaryOwner.ToString("X4") + "; using the pet owner.", LogLevel.Warn);
             }
 
+            List<uint> quads = new List<uint>();
+
             if (petOwner != 0)
             {
                 ownerId = petOwner;
-                companionType = EntityType.Pet;
             }
             else if (mercenaryOwner != 0)
             {
@@ -322,10 +324,26 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
                 ownerId = 0;
             }
 
+            if (ownerId != 0)
+            {
+                quads = ReadQuads(rootGate, name, spawnId);
+                if (petOwner != 0)
+                {
+                    companionType = PetOrFamiliar(quads, name, spawnId);
+                }
+            }
+
+            // Log companion quads.  This is to test a theory about using them to identify companion type
+            if (ownerId != 0)
+            {
+                LogCompanionQuads(metadata, zoneId, name, spawnId, ownerId, companionType, level, mobClass,
+                    model, NumQuads, quads);
+            }
+
             DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C.HandlePacket: '" + name
                 + "' spawnId=0x" + spawnId.ToString("X4") + " pet owner 0x" + petOwner.ToString("X4")
                 + ", mercenary owner 0x" + mercenaryOwner.ToString("X4") + ", owner 0x"
-                + ownerId.ToString("X4") + ", companion type " + companionType, LogLevel.Trace);
+                + ownerId.ToString("X4") + ", companion type " + companionType, defaultLoglevel);
 
             /*
             DebugLog.Write(LogChannel.DataLogging, "Flags:  message " + metadata.MessageId + "," 
@@ -355,7 +373,8 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         if (ownerId != 0)
         {
             SpawnId companionSpawnId = (SpawnId)spawnId;
-            if (CompanionRepository.Instance.TryGetCompanion(zoneId, companionSpawnId, out Companion? companion) == false)
+            Companion? companion = ZoneRepository.Instance.LookupEntity(zoneId, companionSpawnId) as Companion;
+            if (companion == null)
             {
                 companion = new Companion();
                 companion.ZoneId = zoneId;
@@ -366,6 +385,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
                         + spawnId.ToString("X4") + " not stored.", LogLevel.Error);
                     return;
                 }
+                ZoneRepository.Instance.PlaceEntity(zoneId, companionSpawnId, companion.EntityId);
             }
 
             companion.Name = name;
@@ -374,7 +394,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             companion.Model = model;
             companion.OwnerSpawnId = (SpawnId)ownerId;
 
-            Character? owner = CharacterRepository.Instance.GetBySpawnId(zoneId, companion.OwnerSpawnId);
+            Character? owner = ZoneRepository.Instance.LookupEntity(zoneId, companion.OwnerSpawnId) as Character;
             if (owner != null)
             {
                 companion.Owner = owner;
@@ -383,7 +403,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
 
             DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: companion '" + name + "' spawnId=0x"
                 + spawnId.ToString("X4") + " owner spawnId=0x" + ownerId.ToString("X4") + " owner "
-                + (owner != null ? owner.Name : "not one of ours") + ".", LogLevel.Trace);
+                + (owner != null ? owner.Name : "not one of ours") + ".", defaultLoglevel);
             return;
         }
 
@@ -395,7 +415,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             {
                 DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: '" + name + "' spawnId=0x"
                     + spawnId.ToString("X4") + " is not the receiving character '" + character.Name
-                    + "'; not placed.", LogLevel.Trace);
+                    + "'; not placed.", defaultLoglevel);
                 return;
             }
 
@@ -404,11 +424,12 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             {
                 CharacterRepository.Instance.SetZoneSpawn((SpawnId)spawnId, metadata);
                 DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: placed '" + character.Name + "' in zoneId="
-                    + zoneId + " spawnId=0x" + spawnId.ToString("X4"), LogLevel.Trace);
+                    + zoneId + " spawnId=0x" + spawnId.ToString("X4"), defaultLoglevel);
 
-                uint linked = CompanionRepository.Instance.LinkOwner(zoneId, character);
+                uint linked = CompanionRepository.Instance.LinkOwner(ZoneRepository.Instance.GetZoneEntityIds(zoneId),
+                    character);
                 DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: linked " + linked + " companions to '"
-                    + character.Name + "'", LogLevel.Trace);
+                    + character.Name + "'", defaultLoglevel);
             }
             else if (zoneEntryCount > 2)
             {
@@ -419,7 +440,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             {
                 DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: own zone entry " + zoneEntryCount + " for '"
                     + character.Name + "' spawnId=0x" + spawnId.ToString("X4") + " is provisional; not placed.",
-                    LogLevel.Trace);
+                    defaultLoglevel);
             }
             return;
         }
@@ -428,7 +449,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         if (type != SpawnTypeNpc)
         {
             DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: '" + name + "' spawnId=0x"
-                + spawnId.ToString("X4") + " has Type " + type + ", not an NPC; not recorded.", LogLevel.Trace);
+                + spawnId.ToString("X4") + " has Type " + type + ", not an NPC; not recorded.", defaultLoglevel);
             return;
         }
 
@@ -473,7 +494,8 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             mobType.Sightings++;
         }
 
-        if (!MobRepository.Instance.TryGetBySpawnId((ZoneId)zoneId.Value, (SpawnId)spawnId, out Spawn? spawn))
+        Spawn? spawn = ZoneRepository.Instance.LookupEntity((ZoneId)zoneId.Value, (SpawnId)spawnId) as Spawn;
+        if (spawn == null)
         {
             spawn = new Spawn();
             spawn.ZoneId = (ZoneId)zoneId.Value;
@@ -481,15 +503,18 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             spawn.MobId = mobType.Id;
             spawn.Observed = metadata.Timestamp;
             spawn.IsSpawnPoint = metadata.Session.Established;
-            MobRepository.Instance.AddSpawn(spawn);
+            if (MobRepository.Instance.AddSpawn(spawn))
+            {
+                ZoneRepository.Instance.PlaceEntity(spawn.ZoneId, spawn.SpawnId, spawn.EntityId);
+            }
             DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: created new record for " + name + ", zoneId=" + zoneId
-                + " spawnId=0x" + spawnId.ToString("X4") + " mobId=" + mobType.Id + ".", LogLevel.Trace);
+                + " spawnId=0x" + spawnId.ToString("X4") + " mobId=" + mobType.Id + ".", defaultLoglevel);
 
             if (spawn.IsSpawnPoint)
             {
                 DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: '" + name + "' spawnId=0x"
                     + spawnId.ToString("X4") + " appeared after session " + metadata.Session.SessionId
-                    + " was established; marked as a spawn point.", LogLevel.Trace);
+                    + " was established; marked as a spawn point.", defaultLoglevel);
             }
         }
 
@@ -506,6 +531,132 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         spawn.Class = mobClass;
         spawn.LastName = lastName;
         spawn.OwnerId = ownerId;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // PetOrFamiliar
+    //
+    // Decides the kind of a spawn that has a pet owner from its quad values.  Exactly two quads,
+    // 31 and 32, mark a familiar.  Every other spawn is a pet.  The known pet patterns are a
+    // second quad of 8, and exactly two quads, 21 and 32, for a beastlord warder; a spawn that
+    // matches no known pattern is logged as a warning and treated as a pet.
+    //
+    // quads:    The spawn's quad values, in wire order.
+    // name:     The spawn's name, for log messages.
+    // spawnId:  The spawn's id in the zone, for log messages.
+    //
+    // Returns EntityType.Familiar or EntityType.Pet.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private static EntityType PetOrFamiliar(List<uint> quads, string name, uint spawnId)
+    {
+        const uint FamiliarFirstQuad = 31;
+        const uint WarderFirstQuad = 21;
+        const uint SharedLastQuad = 32;
+        const uint PetSecondQuad = 8;
+
+        bool twoQuadsEndingShared = (quads.Count == 2) && (quads[1] == SharedLastQuad);
+
+        if (twoQuadsEndingShared && (quads[0] == FamiliarFirstQuad))
+        {
+            DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C.PetOrFamiliar: '" + name + "' spawnId=0x"
+                + spawnId.ToString("X4") + " quads " + string.Join(";", quads) + ", familiar.", defaultLoglevel);
+            return EntityType.Familiar;
+        }
+
+        bool petPattern = (quads.Count >= 2) && (quads[1] == PetSecondQuad);
+        bool warderPattern = twoQuadsEndingShared && (quads[0] == WarderFirstQuad);
+
+        if (petPattern || warderPattern)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C.PetOrFamiliar: '" + name + "' spawnId=0x"
+                + spawnId.ToString("X4") + " quads " + string.Join(";", quads) + ", pet.", defaultLoglevel);
+            return EntityType.Pet;
+        }
+
+        DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C.PetOrFamiliar: '" + name + "' spawnId=0x"
+            + spawnId.ToString("X4") + " quads " + string.Join(";", quads)
+            + " match no known pattern, treated as pet.", LogLevel.Warn);
+        return EntityType.Pet;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // ReadQuads
+    //
+    // Reads the value of every quad in the extracted message, in wire order.  The extractor must
+    // hold the extracted message, and is left at the root gate.  A message with no quads gate
+    // yields an empty list.
+    //
+    // rootGate:  The root gate of the extracted message.
+    // name:      The spawn's name, for log messages.
+    // spawnId:   The spawn's id in the zone, for log messages.
+    //
+    // Returns the quad values.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private List<uint> ReadQuads(GateHandle rootGate, string name, uint spawnId)
+    {
+        List<uint> quads = new List<uint>();
+
+        if (_extractor.IsPresent(_quadsGate_Slot) == false)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C.ReadQuads: '" + name + "' spawnId=0x"
+                + spawnId.ToString("X4") + " has no quads gate.", LogLevel.Warn);
+            return quads;
+        }
+
+        GateHandle quadsGate = _extractor.GetGateAt(_quadsGate_Slot);
+        if (quadsGate.Exists == false)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C.ReadQuads: '" + name + "' spawnId=0x"
+                + spawnId.ToString("X4") + " quads gate slot present but not a gate.", LogLevel.Error);
+            return quads;
+        }
+
+        uint quadCount = _extractor.BagCount(quadsGate);
+        for (uint bagIndex = 0; bagIndex < quadCount; bagIndex++)
+        {
+            _extractor.EnterGate(quadsGate, bagIndex);
+            quads.Add(_extractor.GetUIntAt(_quad_Unknown_Slot));
+        }
+        _extractor.EnterGate(rootGate, 0);
+
+        DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C.ReadQuads: '" + name + "' spawnId=0x"
+            + spawnId.ToString("X4") + " has " + quads.Count + " quads: " + string.Join(";", quads) + ".",
+            defaultLoglevel);
+        return quads;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // LogCompanionQuads
+    //
+    // Writes one comma separated line to the DataLogging channel describing an owned spawn and the
+    // values of its quads, for telling companion kinds apart.  The fields are the tag COMPANION,
+    // message id, time, receiving character, zone id, spawn id, name, owner spawn id, companion
+    // type, level, class, model, the NumQuads field, the number of quads present, and the quad
+    // values separated by semicolons.
+    //
+    // metadata:       Packet metadata (message id, timestamp).
+    // zoneId:         The zone the spawn is in.
+    // name:           The spawn's name.
+    // spawnId:        The spawn's id in the zone.
+    // ownerId:        The owner's spawn id.
+    // companionType:  The kind of companion assigned to the spawn.
+    // level:          The spawn's level.
+    // mobClass:       The spawn's class.
+    // model:          The spawn's model.
+    // numQuads:       The value of the NumQuads field.
+    // quads:          The quad values, in wire order.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void LogCompanionQuads(PacketMetadata metadata, ZoneId zoneId, string name, uint spawnId,
+        uint ownerId, EntityType companionType, uint level, uint mobClass, uint model, uint numQuads,
+        List<uint> quads)
+    {
+        string receiver = (metadata.Character != null) ? metadata.Character.Name : "<none>";
+
+        DebugLog.Write(LogChannel.DataLogging, "COMPANION," + metadata.MessageId + ","
+            + metadata.Timestamp.ToString("HH:mm:ss.fff") + "," + receiver + "," + zoneId + ",0x"
+            + spawnId.ToString("X4") + "," + name + ",0x" + ownerId.ToString("X4") + "," + companionType + ","
+            + level + "," + mobClass + "," + model + "," + numQuads + "," + quads.Count + ","
+            + string.Join(";", quads), LogLevel.Info);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -830,7 +981,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         if (end == name.Length)
         {
             DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C.BaseNameOf: '" + name
-                + "' has no trailing digits.", LogLevel.Trace);
+                + "' has no trailing digits.", defaultLoglevel);
             return name;
         }
 

@@ -311,11 +311,13 @@ public class SoeStream : IDisposable
             case SoeConstants.OP_KeepAlive:
             case SoeConstants.OP_SessionStatRequest:
             case SoeConstants.OP_SessionStatResponse:
+            case SoeConstants.OP_Unidentified1E:
                 {
                     DebugLog.Write(LogChannel.LowNetwork, "SoeStream.ProcessPacket: net opcode " + netOpcode
                         + " on stream " + StreamNames[_streamId] + " needs no processing", LogLevel.Trace);
                     break;
                 }
+
             default:
                 {
                     DebugLog.Write(LogChannel.LowNetwork, "SoeStream.ProcessPacket: unhandled net opcode " + netOpcode

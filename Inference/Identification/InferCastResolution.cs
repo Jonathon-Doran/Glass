@@ -396,7 +396,7 @@ public class InferCastResolution : IInferOpcodes
             }
 
             SpawnId spawnId = (SpawnId)(uint)BinaryPrimitives.ReadUInt16LittleEndian(payload);
-            Character? subject = CharacterRepository.Instance.GetBySpawnId(session.ZoneId, spawnId);
+            Character? subject = ZoneRepository.Instance.LookupEntity(session.ZoneId, spawnId) as Character;
             if (subject == null)
             {
                 unresolvedCount++;

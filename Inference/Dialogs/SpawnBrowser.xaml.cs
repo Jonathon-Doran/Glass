@@ -155,10 +155,21 @@ public partial class SpawnBrowser : Window
             DebugLog.Write(LogChannel.InferenceDebug, "SpawnBrowser.RefreshRows: zoneId=" + zoneId + " "
                 + unnamed + " sighting(s) reference a mob id with no MobTypes row", LogLevel.Warn);
         }
+        List<EntityId> mobIds = ZoneRepository.Instance.GetZoneEntityIds(zoneId, EntityType.Mob);
+        uint cacheCount = 0;
+        for (int mobIndex = 0; mobIndex < mobIds.Count; mobIndex++)
+        {
+            Spawn? cached = MobRepository.Instance.GetByEntityId(mobIds[mobIndex]);
+            if (cached == null)
+            {
+                DebugLog.Write(LogChannel.InferenceDebug, "SpawnBrowser.RefreshRows: zoneId=" + zoneId
+                    + " entityId=" + mobIds[mobIndex] + " is placed but has no stored spawn", LogLevel.Warn);
+                continue;
+            }
 
-        List<Spawn> cached = MobRepository.Instance.GetSpawnsInZone(zoneId);
-        uint cacheCount = (uint)cached.Count;
-        spawns.AddRange(cached);
+            spawns.Add(cached);
+            cacheCount++;
+        }
 
         spawns.Sort((Spawn left, Spawn right) => left.Observed.CompareTo(right.Observed));
 

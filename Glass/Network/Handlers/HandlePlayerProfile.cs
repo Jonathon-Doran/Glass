@@ -206,8 +206,30 @@ public class HandlePlayerProfile : OpcodeHandler
                     DebugLog.Write(LogChannel.Sessions, "HandlePlayerProfile: first session in zoneId=" + zoneId +
                         ", clearing cached mobs.", LogLevel.Trace);
 
-                    MobRepository.Instance.ClearZoneMobs(zoneId); 
-                    CompanionRepository.Instance.ClearZoneCompanions(zoneId);
+                    List<EntityId> mobIds = ZoneRepository.Instance.GetZoneEntityIds(zoneId, EntityType.Mob);
+                    List<EntityId> entityIds = ZoneRepository.Instance.GetZoneEntityIds(zoneId);
+                    uint removed = 0;
+
+                    for (int idIndex = 0; idIndex < entityIds.Count; idIndex++)
+                    {
+                        if (entityIds[idIndex].Type == EntityType.Character)
+                        {
+                            continue;
+                        }
+
+                        if (EntityRepository.Instance.Remove(entityIds[idIndex]))
+                        {
+                            removed++;
+                        }
+                    }
+
+                    uint cleared = ZoneRepository.Instance.ClearZonePlacements(zoneId);
+                    DebugLog.Write(LogChannel.Sessions, "HandlePlayerProfile.HandleZoneToClient: zoneId=" + zoneId
+                        + " removed " + removed + " of " + entityIds.Count + " entities, cleared " + cleared
+                        + " placements.", LogLevel.Trace);
+
+                    DebugLog.Write(LogChannel.Sessions, "HandlePlayerProfile: zoneId=" + zoneId + " removed "
+                        + mobIds.Count + " mobs, cleared " + cleared + " placements.", LogLevel.Trace);
                 }
 
                 ReadOnlySpan<uint> spellbook = _extractor.GetUIntSpanAt(_spellbookSlot);

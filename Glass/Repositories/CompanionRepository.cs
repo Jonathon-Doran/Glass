@@ -19,6 +19,7 @@ public class CompanionRepository
     private static CompanionRepository? _instance = null;
 
     private readonly Dictionary<ZoneId, Dictionary<SpawnId, Companion>> _companionsByZone;
+    private readonly Dictionary<EntityId, Companion> _companionsByEntityId;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Instance
@@ -45,6 +46,7 @@ public class CompanionRepository
     private CompanionRepository()
     {
         _companionsByZone = new Dictionary<ZoneId, Dictionary<SpawnId, Companion>>();
+        _companionsByEntityId = new Dictionary<EntityId, Companion>();
         DebugLog.Write(LogChannel.Database, "CompanionRepository: singleton instance created with an empty table.",
             defaultLoglevel);
     }
@@ -52,132 +54,81 @@ public class CompanionRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // AddCompanion
     //
-    // Stores a companion under its zone and spawn id.  The table for the companion's zone is created on
-    // first use.  A companion whose zone id or spawn id is None is rejected, and a zone that already holds
-    // a companion under the spawn id keeps the existing one; in either case nothing is stored.  A stored
-    // companion with no EntityId is issued a new EntityId of the given type for this run.
+    // Stores a companion under its EntityId.  A companion with no EntityId is issued a new EntityId of the given type
+    // for this run.  A companion whose EntityId is already stored is rejected and the stored companion is left
+    // unchanged.
     //
     // companion:  The companion to store.  ZoneId, SpawnId and any known field values are set by the caller.
     // type:       The kind of companion, used as the type of an issued EntityId.
     //
-    // Returns true if the companion was stored, false if it was rejected.
+    // Returns true if the companion was stored, false if its EntityId was already stored.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public bool AddCompanion(Companion companion, EntityType type)
     {
-        if ((companion.ZoneId.Exists == false) || (companion.SpawnId.Exists == false))
-        {
-            DebugLog.Write(LogChannel.Database, "CompanionRepository.AddCompanion: '" + companion.Name + "' zoneId="
-                + companion.ZoneId + " spawnId=" + companion.SpawnId + " is not a valid placement, not stored.",
-                LogLevel.Error);
-            return false;
-        }
-
-        if (_companionsByZone.TryGetValue(companion.ZoneId, out Dictionary<SpawnId, Companion>? zoneCompanions) == false)
-        {
-            zoneCompanions = new Dictionary<SpawnId, Companion>();
-            _companionsByZone[companion.ZoneId] = zoneCompanions;
-            DebugLog.Write(LogChannel.Database, "CompanionRepository.AddCompanion: created table for zoneId="
-                + companion.ZoneId + ".", defaultLoglevel);
-        }
-
-        if (zoneCompanions.TryGetValue(companion.SpawnId, out Companion? existing))
-        {
-            DebugLog.Write(LogChannel.Database, "CompanionRepository.AddCompanion: zoneId=" + companion.ZoneId
-                + " spawnId=" + companion.SpawnId + " already holds '" + existing.Name + "', '" + companion.Name
-                + "' not stored.", LogLevel.Warn);
-            return false;
-        }
-
         if (companion.EntityId.Exists == false)
         {
             companion.EntityId = EntityRepository.Instance.IssueId(type);
         }
-        else
+        else if (_companionsByEntityId.ContainsKey(companion.EntityId))
         {
-            DebugLog.Write(LogChannel.Database, "CompanionRepository.AddCompanion: '" + companion.Name
-                + "' already has entityId=" + companion.EntityId + ", kept.", defaultLoglevel);
+            DebugLog.Write(LogChannel.Database, "CompanionRepository.AddCompanion: entityId=" + companion.EntityId
+                + " already stored, '" + companion.Name + "' zoneId=" + companion.ZoneId + " spawnId="
+                + companion.SpawnId + " not added.", LogLevel.Error);
+            return false;
         }
 
-        zoneCompanions[companion.SpawnId] = companion;
+        _companionsByEntityId[companion.EntityId] = companion;
 
         DebugLog.Write(LogChannel.Database, "CompanionRepository.AddCompanion: stored '" + companion.Name
-            + "' at zoneId=" + companion.ZoneId + " spawnId=" + companion.SpawnId + ", entityId="
-            + companion.EntityId + ", owner spawnId=" + companion.OwnerSpawnId + ".", defaultLoglevel);
+            + "' entityId=" + companion.EntityId + " zoneId=" + companion.ZoneId + " spawnId=" + companion.SpawnId
+            + ", owner spawnId=" + companion.OwnerSpawnId + ".", defaultLoglevel);
         return true;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // TryGetCompanion
+    // GetByEntityId
     //
-    // Looks up the companion held under the given zone and spawn id.
+    // Finds the companion with the given EntityId.
     //
-    // zoneId:     The zone the spawn id is valid in.
-    // spawnId:    The server assigned spawn id within that zone.
-    // companion:  Receives the companion if found, null otherwise.
+    // entityId:  The EntityId of the companion.
     //
-    // Returns true if a companion is held there, false otherwise.
+    // Returns the companion, or null when no companion has that EntityId.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public bool TryGetCompanion(ZoneId zoneId, SpawnId spawnId, [NotNullWhen(true)] out Companion? companion)
+    public Companion? GetByEntityId(EntityId entityId)
     {
-        companion = null;
-
-        if ((_companionsByZone.TryGetValue(zoneId, out Dictionary<SpawnId, Companion>? zoneCompanions))
-            && (zoneCompanions.TryGetValue(spawnId, out companion)))
+        if (_companionsByEntityId.TryGetValue(entityId, out Companion? companion))
         {
-            return true;
+            DebugLog.Write(LogChannel.Database, "CompanionRepository.GetByEntityId: entityId=" + entityId + " is '"
+                + companion.Name + "'.", defaultLoglevel);
+            return companion;
         }
 
-        DebugLog.Write(LogChannel.Database, "CompanionRepository.TryGetCompanion: no companion at zoneId=" + zoneId
-            + " spawnId=" + spawnId + ".", defaultLoglevel);
-        return false;
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // GetZoneCompanions
-    //
-    // Returns the companions held for one zone, in no particular order.
-    //
-    // zoneId:  The zone whose companions are returned.
-    //
-    // Returns a new list of the zone's companions; empty when the zone has no companion table.
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public List<Companion> GetZoneCompanions(ZoneId zoneId)
-    {
-        List<Companion> companions = new List<Companion>();
-
-        if (_companionsByZone.TryGetValue(zoneId, out Dictionary<SpawnId, Companion>? zoneCompanions))
-        {
-            companions.AddRange(zoneCompanions.Values);
-        }
-
-        DebugLog.Write(LogChannel.Database, "CompanionRepository.GetZoneCompanions: zoneId=" + zoneId
-            + " returning " + companions.Count + " companions.", defaultLoglevel);
-        return companions;
+        DebugLog.Write(LogChannel.Database, "CompanionRepository.GetByEntityId: no companion with entityId=" + entityId
+            + ".", defaultLoglevel);
+        return null;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // LinkOwner
     //
-    // Sets the given character as the owner of every companion in the zone whose owner spawn id equals the
-    // character's spawn id.  A zone with no companion table links nothing.
+    // Sets the given character as the owner of every stored companion, among the given EntityIds, whose owner spawn id
+    // equals the character's spawn id.  EntityIds with no stored companion are skipped.
     //
-    // zoneId:  The zone the character has been placed in.
-    // owner:   The placed character.  Its SpawnId is the spawn id it holds in that zone.
+    // entityIds:  The EntityIds to examine.
+    // owner:      The placed character.  Its SpawnId is the spawn id it holds in its zone.
     //
     // Returns the number of companions linked to the character.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public uint LinkOwner(ZoneId zoneId, Character owner)
+    public uint LinkOwner(List<EntityId> entityIds, Character owner)
     {
-        if (_companionsByZone.TryGetValue(zoneId, out Dictionary<SpawnId, Companion>? zoneCompanions) == false)
-        {
-            DebugLog.Write(LogChannel.Database, "CompanionRepository.LinkOwner: zoneId=" + zoneId
-                + " has no companions, nothing linked to '" + owner.Name + "'.", defaultLoglevel);
-            return 0;
-        }
-
         uint linked = 0;
-        foreach (Companion companion in zoneCompanions.Values)
+        for (int idIndex = 0; idIndex < entityIds.Count; idIndex++)
         {
+            if (!_companionsByEntityId.TryGetValue(entityIds[idIndex], out Companion? companion))
+            {
+                continue;
+            }
+
             if (companion.OwnerSpawnId != owner.SpawnId)
             {
                 continue;
@@ -187,57 +138,49 @@ public class CompanionRepository
             companion.OwnerId = owner.CharacterId;
             linked++;
 
-            DebugLog.Write(LogChannel.Database, "CompanionRepository.LinkOwner: '" + companion.Name + "' spawnId=0x"
-                + companion.SpawnId.Value.ToString("X4") + " linked to owner '" + owner.Name + "'.", defaultLoglevel);
+            DebugLog.Write(LogChannel.Database, "CompanionRepository.LinkOwner: '" + companion.Name + "' entityId="
+                + companion.EntityId + " linked to owner '" + owner.Name + "'.", defaultLoglevel);
         }
 
-        DebugLog.Write(LogChannel.Database, "CompanionRepository.LinkOwner: zoneId=" + zoneId + " linked "
-            + linked + " companions to '" + owner.Name + "'.", defaultLoglevel);
+        DebugLog.Write(LogChannel.Database, "CompanionRepository.LinkOwner: examined " + entityIds.Count
+            + " entityIds, linked " + linked + " companions to '" + owner.Name + "'.", defaultLoglevel);
         return linked;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // ClearZoneCompanions
+    // Remove
     //
-    // Removes the given zone's companion table, discarding every companion held under it.  A zone id that
-    // is None or has no table does nothing.
+    // Discards the companion stored under the given EntityId.
     //
-    // zoneId:  The zone whose companion table is removed.
+    // entityId:  The EntityId of the companion to discard.
+    //
+    // Returns true if a companion was discarded, false if none was stored under the EntityId.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public void ClearZoneCompanions(ZoneId zoneId)
+    public bool Remove(EntityId entityId)
     {
-        if (zoneId.Exists == false)
+        if (!_companionsByEntityId.Remove(entityId))
         {
-            DebugLog.Write(LogChannel.Database, "CompanionRepository.ClearZoneCompanions: zoneId is None.",
+            DebugLog.Write(LogChannel.Database, "CompanionRepository.Remove: entityId=" + entityId + " not stored.",
                 LogLevel.Warn);
-            return;
+            return false;
         }
 
-        if (_companionsByZone.TryGetValue(zoneId, out Dictionary<SpawnId, Companion>? zoneCompanions) == false)
-        {
-            DebugLog.Write(LogChannel.Database, "CompanionRepository.ClearZoneCompanions: zoneId=" + zoneId
-                + " has no table.", defaultLoglevel);
-            return;
-        }
-
-        uint discarded = (uint)zoneCompanions.Count;
-        _companionsByZone.Remove(zoneId);
-
-        DebugLog.Write(LogChannel.Database, "CompanionRepository.ClearZoneCompanions: zoneId=" + zoneId
-            + " discarded " + discarded + " companions, table removed.", defaultLoglevel);
+        DebugLog.Write(LogChannel.Database, "CompanionRepository.Remove: entityId=" + entityId + " discarded.",
+            defaultLoglevel);
+        return true;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Clear
     //
-    // Removes every zone's companion table, discarding every companion held.
+    // Discards every companion held.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void Clear()
     {
-        uint zones = (uint)_companionsByZone.Count;
-        _companionsByZone.Clear();
+        uint discarded = (uint)_companionsByEntityId.Count;
+        _companionsByEntityId.Clear();
 
-        DebugLog.Write(LogChannel.Database, "CompanionRepository.Clear: removed " + zones + " zone tables.",
+        DebugLog.Write(LogChannel.Database, "CompanionRepository.Clear: discarded " + discarded + " companions.",
             defaultLoglevel);
     }
 }

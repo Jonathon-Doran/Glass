@@ -35,6 +35,7 @@ public class InferGroupMembership : IInferOpcodes
     private const int JoinIdRepeats = 2;                 // times the named character's id appears in a join packet
     private const int ReportedGroups = 3;                // best groups returned, highest confidence first
     private const int ExampleCount = 5;                  // packet numbers reported per failed test
+    private const int MinHits = 2;                       // hits a wire value needs before it can be chosen
     private const double ReportThreshold = 0.40;         // minimum group confidence to emit a proposal
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -62,9 +63,11 @@ public class InferGroupMembership : IInferOpcodes
     // The copies of one message: member packets with the same wire value and identical
     // payload bytes.  FirstIndex is the message number of the first copy, WireValue the wire
     // value, Length the payload length, and Named the character the copies name.
-    // ReachedNamed is true when any copy arrived on the named character's own session.
-    // NextRosterLeader is true when the next roster packet on the first copy's session holds
-    // the named character's name at least RosterNameRepeats times.
+    // ReachedNamed is true when any copy arrived on the named character's own session, and
+    // ReachedIndex is then the message number of the first such copy; ReachedIndex has no
+    // meaning when ReachedNamed is false.  NextRosterLeader is true when the next roster
+    // packet on the named character's session after ReachedIndex holds the named
+    // character's name at least RosterNameRepeats times.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private class MemberEvent
     {
@@ -73,6 +76,7 @@ public class InferGroupMembership : IInferOpcodes
         public int Length;
         public Character? Named;
         public bool ReachedNamed;
+        public uint ReachedIndex;
         public bool NextRosterLeader;
     }
 
@@ -214,7 +218,7 @@ public class InferGroupMembership : IInferOpcodes
     // A packet is a hit when some known character's name occurs in it at least
     // RosterNameRepeats times.  The first GroupIdLength bytes of each hit, read as a
     // little-endian value, are added to the group ids when not 0.  The confidence is
-    // (hits + 1) / (tests + 2), or 0 when the wire value has no packets in the list.
+    // hits / tests, or 0 when the wire value has no packets in the list.
     //
     // wireValue:   The wire value taken as the roster.
     // packets:     The unaccepted zone-to-client packets.
@@ -287,7 +291,7 @@ public class InferGroupMembership : IInferOpcodes
             }
         }
 
-        double confidence = tests > 0 ? (hits + 1.0) / (tests + 2.0) : 0.0;
+        double confidence = tests > 0 ? (double)hits / tests : 0.0;
         evidence = hits + "/" + tests + " packets with a name twice"
             + (misses.Count > 0 ? ", missing at " + string.Join(", ", misses) : string.Empty);
 
@@ -394,7 +398,8 @@ public class InferGroupMembership : IInferOpcodes
     //
     // Groups member packets into events: packets with the same wire value and identical
     // payload bytes are copies of one event.  An event reached the named character when any
-    // of its copies arrived on that character's own session.  Each member's payload is read
+    // of its copies arrived on that character's own session, and the message number of the
+    // first such copy is recorded as the event's ReachedIndex.  Each member's payload is read
     // from the catalog by message number; a member whose packet cannot be read is left out.
     //
     // catalog:  The session's cataloged packets.
@@ -436,6 +441,7 @@ public class InferGroupMembership : IInferOpcodes
             if (member.OnNamedSession && !memberEvent.ReachedNamed)
             {
                 memberEvent.ReachedNamed = true;
+                memberEvent.ReachedIndex = member.PacketIndex;
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "InferGroupMembership.BuildEvents: event at " + memberEvent.FirstIndex + " wireValue "
                     + memberEvent.WireValue + " reached '" + member.Named?.Name + "' at " + member.PacketIndex,
@@ -448,15 +454,17 @@ public class InferGroupMembership : IInferOpcodes
             defaultLoglevel);
         return events;
     }
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // MarkRosterLeaders
     //
-    // Sets NextRosterLeader on each event from the next roster packet on its first copy's
-    // session.  The packets are walked once in arrival order: an event's first copy places
-    // the event in waiting on that copy's session, and a roster packet resolves every event
+    // Sets NextRosterLeader on each event that reached its named character, from the next
+    // roster packet on that character's own session after the copy that reached it.  The
+    // packets are walked once in arrival order: the packet at an event's ReachedIndex places
+    // the event in waiting on that packet's session, and a roster packet resolves every event
     // waiting on its session, marking it when the event's character's name occurs in the
-    // roster at least RosterNameRepeats times.  An event with no later roster on its session
-    // is left unmarked.
+    // roster at least RosterNameRepeats times.  An event that did not reach its named
+    // character, or that has no later roster on that character's session, is left unmarked.
     //
     // packets:          The unaccepted zone-to-client packets, in arrival order.
     // rosterWireValue:  The wire value taken as the roster.
@@ -465,10 +473,20 @@ public class InferGroupMembership : IInferOpcodes
     private static void MarkRosterLeaders(List<CatalogedPacket> packets, OpcodeValue rosterWireValue,
         List<MemberEvent> events)
     {
-        Dictionary<uint, MemberEvent> byFirstIndex = new Dictionary<uint, MemberEvent>();
+        Dictionary<uint, MemberEvent> byReachedIndex = new Dictionary<uint, MemberEvent>();
+        int notReached = 0;
         for (int eventIndex = 0; eventIndex < events.Count; eventIndex++)
         {
-            byFirstIndex[events[eventIndex].FirstIndex] = events[eventIndex];
+            MemberEvent memberEvent = events[eventIndex];
+            if (!memberEvent.ReachedNamed)
+            {
+                notReached++;
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "InferGroupMembership.MarkRosterLeaders: event at " + memberEvent.FirstIndex + " wireValue "
+                    + memberEvent.WireValue + " did not reach its named character, not resolved", defaultLoglevel);
+                continue;
+            }
+            byReachedIndex[memberEvent.ReachedIndex] = memberEvent;
         }
 
         Dictionary<Session, List<MemberEvent>> waiting = new Dictionary<Session, List<MemberEvent>>();
@@ -481,7 +499,7 @@ public class InferGroupMembership : IInferOpcodes
             Session session = packet.Metadata.Session;
 
             MemberEvent? memberEvent;
-            if (byFirstIndex.TryGetValue(packet.PacketIndex, out memberEvent))
+            if (byReachedIndex.TryGetValue(packet.PacketIndex, out memberEvent))
             {
                 List<MemberEvent>? sessionWaiting;
                 if (!waiting.TryGetValue(session, out sessionWaiting))
@@ -526,25 +544,29 @@ public class InferGroupMembership : IInferOpcodes
 
                 DebugLog.Write(LogChannel.InferenceDebug,
                     "InferGroupMembership.MarkRosterLeaders: event at " + pending.FirstIndex + " wireValue "
-                    + pending.WireValue + " '" + pending.Named.Name + "' roster at " + packet.PacketIndex
+                    + pending.WireValue + " '" + pending.Named.Name + "' reached at " + pending.ReachedIndex
+                    + ", roster at " + packet.PacketIndex
                     + (pending.NextRosterLeader ? " names it leader" : " does not name it leader"),
                     defaultLoglevel);
             }
             rosterWaiting.Clear();
         }
 
+        int reached = events.Count - notReached;
         DebugLog.Write(LogChannel.InferenceDebug,
             "InferGroupMembership.MarkRosterLeaders: roster " + rosterWireValue + ", " + events.Count + " events, "
-            + resolved + " followed by a roster, " + matched + " named leader, "
-            + (events.Count - resolved) + " with no later roster", defaultLoglevel);
+            + notReached + " not reaching the named character, " + resolved + " followed by a roster, " + matched
+            + " named leader, " + (reached - resolved) + " with no later roster", defaultLoglevel);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // ScoreMembers
     //
     // Chooses the join, leader and leave wire values for one roster candidate and builds the
-    // group proposal.  Every share is scored as (hits + 1) / (tests + 2), and only a wire
-    // value with at least one hit is chosen; a member with no choice has confidence 0.
+    // group proposal.  Every share is scored as hits / tests, and only a wire value with at
+    // least MinHits hits can be chosen.  When two or more wire values share the best score,
+    // none is chosen and the tied wire values are named in the member's evidence.  A member
+    // with no choice has confidence 0.
     //
     // The join is chosen first, over member packets: a hit is a packet on the named
     // character's own session holding that character's id at least JoinIdRepeats times.  The
@@ -568,27 +590,57 @@ public class InferGroupMembership : IInferOpcodes
     private static InferenceProposal ScoreMembers(OpcodeValue rosterWireValue, double rosterConfidence,
         string rosterEvidence, List<MemberPacket> members, List<MemberEvent> events)
     {
-        static OpcodeValue BestShare(Dictionary<OpcodeValue, int> tests, Dictionary<OpcodeValue, int> hits,
-            out int bestHits, out int bestTests)
+        static OpcodeValue BestShare(string memberName, Dictionary<OpcodeValue, int> tests,
+            Dictionary<OpcodeValue, int> hits, out int bestHits, out int bestTests, out string tied)
         {
             OpcodeValue winner = OpcodeValue.None;
             double bestShare = 0.0;
             bestHits = 0;
             bestTests = 0;
+            List<OpcodeValue> best = new List<OpcodeValue>();
 
             foreach (KeyValuePair<OpcodeValue, int> entry in hits)
             {
+                if (entry.Value < MinHits)
+                {
+                    DebugLog.Write(LogChannel.InferenceDebug,
+                        "InferGroupMembership.ScoreMembers.BestShare: " + memberName + " wireValue " + entry.Key
+                        + " has " + entry.Value + " hits, below " + MinHits + ", not eligible", defaultLoglevel);
+                    continue;
+                }
+
                 int testCount = tests[entry.Key];
-                double share = (entry.Value + 1.0) / (testCount + 2.0);
+                double share = (double)entry.Value / testCount;
                 if (share > bestShare)
                 {
                     winner = entry.Key;
                     bestShare = share;
                     bestHits = entry.Value;
                     bestTests = testCount;
+                    best.Clear();
+                    best.Add(entry.Key);
+                }
+                else if (share == bestShare)
+                {
+                    best.Add(entry.Key);
                 }
             }
 
+            if (best.Count > 1)
+            {
+                tied = string.Join(", ", best);
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "InferGroupMembership.ScoreMembers.BestShare: " + memberName + " tie at share "
+                    + bestShare.ToString("F2") + " between " + tied + ", none chosen", LogLevel.Warn);
+                bestHits = 0;
+                bestTests = 0;
+                return OpcodeValue.None;
+            }
+
+            tied = string.Empty;
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "InferGroupMembership.ScoreMembers.BestShare: " + memberName + " chose " + winner + " at "
+                + bestHits + "/" + bestTests, defaultLoglevel);
             return winner;
         }
 
@@ -607,7 +659,8 @@ public class InferGroupMembership : IInferOpcodes
 
         int joinVotes;
         int joinCount;
-        OpcodeValue join = BestShare(joinTests, joinHits, out joinVotes, out joinCount);
+        string joinTied;
+        OpcodeValue join = BestShare(JoinOpcodeName, joinTests, joinHits, out joinVotes, out joinCount, out joinTied);
 
         int joinLength = -1;
         List<uint> joinMissing = new List<uint>();
@@ -634,7 +687,7 @@ public class InferGroupMembership : IInferOpcodes
         if (!join.Exists)
         {
             DebugLog.Write(LogChannel.InferenceDebug,
-                "InferGroupMembership.ScoreMembers: roster " + rosterWireValue + " has no join hit, length not tested",
+                "InferGroupMembership.ScoreMembers: roster " + rosterWireValue + " has no join chosen, length not tested",
                 LogLevel.Warn);
         }
 
@@ -658,7 +711,9 @@ public class InferGroupMembership : IInferOpcodes
 
         int leaderVotes;
         int leaderCount;
-        OpcodeValue leader = BestShare(leaderTests, leaderHits, out leaderVotes, out leaderCount);
+        string leaderTied;
+        OpcodeValue leader = BestShare(LeaderOpcodeName, leaderTests, leaderHits, out leaderVotes, out leaderCount,
+            out leaderTied);
 
         // leave, over events of the remaining wire values
         Dictionary<OpcodeValue, int> leaveTests = new Dictionary<OpcodeValue, int>();
@@ -684,7 +739,9 @@ public class InferGroupMembership : IInferOpcodes
 
         int leaveVotes;
         int leaveCount;
-        OpcodeValue leave = BestShare(leaveTests, leaveHits, out leaveVotes, out leaveCount);
+        string leaveTied;
+        OpcodeValue leave = BestShare(LeaveOpcodeName, leaveTests, leaveHits, out leaveVotes, out leaveCount,
+            out leaveTied);
 
         List<uint> leaderMissing = new List<uint>();
         List<uint> leaveMissing = new List<uint>();
@@ -706,9 +763,9 @@ public class InferGroupMembership : IInferOpcodes
             }
         }
 
-        double joinConfidence = join.Exists ? (joinVotes + 1.0) / (joinCount + 2.0) : 0.0;
-        double leaderConfidence = leader.Exists ? (leaderVotes + 1.0) / (leaderCount + 2.0) : 0.0;
-        double leaveConfidence = leave.Exists ? (leaveVotes + 1.0) / (leaveCount + 2.0) : 0.0;
+        double joinConfidence = join.Exists ? (double)joinVotes / joinCount : 0.0;
+        double leaderConfidence = leader.Exists ? (double)leaderVotes / leaderCount : 0.0;
+        double leaveConfidence = leave.Exists ? (double)leaveVotes / leaveCount : 0.0;
 
         PatchLevel level = GlassContext.CurrentPatchLevel;
         InferenceProposal proposal = new InferenceProposal();
@@ -729,6 +786,7 @@ public class InferGroupMembership : IInferOpcodes
             Confidence = joinConfidence,
             Evidence = joinVotes + "/" + joinCount + " packets on the named session with its id twice"
                 + (joinMissing.Count > 0 ? ", missing at " + string.Join(", ", joinMissing) : string.Empty)
+                + (joinTied.Length > 0 ? ", tied between " + joinTied : string.Empty)
         });
         proposal.Assignments.Add(new OpcodeAssignment
         {
@@ -738,6 +796,7 @@ public class InferGroupMembership : IInferOpcodes
             Confidence = leaderConfidence,
             Evidence = leaderVotes + "/" + leaderCount + " events reaching the named character and named leader by the next roster"
                 + (leaderMissing.Count > 0 ? ", missing at " + string.Join(", ", leaderMissing) : string.Empty)
+                + (leaderTied.Length > 0 ? ", tied between " + leaderTied : string.Empty)
         });
         proposal.Assignments.Add(new OpcodeAssignment
         {
@@ -747,6 +806,7 @@ public class InferGroupMembership : IInferOpcodes
             Confidence = leaveConfidence,
             Evidence = leaveVotes + "/" + leaveCount + " events not reaching the named character"
                 + (leaveMissing.Count > 0 ? ", missing at " + string.Join(", ", leaveMissing) : string.Empty)
+                + (leaveTied.Length > 0 ? ", tied between " + leaveTied : string.Empty)
         });
 
         proposal.Confidence = Math.Min(Math.Min(rosterConfidence, joinConfidence),

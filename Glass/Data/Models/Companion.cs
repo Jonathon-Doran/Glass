@@ -17,7 +17,6 @@ namespace Glass.Data.Models;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class Companion : Entity
 {
-    public string Name = string.Empty;
     public ushort Level;
     public uint Class;
     public uint Model;

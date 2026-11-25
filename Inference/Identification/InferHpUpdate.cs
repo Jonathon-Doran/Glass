@@ -208,7 +208,7 @@ public class InferHpUpdate : IInferOpcodes
             return null;
         }
         SpawnId spawnId = (SpawnId)(uint)BinaryPrimitives.ReadUInt16LittleEndian(payload);
-        return CharacterRepository.Instance.GetBySpawnId(zoneId, spawnId);
+        return ZoneRepository.Instance.LookupEntity(zoneId, spawnId) as Character;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -218,13 +218,13 @@ public class InferHpUpdate : IInferOpcodes
     // stored MaxHP.
     //
     // payload:    The bytes to test.
-    // character:  The character the update concerns; its MaxHP must have a value.
+    // character:  The character the update concerns; its MaxHP must not be 0.
     //
     // Returns:  True when a payload value equals the stored MaxHP.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private static bool PassesMaxHp(ReadOnlySpan<byte> payload, Character character)
     {
-        ulong expectedMaxHp = character.MaxHP!.Value;
+        ulong expectedMaxHp = character.MaxHP;
 
         for (int offset = 0; offset + 4 <= payload.Length; offset++)
         {
@@ -339,7 +339,7 @@ public class InferHpUpdate : IInferOpcodes
                 wire.SelfSessions.Add(session);
             }
 
-            if (character.MaxHP.HasValue == false)
+            if (character.MaxHP == 0)
             {
                 continue;
             }
@@ -356,7 +356,7 @@ public class InferHpUpdate : IInferOpcodes
                     DebugLog.Write(LogChannel.InferenceDebug,
                         "InferHpUpdate.ExamineWireValue: wireValue=" + wireValue + " packet "
                         + bucket[i].PacketIndex + " session " + session.SessionId + " character "
-                        + character.Name + " fails max HP test, expected stored " + character.MaxHP.Value,
+                        + character.Name + " fails max HP test, expected stored " + character.MaxHP,
                         defaultLoglevel);
                 }
             }

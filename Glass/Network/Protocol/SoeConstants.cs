@@ -40,6 +40,7 @@ public static class SoeConstants
     public const ushort OP_Ack = 0x1500;
     public const ushort OP_AppCombined = 0x1900;
     public const ushort OP_AckAfterDisconnect = 0x1D00;
+    public const ushort OP_Unidentified1E = 0x1E00;
 
     // ---------------------------------------------------------------------------
     // Protocol flags

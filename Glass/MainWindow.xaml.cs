@@ -146,7 +146,7 @@ public partial class MainWindow : Window
         GlassConsoleLogHandler consoleHandler = new GlassConsoleLogHandler(ConsoleOutput, ConsoleScroller);
         DebugLog.AddHandler(LogSink.GlassConsole, consoleHandler);
 
-        DebugLog.SetMinimumLevel(LogLevel.Trace);
+        DebugLog.SetMinimumLevel(LogLevel.Info);
 
         DebugLog.Write(LogChannel.General, "MainWindow: logging initialized", LogLevel.Trace);
     }

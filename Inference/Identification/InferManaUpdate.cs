@@ -206,7 +206,7 @@ public class InferManaUpdate : IInferOpcodes
             return null;
         }
         SpawnId spawnId = (SpawnId)(uint)BinaryPrimitives.ReadUInt16LittleEndian(payload);
-        return CharacterRepository.Instance.GetBySpawnId(zoneId, spawnId);
+        return ZoneRepository.Instance.LookupEntity(zoneId, spawnId) as Character;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////

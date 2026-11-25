@@ -15,7 +15,7 @@ namespace Glass.Data.Repositories;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 public class EntityRepository
 {
-    private const LogLevel defaultLoglevel = LogLevel.Trace;
+    private const LogLevel defaultLoglevel = LogLevel.Info;
 
     private static EntityRepository? _instance = null;
 
@@ -92,5 +92,84 @@ public class EntityRepository
 
         DebugLog.Write(LogChannel.Database, "EntityRepository.IssueId: issued " + id + ".", defaultLoglevel);
         return id;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Remove
+    //
+    // Discards the entity stored under the given EntityId from the repository selected by the EntityId's type.  Mobs and
+    // companions (pets, familiars, mercenaries, warders) can be discarded.  Characters are persistent and are not
+    // discarded; an EntityId of any other type is rejected.
+    //
+    // entityId:  The EntityId of the entity to discard.
+    //
+    // Returns true if an entity was discarded, false otherwise.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public bool Remove(EntityId entityId)
+    {
+        switch (entityId.Type)
+        {
+            case EntityType.Mob:
+                return MobRepository.Instance.Remove(entityId);
+
+            case EntityType.Pet:
+            case EntityType.Familiar:
+            case EntityType.Mercenary:
+            case EntityType.Warder:
+                return CompanionRepository.Instance.Remove(entityId);
+
+            default:
+                DebugLog.Write(LogChannel.Database, "EntityRepository.Remove: entityId=" + entityId + " type "
+                    + entityId.Type + " is not discarded.", LogLevel.Warn);
+                return false;
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Lookup
+    //
+    // Finds the entity with the given EntityId.  The identifier's type selects the repository that holds it: a
+    // character, a mob, or a companion (pet, familiar, mercenary or warder).  Mount, corpse and aura entities have no
+    // repository, and an identifier that is None identifies nothing; in those cases nothing is found.
+    //
+    // entityId:  The EntityId of the entity.
+    //
+    // Returns the entity, or null when none is found.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public Entity? Lookup(EntityId entityId)
+    {
+        Entity? entity;
+
+        switch (entityId.Type)
+        {
+            case EntityType.Character:
+                entity = CharacterRepository.Instance.GetByEntityId(entityId);
+                break;
+
+            case EntityType.Mob:
+                entity = MobRepository.Instance.GetByEntityId(entityId);
+                break;
+
+            case EntityType.Pet:
+            case EntityType.Familiar:
+            case EntityType.Mercenary:
+            case EntityType.Warder:
+                entity = CompanionRepository.Instance.GetByEntityId(entityId);
+                break;
+
+            default:
+                DebugLog.Write(LogChannel.Database, "EntityRepository.Lookup: entityId=" + entityId + " of type "
+                    + entityId.Type + " has no repository, nothing found.", defaultLoglevel);
+                return null;
+        }
+
+        if (entity == null)
+        {
+            DebugLog.Write(LogChannel.Database, "EntityRepository.Lookup: entityId=" + entityId + " not found.",
+                defaultLoglevel);
+            return null;
+        }
+
+        return entity;
     }
 }

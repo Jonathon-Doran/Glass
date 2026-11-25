@@ -35,6 +35,7 @@ public class InferTargetSequence : IInferOpcodes
     private const int ReportedGroups = 3;                // best groups returned, highest confidence first
     private const int BuffListMinLength = 11;            // smallest buff list payload seen
     private const int CountedLengthLimit = 100;          // packets longer than this are left out of the candidate tallies
+    private const double ReportThreshold = 0.40;         // minimum group confidence to emit a proposal
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // TargetWindow
@@ -59,11 +60,11 @@ public class InferTargetSequence : IInferOpcodes
     // Infer
     //
     // Builds each zone session's list of unaccepted packets, finds the target windows, groups
-    // them by request wire value, and scores one group proposal per request wire value.  The
-    // best ReportedGroups groups are returned, highest confidence first.  The ForcedRequest
-    // group, when it has windows and is not among them, is added after them.  When the best
-    // group lacks a wire value for any member, the outcome is Incomplete.  The counts at each
-    // stage are added to the result's messages.
+    // them by request wire value, and scores one group proposal per request wire value.
+    // Groups below ReportThreshold are dropped, and the best ReportedGroups of the rest are
+    // returned, highest confidence first.  When no group reaches the threshold, no proposal
+    // is returned.  When the best group lacks a wire value for any member, the outcome is
+    // Incomplete.  The counts at each stage are added to the result's messages.
     //
     // catalog:  The session's cataloged packets.
     //
@@ -115,7 +116,23 @@ public class InferTargetSequence : IInferOpcodes
         foreach (KeyValuePair<OpcodeValue, List<TargetWindow>> entry in byRequest)
         {
             InferenceProposal group = ScoreGroup(entry.Key, entry.Value, lists);
+            if (group.Confidence < ReportThreshold)
+            {
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "InferTargetSequence.Infer: request " + entry.Key + " group "
+                    + group.Confidence.ToString("F3") + " below threshold, skipping", defaultLoglevel);
+                continue;
+            }
             groups.Add(group);
+        }
+
+        result.Messages.Add(groups.Count + " groups at threshold");
+        if (groups.Count == 0)
+        {
+            DebugLog.Write(LogChannel.InferenceDebug,
+                "InferTargetSequence.Infer: " + byRequest.Count + " request candidates, none at threshold",
+                LogLevel.Warn);
+            return result;
         }
 
         groups.Sort((a, b) => b.Confidence.CompareTo(a.Confidence));
@@ -132,6 +149,9 @@ public class InferTargetSequence : IInferOpcodes
             {
                 result.Outcome = IdentificationOutcome.Incomplete;
                 result.Messages.Add("best group lacks " + best.Assignments[assignmentIndex].OpcodeName);
+                DebugLog.Write(LogChannel.InferenceDebug,
+                    "InferTargetSequence.Infer: best group lacks " + best.Assignments[assignmentIndex].OpcodeName,
+                    LogLevel.Warn);
             }
         }
 
@@ -488,7 +508,7 @@ public class InferTargetSequence : IInferOpcodes
     // ScoreGroup
     //
     // Builds the group proposal for one request wire value from the windows that follow its
-    // packets.  Every share below is scored as (hits + 1) / (tests + 2), so a share built on
+    // packets.  Every share below is scored as hits / tests; a share with no tests is 0.
     // few tests scores lower than the same share built on many; a share with no tests is 0.
     // The buff list is the most-voted buff list wire value across the windows that are not
     // clears, and its confidence is the share of those windows holding it.  The close is the
@@ -549,8 +569,8 @@ public class InferTargetSequence : IInferOpcodes
             }
         }
 
-        double buffListConfidence = targetWindows > 0 ? (buffListVotes + 1.0) / (targetWindows + 2.0) : 0.0;
-        double closeConfidence = windows.Count > 0 ? (closeVotes + 1.0) / (windows.Count + 2.0) : 0.0;
+        double buffListConfidence = targetWindows > 0 ? (double)buffListVotes / targetWindows : 0.0;
+        double closeConfidence = windows.Count > 0 ? (double)closeVotes / windows.Count : 0.0;
 
         int requests = 0;
         int paired = 0;
@@ -562,7 +582,7 @@ public class InferTargetSequence : IInferOpcodes
             CountPairs(lists, requestWireValue, close, out requests, out paired, unpaired);
             if (requests > 0)
             {
-                requestConfidence = (paired + 1.0) / (requests + 2.0);
+                requestConfidence = (double)paired / requests;
                 pairText = paired + "/" + requests + " requests followed by close";
                 if (unpaired.Count > 0)
                 {

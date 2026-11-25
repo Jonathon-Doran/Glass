@@ -37,6 +37,7 @@ public class InferenceScanner
         _handlers.Add(new InferClientUpdate());
         _handlers.Add(new InferManaUpdate());
         _handlers.Add(new InferCastRequest());
+        _handlers.Add(new InferCastBegin());
         _handlers.Add(new InferCastResolution());
         _handlers.Add(new InferHpUpdate());
         _handlers.Add(new InferTargetSequence());

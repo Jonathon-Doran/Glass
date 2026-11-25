@@ -4,10 +4,7 @@ using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
-using System;
-using System.Buffers.Binary;
-using System.Runtime.InteropServices;
-using System.Text;
+using Glass.World;
 
 namespace Glass.Network.Handlers;
 
@@ -73,10 +70,10 @@ public class HandleHpUpdate : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////
     // HandleZoneToClient
     //
-    // Stores the current and maximum HP from an HP update into the character the update
-    // concerns, found by its spawn id in the session's zone.  When that character is the
-    // session's own character, the update omits the worn HP bonus, so the bonus is added to
-    // both values before storing; otherwise the values are stored as received.
+    // Stores the current and maximum HP from an HP update into the entity the update concerns,
+    // found by its spawn id in the session's zone.  When that entity is the session's own
+    // character, the update omits the worn HP bonus, so the bonus is added to both values
+    // before storing; any other entity's values are stored as received.
     //
     // data:      The payload of the update.
     // metadata:  The packet's metadata, carrying its session and receiving character.
@@ -97,23 +94,28 @@ public class HandleHpUpdate : OpcodeHandler
                 return;
             }
 
-            Character? character = CharacterRepository.Instance.GetBySpawnId(metadata.Session.ZoneId, spawnId);
-            if (character == null)
+            Entity? entity = ZoneRepository.Instance.LookupEntity(metadata.Session.ZoneId, spawnId);
+            if (entity == null)
             {
-                DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleZoneToClient: no character at zoneId="
-                    + metadata.Session.ZoneId + " spawnId=" + spawnId + "; fields not stored", LogLevel.Warn);
+                DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleZoneToClient: message " + metadata.MessageId
+                    + " to '" + metadata.CharacterName + "' names spawnId=" + spawnId + " (0x"
+                    + spawnId.Value.ToString("X4") + ") in zoneId=" + metadata.Session.ZoneId
+                    + ", which matches no entity; fields not stored", LogLevel.Warn);
                 return;
             }
 
-            if (ReferenceEquals(character, metadata.Character) == false)
+            if (ReferenceEquals(entity, metadata.Character) == false)
             {
-                character.MaxHP = wireMaxHP;
-                character.CurrentHP = wireCurrentHP;
-                DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleZoneToClient: '" + character.Name
-                    + "' reported to another character, stored as received: current " + wireCurrentHP
-                    + ", max " + wireMaxHP, LogLevel.Trace);
+                entity.MaxHP = wireMaxHP;
+                entity.CurrentHP = wireCurrentHP;
+                DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleZoneToClient: '" + entity.Name
+                    + "' entityId=" + entity.EntityId + " reported to '" + metadata.CharacterName
+                    + "', stored as received: current " + wireCurrentHP + ", max " + wireMaxHP, LogLevel.Trace);
                 return;
             }
+
+            Character character = (Character)entity;
+
             /*
             DebugLog.Write(LogChannel.DataLogging, "HP," + metadata.MessageId + ","
                 + metadata.Timestamp.ToString("HH:mm:ss.fff") + "," + character.Name + ","

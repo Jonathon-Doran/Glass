@@ -15,7 +15,6 @@ using Glass.World;
 public class Spawn : Entity
 {
     public MobId MobId;
-    public string? Name;
     public Position? CurrentPosition = null;
     public float X;
     public float Y;

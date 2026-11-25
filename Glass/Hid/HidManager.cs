@@ -153,7 +153,7 @@ public class HidManager
     {
         if (_running)
         {
-            DebugLog.Write(LogChannel.Input, "HidManager.Start: already running, ignoring.", LogLevel.Warn);
+            DebugLog.Write(LogChannel.Input, "HidManager.Start: already running, ignoring.", LogLevel.Trace);
             return;
         }
 
@@ -198,7 +198,7 @@ public class HidManager
     {
         if (!_running)
         {
-            DebugLog.Write(LogChannel.Input, "HidManager.Stop: not running, ignoring.", LogLevel.Warn);
+            DebugLog.Write(LogChannel.Input, "HidManager.Stop: not running, ignoring.", LogLevel.Trace);
             return;
         }
 

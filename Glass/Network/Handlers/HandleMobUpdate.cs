@@ -106,13 +106,28 @@ public class HandleMobUpdate : OpcodeHandler
 
             ZoneId wireZone = metadata.Session.ZoneId;
 
-            if (MobRepository.Instance.TryGetBySpawnId(wireZone, spawnId, out Spawn? spawn))
+            Entity? entity = ZoneRepository.Instance.LookupEntity(wireZone, spawnId);
+            if (entity == null)
             {
-                spawn.X = xPos;
-                spawn.Y = yPos;
-                spawn.Z = zPos;
-                spawn.Observed = metadata.Timestamp;
+                DebugLog.Write(LogChannel.Opcodes, "HandleMobUpdate.HandleZoneToClient: message " + metadata.MessageId
+                    + " names spawnId=" + spawnId + " (0x" + spawnId.Value.ToString("X4") + ") in zoneId=" + wireZone
+                    + ", which matches no entity; position not stored.", LogLevel.Trace);
+                return;
             }
+
+            Spawn? spawn = entity as Spawn;
+            if (spawn == null)
+            {
+                DebugLog.Write(LogChannel.Opcodes, "HandleMobUpdate.HandleZoneToClient: message " + metadata.MessageId
+                    + " names '" + entity.Name + "' entityId=" + entity.EntityId + ", which is not a mob; "
+                    + "position not stored.", LogLevel.Trace);
+                return;
+            }
+
+            spawn.X = xPos;
+            spawn.Y = yPos;
+            spawn.Z = zPos;
+            spawn.Observed = metadata.Timestamp;
         }
         finally
         {

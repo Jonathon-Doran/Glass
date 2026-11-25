@@ -1,5 +1,6 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Network.Client;
 using Glass.Network.Protocol;
@@ -237,7 +238,7 @@ public class InferClientUpdate : IInferOpcodes
         {
             return false;
         }
-        var character = CharacterRepository.Instance.GetBySpawnId(session.ZoneId, spawnId);
+        Character? character = ZoneRepository.Instance.LookupEntity(session.ZoneId, spawnId) as Character;
         return character != null && ReferenceEquals(character, session.Character);
     }
 

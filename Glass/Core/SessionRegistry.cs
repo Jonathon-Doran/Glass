@@ -245,23 +245,25 @@ public class SessionRegistry
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // ZoneFromMetadata
     //
-    // Finds the connection associated with metadata, then extracts the zone from the character
-    // associated with the connection.
+    // Returns the zone of the session a packet arrived on.  A zone session serves one zone, set
+    // when the player profile arrives on it, so packets that preceded the profile on the same
+    // session resolve to that zone as well.  A session whose zone is not known yields None.
     //
     // metadata:  Packet metadata from a received packet
+    //
+    // Returns the session's zone, or ZoneId.None when it is not known.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public ZoneId ZoneFromMetadata(PacketMetadata metadata)
     {
-        // Note:  If the connection does not exist it will be created.  There is no possibility of null.
-        Character? character = metadata.Character;
-
-        if (character == null)
+        ZoneId zoneId = metadata.Session.ZoneId;
+        if (!zoneId.Exists)
         {
-            DebugLog.Write(LogChannel.Opcodes, "ZoneFromMetadata: metadata cannot be "
-                + "mapped to a character.", LogLevel.Warn);
-            return ZoneId.None;
+            DebugLog.Write(LogChannel.Opcodes, "SessionRegistry.ZoneFromMetadata: message " + metadata.MessageId
+                + " opcode " + metadata.WireValue + " on stream " + StreamNames[metadata.Channel] + ", session "
+                + metadata.Session.SessionId + " local port " + metadata.LocalPort + " has no zone.",
+                LogLevel.Trace);
         }
-        return character.ZoneId;
+        return zoneId;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -473,7 +475,8 @@ public class SessionRegistry
             {
                 DebugLog.Write(LogChannel.Sessions, "SessionRegistry.ZoneSessionClosing: session " + session.SessionId
                     + " was the last in zoneId=" + session.ZoneId + ", saving zone.", LogLevel.Info);
-                MobRepository.Instance.SaveZoneMobs(session.ZoneId);
+                List<EntityId> mobIds = ZoneRepository.Instance.GetZoneEntityIds(session.ZoneId, EntityType.Mob);
+                MobRepository.Instance.SaveMobs(mobIds);
             }
         }
 
