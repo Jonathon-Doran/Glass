@@ -193,8 +193,6 @@ public class MobRepository
     {
         if (_spawnsByEntityId.TryGetValue(entityId, out Spawn? spawn))
         {
-            DebugLog.Write(LogChannel.Database, "MobRepository.GetByEntityId: entityId=" + entityId + " is '"
-                + spawn.Name + "' zoneId=" + spawn.ZoneId + " spawnId=" + spawn.SpawnId + ".", defaultLoglevel);
             return spawn;
         }
 

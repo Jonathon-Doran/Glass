@@ -9,16 +9,18 @@ namespace Glass.Data.Repositories;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // CompanionRepository
 //
-// In-memory repository of the companions seen this run, held per zone in a dictionary keyed by spawn id.
-// Nothing is read from or written to the database.
+// In-memory repository of the companions seen this run, held in a dictionary keyed by EntityId.  A companion with
+// no known owner is also held as an orphan until its owner is placed.  The EntityId of each owner's companion of each
+// type is remembered, so a companion keeps its EntityId when its owner changes zones.
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 public class CompanionRepository
 {
-    private const LogLevel defaultLoglevel = LogLevel.Trace;
+    private const LogLevel defaultLoglevel = LogLevel.Info;
 
     private static CompanionRepository? _instance = null;
 
-    private readonly Dictionary<ZoneId, Dictionary<SpawnId, Companion>> _companionsByZone;
+    private readonly List<Companion> _orphans;
+    private readonly Dictionary<EntityId, Dictionary<EntityType, EntityId>> _companionIdsByOwner;
     private readonly Dictionary<EntityId, Companion> _companionsByEntityId;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -45,8 +47,9 @@ public class CompanionRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private CompanionRepository()
     {
-        _companionsByZone = new Dictionary<ZoneId, Dictionary<SpawnId, Companion>>();
         _companionsByEntityId = new Dictionary<EntityId, Companion>();
+        _orphans = new List<Companion>();
+        _companionIdsByOwner = new Dictionary<EntityId, Dictionary<EntityType, EntityId>>();
         DebugLog.Write(LogChannel.Database, "CompanionRepository: singleton instance created with an empty table.",
             defaultLoglevel);
     }
@@ -55,8 +58,8 @@ public class CompanionRepository
     // AddCompanion
     //
     // Stores a companion under its EntityId.  A companion with no EntityId is issued a new EntityId of the given type
-    // for this run.  A companion whose EntityId is already stored is rejected and the stored companion is left
-    // unchanged.
+    // for this run. A companion whose EntityId is already stored is rejected and the stored companion is left
+    // unchanged. A stored companion that has no owner yet is held as an orphan until it is adopted.
     //
     // companion:  The companion to store.  ZoneId, SpawnId and any known field values are set by the caller.
     // type:       The kind of companion, used as the type of an issued EntityId.
@@ -79,6 +82,14 @@ public class CompanionRepository
 
         _companionsByEntityId[companion.EntityId] = companion;
 
+        if (companion.Owner == null)
+        {
+            _orphans.Add(companion);
+            DebugLog.Write(LogChannel.Database, "CompanionRepository.AddCompanion: '" + companion.Name
+                + "' entityId=" + companion.EntityId + " has no owner, held as an orphan for owner spawnId="
+                + companion.OwnerSpawnId + ".", defaultLoglevel);
+        }
+
         DebugLog.Write(LogChannel.Database, "CompanionRepository.AddCompanion: stored '" + companion.Name
             + "' entityId=" + companion.EntityId + " zoneId=" + companion.ZoneId + " spawnId=" + companion.SpawnId
             + ", owner spawnId=" + companion.OwnerSpawnId + ".", defaultLoglevel);
@@ -98,8 +109,6 @@ public class CompanionRepository
     {
         if (_companionsByEntityId.TryGetValue(entityId, out Companion? companion))
         {
-            DebugLog.Write(LogChannel.Database, "CompanionRepository.GetByEntityId: entityId=" + entityId + " is '"
-                + companion.Name + "'.", defaultLoglevel);
             return companion;
         }
 
@@ -111,40 +120,99 @@ public class CompanionRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // LinkOwner
     //
-    // Sets the given character as the owner of every stored companion, among the given EntityIds, whose owner spawn id
-    // equals the character's spawn id.  EntityIds with no stored companion are skipped.
+    // Adopts every orphan whose owner spawn id and zone match the given character's placement.
     //
-    // entityIds:  The EntityIds to examine.
-    // owner:      The placed character.  Its SpawnId is the spawn id it holds in its zone.
+    // owner:  The placed character.  Its ZoneId and SpawnId are its current placement.
     //
-    // Returns the number of companions linked to the character.
+    // Returns the number of companions adopted by the character.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public uint LinkOwner(List<EntityId> entityIds, Character owner)
+    public uint LinkOwner(Character owner)
     {
-        uint linked = 0;
-        for (int idIndex = 0; idIndex < entityIds.Count; idIndex++)
+        List<Companion> matches = new List<Companion>();
+        for (int orphanIndex = 0; orphanIndex < _orphans.Count; orphanIndex++)
         {
-            if (!_companionsByEntityId.TryGetValue(entityIds[idIndex], out Companion? companion))
+            Companion orphan = _orphans[orphanIndex];
+            if (orphan.ZoneId == owner.ZoneId && orphan.OwnerSpawnId == owner.SpawnId)
             {
-                continue;
+                matches.Add(orphan);
             }
-
-            if (companion.OwnerSpawnId != owner.SpawnId)
-            {
-                continue;
-            }
-
-            companion.Owner = owner;
-            companion.OwnerId = owner.CharacterId;
-            linked++;
-
-            DebugLog.Write(LogChannel.Database, "CompanionRepository.LinkOwner: '" + companion.Name + "' entityId="
-                + companion.EntityId + " linked to owner '" + owner.Name + "'.", defaultLoglevel);
         }
 
-        DebugLog.Write(LogChannel.Database, "CompanionRepository.LinkOwner: examined " + entityIds.Count
-            + " entityIds, linked " + linked + " companions to '" + owner.Name + "'.", defaultLoglevel);
-        return linked;
+        for (int matchIndex = 0; matchIndex < matches.Count; matchIndex++)
+        {
+            Adopt(matches[matchIndex], owner);
+        }
+
+        DebugLog.Write(LogChannel.Database, "CompanionRepository.LinkOwner: '" + owner.Name + "' adopted "
+            + matches.Count + " of " + (_orphans.Count + matches.Count) + " orphans.", defaultLoglevel);
+        return (uint)matches.Count;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Adopt
+    //
+    // Sets the given character as the owner of a companion and takes the companion off the orphan list.  When the owner
+    // had a companion of the same type before, recorded under a different EntityId, this companion takes over that
+    // EntityId: any companion still stored under it is discarded along with its placement, this companion is stored
+    // under the old EntityId, and its placement is pointed at it.  Otherwise this companion's EntityId is recorded for
+    // the owner and type.  A companion already owned by the character is left unchanged.
+    //
+    // companion:  The companion to adopt.  Its ZoneId and SpawnId are its current placement.
+    // owner:      The placed character that owns the companion.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void Adopt(Companion companion, Character owner)
+    {
+        // other sessions may receive the same companion zone entry.  Do not log duplicates.
+        if (ReferenceEquals(companion.Owner, owner))
+        {
+            return;
+        }
+
+        companion.Owner = owner;
+        companion.OwnerId = owner.CharacterId;
+        _orphans.Remove(companion);
+
+        EntityType type = companion.EntityId.Type;
+        if (!_companionIdsByOwner.TryGetValue(owner.EntityId, out Dictionary<EntityType, EntityId>? idsByType))
+        {
+            idsByType = new Dictionary<EntityType, EntityId>();
+            _companionIdsByOwner[owner.EntityId] = idsByType;
+        }
+
+        if (!idsByType.TryGetValue(type, out EntityId previousId) || previousId == companion.EntityId)
+        {
+            idsByType[type] = companion.EntityId;
+            DebugLog.Write(LogChannel.Database, "CompanionRepository.Adopt: '" + companion.Name + "' entityId="
+                + companion.EntityId + " adopted by '" + owner.Name + "', recorded as its " + type + ".",
+                defaultLoglevel);
+            return;
+        }
+
+        if (_companionsByEntityId.TryGetValue(previousId, out Companion? previous))
+        {
+            ZoneRepository.Instance.RemovePlacement(previous.ZoneId, previous.SpawnId, previousId);
+            _companionsByEntityId.Remove(previousId);
+            _orphans.Remove(previous);
+            DebugLog.Write(LogChannel.Database, "CompanionRepository.Adopt: discarded earlier '" + previous.Name
+                + "' entityId=" + previousId + " at zoneId=" + previous.ZoneId + " spawnId=" + previous.SpawnId
+                + ".", defaultLoglevel);
+        }
+
+        EntityId issuedId = companion.EntityId;
+        _companionsByEntityId.Remove(issuedId);
+        companion.EntityId = previousId;
+        _companionsByEntityId[previousId] = companion;
+
+        if (!ZoneRepository.Instance.PlaceEntity(companion.ZoneId, companion.SpawnId, previousId))
+        {
+            DebugLog.Write(LogChannel.Database, "CompanionRepository.Adopt: '" + companion.Name + "' entityId="
+                + previousId + " could not be placed at zoneId=" + companion.ZoneId + " spawnId="
+                + companion.SpawnId + ".", LogLevel.Warn);
+        }
+
+        DebugLog.Write(LogChannel.Database, "CompanionRepository.Adopt: '" + companion.Name + "' adopted by '"
+            + owner.Name + "', took over entityId=" + previousId + " in place of " + issuedId + ".",
+            defaultLoglevel);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -158,12 +226,13 @@ public class CompanionRepository
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public bool Remove(EntityId entityId)
     {
-        if (!_companionsByEntityId.Remove(entityId))
+        if (!_companionsByEntityId.Remove(entityId, out Companion? companion))
         {
             DebugLog.Write(LogChannel.Database, "CompanionRepository.Remove: entityId=" + entityId + " not stored.",
                 LogLevel.Warn);
             return false;
         }
+        _orphans.Remove(companion);
 
         DebugLog.Write(LogChannel.Database, "CompanionRepository.Remove: entityId=" + entityId + " discarded.",
             defaultLoglevel);
@@ -178,6 +247,7 @@ public class CompanionRepository
     public void Clear()
     {
         uint discarded = (uint)_companionsByEntityId.Count;
+        _orphans.Clear();
         _companionsByEntityId.Clear();
 
         DebugLog.Write(LogChannel.Database, "CompanionRepository.Clear: discarded " + discarded + " companions.",

@@ -15,7 +15,7 @@ namespace Glass.Data.Repositories;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 public class EntityRepository
 {
-    private const LogLevel defaultLoglevel = LogLevel.Info;
+    private const LogLevel defaultLoglevel = LogLevel.Trace;
 
     private static EntityRepository? _instance = null;
 

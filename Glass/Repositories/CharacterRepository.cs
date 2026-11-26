@@ -453,8 +453,6 @@ public class CharacterRepository
     {
         if (_charactersByEntityId.TryGetValue(entityId, out Character? character))
         {
-            DebugLog.Write(LogChannel.Database, "CharacterRepository.GetByEntityId: entityId=" + entityId + " is '"
-                + character.Name + "'.", defaultLoglevel);
             return character;
         }
 

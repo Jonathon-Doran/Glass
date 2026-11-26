@@ -25,6 +25,11 @@ Look into the SlotID ancestor comment.
 
 CSV tokens are not decoded in the FieldExtractor but in the handler.
 
+
+Nov 2026:
+    Remove hidden rows from the list's view with a filter on IsHidden, instead of collapsing their containers.  This is so virtualization only ever
+    sees visible rows and does not lock up the UI while trying to process thousands of rows that are 0 height.
+
 Future function:
     More repositories for data extracted from the network
     Multi-machine support

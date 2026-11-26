@@ -374,11 +374,23 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
         {
             SpawnId companionSpawnId = (SpawnId)spawnId;
             Companion? companion = ZoneRepository.Instance.LookupEntity(zoneId, companionSpawnId) as Companion;
+            bool created = false;
             if (companion == null)
             {
                 companion = new Companion();
                 companion.ZoneId = zoneId;
                 companion.SpawnId = companionSpawnId;
+                created = true;
+            }
+
+            companion.Name = name;
+            companion.Level = (ushort)level;
+            companion.Class = mobClass;
+            companion.Model = model;
+            companion.OwnerSpawnId = (SpawnId)ownerId;
+
+            if (created)
+            {
                 if (CompanionRepository.Instance.AddCompanion(companion, companionType) == false)
                 {
                     DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: companion '" + name + "' spawnId=0x"
@@ -388,22 +400,16 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
                 ZoneRepository.Instance.PlaceEntity(zoneId, companionSpawnId, companion.EntityId);
             }
 
-            companion.Name = name;
-            companion.Level = (ushort)level;
-            companion.Class = mobClass;
-            companion.Model = model;
-            companion.OwnerSpawnId = (SpawnId)ownerId;
-
             Character? owner = ZoneRepository.Instance.LookupEntity(zoneId, companion.OwnerSpawnId) as Character;
             if (owner != null)
             {
-                companion.Owner = owner;
-                companion.OwnerId = owner.CharacterId;
+                CompanionRepository.Instance.Adopt(companion, owner);
             }
 
             DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: companion '" + name + "' spawnId=0x"
-                + spawnId.ToString("X4") + " owner spawnId=0x" + ownerId.ToString("X4") + " owner "
-                + (owner != null ? owner.Name : "not one of ours") + ".", defaultLoglevel);
+                + spawnId.ToString("X4") + " entityId=" + companion.EntityId + " owner spawnId=0x"
+                + ownerId.ToString("X4") + (created ? ", new" : ", known") + ", owner "
+                + (owner != null ? owner.Name : "not placed") + ".", defaultLoglevel);
             return;
         }
 
@@ -426,8 +432,7 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
                 DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: placed '" + character.Name + "' in zoneId="
                     + zoneId + " spawnId=0x" + spawnId.ToString("X4"), defaultLoglevel);
 
-                uint linked = CompanionRepository.Instance.LinkOwner(ZoneRepository.Instance.GetZoneEntityIds(zoneId),
-                    character);
+                uint linked = CompanionRepository.Instance.LinkOwner(character);
                 DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: linked " + linked + " companions to '"
                     + character.Name + "'", defaultLoglevel);
             }
