@@ -35,6 +35,13 @@ public static class LoadoutAdvisor
             return;
         }
 
+        if (character.Level.HasValue == false)
+        {
+            DebugLog.Write(LogChannel.Healing, "LoadoutAdvisor.RankHeals: '" + character.Name +
+                "' has no level; nothing ranked", LogLevel.Warn);
+            return;
+        }
+
         uint level = character.Level.Value;
 
         List<HealSpellStats> byMana = new List<HealSpellStats>(kept);
@@ -269,6 +276,16 @@ public static class LoadoutAdvisor
             return;
         }
 
+
+        if (character.Level.HasValue == false)
+        {
+            DebugLog.Write(LogChannel.Healing, "LoadoutAdvisor.RecommendHeals: '" + character.Name +
+                "' has no level; nothing recommended", LogLevel.Warn);
+            return;
+        }
+
+        uint level = character.Level.Value;
+
         HealSpellStats? mainHeal = null;
         HealSpellStats? emergencyHeal = null;
         HealSpellStats? healOverTime = null;
@@ -333,7 +350,7 @@ public static class LoadoutAdvisor
         };
 
         DebugLog.Write(LogChannel.Console, "Recommended heals for '" + character.Name + "', level " +
-            character.Level.Value + " " + character.Class + ", from " + kept.Count + " of " + measuredCount +
+            level + " " + character.Class + ", from " + kept.Count + " of " + measuredCount +
             " heal spells:", LogLevel.Info);
 
         foreach ((string Role, string Rule, HealSpellStats? Pick) pick in picks)

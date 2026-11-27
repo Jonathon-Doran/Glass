@@ -22,6 +22,7 @@ public class HandleDamage : OpcodeHandler
 {
     private readonly CollectionHandle _collectionHandle;
     private readonly GateDefinitionHandle _top_level_gate;
+    private bool DataLogDamage = false;
 
     private readonly SlotId _targetId_Slot;
     private readonly SlotId _attackerId_Slot;
@@ -144,14 +145,15 @@ public class HandleDamage : OpcodeHandler
                 + targetName + "' for " + damage + ", flags 0x" + flags.ToString("X2") + ", spell " + spellId
                 + ", skill 0x" + skillId.ToString("X4"), LogLevel.Trace);
 
-            
-            DebugLog.Write(LogChannel.DataLogging, "DMG," + metadata.MessageId + ","
-                + metadata.Timestamp.ToString("HH:mm:ss.fff") + "," + zoneId + ","
-                + "0x" + targetId.Value.ToString("X4") + "," + targetName + ","
-                + "0x" + attackerId.Value.ToString("X4") + "," + attackerName + ","
-                + metadata.CharacterName + "," + (int)damage + ",0x" + flags.ToString("X2") + "," + spellId
-                + ",0x" + skillId.ToString("X4"), LogLevel.Info);
-           
+            if (DataLogDamage)
+            {
+                DebugLog.Write(LogChannel.DataLogging, "DMG," + metadata.MessageId + ","
+                    + metadata.Timestamp.ToString("HH:mm:ss.fff") + "," + zoneId + ","
+                    + "0x" + targetId.Value.ToString("X4") + "," + targetName + ","
+                    + "0x" + attackerId.Value.ToString("X4") + "," + attackerName + ","
+                    + metadata.CharacterName + "," + (int)damage + ",0x" + flags.ToString("X2") + "," + spellId
+                    + ",0x" + skillId.ToString("X4"), LogLevel.Info);
+             }
         }
         finally
         {

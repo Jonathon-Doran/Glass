@@ -20,6 +20,7 @@ public class HandleHpUpdate : OpcodeHandler
 {
     private readonly CollectionHandle _collectionHandle;
     private readonly GateDefinitionHandle _top_level_gate;
+    private bool DataLogHP = false;
 
     private readonly SlotId _playerIdSlot;
     private readonly SlotId _currentHPSlot;
@@ -130,10 +131,12 @@ public class HandleHpUpdate : OpcodeHandler
                     + "' reported to itself, worn HP bonus " + wornHP + " added: current " + character.CurrentHP
                     + ", max " + character.MaxHP, LogLevel.Trace);
                 
-                DebugLog.Write(LogChannel.DataLogging, "HP," + metadata.MessageId + ","
-                    + metadata.Timestamp.ToString("HH:mm:ss.fff") + "," + character.Name + ","
-                    + metadata.CharacterName + ",self," + wireCurrentHP + "," + character.CurrentHP, LogLevel.Info);
-                
+                if (DataLogHP)
+                {
+                    DebugLog.Write(LogChannel.DataLogging, "HP," + metadata.MessageId + ","
+                        + metadata.Timestamp.ToString("HH:mm:ss.fff") + "," + character.Name + ","
+                        + metadata.CharacterName + ",self," + wireCurrentHP + "," + character.CurrentHP, LogLevel.Info);
+                }
             }
             else
             {

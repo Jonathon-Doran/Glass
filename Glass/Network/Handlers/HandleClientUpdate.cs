@@ -16,6 +16,7 @@ public class HandleClientUpdate : OpcodeHandler
 {
     private readonly CollectionHandle _collectionHandle;
     private readonly GateDefinitionHandle _top_level_gate;
+    private bool DataLogPositions = false;
 
     private readonly SlotId _sequenceSlot;
     private readonly SlotId _playerIdSlot;
@@ -102,16 +103,32 @@ public class HandleClientUpdate : OpcodeHandler
             for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
             {
                 extractor.EnterGate(rootGate, bagIndex);
-                metadata.Character.XPos = extractor.GetFloatAt(_xPosSlot);
-                metadata.Character.YPos = extractor.GetFloatAt(_yPosSlot);
-                metadata.Character.ZPos = extractor.GetFloatAt(_zPosSlot);
-
-                uint sequence = extractor.GetUIntAt(_sequenceSlot);
                 uint playerId = extractor.GetUIntAt(_playerIdSlot);
 
+                float xPos = extractor.GetFloatAt(_xPosSlot);
+                float yPos = extractor.GetFloatAt(_yPosSlot);
+                float zPos = extractor.GetFloatAt(_zPosSlot);
+                uint sequence = extractor.GetUIntAt(_sequenceSlot);
+
                 // Note on heading:  measured as 160-degrees per second to within 0.2%.  One degree is 6.25ms of keypress.  
-                metadata.Character.Heading = extractor.GetUIntAt(_headingSlot) / 8192.0f * 360.0f;
-            
+                float heading = extractor.GetUIntAt(_headingSlot) / 8192.0f * 360.0f;
+
+                metadata.Character.XPos = xPos;
+                metadata.Character.YPos = yPos;
+                metadata.Character.ZPos = zPos;
+                metadata.Character.Heading = heading;
+
+                if (DataLogPositions)
+                {
+                    if (playerId != metadata.Character.SpawnId.Value)
+                    {
+                        DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleClientToZone: message "
+                            + metadata.MessageId + " from '" + characterName + "' names spawn 0x"
+                            + playerId.ToString("X4") + ", not its own 0x"
+                            + metadata.Character.SpawnId.Value.ToString("X4") + "; nothing stored", LogLevel.Trace);
+                    }
+                }
+
             }
         }
         finally
