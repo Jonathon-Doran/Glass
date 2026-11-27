@@ -333,12 +333,14 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
                 }
             }
 
+#if false
             // Log companion quads.  This is to test a theory about using them to identify companion type
             if (ownerId != 0)
             {
                 LogCompanionQuads(metadata, zoneId, name, spawnId, ownerId, companionType, level, mobClass,
                     model, NumQuads, quads);
             }
+#endif
 
             DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C.HandlePacket: '" + name
                 + "' spawnId=0x" + spawnId.ToString("X4") + " pet owner 0x" + petOwner.ToString("X4")

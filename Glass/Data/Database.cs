@@ -548,6 +548,10 @@ public class Database
         {
             ApplyMigration(conn, 76, Migration_076);
         }
+        if (version < 77)
+        {
+            ApplyMigration(conn, 77, Migration_077);
+        }
     }
 
     private int GetSchemaVersion()
@@ -2053,6 +2057,21 @@ public class Database
 
     private const string Migration_076 = @"
         ALTER TABLE Profiles ADD COLUMN description TEXT NOT NULL DEFAULT '';
+    ";
+
+    private const string Migration_077 = @"
+        CREATE TABLE IF NOT EXISTS CharacterSpells (
+            character_id    INTEGER NOT NULL,                       -- server character id
+            spell_id        INTEGER NOT NULL,
+            PRIMARY KEY (character_id, spell_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS CharacterSpellGems (
+            character_id    INTEGER NOT NULL,                       -- server character id
+            gem_index       INTEGER NOT NULL,
+            spell_id        INTEGER NOT NULL,                       -- 4294967295 (0xFFFFFFFF) for an empty gem
+            PRIMARY KEY (character_id, gem_index)
+        );
     ";
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

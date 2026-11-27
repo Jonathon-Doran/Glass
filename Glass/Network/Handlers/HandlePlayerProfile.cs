@@ -1,6 +1,7 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
 using Glass.Data.Models;
+using Glass.Data.Reference;
 using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
@@ -235,11 +236,26 @@ public class HandlePlayerProfile : OpcodeHandler
                 ReadOnlySpan<uint> spellbook = _extractor.GetUIntSpanAt(_spellbookSlot);
                 ReadOnlySpan<uint> spellgems = _extractor.GetUIntSpanAt(_spellgemSlot);
 
-                character.SpellBook = new SpellId[spellbook.Length];
+                uint knownSpellCount = 0;
                 for (int index = 0; index < spellbook.Length; index++)
                 {
-                    character.SpellBook[index] = (SpellId)spellbook[index];
+                    if (spellbook[index] != SpellId.None)
+                    {
+                        knownSpellCount++;
+                    }
                 }
+
+                character.SpellBook = new SpellId[knownSpellCount];
+                uint knownIndex = 0;
+                for (int index = 0; index < spellbook.Length; index++)
+                {
+                    if (spellbook[index] != SpellId.None)
+                    {
+                        character.SpellBook[knownIndex] = (SpellId)spellbook[index];
+                        knownIndex++;
+                    }
+                }
+
                 character.SpellGems = new SpellId[spellgems.Length];
                 for (int index = 0; index < spellgems.Length; index++)
                 {

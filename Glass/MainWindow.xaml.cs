@@ -1,7 +1,9 @@
-﻿using Glass.ClientUI;
+﻿using Glass.Agents.Loadout;
+using Glass.ClientUI;
 using Glass.Core;
 using Glass.Core.Logging;
 using Glass.Core.Memory;
+using Glass.Core.Signals;
 using Glass.Data;
 using Glass.Data.Models;
 using Glass.Data.Repositories;
@@ -21,7 +23,6 @@ using System.Windows.Media;
 using System.Xml.Linq;
 using static Glass.Network.Protocol.SoeConstants;
 using static System.Reflection.Metadata.BlobBuilder;
-using Glass.Core.Signals;
 
 namespace Glass;
 
@@ -73,9 +74,11 @@ public partial class MainWindow : Window
             DebugLog.Write(LogChannel.Sessions, "GlassVideo disconnected.", LogLevel.Trace);
         });
         GlassContext.GlassVideoPipe.Start();
+
         GlassContext.BufferPool = new BufferPool(
-            new uint[] { 16, 64, 256, 512, 1024, 2048, 16384, 65536, 262144, 524288 },
-            new uint[] { 1000, 1000, 1000, 1000, 1000, 1000, 1000, 20, 20, 20 });
+            new uint[] { 16, 64, 256, 512, 640, 768, 1024, 2048, 16384, 65536, 262144, 524288 },
+            new uint[] { 1000, 10000, 10000, 2000, 8000, 8000, 1000, 1000, 1000, 20, 20, 20 });
+        GcMonitor.Start(5);
 
         GlassContext.SignalBus = new SignalBus();
         GlassContext.PacketBus = new PacketBus();
@@ -136,17 +139,20 @@ public partial class MainWindow : Window
 
         GlassDebugLogHandler aux2Handler = new GlassDebugLogHandler("lowNetwork.log");
         DebugLog.AddHandler(LogSink.Aux2LogFile, aux2Handler);
-      //  DebugLog.Route(LogChannel.LowNetwork, LogSink.Aux2LogFile);
 
         GlassDebugLogHandler aux3Handler = new GlassDebugLogHandler("input.log");
         DebugLog.AddHandler(LogSink.Aux3LogFile, aux3Handler);
-      //  DebugLog.Route(LogChannel.Input, LogSink.Aux3LogFile);
-      //  DebugLog.Route(LogChannel.Profiles, LogSink.Aux3LogFile);
 
+        GlassDebugLogHandler aux4Handler = new GlassDebugLogHandler("inference.log");
+        DebugLog.AddHandler(LogSink.Aux4LogFile, aux4Handler);
+        DebugLog.Route(LogChannel.InferenceDebug, LogSink.Aux4LogFile);
+
+        // This is the main window's console
         GlassConsoleLogHandler consoleHandler = new GlassConsoleLogHandler(ConsoleOutput, ConsoleScroller);
         DebugLog.AddHandler(LogSink.GlassConsole, consoleHandler);
+        DebugLog.Route(LogChannel.Console, LogSink.GlassConsole);
 
-        DebugLog.SetMinimumLevel(LogLevel.Info);
+        DebugLog.SetMinimumLevel(LogLevel.Info);        // restrict log entries to Info or above
 
         DebugLog.Write(LogChannel.General, "MainWindow: logging initialized", LogLevel.Trace);
     }
@@ -382,39 +388,12 @@ public partial class MainWindow : Window
         var parts = cmd.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0)
         {
+            ShowLocalCommandUsage();
             return;
         }
 
         switch (parts[0].ToLower())
         {
-            case "flags":
-                {
-                    /*
-                    if (parts.Length == 1)
-                    {
-                        Log($"pipes:    {DebugLog.Log_Pipes}");
-                        Log($"video:    {DebugLog.Log_Video}");
-                        Log($"sessions: {DebugLog.Log_Sessions}");
-                        Log($"input:    {DebugLog.Log_Input}");
-                        break;
-                    }
-                    if (parts.Length < 3)
-                    {
-                        Log("Usage: flags <feature> on|off");
-                        break;
-                    }
-                    bool enabled = parts[2].ToLower() == "on";
-                    if (!DebugLog.SetFlag(parts[1], enabled))
-                    {
-                        Log($"Unknown log feature: {parts[1]}");
-                    }
-                    else
-                    {
-                        Log($"Log_{parts[1]} set to {enabled}");
-                    }
-                    */
-                    break;
-                }
             case "screenshot":
                 {
                     if (parts.Length < 2)
@@ -461,17 +440,61 @@ public partial class MainWindow : Window
 
                     }
 
-                    DebugLog.Write(LogChannel.Console, "HandleLocalCommand: usage: /ucs {on,off}", LogLevel.Info);
+                    DebugLog.Write(LogChannel.Console, "usage: /ucs {on,off}", LogLevel.Info);
 
                     break;
                 }
+            case "rankheals":
+                {
+                    if (parts.Length < 2)
+                    {
+                        DebugLog.Write(LogChannel.Console, "Usage: /rankheals <character name>", LogLevel.Info);
+                        break;
+                    }
+                    CharacterRepository.Instance.Load();
+                    Character? character = CharacterRepository.Instance.GetByName(parts[1]);
+                    if (character == null)
+                    {
+                        DebugLog.Write(LogChannel.Console, "No character named '" + parts[1] + "'", LogLevel.Info);
+                        break;
+                    }
 
+                    LoadoutAdvisor.RankHeals(character);
+                    break;
+                }
+            case "recommendheals":
+                {
+                    if (parts.Length < 2)
+                    {
+                        DebugLog.Write(LogChannel.Console, "Usage: /recommendheals <character name>", LogLevel.Info);
+                        break;
+                    }
+
+                    CharacterRepository.Instance.Load();
+                    Character? character = CharacterRepository.Instance.GetByName(parts[1]);
+                    if (character == null)
+                    {
+                        DebugLog.Write(LogChannel.Console, "No character named '" + parts[1] + "'", LogLevel.Info);
+                        break;
+                    }
+
+                    LoadoutAdvisor.RecommendHeals(character);
+                    break;
+                }
             default:
                 DebugLog.Write(LogChannel.Console, $"Unknown command: {parts[0]}", LogLevel.Info);
-                DebugLog.Write(LogChannel.Console, "screenshot <slot>:  save a screenshot from the designated slot next frame", LogLevel.Info);
-                DebugLog.Write(LogChannel.Console, "debugnextframe:  generic debug action for GlassVideo to occur next frame only", LogLevel.Info);
+                ShowLocalCommandUsage();
                 break;
         }
+    }
+
+    void ShowLocalCommandUsage()
+    {
+        DebugLog.Write(LogChannel.Console, "screenshot <slot>:  save a screenshot from the designated slot next frame", LogLevel.Info);
+        DebugLog.Write(LogChannel.Console, "debugnextframe:  generic debug action for GlassVideo to occur next frame only", LogLevel.Info);
+        DebugLog.Write(LogChannel.Console, "ucs {on,off}:   turn the UCS service on or off", LogLevel.Info);
+        DebugLog.Write(LogChannel.Console, "rankheals <name>:  rank the heal spells in a character's spellbook", LogLevel.Info);
+        DebugLog.Write(LogChannel.Console, "recommendheals <name>:  recommend heal spells for a character's loadout", LogLevel.Info);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -782,12 +805,16 @@ public partial class MainWindow : Window
             return;
         }
 
-        PatchLevel patchLevel = GlassContext.PatchRegistry.LoadLatestPatchLevel("Live");
+
+        PatchLevel patchLevel = GlassContext.PatchRegistry.LoadLatestPatchLevel("Test");
         GlassContext.CurrentPatchLevel = patchLevel;
 
         DebugLog.Write(LogChannel.General,
             "Pcap_Click: patch level set to latest Live (pcap metadata not yet supported)",  LogLevel.Trace);
         OpcodeDispatch.RebuildForCurrentPatchLevel();
+        CharacterRepository.Instance.Load();
+        DebugLog.Write(LogChannel.Console, "Character repository holds " +
+            CharacterRepository.Instance.GetAll().Count + " characters", LogLevel.Info);
 
         // disable the menu item while this is running, so that we do not get concurrent reads
         MenuItem? menuItem = sender as MenuItem;
@@ -800,6 +827,7 @@ public partial class MainWindow : Window
         PcapProgressBar.Value = 0;
 
         string filePath = dialog.FileName;
+        DebugLog.Write(LogChannel.General, "Pcap_Click: replaying capture '" + filePath + "'", LogLevel.Info);
 
         SessionDemux router = new SessionDemux();
         PcapFileReader reader = new PcapFileReader(router);

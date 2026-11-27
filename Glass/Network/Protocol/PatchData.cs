@@ -267,6 +267,7 @@ public class PatchData
         int collectionCount = CountPatchCollections(conn);
         uint gateCount = CountGates(conn);
 
+        DebugLog.Write(LogChannel.General, "Loading patch data for patch " + patchLevel, LogLevel.Info);
         if (opcodeCount == 0)
         {
             throw new InvalidOperationException("PatchData: no PatchOpcode rows for patchLevel="

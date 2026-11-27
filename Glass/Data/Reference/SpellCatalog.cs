@@ -5,7 +5,7 @@ using Glass.Data.Repositories;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 
-namespace Glass.World;
+namespace Glass.Data.Reference;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // SpellCatalog

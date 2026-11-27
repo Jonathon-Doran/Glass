@@ -4,6 +4,7 @@ using Glass.Core.Logging;
 using Glass.Core.Memory;
 using Glass.Core.Signals;
 using Glass.Data.Models;
+using Glass.Data.Reference;
 using Glass.Data.Repositories;
 using Glass.Network.Capture;
 using Glass.Network.Client;

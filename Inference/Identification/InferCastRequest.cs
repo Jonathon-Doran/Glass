@@ -1,5 +1,6 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Data.Reference;
 using Glass.Network.Client;
 using Glass.Network.Protocol;
 using Glass.World;

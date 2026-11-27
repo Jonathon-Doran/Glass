@@ -451,6 +451,7 @@ public class SessionRegistry
             DebugLog.Write(LogChannel.Sessions, "SessionRegistry.ZoneSessionClosing: session " + session.SessionId
                 + " removed from live zone sessions, " + _liveZoneSessions + " live.", LogLevel.Trace);
         }
+        CharacterRepository.Instance.Save(session.Character.DatabaseId);
 
         GlassContext.SignalBus.Publish(new SignalSessionRemoved(session.SessionId, session.Character.CharacterId));
 

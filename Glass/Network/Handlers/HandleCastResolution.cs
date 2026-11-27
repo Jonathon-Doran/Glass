@@ -1,10 +1,10 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
 using Glass.Data.Models;
+using Glass.Data.Reference;
 using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
-using Glass.World;
 using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;

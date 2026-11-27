@@ -6,11 +6,11 @@
 using Glass.Core;
 using Glass.Core.Logging;
 using Glass.Data.Models;
+using Glass.Data.Reference;
 using Glass.Data.Repositories;
 using Glass.Network.Handlers;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
-using Glass.World;
 using System.Xml.Linq;
 using static System.Net.Mime.MediaTypeNames;
 
@@ -147,29 +147,6 @@ public class HandleSend_AA : OpcodeHandler
             uint Unknown_5 = _extractor.GetUIntAt(_Unknown_5_Slot);
             uint Unknown_6 = _extractor.GetUIntAt(_Unknown_6_Slot);
 
-            DebugLog.Write(LogChannel.Fields, "\n\n-----------", LogLevel.Info);
-            DebugLog.Write(LogChannel.Fields, "ID = " + ID, LogLevel.Info);
-            DebugLog.Write(LogChannel.Fields, "Name = " + Name +
-                " (" + Name_SID + ")", LogLevel.Info);
-            DebugLog.Write(LogChannel.Fields, "Desc = " + Desc +
-                " (" + Desc_SID + ")", LogLevel.Info);
-
-            DebugLog.Write(LogChannel.Fields, "Upper Hotkey = " + Upper_Hotkey + 
-                " (" + Upper_Hotkey_SID + ")", LogLevel.Info);
-            DebugLog.Write(LogChannel.Fields, "Lower Hotkey = " + Lower_Hotkey +
-                " (" + Lower_Hotkey_SID + ")", LogLevel.Info);
-
-            DebugLog.Write(LogChannel.Fields, "Required Level = " + Required_Level, LogLevel.Info);
-            DebugLog.Write(LogChannel.Fields, "Cost = " + Cost, LogLevel.Info);
-            DebugLog.Write(LogChannel.Fields, "Seq = " + Seq, LogLevel.Info);
-            DebugLog.Write(LogChannel.Fields, "Current Rank = " + Current_Rank, LogLevel.Info);
-            DebugLog.Write(LogChannel.Fields, "Spell ID = " + Spell_ID + " (0x" + Spell_ID.ToString("X4") + ")",
-                LogLevel.Info);
-            DebugLog.Write(LogChannel.Fields, "Unknown 5 = " + Unknown_5 + " (0x" + Unknown_5.ToString("X4") + ")",
-                LogLevel.Info);
-            DebugLog.Write(LogChannel.Fields, "Unknown 6 = " + Unknown_6 + " (0x" + Unknown_6.ToString("X4") + ")",
-                LogLevel.Info);
-
             SlotId effectsSlot = _registry.IndexOfField(_collectionHandle, "Effects_Gate");
             GateHandle effectsGate = _extractor.GetGateAt(effectsSlot);
             if (effectsGate.Exists == false)
@@ -189,15 +166,6 @@ public class HandleSend_AA : OpcodeHandler
                 effect.Unknown_2 = _extractor.GetUIntAt(_Unknown_2_Slot);
                 effect.Unknown_3 = _extractor.GetUIntAt(_Unknown_3_Slot);
                 effect.Slot = _extractor.GetUIntAt(_Unknown_4_Slot);
-
-                DebugLog.Write(LogChannel.Fields, "Effect " + bagIndex + ":", LogLevel.Info);
-                DebugLog.Write(LogChannel.Fields, "   SPA: " + effect.Spa.ToString() + 
-                    " (" + (int) effect.Spa + ")", LogLevel.Info);
-                DebugLog.Write(LogChannel.Fields, "   Base: " + effect.Base, LogLevel.Info);
-                DebugLog.Write(LogChannel.Fields, "   Unknown_1: " + effect.Unknown_1, LogLevel.Info);
-                DebugLog.Write(LogChannel.Fields, "   Unknown_2: " + effect.Unknown_2, LogLevel.Info);
-                DebugLog.Write(LogChannel.Fields, "   Unknown_31: " + effect.Unknown_3, LogLevel.Info);
-                DebugLog.Write(LogChannel.Fields, "   Effect Number: " + effect.Slot, LogLevel.Info);
             }
         }
         finally

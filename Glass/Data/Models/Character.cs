@@ -1,4 +1,5 @@
 using Glass.Core.Logging;
+using Glass.Data.Reference;
 using Glass.Data.Repositories;
 using Glass.World;
 

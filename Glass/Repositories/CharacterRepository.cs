@@ -34,7 +34,7 @@ public class CharacterRepository
     // Instance
     //
     // Lazy singleton accessor. The instance is created on first access with empty caches;
-    // no database work is performed by the constructor. Call Load() or Load(profileId) to populate.
+    // no database work is performed by the constructor.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public static CharacterRepository Instance
     {
@@ -52,8 +52,6 @@ public class CharacterRepository
     // CharacterRepository
     //
     // Private constructor. Initializes empty caches. Does no database work.
-    // Use CharacterRepository.Instance to obtain the singleton, then call Load() to populate from the
-    // full Characters table or Load(idList) to populate a specific subset.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private CharacterRepository()
     {
@@ -142,6 +140,7 @@ public class CharacterRepository
         while (reader.Read())
         {
             Character character = ReadCharacterRow(reader);
+            CharacterSpellGateway.Instance.LoadSpells(character);
             _characters.Add(character);
             _charactersByDatabaseId[(DatabaseId) (uint) character.DatabaseId] = character;
             if (character.EntityId.Exists)
@@ -362,6 +361,8 @@ public class CharacterRepository
         cmd.Parameters.AddWithValue("@id", character.DatabaseId.Value);
 
         cmd.ExecuteNonQuery();
+
+        CharacterSpellGateway.Instance.StoreSpells(character);
 
         DebugLog.Write(LogChannel.Database, "CharacterRepository.Save: persisted character record " + character.DatabaseId
             + " name=" + character.Name

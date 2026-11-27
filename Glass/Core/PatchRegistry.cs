@@ -575,7 +575,8 @@ public class PatchRegistry
         if (collectionHandle.Exists == false || collectionHandle.Value >= _collectionEntries.Count)
         {
             // will allow invalid collections to be ignored
-            DebugLog.Write(LogChannel.Fields, "Invalid collection handle " + collectionHandle, LogLevel.Error);
+            DebugLog.Write(LogChannel.Fields, "PatchRegistry.IndexOfField: field '" + fieldName +
+                "' requested from invalid collection handle " + collectionHandle, LogLevel.Error);
             return SlotId.None;
         }
 

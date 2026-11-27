@@ -1,5 +1,5 @@
 ﻿using Glass.Core.Logging;
-using Glass.World;
+using Glass.Data.Reference;
 
 namespace Glass.Data.Models;
 
@@ -211,7 +211,7 @@ public class StatBonuses
     //
     // Returns the effect's value.
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    private static int SpellEffectValue(SpellEffect effect, uint casterLevel)
+    public static int SpellEffectValue(SpellEffect effect, uint casterLevel)
     {
         int level = (int)casterLevel;
         int magnitude = Math.Abs(effect.Base1);

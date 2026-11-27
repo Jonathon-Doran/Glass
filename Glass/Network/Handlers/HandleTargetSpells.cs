@@ -1,9 +1,9 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Data.Reference;
 using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
-using Glass.World;
 
 
 namespace Glass.Network.Handlers;

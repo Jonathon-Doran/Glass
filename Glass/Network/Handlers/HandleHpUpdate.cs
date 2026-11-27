@@ -116,11 +116,6 @@ public class HandleHpUpdate : OpcodeHandler
             Character? character = entity as Character;
             if (character != null)
             {
-                /*
-                DebugLog.Write(LogChannel.DataLogging, "HP," + metadata.MessageId + ","
-                    + metadata.Timestamp.ToString("HH:mm:ss.fff") + "," + character.Name + ","
-                    + metadata.CharacterName + ",obs," + wireCurrentHP + "," + character.CurrentHP, LogLevel.Info);
-                */
                 int wornHP = character.WornBonuses.HP;
                 if (wornHP < 0)
                 {
@@ -134,11 +129,11 @@ public class HandleHpUpdate : OpcodeHandler
                 DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleZoneToClient: '" + character.Name
                     + "' reported to itself, worn HP bonus " + wornHP + " added: current " + character.CurrentHP
                     + ", max " + character.MaxHP, LogLevel.Trace);
-                /*
+                
                 DebugLog.Write(LogChannel.DataLogging, "HP," + metadata.MessageId + ","
                     + metadata.Timestamp.ToString("HH:mm:ss.fff") + "," + character.Name + ","
                     + metadata.CharacterName + ",self," + wireCurrentHP + "," + character.CurrentHP, LogLevel.Info);
-                */
+                
             }
             else
             {
