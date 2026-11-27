@@ -1,4 +1,5 @@
-﻿using Glass.Core;
+﻿using Glass.Agents.Healing;
+using Glass.Core;
 using Glass.Core.Logging;
 using Glass.Data.Models;
 using Glass.Data.Repositories;
@@ -86,8 +87,22 @@ public class HandleDamage : OpcodeHandler
         }
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // HandleZoneToClient
+    //
+    // Reads a damage message and passes the target, the attacker and the time to the healing
+    // coordinator.  Only a message whose destination is the target, or the target's owner for a
+    // companion, is processed; a target with no entity is ignored.  The attacker is passed as its
+    // EntityId, which is None when the attacker has no entity.
+    //
+    // data:      The application payload
+    // metadata:  Packet metadata
+    ///////////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
+        EntityId target = EntityId.None;
+        EntityId attacker = EntityId.None;
+
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
@@ -112,25 +127,39 @@ public class HandleDamage : OpcodeHandler
             }
 
             ZoneId zoneId = metadata.Session.ZoneId;
-            string targetName = ZoneRepository.Instance.LookupSpawnName(zoneId, targetId);
+            Entity? targetEntity = ZoneRepository.Instance.LookupEntity(zoneId, targetId);
+            if (targetEntity == null || IsDestination(targetEntity, metadata) == false)
+            {
+                return;
+            }
+
+            target = targetEntity.EntityId;
+            attacker = ZoneRepository.Instance.ResolveEntityId(zoneId, attackerId);
+
+            string targetName = targetEntity.Name;
             string attackerName = ZoneRepository.Instance.LookupSpawnName(zoneId, attackerId);
 
-            DebugLog.Write(LogChannel.Opcodes, "HandleDamage.HandleZoneToClient: " + attackerName + " hit "
-                + targetName + " for " + damage + ", flags 0x" + flags.ToString("X2") + ", spell " + spellId
+            DebugLog.Write(LogChannel.Opcodes, "HandleDamage.HandleZoneToClient: " + attackerName + " damaged '"
+                + targetName + "' for " + damage + ", flags 0x" + flags.ToString("X2") + ", spell " + spellId
                 + ", skill 0x" + skillId.ToString("X4"), LogLevel.Trace);
 
-/*
-            DebugLog.Write(LogChannel.DataLogging, "DMG," + metadata.MessageId + ","
-                + metadata.Timestamp.ToString("HH:mm:ss.fff") + "," + zoneId + ","
-                + "0x" + targetId.Value.ToString("X4") + "," + targetName + ","
-                + "0x" + attackerId.Value.ToString("X4") + "," + attackerName + ","
-                + metadata.CharacterName + "," + (int)damage + ",0x" + flags.ToString("X2") + "," + spellId
-                + ",0x" + skillId.ToString("X4"), LogLevel.Info);
-*/
+            /*
+                        DebugLog.Write(LogChannel.DataLogging, "DMG," + metadata.MessageId + ","
+                            + metadata.Timestamp.ToString("HH:mm:ss.fff") + "," + zoneId + ","
+                            + "0x" + targetId.Value.ToString("X4") + "," + targetName + ","
+                            + "0x" + attackerId.Value.ToString("X4") + "," + attackerName + ","
+                            + metadata.CharacterName + "," + (int)damage + ",0x" + flags.ToString("X2") + "," + spellId
+                            + ",0x" + skillId.ToString("X4"), LogLevel.Info);
+            */
         }
         finally
         {
             _extractor.Release();
+        }
+
+        if (target.Exists)
+        {
+            HealingCoordinator.Instance.OnDamage(target, attacker, metadata.Timestamp);
         }
     }
 

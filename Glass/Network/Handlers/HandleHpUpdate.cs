@@ -1,4 +1,5 @@
-﻿using Glass.Core;
+﻿using Glass.Agents.Healing;
+using Glass.Core;
 using Glass.Core.Logging;
 using Glass.Data.Models;
 using Glass.Data.Repositories;
@@ -71,15 +72,18 @@ public class HandleHpUpdate : OpcodeHandler
     // HandleZoneToClient
     //
     // Stores the current and maximum HP from an HP update into the entity the update concerns,
-    // found by its spawn id in the session's zone.  When that entity is the session's own
-    // character, the update omits the worn HP bonus, so the bonus is added to both values
-    // before storing; any other entity's values are stored as received.
+    // found by its spawn id in the session's zone, and passes the stored HP to the healing
+    // coordinator.  Only a message whose destination is the entity, or the entity's owner for a
+    // companion, is processed.  A message to a character about itself omits the worn HP bonus,
+    // so the stored bonus is added to both values; a companion's values are stored as received.
     //
     // data:      The payload of the update.
     // metadata:  The packet's metadata, carrying its session and receiving character.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void HandleZoneToClient(ReadOnlySpan<byte> data, PacketMetadata metadata)
     {
+        Entity? updated = null;
+
         try
         {
             GateHandle rootGate = _extractor.Extract(_top_level_gate, data);
@@ -104,45 +108,57 @@ public class HandleHpUpdate : OpcodeHandler
                 return;
             }
 
-            if (ReferenceEquals(entity, metadata.Character) == false)
+            if (IsDestination(entity, metadata) == false)
+            {
+                return;
+            }
+
+            Character? character = entity as Character;
+            if (character != null)
+            {
+                /*
+                DebugLog.Write(LogChannel.DataLogging, "HP," + metadata.MessageId + ","
+                    + metadata.Timestamp.ToString("HH:mm:ss.fff") + "," + character.Name + ","
+                    + metadata.CharacterName + ",obs," + wireCurrentHP + "," + character.CurrentHP, LogLevel.Info);
+                */
+                int wornHP = character.WornBonuses.HP;
+                if (wornHP < 0)
+                {
+                    DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleZoneToClient: '" + character.Name
+                        + "' has negative worn HP bonus " + wornHP + "; fields not stored", LogLevel.Warn);
+                    return;
+                }
+
+                character.MaxHP = wireMaxHP + (uint)wornHP;
+                character.CurrentHP = wireCurrentHP + wornHP;
+                DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleZoneToClient: '" + character.Name
+                    + "' reported to itself, worn HP bonus " + wornHP + " added: current " + character.CurrentHP
+                    + ", max " + character.MaxHP, LogLevel.Trace);
+                /*
+                DebugLog.Write(LogChannel.DataLogging, "HP," + metadata.MessageId + ","
+                    + metadata.Timestamp.ToString("HH:mm:ss.fff") + "," + character.Name + ","
+                    + metadata.CharacterName + ",self," + wireCurrentHP + "," + character.CurrentHP, LogLevel.Info);
+                */
+            }
+            else
             {
                 entity.MaxHP = wireMaxHP;
                 entity.CurrentHP = wireCurrentHP;
                 DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleZoneToClient: '" + entity.Name
-                    + "' entityId=" + entity.EntityId + " reported to '" + metadata.CharacterName
+                    + "' entityId=" + entity.EntityId + " reported to its owner '" + metadata.CharacterName
                     + "', stored as received: current " + wireCurrentHP + ", max " + wireMaxHP, LogLevel.Trace);
-                return;
             }
 
-            Character character = (Character)entity;
-
-            /*
-            DebugLog.Write(LogChannel.DataLogging, "HP," + metadata.MessageId + ","
-                + metadata.Timestamp.ToString("HH:mm:ss.fff") + "," + character.Name + ","
-                + metadata.CharacterName + ",obs," + wireCurrentHP + "," + character.CurrentHP, LogLevel.Info);
-            */
-            int wornHP = character.SumWornBonuses().HP;
-            if (wornHP < 0)
-            {
-                DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleZoneToClient: '" + character.Name
-                    + "' has negative worn HP bonus " + wornHP + "; fields not stored", LogLevel.Warn);
-                return;
-            }
-
-            character.MaxHP = wireMaxHP + (uint)wornHP;
-            character.CurrentHP = wireCurrentHP + wornHP;
-            DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleZoneToClient: '" + character.Name
-                + "' reported to itself, worn HP bonus " + wornHP + " added: current " + character.CurrentHP
-                + ", max " + character.MaxHP, LogLevel.Trace);
-            /*
-            DebugLog.Write(LogChannel.DataLogging, "HP," + metadata.MessageId + ","
-                + metadata.Timestamp.ToString("HH:mm:ss.fff") + "," + character.Name + ","
-                + metadata.CharacterName + ",self," + wireCurrentHP + "," + character.CurrentHP, LogLevel.Info);
-            */
+            updated = entity;
         }
         finally
         {
             _extractor.Release();
+        }
+
+        if (updated != null)
+        {
+            HealingCoordinator.Instance.OnHpUpdate(updated.EntityId, updated.CurrentHP, metadata.Timestamp);
         }
     }
 

@@ -581,7 +581,8 @@ public class HandleInventory : OpcodeHandler
         }
 
         ItemInstanceGateway.Instance.StoreSnapshot(metadata.Character);
-        StatBonuses wornBonuses = metadata.Character.SumWornBonuses();
+        metadata.Character.RecalculateWornBonuses();
+        StatBonuses wornBonuses = metadata.Character.WornBonuses;
         DebugLog.Write(LogChannel.Inventory, "CaptureInventory: '" + metadata.CharacterName + "' worn HP bonus " +
             wornBonuses.HP + ", heroic stamina " + wornBonuses.HeroicStamina, LogLevel.Info);
 

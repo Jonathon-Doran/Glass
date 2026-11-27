@@ -1,6 +1,8 @@
 ﻿using Glass.Core;
+using Glass.Data.Models;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
+using Glass.World;
 
 namespace Glass.Network.Handlers;
 
@@ -103,5 +105,40 @@ public abstract class OpcodeHandler
     public void Dispose()
     {
         GC.SuppressFinalize(this);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // IsDestination
+    //
+    // Tests whether a message about an entity is the one to process, judged by its destination.
+    // A message about a character is processed when it was sent to that character; a message
+    // about a companion is processed when it was sent to the companion's owner.  A message about
+    // any other entity, or with no destination character, is not processed.
+    //
+    // entity:    The entity the message is about.
+    // metadata:  The message's metadata, carrying its destination character.
+    //
+    // Returns true when the message is to be processed, false otherwise.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    protected static bool IsDestination(Entity entity, PacketMetadata metadata)
+    {
+        Character? destination = metadata.Character;
+        if (destination == null)
+        {
+            return false;
+        }
+
+        if (entity is Character)
+        {
+            return ReferenceEquals(entity, destination);
+        }
+
+        Companion? companion = entity as Companion;
+        if (companion != null)
+        {
+            return ReferenceEquals(companion.Owner, destination);
+        }
+
+        return false;
     }
 }

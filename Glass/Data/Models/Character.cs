@@ -34,50 +34,6 @@ public class ZonePlacement
 public class Character : Entity
 {
     ///////////////////////////////////////////////////////////////////////////////////////////////
-    // CharacterId
-    //
-    // Our database key for this character, unrelated to the EQ IDs.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public DatabaseId DatabaseId { get; set; }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    // PersistentId
-    //
-    // The server's persistent id for this character, unchanged across zones and sessions.
-    ///////////////////////////////////////////////////////////////////////////////////////////////
-    public CharacterId CharacterId { get; set; } = CharacterId.None;
-
-    public EQClass Class { get; set; }
-    public int AccountId { get; set; }
-    public bool Progression { get; set; }
-    public string Server { get; set; } = string.Empty;
-    public List<RelayGroup> RelayGroups { get; set; } = new();
-
-    public uint? Level { get; set; }
-    public uint? PracticePoints { get; set; }
-    public uint? CurrentMana { get; set; }
-    public uint? MaxMana { get; set; }
-    public uint? Strength { get; set; }
-    public uint? Stamina { get; set; }
-    public uint? Charisma { get; set; }
-    public uint? Dexterity { get; set; }
-    public uint? Intelligence { get; set; }
-    public uint? Agility { get; set; }
-    public uint? Wisdom { get; set; }
-
-    public ulong? Platinum { get; set; }
-    public ulong? Gold { get; set; }
-    public ulong? Silver { get; set; }
-    public ulong? Copper { get; set; }
-    public float? XPos { get; set; }
-    public float? YPos { get; set; }
-    public float? ZPos { get; set; }
-    public float? Heading { get; set; }         // in degrees
-
-    public SpellId[] SpellBook { get; set; } = Array.Empty<SpellId>();
-    public SpellId[] SpellGems { get; set; } = Array.Empty<SpellId>();
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////
     // _activeSpells
     //
     // Every spell currently affecting this character, keyed by spell position.
@@ -122,6 +78,64 @@ public class Character : Entity
     // The zones this character has been placed in during this run, in order.
     ///////////////////////////////////////////////////////////////////////////////////////////////
     public IReadOnlyList<ZonePlacement> ZonePlacements => _zonePlacements;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // _wornBonuses
+    //
+    // The bonus totals of every worn item, as of the last recalculation.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private StatBonuses _wornBonuses = new StatBonuses();
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // WornBonuses
+    //
+    // The bonus totals of every item worn by this character, as of the last recalculation.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public StatBonuses WornBonuses => _wornBonuses;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // CharacterId
+    //
+    // Our database key for this character, unrelated to the EQ IDs.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public DatabaseId DatabaseId { get; set; }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // PersistentId
+    //
+    // The server's persistent id for this character, unchanged across zones and sessions.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public CharacterId CharacterId { get; set; } = CharacterId.None;
+
+    public EQClass Class { get; set; }
+    public int AccountId { get; set; }
+    public bool Progression { get; set; }
+    public string Server { get; set; } = string.Empty;
+    public List<RelayGroup> RelayGroups { get; set; } = new();
+
+    public uint? Level { get; set; }
+    public uint? PracticePoints { get; set; }
+    public uint? CurrentMana { get; set; }
+    public uint? MaxMana { get; set; }
+    public uint? Strength { get; set; }
+    public uint? Stamina { get; set; }
+    public uint? Charisma { get; set; }
+    public uint? Dexterity { get; set; }
+    public uint? Intelligence { get; set; }
+    public uint? Agility { get; set; }
+    public uint? Wisdom { get; set; }
+
+    public ulong? Platinum { get; set; }
+    public ulong? Gold { get; set; }
+    public ulong? Silver { get; set; }
+    public ulong? Copper { get; set; }
+    public float? XPos { get; set; }
+    public float? YPos { get; set; }
+    public float? ZPos { get; set; }
+    public float? Heading { get; set; }         // in degrees
+
+    public SpellId[] SpellBook { get; set; } = Array.Empty<SpellId>();
+    public SpellId[] SpellGems { get; set; } = Array.Empty<SpellId>();
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // ToString
@@ -340,6 +354,20 @@ public class Character : Entity
         DebugLog.Write(LogChannel.Fields, "Character.RemoveActiveSpell: removed spell " + removed.SpellId +
             " at position " + position + " from '" + Name + "'", LogLevel.Trace);
         return true;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // RecalculateWornBonuses
+    //
+    // Sums the bonuses of every item worn by this character and stores the totals, replacing the
+    // totals stored before.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    public void RecalculateWornBonuses()
+    {
+        _wornBonuses = SumWornBonuses();
+        DebugLog.Write(LogChannel.Fields, "Character.RecalculateWornBonuses: '" + Name
+            + "' worn bonuses stored, HP " + _wornBonuses.HP + ", mana " + _wornBonuses.Mana + ".",
+            LogLevel.Trace);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
