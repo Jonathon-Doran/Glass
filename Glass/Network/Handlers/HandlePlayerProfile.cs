@@ -22,36 +22,37 @@ public class HandlePlayerProfile : OpcodeHandler
     private readonly CollectionHandle _collectionHandle;
     private readonly GateDefinitionHandle _top_level_gate;
 
-    private readonly SlotId _nameSlot;
-    private readonly SlotId _characterIdSlot;
-    private readonly SlotId _levelSlot;
-    private readonly SlotId _zoneIdSlot;
-    private readonly SlotId _playerClassSlot;
-    private readonly SlotId _practicePointsSlot;
-    private readonly SlotId _manaSlot;
-    private readonly SlotId _hitpointsSlot;
-    private readonly SlotId _strengthSlot;
-    private readonly SlotId _staminaSlot;
-    private readonly SlotId _charismaSlot;
-    private readonly SlotId _dexteritySlot;
-    private readonly SlotId _intelligenceSlot;
-    private readonly SlotId _agilitySlot;
-    private readonly SlotId _wisdomSlot;
-    private readonly SlotId _platinumCarriedSlot;
-    private readonly SlotId _goldCarriedSlot;
-    private readonly SlotId _silverCarriedSlot;
-    private readonly SlotId _copperCarriedSlot;
-    private readonly SlotId _numAASlot;
-    private readonly SlotId _numSkillsSlot;
-    private readonly SlotId _genderSlot;
-    private readonly SlotId _raceSlot;
-    private readonly SlotId _numLanguagesSlot;
+    private readonly SlotId _name_Slot;
+    private readonly SlotId _characterId_Slot;
+    private readonly SlotId _level_Slot;
+    private readonly SlotId _zoneId_Slot;
+    private readonly SlotId _zoneInstance_Slot;
+    private readonly SlotId _playerClass_Slot;
+    private readonly SlotId _practicePoints_Slot;
+    private readonly SlotId _mana_Slot;
+    private readonly SlotId _hitpoints_Slot;
+    private readonly SlotId _strength_Slot;
+    private readonly SlotId _stamina_Slot;
+    private readonly SlotId _charisma_Slot;
+    private readonly SlotId _dexterity_Slot;
+    private readonly SlotId _intelligence_Slot;
+    private readonly SlotId _agility_Slot;
+    private readonly SlotId _wisdom_Slot;
+    private readonly SlotId _platinumCarried_Slot;
+    private readonly SlotId _goldCarried_Slot;
+    private readonly SlotId _silverCarried_Slot;
+    private readonly SlotId _copperCarried_Slot;
+    private readonly SlotId _numAA_Slot;
+    private readonly SlotId _numSkills_Slot;
+    private readonly SlotId _gender_Slot;
+    private readonly SlotId _race_Slot;
+    private readonly SlotId _numLanguages_Slot;
 
     // spell info
-    private readonly SlotId _spellbookCountSlot;
-    private readonly SlotId _spellbookSlot;
-    private readonly SlotId _spellgemCountSlot;
-    private readonly SlotId _spellgemSlot;
+    private readonly SlotId _spellbookCount_Slot;
+    private readonly SlotId _spellbook_Slot;
+    private readonly SlotId _spellgemCount_Slot;
+    private readonly SlotId _spellgem_Slot;
 
     private readonly SlotId _buff_unknown_1_Slot;
     private readonly SlotId _buff_casterID_Slot;
@@ -89,37 +90,38 @@ public class HandlePlayerProfile : OpcodeHandler
             return;
         }
 
-        _nameSlot = _registry.IndexOfField(_collectionHandle, "name");
-        _characterIdSlot = _registry.IndexOfField(_collectionHandle, "persistent_id");
-        _levelSlot = _registry.IndexOfField(_collectionHandle, "level");
-        _zoneIdSlot = _registry.IndexOfField(_collectionHandle, "zone_id");
-        _playerClassSlot = _registry.IndexOfField(_collectionHandle, "player_class");
-        _practicePointsSlot = _registry.IndexOfField(_collectionHandle, "practice_points");
-        _manaSlot = _registry.IndexOfField(_collectionHandle, "mana");
-        _hitpointsSlot = _registry.IndexOfField(_collectionHandle, "max_hitpoints");
-        _strengthSlot = _registry.IndexOfField(_collectionHandle, "strength");
-        _staminaSlot = _registry.IndexOfField(_collectionHandle, "stamina");
-        _charismaSlot = _registry.IndexOfField(_collectionHandle, "charisma");
-        _dexteritySlot =  _registry.IndexOfField(_collectionHandle, "dexterity");
-        _intelligenceSlot = _registry.IndexOfField(_collectionHandle, "intelligence");
-        _agilitySlot = _registry.IndexOfField(_collectionHandle, "agility");
-        _wisdomSlot = _registry.IndexOfField(_collectionHandle, "wisdom");
-        _platinumCarriedSlot = _registry.IndexOfField(_collectionHandle, "platinum_carried");
-        _goldCarriedSlot = _registry.IndexOfField(_collectionHandle, "gold_carried");
-        _silverCarriedSlot = _registry.IndexOfField(_collectionHandle, "silver_carried");
-        _copperCarriedSlot = _registry.IndexOfField(_collectionHandle, "copper_carried");
+        _name_Slot = _registry.IndexOfField(_collectionHandle, "name");
+        _characterId_Slot = _registry.IndexOfField(_collectionHandle, "persistent_id");
+        _level_Slot = _registry.IndexOfField(_collectionHandle, "level");
+        _zoneId_Slot = _registry.IndexOfField(_collectionHandle, "zone_id");
+        _zoneInstance_Slot = _registry.IndexOfField(_collectionHandle, "instance_id");
+        _playerClass_Slot = _registry.IndexOfField(_collectionHandle, "player_class");
+        _practicePoints_Slot = _registry.IndexOfField(_collectionHandle, "practice_points");
+        _mana_Slot = _registry.IndexOfField(_collectionHandle, "mana");
+        _hitpoints_Slot = _registry.IndexOfField(_collectionHandle, "max_hitpoints");
+        _strength_Slot = _registry.IndexOfField(_collectionHandle, "strength");
+        _stamina_Slot = _registry.IndexOfField(_collectionHandle, "stamina");
+        _charisma_Slot = _registry.IndexOfField(_collectionHandle, "charisma");
+        _dexterity_Slot =  _registry.IndexOfField(_collectionHandle, "dexterity");
+        _intelligence_Slot = _registry.IndexOfField(_collectionHandle, "intelligence");
+        _agility_Slot = _registry.IndexOfField(_collectionHandle, "agility");
+        _wisdom_Slot = _registry.IndexOfField(_collectionHandle, "wisdom");
+        _platinumCarried_Slot = _registry.IndexOfField(_collectionHandle, "platinum_carried");
+        _goldCarried_Slot = _registry.IndexOfField(_collectionHandle, "gold_carried");
+        _silverCarried_Slot = _registry.IndexOfField(_collectionHandle, "silver_carried");
+        _copperCarried_Slot = _registry.IndexOfField(_collectionHandle, "copper_carried");
 
-        _numAASlot = _registry.IndexOfField(_collectionHandle, "num_aa");
-        _numSkillsSlot = _registry.IndexOfField(_collectionHandle, "num_skills");
-        _genderSlot = _registry.IndexOfField(_collectionHandle, "gender");
-        _raceSlot = _registry.IndexOfField(_collectionHandle, "race");
-        _numLanguagesSlot = _registry.IndexOfField(_collectionHandle, "num_languages");
+        _numAA_Slot = _registry.IndexOfField(_collectionHandle, "num_aa");
+        _numSkills_Slot = _registry.IndexOfField(_collectionHandle, "num_skills");
+        _gender_Slot = _registry.IndexOfField(_collectionHandle, "gender");
+        _race_Slot = _registry.IndexOfField(_collectionHandle, "race");
+        _numLanguages_Slot = _registry.IndexOfField(_collectionHandle, "num_languages");
 
         // spell info
-        _spellbookCountSlot = _registry.IndexOfField(_collectionHandle, "spellbook_count");
-        _spellbookSlot = _registry.IndexOfField(_collectionHandle, "spellbook");
-        _spellgemCountSlot = _registry.IndexOfField(_collectionHandle, "spellgem_count");
-        _spellgemSlot = _registry.IndexOfField(_collectionHandle, "mem_spells");
+        _spellbookCount_Slot = _registry.IndexOfField(_collectionHandle, "spellbook_count");
+        _spellbook_Slot = _registry.IndexOfField(_collectionHandle, "spellbook");
+        _spellgemCount_Slot = _registry.IndexOfField(_collectionHandle, "spellgem_count");
+        _spellgem_Slot = _registry.IndexOfField(_collectionHandle, "mem_spells");
 
         // character buffs
         _buff_unknown_1_Slot = _registry.IndexOfField(characterBuffs, "Unknown_1");
@@ -171,7 +173,7 @@ public class HandlePlayerProfile : OpcodeHandler
 
             for (uint bagIndex = 0; bagIndex < bagCount; bagIndex++)
             {
-                string name = _extractor.GetStringAt(_nameSlot);
+                string name = _extractor.GetStringAt(_name_Slot);
 
                 Character? character = CharacterRepository.Instance.GetByName(name);
                 if (character == null)
@@ -180,24 +182,24 @@ public class HandlePlayerProfile : OpcodeHandler
                         "' in repository; fields not stored.", LogLevel.Error);
                     return;
                 }
-                character.CharacterId = (CharacterId) _extractor.GetUIntAt(_characterIdSlot);
-                character.Level = _extractor.GetUIntAt(_levelSlot);
-                character.PracticePoints = _extractor.GetUIntAt(_practicePointsSlot);
+                character.CharacterId = (CharacterId) _extractor.GetUIntAt(_characterId_Slot);
+                character.Level = _extractor.GetUIntAt(_level_Slot);
+                character.PracticePoints = _extractor.GetUIntAt(_practicePoints_Slot);
 
-                character.Strength = _extractor.GetUIntAt(_strengthSlot);
-                character.Stamina = _extractor.GetUIntAt(_staminaSlot);
-                character.Charisma = _extractor.GetUIntAt(_charismaSlot);
-                character.Dexterity = _extractor.GetUIntAt(_dexteritySlot);
-                character.Intelligence = _extractor.GetUIntAt(_intelligenceSlot);
-                character.Agility = _extractor.GetUIntAt(_agilitySlot);
-                character.Wisdom = _extractor.GetUIntAt(_wisdomSlot);
+                character.Strength = _extractor.GetUIntAt(_strength_Slot);
+                character.Stamina = _extractor.GetUIntAt(_stamina_Slot);
+                character.Charisma = _extractor.GetUIntAt(_charisma_Slot);
+                character.Dexterity = _extractor.GetUIntAt(_dexterity_Slot);
+                character.Intelligence = _extractor.GetUIntAt(_intelligence_Slot);
+                character.Agility = _extractor.GetUIntAt(_agility_Slot);
+                character.Wisdom = _extractor.GetUIntAt(_wisdom_Slot);
 
-                character.Platinum = _extractor.GetUInt64At(_platinumCarriedSlot);
-                character.Gold = _extractor.GetUInt64At(_goldCarriedSlot);
-                character.Silver = _extractor.GetUInt64At(_silverCarriedSlot);
-                character.Copper = _extractor.GetUInt64At(_copperCarriedSlot);
+                character.Platinum = _extractor.GetUInt64At(_platinumCarried_Slot);
+                character.Gold = _extractor.GetUInt64At(_goldCarried_Slot);
+                character.Silver = _extractor.GetUInt64At(_silverCarried_Slot);
+                character.Copper = _extractor.GetUInt64At(_copperCarried_Slot);
 
-                ZoneId zoneId = (ZoneId)_extractor.GetUIntAt(_zoneIdSlot);
+                ZoneId zoneId = (ZoneId)_extractor.GetUIntAt(_zoneId_Slot);
                 metadata.Session.SetZone(zoneId);
                 uint zoneSessions = ZoneRepository.Instance.SessionEntered(zoneId);
 
@@ -233,8 +235,8 @@ public class HandlePlayerProfile : OpcodeHandler
                         + mobIds.Count + " mobs, cleared " + cleared + " placements.", LogLevel.Trace);
                 }
 
-                ReadOnlySpan<uint> spellbook = _extractor.GetUIntSpanAt(_spellbookSlot);
-                ReadOnlySpan<uint> spellgems = _extractor.GetUIntSpanAt(_spellgemSlot);
+                ReadOnlySpan<uint> spellbook = _extractor.GetUIntSpanAt(_spellbook_Slot);
+                ReadOnlySpan<uint> spellgems = _extractor.GetUIntSpanAt(_spellgem_Slot);
 
                 uint knownSpellCount = 0;
                 for (int index = 0; index < spellbook.Length; index++)
@@ -369,46 +371,51 @@ public class HandlePlayerProfile : OpcodeHandler
                 return root;
             }
 
-            name = _extractor.GetStringAt(_nameSlot);
-            EQClass playerClass = (EQClass) _extractor.GetUIntAt(_playerClassSlot);
-            ZoneId zoneId = (ZoneId) _extractor.GetUIntAt(_zoneIdSlot);
+            name = _extractor.GetStringAt(_name_Slot);
+            EQClass playerClass = (EQClass) _extractor.GetUIntAt(_playerClass_Slot);
+            ZoneId zoneId = (ZoneId) _extractor.GetUIntAt(_zoneId_Slot);
             String zoneName = ZoneRepository.Instance.GetZoneName(zoneId);
+            uint instanceId = _extractor.GetUIntAt(_zoneInstance_Slot);
+            string instanceDesc = string.Empty;
+            if (instanceId != 0)
+            {
+                instanceDesc = ", Instance: " + instanceId.ToString("X4");
+            }
+            FieldNodes.AddStringNode(_extractor, _name_Slot, "Name", root);
+            FieldNodes.AddUIntNode(_extractor, _characterId_Slot, "Character ID", root);
+            FieldNodes.AddUIntNode(_extractor, _level_Slot, "Level", root, "D");
 
-            FieldNodes.AddStringNode(_extractor, _nameSlot, "Name", root);
-            FieldNodes.AddUIntNode(_extractor, _characterIdSlot, "Character ID", root);
-            FieldNodes.AddUIntNode(_extractor, _levelSlot, "Level", root, "D");
-
-            FieldNodes.AddLabeledNode(_extractor, _playerClassSlot, "Class: " + playerClass.ToDisplayString() + "(0x" +
+            FieldNodes.AddLabeledNode(_extractor, _playerClass_Slot, "Class: " + playerClass.ToDisplayString() + "(0x" +
                     playerClass.ToString("X") + ")", root);
-            FieldNodes.AddLabeledNode(_extractor, _zoneIdSlot, "Zone: " + zoneName + 
-                    " (" + zoneId + ")", root);
+            FieldNodes.AddLabeledNode(_extractor, _zoneId_Slot, "Zone: " + zoneName + 
+                    " (" + zoneId + ") " + instanceDesc, root);
 
-            FieldNodes.AddUIntNode(_extractor, _practicePointsSlot, "Practice Points", root, "D");
-            FieldNodes.AddUIntNode(_extractor, _manaSlot, "Mana", root, "D");
-            FieldNodes.AddUIntNode(_extractor, _hitpointsSlot, "HP", root, "D");
+            FieldNodes.AddUIntNode(_extractor, _practicePoints_Slot, "Practice Points", root, "D");
+            FieldNodes.AddUIntNode(_extractor, _mana_Slot, "Mana", root, "D");
+            FieldNodes.AddUIntNode(_extractor, _hitpoints_Slot, "HP", root, "D");
 
             FieldDisplayNode statsSubtree = new FieldDisplayNode("Stats");
             root.AddChild(statsSubtree);
-            FieldNodes.AddUIntNode(_extractor, _strengthSlot, "Strength", statsSubtree, "D");
-            FieldNodes.AddUIntNode(_extractor, _staminaSlot, "Stamina", statsSubtree, "D");
-            FieldNodes.AddUIntNode(_extractor, _charismaSlot, "Charisma", statsSubtree, "D");
-            FieldNodes.AddUIntNode(_extractor, _dexteritySlot, "Dexterity", statsSubtree, "D");
-            FieldNodes.AddUIntNode(_extractor, _intelligenceSlot, "Intelligence", statsSubtree, "D");
-            FieldNodes.AddUIntNode(_extractor, _agilitySlot, "Agility", statsSubtree, "D");
-            FieldNodes.AddUIntNode(_extractor, _wisdomSlot, "Wisdom", statsSubtree, "D");
+            FieldNodes.AddUIntNode(_extractor, _strength_Slot, "Strength", statsSubtree, "D");
+            FieldNodes.AddUIntNode(_extractor, _stamina_Slot, "Stamina", statsSubtree, "D");
+            FieldNodes.AddUIntNode(_extractor, _charisma_Slot, "Charisma", statsSubtree, "D");
+            FieldNodes.AddUIntNode(_extractor, _dexterity_Slot, "Dexterity", statsSubtree, "D");
+            FieldNodes.AddUIntNode(_extractor, _intelligence_Slot, "Intelligence", statsSubtree, "D");
+            FieldNodes.AddUIntNode(_extractor, _agility_Slot, "Agility", statsSubtree, "D");
+            FieldNodes.AddUIntNode(_extractor, _wisdom_Slot, "Wisdom", statsSubtree, "D");
 
             FieldDisplayNode moneySubtree = new FieldDisplayNode("Money");
             root.AddChild(moneySubtree);
-            FieldNodes.AddUInt64Node(_extractor, _platinumCarriedSlot, "Platinum", moneySubtree, "D");
-            FieldNodes.AddUInt64Node(_extractor, _goldCarriedSlot, "Gold", moneySubtree, "D");
-            FieldNodes.AddUInt64Node(_extractor, _silverCarriedSlot, "Silver", moneySubtree, "D");
-            FieldNodes.AddUInt64Node(_extractor, _copperCarriedSlot, "Copper", moneySubtree, "D");
+            FieldNodes.AddUInt64Node(_extractor, _platinumCarried_Slot, "Platinum", moneySubtree, "D");
+            FieldNodes.AddUInt64Node(_extractor, _goldCarried_Slot, "Gold", moneySubtree, "D");
+            FieldNodes.AddUInt64Node(_extractor, _silverCarried_Slot, "Silver", moneySubtree, "D");
+            FieldNodes.AddUInt64Node(_extractor, _copperCarried_Slot, "Copper", moneySubtree, "D");
 
-            FieldNodes.AddUIntNode(_extractor, _numAASlot, "Num AAs", root, "D");
-            FieldNodes.AddUIntNode(_extractor, _numSkillsSlot, "Num Skills", root, "D");
-            FieldNodes.AddUIntNode(_extractor, _numLanguagesSlot, "Num Languages", root, "D");
-            FieldNodes.AddUIntNode(_extractor, _genderSlot, "Gender", root, "D");
-            FieldNodes.AddUIntNode(_extractor, _raceSlot, "Race", root, "D");
+            FieldNodes.AddUIntNode(_extractor, _numAA_Slot, "Num AAs", root, "D");
+            FieldNodes.AddUIntNode(_extractor, _numSkills_Slot, "Num Skills", root, "D");
+            FieldNodes.AddUIntNode(_extractor, _numLanguages_Slot, "Num Languages", root, "D");
+            FieldNodes.AddUIntNode(_extractor, _gender_Slot, "Gender", root, "D");
+            FieldNodes.AddUIntNode(_extractor, _race_Slot, "Race", root, "D");
             AddSpellNode(root);
             AddBuffsNode(root);
         }
@@ -435,12 +442,12 @@ public class HandlePlayerProfile : OpcodeHandler
     ///////////////////////////////////////////////////////////////////////////////////////////////
     private void AddSpellNode (FieldDisplayNode parent)
     {
-        uint spellBookSize = _extractor.GetUIntAt(_spellbookCountSlot);
-        uint spellGemCount = _extractor.GetUIntAt(_spellgemCountSlot);
+        uint spellBookSize = _extractor.GetUIntAt(_spellbookCount_Slot);
+        uint spellGemCount = _extractor.GetUIntAt(_spellgemCount_Slot);
         uint knownSpellCount = 0;
 
-        ReadOnlySpan<uint> spellbook = _extractor.GetUIntSpanAt(_spellbookSlot);
-        ReadOnlySpan<uint> spellgems = _extractor.GetUIntSpanAt(_spellgemSlot);
+        ReadOnlySpan<uint> spellbook = _extractor.GetUIntSpanAt(_spellbook_Slot);
+        ReadOnlySpan<uint> spellgems = _extractor.GetUIntSpanAt(_spellgem_Slot);
 
         FieldDisplayNode spellSubtree = new FieldDisplayNode("Spells");
         parent.AddChild(spellSubtree);
@@ -457,7 +464,7 @@ public class HandlePlayerProfile : OpcodeHandler
 
                 string spellEntry = knownSpellCount.ToString() + ":  " + spellName + " (" + spellbook[index].ToString() + ")";
 
-                FieldNodes.AddLabeledNode(_extractor, _spellbookSlot, spellEntry, spellBookTree);
+                FieldNodes.AddLabeledNode(_extractor, _spellbook_Slot, spellEntry, spellBookTree);
             }
         }
         spellBookTree.Text = "SpellBook (" + knownSpellCount + " entries)";
@@ -476,7 +483,7 @@ public class HandlePlayerProfile : OpcodeHandler
 
                 string spellEntry = knownSpellCount.ToString() + ":  " + spellName + " (" + spellgems[index].ToString() + ")";
 
-               FieldNodes.AddLabeledNode(_extractor, _spellgemSlot, spellEntry, spellGemTree);
+               FieldNodes.AddLabeledNode(_extractor, _spellgem_Slot, spellEntry, spellGemTree);
             }
         }
         spellGemTree.Text = "Memorized Spells (" + knownSpellCount + " entries)";

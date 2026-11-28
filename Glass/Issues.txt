@@ -1,17 +1,14 @@
 ﻿GlassVideo:
 
 Glass:
-No way to delete a profile
 Need to be able to edit characters
 Changes to relay groups needs to be tested (is custom control wired?)
 Glass is not capturing network traffic.
 pcap has patch level hard-coded - embed patch level and server type in pcapng metadata with libpcap
-need to finish Inference in preparation for inevitable patch
+
 consider adding mapping, using Brewall maps and mob data.  The Brewall maps are always loaded in the EQ folder.  
 I'm not sure how expensive it is to render the maps.
-Need to identify the current zone for characters.  (Chat server packet gets this)
 
-The OpcodeRowPresenter logs are very verbose.
 
 Inference should check that New/Open/Recent patches all load data correctly.
 
@@ -29,6 +26,8 @@ CSV tokens are not decoded in the FieldExtractor but in the handler.
 Nov 2026:
     Remove hidden rows from the list's view with a filter on IsHidden, instead of collapsing their containers.  This is so virtualization only ever
     sees visible rows and does not lock up the UI while trying to process thousands of rows that are 0 height.
+
+Position in the zone change message needs to be decoded.
 
 Future function:
     More repositories for data extracted from the network
