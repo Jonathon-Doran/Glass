@@ -116,6 +116,22 @@ public partial class SpellBrowser : Window
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // FilterId_KeyDown
+    //
+    // Runs the search when Enter is pressed in the id filter box.
+    //
+    // sender:  The id filter text box.
+    // e:       The key event args.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    private void FilterId_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            RunSearch();
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // Button_Search_Click
     //
     // Runs the search with the current filter settings.
@@ -139,6 +155,7 @@ public partial class SpellBrowser : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void Button_Clear_Click(object sender, RoutedEventArgs e)
     {
+        FilterId.Text = string.Empty;
         FilterName.Text = string.Empty;
         FilterSpa.SelectedIndex = 0;
         FilterTargetType.SelectedIndex = 0;
@@ -183,13 +200,59 @@ public partial class SpellBrowser : Window
     ///////////////////////////////////////////////////////////////////////////////////////////
     // RunSearch
     //
-    // Builds a SpellFilter from the filter controls, runs it against the catalog, and
-    // fills the result grid sorted by spell name.  A filled-in SPA number is used in place
-    // of the SPA list selection.  Unparseable SPA number or max level text is reported in
-    // the result count line and aborts the search.
+    // When the id box is filled in, looks that one spell up by id and shows it alone,
+    // ignoring the other filters.  The id is read as hex with a 0x prefix and as decimal
+    // otherwise; unparseable text or an id with no spell is reported in the result count
+    // line.  Otherwise builds a SpellFilter from the filter controls, runs it against the
+    // catalog, and fills the result grid sorted by spell name.  A filled-in SPA number is
+    // used in place of the SPA list selection.  Unparseable SPA number or max level text
+    // is reported in the result count line and aborts the search.
     ///////////////////////////////////////////////////////////////////////////////////////////
     private void RunSearch()
     {
+        string idText = FilterId.Text.Trim();
+        if (idText.Length > 0)
+        {
+            uint spellNumber = 0;
+            bool parsed;
+            if (idText.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                parsed = uint.TryParse(idText.Substring(2), System.Globalization.NumberStyles.HexNumber,
+                    System.Globalization.CultureInfo.InvariantCulture, out spellNumber);
+            }
+            else
+            {
+                parsed = uint.TryParse(idText, out spellNumber);
+            }
+
+            if (parsed == false)
+            {
+                ResultCount.Text = "Spell id is not a number: " + idText;
+                DebugLog.Write(LogChannel.InferenceDebug, "SpellBrowser.RunSearch: unparseable spell id '"
+                    + idText + "', search aborted", LogLevel.Warn);
+                return;
+            }
+
+            if (SpellCatalog.Instance.TryGet((SpellId)spellNumber, out SpellRecord? idRecord) == false)
+            {
+                ResultGrid.ItemsSource = null;
+                ResultCount.Text = "No spell with id " + spellNumber;
+                DetailText.Text = string.Empty;
+                DebugLog.Write(LogChannel.InferenceDebug, "SpellBrowser.RunSearch: no spell with id "
+                    + spellNumber, LogLevel.Trace);
+                return;
+            }
+
+            List<SpellBrowserRow> idRows = new List<SpellBrowserRow>(1);
+            idRows.Add(new SpellBrowserRow(idRecord, BuildEffectSummary(idRecord), null));
+            ResultGrid.ItemsSource = idRows;
+            ResultCount.Text = "1 spell matched id " + spellNumber;
+            DetailText.Text = string.Empty;
+            DebugLog.Write(LogChannel.InferenceDebug, "SpellBrowser.RunSearch: id " + spellNumber + " is '"
+                + idRecord.Name + "'", LogLevel.Trace);
+            return;
+        }
+
         SpellFilter filter = new SpellFilter();
 
         if (FilterName.Text.Length > 0)
@@ -513,6 +576,7 @@ public partial class SpellBrowser : Window
 public class SpellBrowserRow
 {
     public uint Id { get; }
+    public string IdDisplay { get; }
     public string Name { get; }
     public uint Mana { get; }
     public uint CastTimeMs { get; }
@@ -537,6 +601,7 @@ public class SpellBrowserRow
     public SpellBrowserRow(SpellRecord record, string effectSummary, byte? level)
     {
         Id = record.Id;
+        IdDisplay = record.Id + " (0x" + record.Id.Value.ToString("X4") + ")";
         Name = record.Name;
         Mana = record.Mana;
         CastTimeMs = record.CastTimeMs;

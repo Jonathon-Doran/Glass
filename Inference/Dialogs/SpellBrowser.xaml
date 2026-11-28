@@ -3,9 +3,13 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="http://schemas.modernwpf.com/2019"
         ui:WindowHelper.UseModernWindowStyle="True"
-        Title="Spell Browser" Height="700" Width="1600">
+        Title="Spell Browser" Height="700" Width="1800">
     <DockPanel>
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4">
+            <TextBlock Text="Id:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+            <TextBox x:Name="FilterId" Width="80" Margin="0,0,12,0"
+                     KeyDown="FilterId_KeyDown"
+                     ToolTip="Spell id, decimal or 0x hex.  Overrides the other filters when filled in."/>
             <TextBlock Text="Name:" VerticalAlignment="Center" Margin="0,0,4,0"/>
             <TextBox x:Name="FilterName" Width="160" Margin="0,0,12,0"
                      KeyDown="FilterName_KeyDown"/>
@@ -44,7 +48,7 @@
                       VirtualizingStackPanel.IsVirtualizing="True"
                       SelectionChanged="ResultGrid_SelectionChanged">
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="Id" Width="70" Binding="{Binding Id}"/>
+                    <DataGridTextColumn Header="Id" Width="110" Binding="{Binding IdDisplay}" SortMemberPath="Id"/>
                     <DataGridTextColumn Header="Name" Width="220" Binding="{Binding Name}"/>
                     <DataGridTextColumn Header="Level" Width="100" Binding="{Binding Level}"/>
                     <DataGridTextColumn Header="Mana" Width="60" Binding="{Binding Mana}"/>
