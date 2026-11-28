@@ -1,9 +1,11 @@
 ﻿using Glass.Core;
 using Glass.Core.Logging;
+using Glass.Core.Signals;
 using Glass.Data.Models;
 using Glass.Data.Repositories;
 using Glass.Network.Protocol;
 using Glass.Network.Protocol.Fields;
+using Glass.World;
 
 namespace Glass.Network.Handlers;
 
@@ -17,6 +19,8 @@ public class HandleClientUpdate : OpcodeHandler
     private readonly CollectionHandle _collectionHandle;
     private readonly GateDefinitionHandle _top_level_gate;
     private bool DataLogPositions = false;
+
+    private const float MinimumMoveThreshold = 1.0f;
 
     private readonly SlotId _sequenceSlot;
     private readonly SlotId _playerIdSlot;
@@ -113,20 +117,58 @@ public class HandleClientUpdate : OpcodeHandler
                 // Note on heading:  measured as 160-degrees per second to within 0.2%.  One degree is 6.25ms of keypress.  
                 float heading = extractor.GetUIntAt(_headingSlot) / 8192.0f * 360.0f;
 
-                metadata.Character.XPos = xPos;
-                metadata.Character.YPos = yPos;
-                metadata.Character.ZPos = zPos;
-                metadata.Character.Heading = heading;
+                Character character = metadata.Character;
+                bool positionChanged;
+                if ((character.XPos.HasValue == false) || (character.YPos.HasValue == false)
+                    || (character.ZPos.HasValue == false))
+                {
+                    positionChanged = true;
+                }
+                else
+                {
+                    float deltaX = xPos - character.XPos.Value;
+                    float deltaY = yPos - character.YPos.Value;
+                    float deltaZ = zPos - character.ZPos.Value;
+                    float distanceSquared = (deltaX * deltaX) + (deltaY * deltaY) + (deltaZ * deltaZ);
+                    positionChanged = (distanceSquared >= (MinimumMoveThreshold * MinimumMoveThreshold));
+                }
+
+                character.Heading = heading;
+
+                if (positionChanged == false)
+                {
+                    DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleClientToZone: '" + characterName
+                        + "' moved less than " + MinimumMoveThreshold + ", position not updated, no signal.", LogLevel.Trace);
+                }
+                else
+                {
+                    character.XPos = xPos;
+                    character.YPos = yPos;
+                    character.ZPos = zPos;
+
+                    if (character.EntityId.Exists == false)
+                    {
+                        DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleClientToZone: '" + characterName
+                            + "' position stored but it has no entityId, no signal.", LogLevel.Warn);
+                    }
+                    else
+                    {
+                        GlassContext.SignalBus.Publish(new SignalPositionChanged(character.EntityId,
+                            new Position(xPos, yPos, zPos)));
+                        DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleClientToZone: '" + characterName
+                            + "' entityId=" + character.EntityId + " moved to (" + xPos.ToString("F2") + ","
+                            + yPos.ToString("F2") + "," + zPos.ToString("F2") + "), signal published.",
+                            LogLevel.Trace);
+                    }
+                }
 
                 if (DataLogPositions)
                 {
-                    if (playerId != metadata.Character.SpawnId.Value)
-                    {
-                        DebugLog.Write(LogChannel.Opcodes, _opcodeName + ".HandleClientToZone: message "
-                            + metadata.MessageId + " from '" + characterName + "' names spawn 0x"
-                            + playerId.ToString("X4") + ", not its own 0x"
-                            + metadata.Character.SpawnId.Value.ToString("X4") + "; nothing stored", LogLevel.Trace);
-                    }
+                    DebugLog.Write(LogChannel.DataLogging, "POS," + metadata.MessageId + ","
+                        + metadata.Timestamp.ToString("HH:mm:ss.fff") + "," + characterName + ",0x"
+                        + playerId.ToString("X4") + "," + sequence + "," + xPos.ToString("F2") + ","
+                        + yPos.ToString("F2") + "," + zPos.ToString("F2") + "," + heading.ToString("F1"),
+                        LogLevel.Info);
                 }
 
             }

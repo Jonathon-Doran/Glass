@@ -12,15 +12,17 @@ namespace Glass.Agents.Healing;
 // currently engaging it, and the HP thresholds whose crossing must be reported.  HP samples feed a net loss rate, an
 // exponentially weighted moving average of HP lost per second with time constant TauSeconds, so healing lowers the
 // rate and a single hit is smoothed rather than taken as a trend.   Thresholds are HP values; each is reported
-// once, the first time a sample is at or below it, and is then removed.  All state is guarded by one lock.
+// once, the first time a sample is at or below it, and is then removed.  The ward's last known position is held as
+// well.  All state is guarded by one lock.
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 public class WardWatch
 {
-    private const LogLevel defaultLoglevel = LogLevel.Trace;
+    private const LogLevel defaultLoglevel = LogLevel.Info;
     private const double TauSeconds = 8.0;
 
     private readonly object _lock = new object();
     private readonly EntityId _ward;
+    private Position? _position = null;
 
     private bool _hasSample = false;
     private long _lastHp = 0;
@@ -45,6 +47,17 @@ public class WardWatch
     }
 
     public EntityId Ward => _ward;
+
+    public Position? Position
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _position;
+            }
+        }
+    }
 
     public double NetLossRate
     {
@@ -129,6 +142,35 @@ public class WardWatch
         }
 
         return (uint)crossed.Count;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // SetPosition
+    //
+    // Records the ward's current position, replacing the position held before.
+    //
+    // position:  The ward's new position.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public void SetPosition(Position position)
+    {
+        bool first;
+        lock (_lock)
+        {
+            first = (_position == null);
+            _position = position;
+        }
+
+        if (first)
+        {
+            DebugLog.Write(LogChannel.Healing, "WardWatch.SetPosition: ward " + _ward + " first position ("
+                + position.X.ToString("R") + "," + position.Y.ToString("R") + "," + position.Z.ToString("R")
+                + ").", defaultLoglevel);
+            return;
+        }
+
+        DebugLog.Write(LogChannel.Healing, "WardWatch.SetPosition: ward " + _ward + " moved to ("
+            + position.X.ToString("R") + "," + position.Y.ToString("R") + "," + position.Z.ToString("R")
+            + ").", defaultLoglevel);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -217,7 +259,7 @@ public class WardWatch
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // RecordAttack
+    // RecordDamage
     //
     // Records that an attacker damaged the ward.  An attacker not already held is logged as new.
     //
@@ -235,7 +277,7 @@ public class WardWatch
 
         if (isNew)
         {
-            DebugLog.Write(LogChannel.Healing, "WardWatch.RecordSwing: ward " + _ward + " new attacker " + attacker
+            DebugLog.Write(LogChannel.Healing, "WardWatch.RecordDamage: ward " + _ward + " new attacker " + attacker
                 + " at " + time.ToString("HH:mm:ss.fff") + ".", defaultLoglevel);
         }
     }

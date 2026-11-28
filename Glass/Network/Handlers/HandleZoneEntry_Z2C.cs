@@ -1,3 +1,4 @@
+using Glass.Agents.Healing;
 using Glass.Core;
 using Glass.Core.Logging;
 using Glass.Data.Models;
@@ -22,7 +23,7 @@ namespace Glass.Network.Handlers;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 public class HandleZoneEntry_Z2C : OpcodeHandler
 {
-    private const LogLevel defaultLoglevel = LogLevel.Trace;
+    private const LogLevel defaultLoglevel = LogLevel.Info;
     private readonly CollectionHandle _collectionHandle;
     private readonly GateDefinitionHandle _top_level_gate;
 
@@ -406,6 +407,16 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             if (owner != null)
             {
                 CompanionRepository.Instance.Adopt(companion, owner);
+                if (IsDestination(companion, metadata))
+                {
+                    RegisterWard(companion);
+                }
+                else
+                {
+                    DebugLog.Write(LogChannel.Healing, "HandleZoneEntry_Z2C.HandlePacket: companion '" + name
+                        + "' copy received by '" + character.Name + "', not its owner; not registered.",
+                        defaultLoglevel);
+                }
             }
 
             DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: companion '" + name + "' spawnId=0x"
@@ -434,9 +445,17 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
                 DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: placed '" + character.Name + "' in zoneId="
                     + zoneId + " spawnId=0x" + spawnId.ToString("X4"), defaultLoglevel);
 
-                uint linked = CompanionRepository.Instance.LinkOwner(character);
+                RegisterWard(character);
+
+                List<Companion> adopted = new List<Companion>();
+                uint linked = CompanionRepository.Instance.LinkOwner(character, adopted);
                 DebugLog.Write(LogChannel.Opcodes, "HandleZoneEntry_Z2C: linked " + linked + " companions to '"
                     + character.Name + "'", defaultLoglevel);
+
+                for (int adoptedIndex = 0; adoptedIndex < adopted.Count; adoptedIndex++)
+                {
+                    RegisterWard(adopted[adoptedIndex]);
+                }
             }
             else if (zoneEntryCount > 2)
             {
@@ -584,6 +603,49 @@ public class HandleZoneEntry_Z2C : OpcodeHandler
             + spawnId.ToString("X4") + " quads " + string.Join(";", quads)
             + " match no known pattern, treated as pet.", LogLevel.Warn);
         return EntityType.Pet;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    // RegisterWard
+    //
+    // Makes an entity a ward of the healing coordinator when it is a character, pet, warder or
+    // mercenary.  Familiars, mounts and every other type are not registered.  Registering an
+    // entity that is already a ward keeps its existing watch.
+    //
+    // entity:  The entity to register.
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    private void RegisterWard(Entity entity)
+    {
+        EntityType entityType = entity.EntityId.Type;
+
+        switch (entityType)
+        {
+            case EntityType.Character:
+            case EntityType.Pet:
+            case EntityType.Warder:
+            case EntityType.Mercenary:
+                {
+                    break;
+                }
+            default:
+                {
+                    DebugLog.Write(LogChannel.Healing, "HandleZoneEntry_Z2C.RegisterWard: '" + entity.Name
+                        + "' entityId=" + entity.EntityId + " is a " + entityType + ", not registered as a ward.",
+                        defaultLoglevel);
+                    return;
+                }
+        }
+
+        WardWatch? watch = HealingCoordinator.Instance.RegisterWard(entity.EntityId);
+        if (watch == null)
+        {
+            DebugLog.Write(LogChannel.Healing, "HandleZoneEntry_Z2C.RegisterWard: '" + entity.Name
+                + "' was not registered as a ward.", LogLevel.Warn);
+            return;
+        }
+
+        DebugLog.Write(LogChannel.Healing, "HandleZoneEntry_Z2C.RegisterWard: '" + entity.Name + "' entityId="
+            + entity.EntityId + " is a ward.", defaultLoglevel);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

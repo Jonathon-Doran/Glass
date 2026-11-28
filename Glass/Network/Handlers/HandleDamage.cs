@@ -22,7 +22,7 @@ public class HandleDamage : OpcodeHandler
 {
     private readonly CollectionHandle _collectionHandle;
     private readonly GateDefinitionHandle _top_level_gate;
-    private bool DataLogDamage = false;
+    private bool DataLogDamage = true;
 
     private readonly SlotId _targetId_Slot;
     private readonly SlotId _attackerId_Slot;
@@ -160,10 +160,19 @@ public class HandleDamage : OpcodeHandler
             _extractor.Release();
         }
 
-        if (target.Exists)
+        if (target.Exists == false)
         {
-            HealingCoordinator.Instance.OnDamage(target, attacker, metadata.Timestamp);
+            return;
         }
+
+        if (attacker.Type == EntityType.Character)
+        {
+            DebugLog.Write(LogChannel.Opcodes, "HandleDamage.HandleZoneToClient: target " + target + " and attacker "
+                + attacker + " are both our characters, not passed.", LogLevel.Trace);
+            return;
+        }
+
+        HealingCoordinator.Instance.OnDamage(target, attacker, metadata.Timestamp);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////

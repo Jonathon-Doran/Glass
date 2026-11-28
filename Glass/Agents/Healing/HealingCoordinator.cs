@@ -1,4 +1,6 @@
-﻿using Glass.Core.Logging;
+﻿using Glass.Core;
+using Glass.Core.Logging;
+using Glass.Core.Signals;
 using Glass.World;
 using System.Collections.Generic;
 
@@ -40,12 +42,13 @@ public class HealingCoordinator
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // HealingCoordinator
     //
-    // Private constructor.  Initializes an empty ward table.
+    // Private constructor.  Initializes an empty ward table and subscribes to position changes.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private HealingCoordinator()
     {
-        DebugLog.Write(LogChannel.Healing, "HealingCoordinator: singleton instance created with no wards.",
-            defaultLoglevel);
+        GlassContext.SignalBus.Subscribe<SignalPositionChanged>(OnPositionChanged);
+        DebugLog.Write(LogChannel.Healing, "HealingCoordinator: singleton instance created with no wards, "
+            + "subscribed to position changes.", defaultLoglevel);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -190,11 +193,6 @@ public class HealingCoordinator
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     public void OnDamage(EntityId target, EntityId attacker, DateTime time)
     {
-        if (attacker.Exists == false)
-        {
-            return;
-        }
-
         WardWatch? watch;
         lock (_lock)
         {
@@ -205,5 +203,32 @@ public class HealingCoordinator
         }
 
         watch.RecordDamage(attacker, time);
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // OnPositionChanged
+    //
+    // Receives an entity's new position.  An entity that is not a ward is ignored.  For a ward, the position is
+    // recorded in its WardWatch.
+    //
+    // signal:  The entity's EntityId and its new position.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private void OnPositionChanged(SignalPositionChanged signal)
+    {
+        WardWatch? watch;
+
+        lock (_lock)
+        {
+            _watchesByWard.TryGetValue(signal.EntityId, out watch);
+        }
+
+        if (watch == null)
+        {
+            DebugLog.Write(LogChannel.Healing, "HealingCoordinator.OnPositionChanged: entityId=" + signal.EntityId
+                + " is not a ward, position ignored.", defaultLoglevel);
+            return;
+        }
+
+        watch.SetPosition(signal.Position);
     }
 }

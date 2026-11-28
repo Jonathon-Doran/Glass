@@ -122,30 +122,31 @@ public class CompanionRepository
     //
     // Adopts every orphan whose owner spawn id and zone match the given character's placement.
     //
-    // owner:  The placed character.  Its ZoneId and SpawnId are its current placement.
+    // owner:    The placed character.  Its ZoneId and SpawnId are its current placement.
+    // adopted:  Receives the companions adopted by the character; cleared first.
     //
     // Returns the number of companions adopted by the character.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    public uint LinkOwner(Character owner)
+    public uint LinkOwner(Character owner, List<Companion> adopted)
     {
-        List<Companion> matches = new List<Companion>();
+        adopted.Clear();
         for (int orphanIndex = 0; orphanIndex < _orphans.Count; orphanIndex++)
         {
             Companion orphan = _orphans[orphanIndex];
             if (orphan.ZoneId == owner.ZoneId && orphan.OwnerSpawnId == owner.SpawnId)
             {
-                matches.Add(orphan);
+                adopted.Add(orphan);
             }
         }
 
-        for (int matchIndex = 0; matchIndex < matches.Count; matchIndex++)
+        for (int adoptedIndex = 0; adoptedIndex < adopted.Count; adoptedIndex++)
         {
-            Adopt(matches[matchIndex], owner);
+            Adopt(adopted[adoptedIndex], owner);
         }
 
         DebugLog.Write(LogChannel.Database, "CompanionRepository.LinkOwner: '" + owner.Name + "' adopted "
-            + matches.Count + " of " + (_orphans.Count + matches.Count) + " orphans.", defaultLoglevel);
-        return (uint)matches.Count;
+            + adopted.Count + " of " + (_orphans.Count + adopted.Count) + " orphans.", defaultLoglevel);
+        return (uint)adopted.Count;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

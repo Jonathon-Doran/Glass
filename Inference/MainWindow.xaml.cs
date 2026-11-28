@@ -166,9 +166,9 @@ public partial class MainWindow : Window
         DebugLog.AddHandler(LogSink.Aux1LogFile, aux1Handler);
         DebugLog.Route(LogChannel.DataLogging, LogSink.Aux1LogFile);
 
-        GlassDebugLogHandler aux2Handler = new GlassDebugLogHandler("opcodes.log");
+        GlassDebugLogHandler aux2Handler = new GlassDebugLogHandler("healing.log");
         DebugLog.AddHandler(LogSink.Aux2LogFile, aux2Handler);
-        DebugLog.Route(LogChannel.Opcodes, LogSink.Aux2LogFile);
+        DebugLog.Route(LogChannel.Healing, LogSink.Aux2LogFile);
 
         GlassDebugLogHandler aux3LogHandler = new GlassDebugLogHandler("database.log");
         DebugLog.AddHandler(LogSink.Aux3LogFile, aux3LogHandler);
